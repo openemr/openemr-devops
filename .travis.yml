@@ -2,4 +2,4 @@ sudo: required
 services:
  - docker
 script:
-      - docker-compose build
+      - cd docker && docker-compose build
