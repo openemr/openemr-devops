@@ -1,7 +1,8 @@
-FROM alpine:latest
+FROM alpine:3.5
 
 #Install dependencies
-RUN apk add --no-cache apache2 git php7 php7-ctype php7-tokenizer php7-session php7-apache2 php7-xml php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-mcrypt php7-xml php7-soap php7-mbstring curl php7-mysqli 
+RUN apk add --no-cache apache2 git php7 php7-ctype php7-session php7-apache2 php7-xml php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-mcrypt php7-xml php7-soap php7-mbstring curl php7-mysqli 
+#php7-tokenizer will be needed when migrating to 7.1
 #clone openemr
 RUN git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
