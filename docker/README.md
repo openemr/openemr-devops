@@ -15,6 +15,6 @@ openemr config: do not create db, mysql server 'mysql', creds "root/root"
 
 ### Instance management notes
 
- * install failure? see logs in /tmp/lightsail-launch. (tail -f to see when initial install is done)
+ * install failure? see logs in /tmp/lightsail-launch.log (tail -f to see when initial install is done)
  * Connect to webserver: Alpine has no bash, so `docker ps`, `docker exec -i -t <instance id> /bin/sh`
  * Connect to mysql: `docker ps`, `docker exec -i -t <instance id> /bin/bash`
