@@ -18,6 +18,7 @@ chmod +x docker-compose
 ./docker-compose up -d --build
 
 cd lightsail
+chmod a+x duplicity-setup.sh
 ./duplicity-setup.sh
 
 echo "launch.sh: done"
