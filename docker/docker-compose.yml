@@ -17,6 +17,11 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: openemr
+  duplicity:
+    restart: always
+    image: wernight/duplicity
+    volumes:
+    - sitevolume:/home/duplicity/backups/sitevolume
 volumes:
   db: {}
   logvolume01: {}
