@@ -11,8 +11,8 @@ services:
     links:
     - mysql
   mysql:
-    restart: always    
-    image: percona/percona-server:5.6
+    restart: always
+    build: percona/
     volumes:
     - sqlbackup:/mnt/backups
     environment:

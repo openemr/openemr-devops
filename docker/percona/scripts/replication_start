@@ -1,0 +1,20 @@
+#!/bin/bash
+
+cat > /tmp/start_replication.sql <<-EOF
+STOP SLAVE;
+CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_USER='$REPLICATION_SLAVE_USER', MASTER_PASSWORD='$REPLICATION_SLAVE_PASSWORD', MASTER_PORT=3307, MASTER_LOG_FILE='$1', MASTER_LOG_POS=$2;
+START SLAVE;
+EOF
+
+echo "Executing locally:"
+cat /tmp/start_replication.sql
+echo ""
+mysql < /tmp/start_replication.sql
+
+echo ""
+echo "SHOW SLAVE STATUS;"
+echo ""
+mysql -e "SHOW SLAVE STATUS;"
+
+echo ""
+echo "Done."
