@@ -13,13 +13,13 @@ services:
   mysql:
     restart: always
     command: ['mysqld', '--character-set-server=utf8']
-    image: mysql
+    image: percona/percona-server:5.6
     volumes:
-    - db:/var/lib/mysql
+    - sqlbackup:/mnt/backups    
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: openemr
 volumes:
-  db: {}
+  sqlbackup: {}
   logvolume01: {}
   sitevolume: {}
