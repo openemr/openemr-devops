@@ -11,11 +11,10 @@ services:
     links:
     - mysql
   mysql:
-    restart: always
-    command: ['mysqld', '--character-set-server=utf8']
+    restart: always    
     image: percona/percona-server:5.6
     volumes:
-    - sqlbackup:/mnt/backups    
+    - sqlbackup:/mnt/backups
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: openemr
