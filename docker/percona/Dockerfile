@@ -4,7 +4,7 @@ ENV LAST_UPDATED 20150504
 
 # Install Percona Server, client, toolkit and xtrabackup.
 RUN \
-  apt-key adv --keyserver keys.gnupg.net --recv-keys 1C4CBDCDCD2EFD2A && \
+  apt-key adv --keyserver keys.gnupg.net --recv-keys 8507EFA5 && \
   echo "deb http://repo.percona.com/apt `lsb_release -cs` main" > /etc/apt/sources.list.d/percona.list && \
   apt-get update && \
   apt-get -y upgrade && \
