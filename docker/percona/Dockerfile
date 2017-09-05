@@ -10,9 +10,6 @@ RUN \
   apt-get -y upgrade && \
   apt-get install -y percona-server-server-5.6 percona-server-client-5.6 percona-toolkit percona-xtrabackup qpress
 
-# Install autossh for permanent tunnel creation.
-RUN apt-get install -y autossh
-
 # Empty mysql data dir, so that our init script can start from a clean slate
 RUN rm -rf /var/lib/mysql/*
 
@@ -20,9 +17,11 @@ RUN rm -rf /var/lib/mysql/*
 VOLUME ["/etc/mysql", "/var/lib/mysql", "/backups"]
 
 # Add a default, tweaked mysql config. In production should be replaced by a mounted volume, with your own config managed by your orchestration solution (Chef, etc.)
-ADD mysql/my.cnf /etc/mysql/my.cnf
+COPY mysql/my.cnf /etc/mysql/my.cnf
 
-ADD scripts/* /usr/bin/
+COPY scripts/* /usr/bin/
+
+RUN chmod a+x /usr/bin/mysqld_with_init /usr/bin/create_my_root_cnf
 
 # Define default command.
 CMD ["mysqld_with_init"]
