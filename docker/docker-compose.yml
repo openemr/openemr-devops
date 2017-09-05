@@ -12,7 +12,7 @@ services:
     - mysql
   mysql:
     restart: always
-    build: percona/
+    build: mysql/
     volumes:
     - sqlbackup:/mnt/backups
     environment:
