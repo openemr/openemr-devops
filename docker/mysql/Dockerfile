@@ -67,6 +67,10 @@ RUN sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/mysql.conf.d/mysqld.cnf \
 
 VOLUME /var/lib/mysql
 
+# Percona XtraBackup
+RUN apt-get update && apt-get install -y lsb-release wget && wget https://repo.percona.com/apt/percona-release_0.1-4.$(lsb_release -sc)_all.deb \
+  dpkg -i percona-release_0.1-4.$(lsb_release -sc)_all.deb && apt-get update && apt-get install -y percona-xtrabackup-24
+
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod a+x /usr/local/bin/docker-entrypoint.sh && ln -s usr/local/bin/docker-entrypoint.sh /entrypoint.sh # backwards compat
 ENTRYPOINT ["docker-entrypoint.sh"]
