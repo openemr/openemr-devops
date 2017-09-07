@@ -16,7 +16,7 @@
 usage()
 {
 cat<<EOF >&2
-   usage: xbackup.sh -t <type> -s timestamp -i incremental-basedir -b backup-dir -d datadir -f -l binlogs
+   usage: xbackup.sh -t <type> -s timestamp -i incremental-basedir -b backup-dir -d datadir -f -l binlogs -a
 
    Only <type> is mandatory, and it can be one of full or incr
 
@@ -25,6 +25,7 @@ cat<<EOF >&2
    datadir is mysql's datadir, needed if it can't be found on my.cnf or obtained from mysql
    -f will force the script to run, even if a lock file was present
    binlogs is the binlgo directory. if this option is set, binlogs will be copied with the backup. by default, they are not.
+   -a will force the creation of the backup storage table
 
 EOF
 
@@ -66,7 +67,9 @@ BNLGDIR=/var/lib/mysql
 # the oldest backup that exists
 COPY_BINLOGS=1
 
-while  getopts "t:s:i:b:d:l:f" OPTION; do
+CREATETABLE=
+
+while  getopts "t:s:i:b:d:l:f:a" OPTION; do
     case $OPTION in
         t)
             BKP_TYPE=$OPTARG
@@ -89,6 +92,9 @@ while  getopts "t:s:i:b:d:l:f" OPTION; do
             ;;
         f)
             rm -f /tmp/xbackup.lock
+            ;;
+        a)
+          CREATETABLE=1
             ;;
         ?)
         usage
@@ -395,6 +401,9 @@ mkdir -p "${WORK_DIR}/bkps" || \
 
 _start_backup_date=`date`
 _s_inf "INFO: Backup job started: ${_start_backup_date}"
+
+# do we need to do first-time table creation?
+if [ "x$CREATETABLE" == "x1" ]; then; _sql_query "$TBL"; fi
 
 DEFAULTS_FILE_FLAG=
 [ -n "$DEFAULTS_FILE" ] && DEFAULTS_FILE_FLAG="--defaults-file=${DEFAULTS_FILE}"

@@ -78,7 +78,7 @@ COPY docker-entrypoint.sh /usr/local/bin/
 COPY xtra-backup.sh xbackup.sh /root/
 RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/xtra-backup.sh /root/xbackup.sh \
 	&& ln -s usr/local/bin/docker-entrypoint.sh /entrypoint.sh \
-	&& mkdir -p /root/xtrabackup /root/xtrabackup/work
+	&& mkdir -p /root/xtrabackup/work
 ENTRYPOINT ["docker-entrypoint.sh"]
 
 EXPOSE 3306
