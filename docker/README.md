@@ -20,3 +20,4 @@ openemr config: do not create db, mysql server 'mysql', creds "root/root"
  * Connect to mysql: `docker ps`, `docker exec -i -t <instance id> /bin/bash`
  * Review volumes: `docker volume ls`, `docker volume inspect <volume_name>`
  * Visit volume: `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
+ * Scripted in-instance commands: `docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /root/xtra-backup.sh`
