@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 
 ##############################################################
 #                                                            #
@@ -24,7 +24,7 @@ cat<<EOF >&2
    incremental-basedir will be passed to innobackupex as --incremental-basedir, if present and type was incr. defaults to the last backup taken
    datadir is mysql's datadir, needed if it can't be found on my.cnf or obtained from mysql
    -f will force the script to run, even if a lock file was present
-   binlogs is the binlgo directory. if this option is set, binlogs will be copied with the backup. by default, they are not. 
+   binlogs is the binlgo directory. if this option is set, binlogs will be copied with the backup. by default, they are not.
 
 EOF
 
@@ -36,19 +36,22 @@ CURDATE=$(date +%Y-%m-%d_%H_%M_%S)
 # Type of backup, accepts 'full' or 'incr'
 BKP_TYPE=
 
-# If type is incremental, and this options is specified, it will be used as 
+# If type is incremental, and this options is specified, it will be used as
 #    --incremental-basedir option for innobackupex.
 INC_BSEDIR=
 
 # Base dir, this is where the backup will be initially saved.
-WORK_DIR=/sbx/msb/msb_5_5_38/bkp/work
+WORK_DIR=/root/xtrabackup/work
 
 # This is where the backups will be stored after verification. If this is empty
 # backups will be stored within the WORK_DIR. This should already exist as we will
 # not try to create one automatically for safety purpose. Within ths directory
 # must exist a 'bkps' and 'bnlg' subdirectories. In absence of a final stor, backups
 # and binlogs will be saved to WORK_DIR
-STOR_DIR=/sbx/msb/msb_5_5_38/bkp/stor
+STOR_DIR=/mnt/backups
+
+# well, okay, I'm terrible
+mkdir -p $STOR_DIR/bkps $STOR_DIR/bnlg
 
 # If you want to ship the backups to a remote server, specify
 # here the SSH username and password and the remote directory
@@ -58,17 +61,17 @@ STOR_DIR=/sbx/msb/msb_5_5_38/bkp/stor
 #RMTE_SSH="revin@127.0.0.1"
 
 # Where are the MySQL data and binlog directories
-DATADIR=/sbx/msb/msb_5_5_38/data/
-BNLGDIR=/sbx/msb/msb_5_5_38/data/
+DATADIR=/var/lib/mysql
+BNLGDIR=/var/lib/mysql
 
 # Include binary logs for each backup. Binary logs are incrementally
 # collected to $STOR_DIR/bnlg. The amount of binlog kept depends on
 # the oldest backup that exists
 COPY_BINLOGS=1
 
-while  getopts "t:s:i:b:d:l:f" OPTION; do 
-    case $OPTION in 
-        t) 
+while  getopts "t:s:i:b:d:l:f" OPTION; do
+    case $OPTION in
+        t)
             BKP_TYPE=$OPTARG
             ;;
         s)
@@ -120,7 +123,7 @@ LOG_FILE="${WORK_DIR}/bkps/${CURDATE}.log"
 INF_FILE_WORK="${WORK_DIR}/bkps/${CURDATE}-info.log"
 
 # How many backup sets do you want to keep, these are the
-# count of full backups plus their incrementals. 
+# count of full backups plus their incrementals.
 # i.e. is you set 2, there will be 2 full backups + their
 # incrementals
 STORE=2
@@ -128,15 +131,18 @@ STORE=2
 KEEP_LCL=0
 
 # Will be used as --defaults-file for innobackupex if not empty
-DEFAULTS_FILE=/sbx/msb/msb_5_5_38/my.sandbox.cnf
+#DEFAULTS_FILE=/sbx/msb/msb_5_5_38/my.sandbox.cnf
+DEFAULTS_FILE=
 # Used as --use-memory option for innobackupex when APPLY_LOG is
 # enabled
-USE_MEMORY=1G
+# Lightsail rig is so tight -- do I need to make this configureable?
+USE_MEMORY=25M
 
 # mysql client command line that will give access to the schema
 # and table where backups information will be stored. See
 # backup table structure below.
-MY="/sbx/msb/msb_5_5_38/use percona"
+# Seriously, hardcoding root is awful D:
+MY="mysql -p=root --database=openemr"
 
 # How to flush logs, on versions < 5.5.3, the BINARY clause
 # is not yet supported. Not used at the moment.
@@ -144,7 +150,7 @@ FLOGS="${MY} -BNe 'FLUSH BINARY LOGS'"
 
 # Table definition where backup information will be stored.
 TBL=$(cat <<EOF
-CREATE TABLE backups (
+CREATE TABLE xtradb_backups (
   id int(10) unsigned NOT NULL auto_increment,
   started_at timestamp NOT NULL default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP,
   ends_at timestamp NOT NULL default '0000-00-00 00:00:00',
@@ -218,18 +224,18 @@ _sql_query() {
    fi
 }
 
-# 
+#
 # Returns a list of full backups (old ones > $STORE) whose
 #   set we will prune later
 #
 _sql_prune_base() {
    _sql=$(cat <<EOF
-   SELECT COALESCE(GROUP_CONCAT(id SEPARATOR ','),'') 
+   SELECT COALESCE(GROUP_CONCAT(id SEPARATOR ','),'')
    FROM (
-      SELECT id 
-      FROM backups 
-      WHERE type = 'full' 
-      ORDER BY started_at DESC 
+      SELECT id
+      FROM xtradb_backups
+      WHERE type = 'full'
+      ORDER BY started_at DESC
       LIMIT ${STORE},999999
    ) t
 EOF
@@ -243,11 +249,11 @@ EOF
 #
 _sql_prune_list() {
    _sql=$(cat <<EOF
-      SELECT 
-         CONCAT(GROUP_CONCAT(DATE_FORMAT(started_at,'%Y-%m-%d_%H_%i_%s') SEPARATOR '* '),'*') 
-      FROM backups 
-      WHERE id IN (${1}) OR 
-         baseid IN (${1}) 
+      SELECT
+         CONCAT(GROUP_CONCAT(DATE_FORMAT(started_at,'%Y-%m-%d_%H_%i_%s') SEPARATOR '* '),'*')
+      FROM xtradb_backups
+      WHERE id IN (${1}) OR
+         baseid IN (${1})
       ORDER BY id
 EOF
    )
@@ -260,8 +266,8 @@ EOF
 #
 _sql_prune_rows() {
    _sql=$(cat <<EOF
-   DELETE FROM backups 
-   WHERE id IN (${1}) OR 
+   DELETE FROM xtradb_backups
+   WHERE id IN (${1}) OR
       baseid IN (${1})
 EOF
    )
@@ -269,16 +275,16 @@ EOF
    _sql_query "${_sql}"
 }
 
-# 
+#
 # When doing incremental backups, the results
 #   will be used for out --incremental-dir
 #
 _sql_last_backup() {
    _sql=$(cat <<EOF
-   SELECT 
+   SELECT
       DATE_FORMAT(started_at,'%Y-%m-%d_%H_%i_%s'), weekno
-   FROM backups 
-   ORDER BY started_at DESC 
+   FROM xtradb_backups
+   ORDER BY started_at DESC
    LIMIT 1
 EOF
    )
@@ -286,17 +292,17 @@ EOF
    _sql_query "${_sql}"
 }
 
-# 
+#
 # When COPY_BINLOGS is enabled, we determine what was our
 #   oldest backups, from this we can determine how far back
 #   we should keep a copy of the binary logs
 #
 _sql_first_backup_elapsed() {
    _sql=$(cat <<EOF
-   SELECT 
-      CEIL((UNIX_TIMESTAMP()-UNIX_TIMESTAMP(started_at))/60) AS elapsed  
-   FROM backups 
-   ORDER BY started_at ASC 
+   SELECT
+      CEIL((UNIX_TIMESTAMP()-UNIX_TIMESTAMP(started_at))/60) AS elapsed
+   FROM xtradb_backups
+   ORDER BY started_at ASC
    LIMIT 1
 EOF
    )
@@ -309,12 +315,12 @@ EOF
 #
 _sql_save_bkp() {
    _sql=$(cat <<EOF
-   INSERT INTO backups 
-      (started_at, ends_at, size, path, 
-      type, incrbase, weekno, baseid) 
+   INSERT INTO xtradb_backups
+      (started_at, ends_at, size, path,
+      type, incrbase, weekno, baseid)
    VALUES(${1},'${2}',
       '${3}','${4}',
-      '${BKP_TYPE}',${5}, 
+      '${BKP_TYPE}',${5},
       ${6}, ${7})
 EOF
    )
@@ -322,17 +328,17 @@ EOF
    _sql_query "${_sql}"
 }
 
-# 
+#
 # When taking incremental backup, we check from
 #   percona.backups what will be our
 #   --incremental-basedir
 #
 _sql_incr_bsedir() {
    _sql=$(cat <<EOF
-   SELECT 
-      DATE_FORMAT(started_at,'%Y-%m-%d_%H_%i_%s'), id 
-   FROM backups 
-   WHERE type = 'full' AND 
+   SELECT
+      DATE_FORMAT(started_at,'%Y-%m-%d_%H_%i_%s'), id
+   FROM xtradb_backups
+   WHERE type = 'full' AND
       weekno = ${_week_no}
    ORDER BY started_at DESC
    LIMIT 1
@@ -360,9 +366,9 @@ _error_handler() {
 trap '_error_handler' TERM
 XBACKUP_PID=$$
 
-if [ -f /tmp/xbackup.lock ]; then 
+if [ -f /tmp/xbackup.lock ]; then
    _d_inf "ERROR: Another backup is still running or a previous \
-      backup failed, please investigate!"; 
+      backup failed, please investigate!";
 fi
 touch /tmp/xbackup.lock
 
@@ -419,11 +425,11 @@ fi
 #
 if [ "${BKP_TYPE}" == "incr" ];
 then
-   if [ -n "${INC_BSEDIR}" ]; 
+   if [ -n "${INC_BSEDIR}" ];
    then
-      if [ ! -d ${WORK_DIR}/bkps/${INC_BSEDIR} ]; 
-      then 
-         _d_inf "ERROR: Specified incremental basedir ${WORK_DIR}/bkps/${_inc_basedir} does not exist."; 
+      if [ ! -d ${WORK_DIR}/bkps/${INC_BSEDIR} ];
+      then
+         _d_inf "ERROR: Specified incremental basedir ${WORK_DIR}/bkps/${_inc_basedir} does not exist.";
       fi
 
       _inc_basedir=$INC_BSEDIR
@@ -431,18 +437,18 @@ then
       _inc_basedir=$_last_bkp
    fi
 
-   if [ ! -n "$_inc_basedir" ]; 
-   then 
-      _d_inf "ERROR: No valid incremental basedir found!"; 
+   if [ ! -n "$_inc_basedir" ];
+   then
+      _d_inf "ERROR: No valid incremental basedir found!";
    fi
 
    ( [ "x$APPLY_LOG" == "x1" ] || [ "x$STOR_CMP" == "x1" ] ) && \
       _inc_basedir_path="${WORK_DIR}/bkps/${_inc_basedir}" || \
       _inc_basedir_path="${STOR_DIR}/bkps/${_inc_basedir}"
 
-   if [ ! -d "${_inc_basedir_path}" ]; 
-   then 
-      _d_inf "ERROR: Incremental basedir ${_inc_basedir_path} does not exist."; 
+   if [ ! -d "${_inc_basedir_path}" ];
+   then
+      _d_inf "ERROR: Incremental basedir ${_inc_basedir_path} does not exist.";
    fi
 
    _ibx_bkp="${_ibx_bkp} --incremental ${_this_bkp} --incremental-basedir ${_inc_basedir_path}"
@@ -478,14 +484,14 @@ $_ibx_bkp
 RETVAR=$?
 
 _end_backup_date=`date`
-echo 
+echo
 _s_inf "INFO: Xtrabackup finished: ${_end_backup_date}"
 echo
 
 # Check the exit status from innobackupex, but dont exit right away if it failed
-if [ "$RETVAR" -gt 0 ]; then 
+if [ "$RETVAR" -gt 0 ]; then
    _d_inf "ERROR: non-zero exit status of xtrabackup during backup. \
-      Something may have failed!"; 
+      Something may have failed!";
 fi
 
 if [ $COPY_BINLOGS -eq 1 ]; then
@@ -497,7 +503,7 @@ if [ -n "$_last_bkp" ]; then
    > $WORK_DIR/bkps/binlog.index
 
    _echo "INFO: Getting a list of binary logs to copy"
-   for f in $(cat $BNLGDIR/$BNLGFMT.index); do 
+   for f in $(cat $BNLGDIR/$BNLGFMT.index); do
       echo $(basename $f) >> $WORK_DIR/bkps/binlog.index
    done
 
@@ -563,9 +569,9 @@ if [ -n "$STOR_DIR" ]; then
       ret=$?
    fi
 
-   if [ "x$ret" != "x0" ]; then 
+   if [ "x$ret" != "x0" ]; then
       _s_inf "WARNING: Failed to copy ${_this_bkp} to ${STOR_DIR}/bkps/"
-      _s_inf "   I will not be able to delete old backups from your WORK_DIR"; 
+      _s_inf "   I will not be able to delete old backups from your WORK_DIR";
    # Delete backup on work dir if no apply log is needed
    elif [ "x$APPLY_LOG" == "x0" ]; then
       _echo "INFO: Cleaning up ${WORK_DIR}/bkps/"
@@ -579,10 +585,10 @@ if [ -n "$STOR_DIR" ]; then
       ls | grep -Ev "$_rxp"
       for f in $(ls | grep -Ev $_rxp); do rm -rf $f; done
    # We also delete the previous incremental if the backup has been successful
-   elif [ "${BKP_TYPE}" == "incr" ]; then 
+   elif [ "${BKP_TYPE}" == "incr" ]; then
       _echo "INFO: Deleting previous incremental ${WORK_DIR}/bkps/${_inc_basedir}"
       rm -rf ${WORK_DIR}/bkps/${_inc_basedir}*;
-   elif [ "${BKP_TYPE}" == "full" ]; then 
+   elif [ "${BKP_TYPE}" == "full" ]; then
       _echo "INFO: Deleting previous work backups $(find $WORK_DIR/bkps/ -maxdepth 1 -mindepth 1|grep -v ${CURDATE}|xargs)"
       rm -rf $(find $WORK_DIR/bkps/ -maxdepth 1 -mindepth 1|grep -v ${CURDATE}|xargs)
    fi
@@ -617,7 +623,7 @@ if [ "$status" != 1 ]; then
    _s_inf "INFO: Apply log started: ${_start_prepare_date}"
 
    if [ "${BKP_TYPE}" == "incr" ];
-   then 
+   then
       if [ ! -n "$_incr_base" ];
       then
          _d_inf "ERROR: No valid base backup found!";
@@ -658,7 +664,7 @@ echo
 _s_inf "INFO: Apply log finished: ${_end_prepare_date}"
 echo
 
-# Check the exit status from innobackupex, but dont exit right 
+# Check the exit status from innobackupex, but dont exit right
 # away if it failed
 if [ "$RETVAR" -gt 0 ]; then
    _s_inf "ERROR: non-zero exit status of xtrabackup during --apply-log. \

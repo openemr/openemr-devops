@@ -73,7 +73,9 @@ RUN apt-get update && apt-get install -y lsb-release wget && wget https://repo.p
 
 COPY docker-entrypoint.sh /usr/local/bin/
 COPY xtra-backup.sh xbackup.sh /root/
-RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/xtra-backup.sh /root/xbackup.sh && ln -s usr/local/bin/docker-entrypoint.sh /entrypoint.sh # backwards compat
+RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/xtra-backup.sh /root/xbackup.sh \
+	&& ln -s usr/local/bin/docker-entrypoint.sh /entrypoint.sh # backwards compat \
+	&& mkdir /root/xtrabackup /root/xtrabackup/work 
 ENTRYPOINT ["docker-entrypoint.sh"]
 
 EXPOSE 3306
