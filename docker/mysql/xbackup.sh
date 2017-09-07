@@ -142,7 +142,7 @@ USE_MEMORY=25M
 # and table where backups information will be stored. See
 # backup table structure below.
 # Seriously, hardcoding root is awful D:
-MY="mysql -p=root --database=openemr"
+MY="mysql --password=root --database=openemr"
 
 # How to flush logs, on versions < 5.5.3, the BINARY clause
 # is not yet supported. Not used at the moment.

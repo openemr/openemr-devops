@@ -71,11 +71,14 @@ VOLUME /var/lib/mysql
 RUN apt-get update && apt-get install -y lsb-release wget && wget https://repo.percona.com/apt/percona-release_0.1-4.$(lsb_release -sc)_all.deb && \
   dpkg -i percona-release_0.1-4.$(lsb_release -sc)_all.deb && apt-get update && apt-get install -y percona-xtrabackup-24
 
+# these make my life not crummy
+RUN apt-get install -y nmap joe less
+
 COPY docker-entrypoint.sh /usr/local/bin/
 COPY xtra-backup.sh xbackup.sh /root/
 RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/xtra-backup.sh /root/xbackup.sh \
-	&& ln -s usr/local/bin/docker-entrypoint.sh /entrypoint.sh # backwards compat \
-	&& mkdir /root/xtrabackup /root/xtrabackup/work 
+	&& ln -s usr/local/bin/docker-entrypoint.sh /entrypoint.sh \
+	&& mkdir -p /root/xtrabackup /root/xtrabackup/work
 ENTRYPOINT ["docker-entrypoint.sh"]
 
 EXPOSE 3306
