@@ -50,9 +50,6 @@ WORK_DIR=/root/xtrabackup/work
 # and binlogs will be saved to WORK_DIR
 STOR_DIR=/mnt/backups
 
-# well, okay, I'm terrible
-mkdir -p $STOR_DIR/bkps $STOR_DIR/bnlg
-
 # If you want to ship the backups to a remote server, specify
 # here the SSH username and password and the remote directory
 # for the backups. Absence of neither disables remote shipping
