@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [ $(date +%u) == 7 ]; then
-  docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /root/xbackup.sh -t full
+  docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /root/xbackup.sh -t full -f
 else
   docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /root/xbackup.sh -t incr
 fi;
