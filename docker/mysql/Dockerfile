@@ -75,9 +75,8 @@ RUN apt-get update && apt-get install -y lsb-release wget && wget https://repo.p
 RUN apt-get install -y nmap joe less
 
 COPY docker-entrypoint.sh /usr/local/bin/
-COPY xbackup.sh innobackupex.cnf /root/
-COPY xtrabackup-init.sh /docker-entrypoint-initdb.d/
-RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/xbackup.sh /docker-entrypoint-initdb.d/xtrabackup-init.sh \
+COPY xbackup.sh xbackup-wrapper.sh innobackupex.cnf /root/
+RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/xbackup.sh /root/xbackup-wrapper.sh \
 	&& ln -s usr/local/bin/docker-entrypoint.sh /entrypoint.sh \
 	&& mkdir -p /root/xtrabackup/work
 ENTRYPOINT ["docker-entrypoint.sh"]
