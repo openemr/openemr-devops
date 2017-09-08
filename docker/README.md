@@ -6,9 +6,9 @@ https://davekz.com/docker-on-lightsail/
 
 Base OS, "Ubuntu 16.04", paste, go
 ```
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/docker/lightsail/launch.sh > lightsail-launch.sh
-chmod +x lightsail-launch.sh
-sudo ./lightsail-launch.sh
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/docker/lightsail/launch.sh > /root/lightsail-launch.sh
+chmod +x /root/lightsail-launch.sh
+sudo /root/lightsail-launch.sh
 ```
 
 openemr config: do not create db, mysql server 'mysql', creds "root/root"
@@ -20,3 +20,4 @@ openemr config: do not create db, mysql server 'mysql', creds "root/root"
  * Connect to mysql: `docker ps`, `docker exec -i -t <instance id> /bin/bash`
  * Review volumes: `docker volume ls`, `docker volume inspect <volume_name>`
  * Visit volume: `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
+ * Scripted in-instance commands: `docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /root/xbackup.sh -t full`

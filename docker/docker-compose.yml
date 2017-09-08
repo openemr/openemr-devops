@@ -12,12 +12,13 @@ services:
     - mysql
   mysql:
     restart: always
-    command: ['mysqld', '--character-set-server=utf8']
-    image: mysql
+    build: mysql/
+    volumes:
+    - sqlbackup:/mnt/backups
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: openemr
 volumes:
-  db: {}
+  sqlbackup: {}
   logvolume01: {}
   sitevolume: {}
