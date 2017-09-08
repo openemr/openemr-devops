@@ -1,5 +1,8 @@
 #!/bin/bash
 
+echo this is terrible! don't use it!
+exit 1
+
 # TODO: use bash template to avoid hardcoded password
 # TODO should some of these be xtrabackup calls?
 # TODO: adopt https://github.com/dotmanila/mootools/blob/master/xbackup.sh

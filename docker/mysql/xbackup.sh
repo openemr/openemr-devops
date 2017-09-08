@@ -25,7 +25,7 @@ cat<<EOF >&2
    datadir is mysql's datadir, needed if it can't be found on my.cnf or obtained from mysql
    -f will force the script to run, even if a lock file was present
    binlogs is the binlgo directory. if this option is set, binlogs will be copied with the backup. by default, they are not.
-   -a will force the creation of the backup storage table
+   -a will force the creation of the backup storage table, then exit
 
 EOF
 
@@ -369,6 +369,12 @@ _error_handler() {
 trap '_error_handler' TERM
 XBACKUP_PID=$$
 
+# do we need to do first-time table creation?
+if [ "x$CREATETABLE" == "x1" ]; then
+  _sql_query "$TBL"
+  exit 0
+fi
+
 if [ -f /tmp/xbackup.lock ]; then
    _d_inf "ERROR: Another backup is still running or a previous \
       backup failed, please investigate!";
@@ -401,9 +407,6 @@ mkdir -p "${WORK_DIR}/bkps" || \
 
 _start_backup_date=`date`
 _s_inf "INFO: Backup job started: ${_start_backup_date}"
-
-# do we need to do first-time table creation?
-if [ "x$CREATETABLE" == "x1" ]; then; _sql_query "$TBL"; fi
 
 DEFAULTS_FILE_FLAG=
 [ -n "$DEFAULTS_FILE" ] && DEFAULTS_FILE_FLAG="--defaults-file=${DEFAULTS_FILE}"
