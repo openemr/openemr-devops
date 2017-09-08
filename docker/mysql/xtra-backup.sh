@@ -9,3 +9,7 @@ exit 1
 innobackupex --no-timestamp --password=root /mnt/backups | tee /mnt/backups/backup-logs.txt
 innobackupex --apply-log --use-memory 25000000 /mnt/backups | tee --append /mnt/backups/backup-logs.txt
 echo backup process complete!
+
+---
+/root/xbackup.sh -a
+# 422: root hack ahoy, probably should just search for 'root' later

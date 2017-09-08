@@ -69,7 +69,7 @@ COPY_BINLOGS=1
 
 CREATETABLE=
 
-while  getopts "t:s:i:b:d:l:f:a" OPTION; do
+while  getopts "t:s:i:b:d:l:fa" OPTION; do
     case $OPTION in
         t)
             BKP_TYPE=$OPTARG
@@ -104,7 +104,7 @@ while  getopts "t:s:i:b:d:l:f:a" OPTION; do
 done
 
 # We need at least one arg, the backup type
-[ $# -lt 1 -o -z "$BKP_TYPE" ] && { usage; exit 1; }
+[ "x$CREATETABLE" != "x1" ] && [ $# -lt 1 -o -z "$BKP_TYPE" ] && { usage; exit 1; }
 
 # log-bin filename format, used when copying binary logs
 BNLGFMT=mysql-bin
@@ -133,9 +133,9 @@ STORE=2
 
 KEEP_LCL=0
 
-# Will be used as --defaults-file for innobackupex if not empty
+# Will be used as --defaults-file for innobackupex and mysql, must not be empty
 #DEFAULTS_FILE=/sbx/msb/msb_5_5_38/my.sandbox.cnf
-DEFAULTS_FILE=
+DEFAULTS_FILE=/root/innobackupex.cnf
 # Used as --use-memory option for innobackupex when APPLY_LOG is
 # enabled
 # Lightsail rig is so tight -- do I need to make this configureable?
@@ -144,8 +144,7 @@ USE_MEMORY=25M
 # mysql client command line that will give access to the schema
 # and table where backups information will be stored. See
 # backup table structure below.
-# Seriously, hardcoding root is awful D:
-MY="mysql --password=root --database=openemr"
+MY="mysql --defaults-file=$DEFAULTS_FILE --database=openemr"
 
 # How to flush logs, on versions < 5.5.3, the BINARY clause
 # is not yet supported. Not used at the moment.
@@ -156,14 +155,14 @@ TBL=$(cat <<EOF
 CREATE TABLE xtradb_backups (
   id int(10) unsigned NOT NULL auto_increment,
   started_at timestamp NOT NULL default CURRENT_TIMESTAMP on update CURRENT_TIMESTAMP,
-  ends_at timestamp NOT NULL default '0000-00-00 00:00:00',
+  ends_at datetime NOT NULL,
   size varchar(15) default NULL,
   path varchar(120) default NULL,
   type enum('full','incr') NOT NULL default 'full',
-  incrbase timestamp NOT NULL default '0000-00-00 00:00:00',
+  incrbase datetime NOT NULL,
   weekno tinyint(3) unsigned NOT NULL default '0',
   baseid int(10) unsigned NOT NULL default '0',
-  PRIMARY KEY  (`id`)
+  PRIMARY KEY  (\`id\`)
 ) ENGINE=InnoDB;
 EOF
 )
@@ -356,7 +355,10 @@ EOF
 #   could differ from DB time
 #
 _sql_get_week_no() {
-   _sql="SELECT DATE_FORMAT(STR_TO_DATE('${CURDATE}','%Y-%m-%d_%H_%i_%s'),'%U')"
+   _sql=$(cat <<EOF
+    SELECT DATE_FORMAT(STR_TO_DATE('${CURDATE}','%Y-%m-%d_%H_%i_%s'),'%U')
+EOF
+  )
    _sql_query "${_sql}"
 }
 
