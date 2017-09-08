@@ -14,7 +14,7 @@ service docker start
 
 mkdir backups
 
-git clone https://github.com/openemr/openemr-devops.git --branch wip-xtrabackup && cd openemr-devops/docker
+git clone https://github.com/openemr/openemr-devops.git && cd openemr-devops/docker
 curl -L https://github.com/docker/compose/releases/download/1.15.0/docker-compose-`uname -s`-`uname -m` > docker-compose
 chmod +x docker-compose
 ./docker-compose up -d --build

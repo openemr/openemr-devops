@@ -6,7 +6,7 @@ https://davekz.com/docker-on-lightsail/
 
 Base OS, "Ubuntu 16.04", paste, go
 ```
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/wip-xtrabackup/docker/lightsail/launch.sh > /root/lightsail-launch.sh
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/docker/lightsail/launch.sh > /root/lightsail-launch.sh
 chmod +x /root/lightsail-launch.sh
 sudo /root/lightsail-launch.sh
 ```
