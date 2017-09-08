@@ -159,7 +159,7 @@ CREATE TABLE xtradb_backups (
   size varchar(15) default NULL,
   path varchar(120) default NULL,
   type enum('full','incr') NOT NULL default 'full',
-  incrbase datetime NOT NULL,
+  incrbase datetime default NULL,
   weekno tinyint(3) unsigned NOT NULL default '0',
   baseid int(10) unsigned NOT NULL default '0',
   PRIMARY KEY  (\`id\`)
@@ -373,7 +373,9 @@ XBACKUP_PID=$$
 
 # do we need to do first-time table creation?
 if [ "x$CREATETABLE" == "x1" ]; then
+  echo attempting schema creation...
   _sql_query "$TBL"
+  echo schema creation success!
   exit 0
 fi
 
@@ -694,7 +696,11 @@ if [ "$APPLY_LOG" == 1 ]; then
 else
    _ends_at=`date -d "${_end_backup_date}" "+%Y-%m-%d %H:%M:%S"`
 fi
-_incr_basedir="STR_TO_DATE('${_incr_basedir}','%Y-%m-%d_%H_%i_%s')"
+if [ "${BKP_TYPE}" == "incr" ]; then
+   _incr_basedir="STR_TO_DATE('${_incr_basedir}','%Y-%m-%d_%H_%i_%s')"
+else
+   _incr_basedir="NULL"
+fi
 [ -d "${_this_bkp}" ] && _bu_size=$(_du_h ${_this_bkp}) || _bu_size=$(_du_h ${_this_bkp_stored})
 _du_left=$(_df_h $WORK_DIR)
 

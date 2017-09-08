@@ -65,7 +65,7 @@ RUN { \
 RUN sed -Ei 's/^(bind-address|log)/#&/' /etc/mysql/mysql.conf.d/mysqld.cnf \
 	&& echo '[mysqld]\nskip-host-cache\nskip-name-resolve' > /etc/mysql/conf.d/docker.cnf
 
-VOLUME /var/lib/mysql
+#VOLUME /var/lib/mysql
 
 # Percona XtraBackup
 RUN apt-get update && apt-get install -y lsb-release wget && wget https://repo.percona.com/apt/percona-release_0.1-4.$(lsb_release -sc)_all.deb && \
@@ -75,8 +75,9 @@ RUN apt-get update && apt-get install -y lsb-release wget && wget https://repo.p
 RUN apt-get install -y nmap joe less
 
 COPY docker-entrypoint.sh /usr/local/bin/
-COPY xtra-backup.sh xbackup.sh innobackupex.cnf /root/
-RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/xtra-backup.sh /root/xbackup.sh \
+COPY xbackup.sh innobackupex.cnf /root/
+COPY xtrabackup-init.sh /docker-entrypoint-initdb.d/
+RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/xbackup.sh /docker-entrypoint-initdb.d/xtrabackup-init.sh \
 	&& ln -s usr/local/bin/docker-entrypoint.sh /entrypoint.sh \
 	&& mkdir -p /root/xtrabackup/work
 ENTRYPOINT ["docker-entrypoint.sh"]
