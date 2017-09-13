@@ -4,6 +4,13 @@ exec > /tmp/lightsail-launch.log 2>&1
 
 cd /root
 
+# bad news for EC2, *necessary* for Lightsail
+fallocate -l 1G /mnt/1GB.swap
+mkswap /mnt/1GB.swap
+chmod 600 /mnt/1GB.swap
+swapon /mnt/1GB.swap
+echo "/mnt/1GB.swap  none  swap  sw 0  0" >> /etc/fstab
+
 apt-get update
 apt-get install -y apt-transport-https ca-certificates git jq duplicity
 apt-key adv --keyserver hkp://ha.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D

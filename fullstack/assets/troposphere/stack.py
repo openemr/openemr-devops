@@ -1057,7 +1057,7 @@ def buildNFSBackup(t, args):
                 "owner" : "root",
                 "group" : "root"
             },
-            "/etc/cron.daily/backup.sh" : {
+            "/etc/cron.daily/backup" : {
                 "content" : Join("", backupScript),
                 "mode"  : "000500",
                 "owner" : "root",
