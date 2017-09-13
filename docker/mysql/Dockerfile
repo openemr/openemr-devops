@@ -72,11 +72,11 @@ RUN apt-get update && apt-get install -y lsb-release wget && wget https://repo.p
   dpkg -i percona-release_0.1-4.$(lsb_release -sc)_all.deb && apt-get update && apt-get install -y percona-xtrabackup-24
 
 # these make my life not crummy
-RUN apt-get install -y nmap joe less
+#RUN apt-get install -y nmap joe less
 
 COPY docker-entrypoint.sh /usr/local/bin/
-COPY xbackup.sh xbackup-wrapper.sh innobackupex.cnf /root/
-RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/xbackup.sh /root/xbackup-wrapper.sh \
+COPY xbackup.sh xbackup-wrapper.sh xrecovery-final.sh innobackupex.cnf /root/
+RUN chmod a+x /usr/local/bin/docker-entrypoint.sh /root/*.sh \
 	&& ln -s usr/local/bin/docker-entrypoint.sh /entrypoint.sh \
 	&& mkdir -p /root/xtrabackup/work
 ENTRYPOINT ["docker-entrypoint.sh"]
