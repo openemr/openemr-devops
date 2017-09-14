@@ -68,6 +68,11 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" -a "$(id -u)" = '0' ]; then
 	DATADIR="$(_get_config 'datadir' "$@")"
 	mkdir -p "$DATADIR"
 	chown -R mysql:mysql "$DATADIR"
+
+	if [ -f /root/pending-restore ]; then
+	  /root/xrecovery-final.sh	  
+	fi
+
 	exec gosu mysql "$BASH_SOURCE" "$@"
 fi
 
@@ -199,5 +204,10 @@ if [ "$1" = 'mysqld' -a -z "$wantHelp" ]; then
 		echo
 	fi
 fi
+
+if [ -f /root/pending-restore ]; then
+	/root/xrecovery-final.sh
+fi
+
 
 exec "$@"
