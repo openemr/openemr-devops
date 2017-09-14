@@ -20,7 +20,8 @@ chmod +x docker-compose
 ./docker-compose up -d --build
 
 cd lightsail
-chmod a+x duplicity-setup.sh
+chmod a+x *.sh
 ./duplicity-setup.sh
+cp duplicity-restore.sh /root/restore.sh
 
 echo "launch.sh: done"

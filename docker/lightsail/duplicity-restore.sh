@@ -2,13 +2,15 @@
 
 echo *** WARNING ***
 echo
-echo This tool will destructively restore your database and webroot. Regardless of the success or failure of
-echo of the restoration attempt, all current patient information will be IRREVOCABLY DELETED.
+echo This tool will destructively restore your database and webroot.
+echo Regardless of the success or failure of the restoration attempt,
+echo all current patient information will be IRREVOCABLY DELETED.
 echo
-echo It is recommended you make a full system snapshot and attempt this recovery in a test copy or instance
-echo of this system before you proceed.
+echo It is recommended you make a full system snapshot and attempt this
+echo recovery in a test copy or instance of this system before you proceed.
 echo
-echo Edit this file and remove the \'exit\' line after your tests are complete.
+echo Edit this file and remove the \'exit\' line after your tests are
+echo complete.
 exit 1
 
 # todo: add getopts support, passthrough options for things like duplicity --time
@@ -49,5 +51,6 @@ if [[ $DR_SETSWAP -eq 1 ]]; then
   echo so I allocated extra swap space. Rebooting will release that swap space, and
   echo this is necessary because you may incur significant long-term I/O expenses if
   echo you\'re operating in AWS LightSail or EC2 and you leave swap activated. Please
-  echo do not forget to reboot this instance and delete /mnt/2GB.swap as soon as practical.
+  echo do not forget to reboot this instance and delete /mnt/2GB.swap as soon as
+  echo practical.
 fi
