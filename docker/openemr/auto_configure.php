@@ -41,7 +41,7 @@ $installSettings = $tempInstallSettings;
 $installer = new Installer($installSettings);
 if (! $installer->quick_install()) {
   // Failed, report error
-    echo "ERROR: " . $installer->error_message . "\n";
+    throw new Exception("ERROR: " . $installer->error_message . "\n");
 } else {
   // Successful
     echo $installer->debug_message . "\n";

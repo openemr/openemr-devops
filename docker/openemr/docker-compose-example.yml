@@ -13,6 +13,7 @@ services:
     - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
     environment:
       MYSQL_HOST: db
+      MYSQL_ROOT_PASS: root
       MYSQL_USER: root
       MYSQL_PASS: root
       OE_USER: admin

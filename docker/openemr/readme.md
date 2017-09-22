@@ -26,6 +26,7 @@ services:
         - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
         environment:
             MYSQL_HOST: db
+            MYSQL_ROOT_PASS: root
             MYSQL_USER: root
             MYSQL_PASS: root
             OE_USER: admin
@@ -37,7 +38,7 @@ services:
 
 ## Environment Variables
 
-Setting `MYSQL_USER`,`MYSQL_PASS`,`MYSQL_HOST`,`OE_USER`, and `OE_PASS` will do the first-time setup process without manual intervention, setting the database connection using the `MYSQL_*` variables and adding an admin user to OpenEMR using `OE_USER` and `OE_PASS`. 
+Setting `MYSQL_USER`, `MYSQL_ROOT_PASS`, `MYSQL_PASS`, `MYSQL_HOST`, `OE_USER`, and `OE_PASS` will do the first-time setup process without manual intervention, setting the database connection using the `MYSQL_*` variables and adding an admin user to OpenEMR using `OE_USER` and `OE_PASS`. 
 
 ## Where to get help?
 
