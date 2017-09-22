@@ -13,11 +13,13 @@ RUN git clone https://github.com/openemr/openemr.git --branch rel-500 --depth 1 
 #configure apache & php properly
 COPY php.ini /etc/php7/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
+COPY run_openemr.sh .
+COPY auto_configure.php .
 RUN ln -s /usr/bin/php7 /usr/bin/php
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
 #go
 ENV APACHE_LOG_DIR=/var/log/apache2
-CMD ["/usr/sbin/httpd", "-D", "FOREGROUND"]
+CMD ["run_openemr.sh"]
 
 EXPOSE 80
