@@ -11,8 +11,8 @@ if [ "$CONFIG" == "0" ] &&
    [ "$MYSQL_PASS" != "" ] &&
    [ "$MYSQL_USER" != "" ] &&
    [ "$OE_USER" != "" ] &&
-   [ "$OE_PASS" != "" ] {
+   [ "$OE_PASS" != "" ]; then
     php auto_configure.php -f iuser=$OE_USER iuserpass=$OE_PASS login=$MYSQL_USER pass=$MYSQL_PASS server=$MYSQL_HOST || exit 1
-}
+fi
 
 /usr/sbin/httpd -D FOREGROUND
