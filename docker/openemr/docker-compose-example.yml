@@ -6,19 +6,19 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     image: openemr:latest
-      ports:
-      - 80:80
-      volumes:
-      - logvolume01:/var/log
-      - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
-      environment:
-        MYSQL_HOST: db
-        MYSQL_USER: root
-        MYSQL_PASS: root
-        OE_USER: admin
-        OE_PASS: admin
-      links:
-      - db
+    ports:
+    - 80:80
+    volumes:
+    - logvolume01:/var/log
+    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
+    environment:
+      MYSQL_HOST: db
+      MYSQL_USER: root
+      MYSQL_PASS: root
+      OE_USER: admin
+      OE_PASS: admin
+    links:
+    - db
 volumes:
   logvolume01: {}
   sitevolume: {}
