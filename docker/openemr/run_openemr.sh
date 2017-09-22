@@ -14,7 +14,10 @@ if [ "$CONFIG" == "0" ] &&
    [ "$OE_USER" != "" ] &&
    [ "$OE_PASS" != "" ]; then
     echo "Running quick setup!"
-    php auto_configure.php -f iuser=$OE_USER iuserpass=$OE_PASS login=$MYSQL_USER rootpass=$MYSQL_ROOT_PASS pass=$MYSQL_PASS server=$MYSQL_HOST || exit 1
+    php auto_configure.php -f iuser=$OE_USER iuserpass=$OE_PASS login=$MYSQL_USER rootpass=$MYSQL_ROOT_PASS pass=$MYSQL_PASS server=$MYSQL_HOST \
+    || echo "Couldn't setup, trying again in 15 seconds.." && sleep 15 \
+    && php auto_configure.php -f iuser=$OE_USER iuserpass=$OE_PASS login=$MYSQL_USER rootpass=$MYSQL_ROOT_PASS pass=$MYSQL_PASS server=$MYSQL_HOST \
+    || exit 1
 fi
 
 /usr/sbin/httpd -D FOREGROUND
