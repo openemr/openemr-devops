@@ -12,6 +12,7 @@ services:
     - mysql
   mysql:
     restart: always
+    command: ['mysqld', '--character-set-server=utf8']
     build: mysql/
     volumes:
     - sqlbackup:/mnt/backups
