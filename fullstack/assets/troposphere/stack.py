@@ -15,7 +15,7 @@ ref_region = Ref('AWS::Region')
 ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
-currentBeanstalkKey = 'beanstalk/openemr-5.0.0-007.zip'
+currentBeanstalkKey = 'beanstalk/openemr-5.0.0-008.zip'
 
 def setInputs(t, args):
     t.add_parameter(Parameter(
@@ -1947,7 +1947,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR v5.0.0.4 cloud deployment'
+descString='OpenEMR v5.0.0.5 cloud deployment'
 if (args.dev):
     descString+=' [developer]'
 if (args.force_bastion):

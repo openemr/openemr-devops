@@ -1,32 +1,32 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR v5.0.0.4 cloud deployment",
+    "Description": "OpenEMR v5.0.0.5 cloud deployment",
     "Mappings": {
         "RegionData": {
             "ap-southeast-2": {
                 "AmazonAMI": "ami-10918173",
-                "ApplicationSource": "beanstalk/openemr-5.0.0-007.zip",
+                "ApplicationSource": "beanstalk/openemr-5.0.0-008.zip",
                 "MySQLVersion": "5.6.27",
                 "RegionBucket": "openemr-apsoutheast2",
                 "UbuntuAMI": "ami-e94e5e8a"
             },
             "eu-west-1": {
                 "AmazonAMI": "ami-d7b9a2b1",
-                "ApplicationSource": "beanstalk/openemr-5.0.0-007.zip",
+                "ApplicationSource": "beanstalk/openemr-5.0.0-008.zip",
                 "MySQLVersion": "5.6.27",
                 "RegionBucket": "openemr-euwest1",
                 "UbuntuAMI": "ami-6d48500b"
             },
             "us-east-1": {
                 "AmazonAMI": "ami-a4c7edb2",
-                "ApplicationSource": "beanstalk/openemr-5.0.0-007.zip",
+                "ApplicationSource": "beanstalk/openemr-5.0.0-008.zip",
                 "MySQLVersion": "5.6.27",
                 "RegionBucket": "openemr-useast1",
                 "UbuntuAMI": "ami-d15a75c7"
             },
             "us-west-2": {
                 "AmazonAMI": "ami-6df1e514",
-                "ApplicationSource": "beanstalk/openemr-5.0.0-007.zip",
+                "ApplicationSource": "beanstalk/openemr-5.0.0-008.zip",
                 "MySQLVersion": "5.6.27",
                 "RegionBucket": "openemr-uswest2",
                 "UbuntuAMI": "ami-835b4efa"
