@@ -1,6 +1,6 @@
 #!/bin/bash
 
-exec 2>&1 | tee /tmp/lightsail-launch.log
+exec > /tmp/lightsail-launch.log 2>&1
 
 cd /root
 
