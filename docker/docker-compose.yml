@@ -1,6 +1,6 @@
 version: '3'
 services:
-  openemr-docker-alpine:
+  openemr:
     restart: always
     build: openemr/
     ports:
@@ -8,6 +8,13 @@ services:
     volumes:
     - logvolume01:/var/log
     - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASS: root
+      MYSQL_USER: root
+      MYSQL_PASS: root
+      OE_USER: admin
+      OE_PASS: pass
     links:
     - mysql
   mysql:
@@ -18,7 +25,6 @@ services:
     - sqlbackup:/mnt/backups
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: openemr
 volumes:
   sqlbackup: {}
   logvolume01: {}
