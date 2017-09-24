@@ -2,6 +2,7 @@ version: '3.1'
 services:
   db:
     image: mysql:latest
+    command: ['mysqld','--character-set-server=utf8']
     environment:
       MYSQL_ROOT_PASSWORD: root
   openemr:
