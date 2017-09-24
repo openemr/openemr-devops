@@ -2,4 +2,5 @@ sudo: required
 services:
  - docker
 script:
-      - cd docker && docker-compose build
+      - cd docker-images
+      - for D in *; do [ -d "${D}" ] && docker build "$D"; done

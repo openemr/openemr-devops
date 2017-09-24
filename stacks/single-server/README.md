@@ -1,4 +1,3 @@
-# OpenEMR Docker
 
 ## AWS LightSail
 
