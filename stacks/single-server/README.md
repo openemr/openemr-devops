@@ -1,16 +1,13 @@
 
 ## AWS LightSail
 
-https://davekz.com/docker-on-lightsail/
-
 Base OS, "Ubuntu 16.04", paste, go
 ```
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/docker/lightsail/launch.sh > /root/lightsail-launch.sh
-chmod +x /root/lightsail-launch.sh
-sudo /root/lightsail-launch.sh
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/docker/lightsail/launch.sh > ./lightsail-launch.sh
+chmod +x ./lightsail-launch.sh && sudo ./lightsail-launch.sh
 ```
 
-openemr config: do not create db, mysql server 'mysql', creds "root/root"
+Log in with user "admin", password "pass"; step one: *change your password*.
 
 ### Instance management notes
 
@@ -24,9 +21,11 @@ openemr config: do not create db, mysql server 'mysql', creds "root/root"
  * Visit volume: `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
  * Scripted in-instance commands: `docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /root/xbackup.sh -t full`
  * Did MySQL crash? The t2.nano 512MB instance is *tight*, and you may need to consider upgrading.
+ * Are you running somewhere other than Lightsail? By default we reserve a gig of swap &mdash; you may need to reconsider.
+ * Root MySQL credentials are `root`/`root`; you can change these, but be sure to update `config.php` and `innobackupex.cnf`.
 
 ### Backups
 
- * Daily backup initiated from /etc/cron.daily/duplicity-backup , you can crontab this instead for better timing
- * restore the most recent backup via /root/restore.sh , read *very carefully*
- * rotated backups are stored and recover from /root/backups; from here, move them to and from secure off-instance storage
+ * Daily backup initiated from `/etc/cron.daily/duplicity-backup`, you can crontab this instead for better timing
+ * restore the most recent backup via `/root/restore.sh`, read *very carefully*
+ * rotated backups are stored and recover from `/root/backups`; from here, move them to and from secure off-instance storage

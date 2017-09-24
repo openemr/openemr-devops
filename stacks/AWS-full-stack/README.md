@@ -6,7 +6,7 @@ Many OpenEMR users run their system on premise and have not yet realized the ben
 
 ## 📒 Setup Guide
 
-While this setup is mostly automated, you are asked to fill in certain details that are unique to your practice. Kindly go through each chapter below to set up your cloud.
+While this setup is mostly automated, you are asked to fill in certain details that are unique to your practice. Walk through each chapter below to set up your cloud.
 
 1. 🚴 [Getting Started](chapters/01-Getting-Started.md)
 2. 🖥 [Application Servers](chapters/02-Application-Servers.md)

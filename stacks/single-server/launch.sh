@@ -5,6 +5,7 @@ exec > /tmp/lightsail-launch.log 2>&1
 cd /root
 
 # bad news for EC2, *necessary* for Lightsail
+echo Allocating swap for AWS Lightsail...
 fallocate -l 1G /mnt/1GB.swap
 mkswap /mnt/1GB.swap
 chmod 600 /mnt/1GB.swap
