@@ -3,7 +3,7 @@
 
 Base OS, "Ubuntu 16.04", paste, go
 ```
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/docker/lightsail/launch.sh > ./lightsail-launch.sh
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/stacks/single-server/launch.sh > ./lightsail-launch.sh
 chmod +x ./lightsail-launch.sh && sudo ./lightsail-launch.sh
 ```
 

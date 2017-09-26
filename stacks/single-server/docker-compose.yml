@@ -1,8 +1,11 @@
 version: '3.1'
 services:
-  db:
-    image: mysql:latest
+  mysql:
+    restart: always
+    build: ../../mysql-backup/
     command: ['mysqld','--character-set-server=utf8']
+    volumes:
+    - sqlbackup:/mnt/backups
     #this forces mysql to use utf8, versus latin-1 (the default). Necessary for multilingual OpenEMR.
     environment:
       MYSQL_ROOT_PASSWORD: root
@@ -14,14 +17,15 @@ services:
     - logvolume01:/var/log
     - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
     environment:
-      MYSQL_HOST: db
+      MYSQL_HOST: mysql
       MYSQL_ROOT_PASS: root
       MYSQL_USER: root
       MYSQL_PASS: root
       OE_USER: admin
-      OE_PASS: admin
+      OE_PASS: pass
     links:
-    - db
+    - mysql
 volumes:
   logvolume01: {}
   sitevolume: {}
+  sqlbackup: {}
