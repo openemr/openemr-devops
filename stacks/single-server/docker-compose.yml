@@ -10,7 +10,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: root
   openemr:
-    image: openemr:latest
+    build: ../../docker-images/openemr/
     ports:
     - 80:80
     volumes:
