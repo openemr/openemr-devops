@@ -27,5 +27,5 @@ Log in with user "admin", password "pass"; step one: *change your password*.
 ### Backups
 
  * Daily backup initiated from `/etc/cron.daily/duplicity-backup`, you can crontab this instead for better timing
- * restore the most recent backup via `/root/restore.sh`, read *very carefully*
+ * restore the most recent backup via `/root/duplicity-restore.sh`, read *very carefully*
  * rotated backups are stored and recover from `/root/backups`; from here, move them to and from secure off-instance storage
