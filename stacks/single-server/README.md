@@ -75,6 +75,10 @@ It is recommended, in the strongest possible terms, that you familiarize yoursel
 
 See the `mysql-xtrabackup` container for more information about the `xbackup.sh` and `xrecovery.sh` scripts called by the Duplicity wrappers.
 
+### Next Steps
+
+There is an important and immediate flaw in the backup regimen to address &mdash; your backups will not be stored safely off the instance; until this is amended, if something happens to the server, your backups will be lost as well. Duplicity can be configured with a *bewildering* array of remote storage backends, and I encourage you to explore them as soon as possible. 
+
 ## Support
 
 The OpenEMR [forums](https://community.open-emr.org/) and [chat](https://chat.open-emr.org/) are available if you have any questions. We'll be happy to help!
