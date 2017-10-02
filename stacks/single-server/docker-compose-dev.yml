@@ -3,6 +3,8 @@ services:
   mysql:
     restart: always
     build: ../../docker-images/mysql-xtrabackup/
+    ports:
+    - 3306:3306
     command: ['mysqld','--character-set-server=utf8']
     volumes:
     - sqlbackup:/mnt/backups
@@ -11,7 +13,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     restart: always
-    image: openemr/openemr:5.0.0
+    build: ../../docker-images/openemr/
     ports:
     - 80:80
     volumes:
