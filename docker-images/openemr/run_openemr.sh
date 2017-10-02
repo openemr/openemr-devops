@@ -19,13 +19,13 @@ auto_setup() {
 
     #do I need to activate mod_rewrite?
     echo "OpenEMR configured. Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
-    chown -Rf www .
     #set all directories to 500
     find . -type d -print0 | xargs -0 chmod 500
     #set all file access to 400
     find . -type f -print0 | xargs -0 chmod 400
 
     echo "Default file permissions and ownership set, allowing writing to specific directories"
+    chmod 700 run_openemr.sh
     # Set file and directory permissions
     #chmod 666 sites/default/sqlconf.php why?
     chmod 600 interface/modules/zend_modules/config/application.config.php # should this actually be writable?

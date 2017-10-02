@@ -16,6 +16,7 @@ VOLUME [ "sites" ]
 ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php7/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
+#add runner and auto_configure and prevent auto_configure from being run w/o being enabled
 COPY run_openemr.sh .
 COPY auto_configure.php .
 RUN chmod 700 run_openemr.sh \
@@ -23,8 +24,6 @@ RUN chmod 700 run_openemr.sh \
     && ln -s /usr/bin/php7 /usr/bin/php
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
-#add user to run apache w/ reduced permissions
-RUN adduser -D www && chown -Rf www:www . && chown -Rf www:www /var/log/apache2
 #go
 CMD [ "./run_openemr.sh" ]
 
