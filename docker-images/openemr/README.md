@@ -4,11 +4,15 @@ This is the official OpenEMR docker image!
 
 ## Tags
 
-To-do... (currently all we've got is v5.0.0, tagged as `latest`)
+Tags and their current aliases are shown below:
+
+ - `5.0.0`: latest, stable
+
+It is recommended to specify a version number in production, to ensure your build process pulls what you expect it to.
 
 ## How can I just spin up OpenEMR?
 
-The easiest way is to use `docker-compose`. The following `docker-compose.yml` file is a good example:
+*You **need** to run an instance of mysql/mariadb as well and connect it to this container! You can then either use auto-setup with environment variables (see below) or you can manually set up, telling the server where to find the db.* The easiest way is to use `docker-compose`. The following `docker-compose.yml` file is a good example:
 ```yaml
 # Use root/example as user/password credentials
 version: '3.1'
@@ -34,7 +38,7 @@ services:
         links:
         - db
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://raw.githubusercontent.com/openemr/openemr-devops/master/docker/openemr/docker-compose-example.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://raw.githubusercontent.com/openemr/openemr-devops/master/stacks/single-server/docker-compose.yml)
 
 ## Environment Variables
 
