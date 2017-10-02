@@ -16,6 +16,7 @@ auto_setup() {
         rootpass=$MYSQL_ROOT_PASS \
         pass=$MYSQL_PASS \
         server=$MYSQL_HOST \
+    || return 1
 
     echo "OpenEMR configured. Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
     #set all directories to 500
@@ -56,13 +57,14 @@ if [ "$CONFIG" == "0" ] &&
    [ "$OE_USER" != "" ] &&
    [ "$OE_PASS" != "" ]; then
     echo "Running quick setup!"
-    # note for anyone using this: the 15s sleep delay is a bit of a footgun. It will (usually) delay attempted setup
-    #    long enough for an accompanying mysql service container to come online (it takes a few seconds on the
-    #    hardware we tested with. That being said, slower hardware or more complicated containers may take longer.
-    #    If you find OpenEMR failing to set up (with the error shown below), this is why. Consider a more robust way
-    #    of confirming mysql is running before openemr attempts configuration.
-    sleep 15
-    auto_setup || { echo "Couldn't set up. Perhaps MySQL wasn't ready for connection yet or credentials were incorrect?" && exit 1; }
+    while ! auto_setup; do
+        echo "Couldn't set up. Any of these reasons could be what's wrong:"
+        echo " - You didn't spin up a MySQL container or connect your OpenEMR container to a mysql instance"
+        echo " - MySQL is still starting up and wasn't ready for connection yet"
+        echo " - The Mysql credentials were incorrect"
+        sleep 1;
+    done
+    echo "Setup Complete!"
 fi
 
 echo "Starting apache!"
