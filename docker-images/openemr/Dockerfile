@@ -10,17 +10,21 @@ RUN git clone https://github.com/openemr/openemr.git --branch rel-500 --depth 1 
     && chmod 666 openemr/interface/modules/zend_modules/config/application.config.php \
     && chown -R apache openemr/ \
     && mv openemr /var/www/localhost/htdocs/
+WORKDIR /var/www/localhost/htdocs/openemr
+VOLUME [ "/var/www/localhost/htdocs/openemr/sites" ]
 #configure apache & php properly
+ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php7/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
+#add runner and auto_configure and prevent auto_configure from being run w/o being enabled
 COPY run_openemr.sh .
-RUN chmod 700 run_openemr.sh
 COPY auto_configure.php .
-RUN ln -s /usr/bin/php7 /usr/bin/php
+RUN chmod 700 run_openemr.sh \
+    && chmod 000 auto_configure.php \
+    && ln -s /usr/bin/php7 /usr/bin/php
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
 #go
-ENV APACHE_LOG_DIR=/var/log/apache2
-CMD ["./run_openemr.sh"]
+CMD [ "./run_openemr.sh" ]
 
 EXPOSE 80
