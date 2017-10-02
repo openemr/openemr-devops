@@ -11,7 +11,7 @@ RUN git clone https://github.com/openemr/openemr.git --branch rel-500 --depth 1 
     && chown -R apache openemr/ \
     && mv openemr /var/www/localhost/htdocs/
 WORKDIR /var/www/localhost/htdocs/openemr
-VOLUME [ "sites" ]
+VOLUME [ "/var/www/localhost/htdocs/openemr/sites" ]
 #configure apache & php properly
 ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php7/php.ini
