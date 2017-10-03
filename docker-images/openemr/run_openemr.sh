@@ -1,22 +1,36 @@
 #!/bin/sh
 # to be run by root with OpenEMR root dir as the CWD
 
-# allows customization of openemr credentials, preventing the need for manual setup
-#  - Setting db parameters via MYSQL_HOST, MYSQL_USER, MYSQL_PASS
-#  - Setting first-time account creation via OE_USER, OE_PASS
-#  - All of these must be passed to automate the first-time setup process
+# Allows customization of openemr credentials, preventing the need for manual setup
+#  (Note can force a manual setup by setting MANUAL_SETUP to 'yes')
+#  - Required settings for auto installation are MYSQL_HOST and MYSQL_ROOT_PASS
+#  -  (note that can force MYSQL_ROOT_PASS to be empty by passing as 'BLANK' variable)
+#  - Optional settings for auto installation are:
+#    - Setting db parameters MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE
+#    - Setting openemr parameters OE_USER, OE_PASS
 set -e
 
 auto_setup() {
+
+    CONFIGURATION="server=${MYSQL_HOST} rootpass=${MYSQL_ROOT_PASS} loginhost=%"
+    if [ "$MYSQL_USER" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} login=${MYSQL_USER}"
+    fi
+    if [ "$MYSQL_PASS" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} pass=${MYSQL_PASS}"
+    fi
+    if [ "$MYSQL_DATABASE" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} dbname=${MYSQL_DATABASE}"
+    fi
+    if [ "$OE_USER" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} iuser=${OE_USER}"
+    fi
+    if [ "$OE_PASS" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
+    fi
+
     chmod -R 600 .
-    php auto_configure.php -f \
-        iuser=$OE_USER \
-        iuserpass=$OE_PASS \
-        login=$MYSQL_USER \
-        rootpass=$MYSQL_ROOT_PASS \
-        pass=$MYSQL_PASS \
-        server=$MYSQL_HOST \
-    || return 1
+    php auto_configure.php -f ${CONFIGURATION} || return 1
 
     echo "OpenEMR configured. Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
     #set all directories to 500
@@ -49,13 +63,11 @@ auto_setup() {
 }
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-if [ "$CONFIG" == "0" ] && 
-   [ "$MYSQL_HOST" != "" ] && 
-   [ "$MYSQL_PASS" != "" ] &&
+if [ "$CONFIG" == "0" ] &&
+   [ "$MYSQL_HOST" != "" ] &&
    [ "$MYSQL_ROOT_PASS" != "" ] &&
-   [ "$MYSQL_USER" != "" ] &&
-   [ "$OE_USER" != "" ] &&
-   [ "$OE_PASS" != "" ]; then
+   [ "$MANUAL_SETUP" != "yes" ]; then
+
     echo "Running quick setup!"
     while ! auto_setup; do
         echo "Couldn't set up. Any of these reasons could be what's wrong:"
