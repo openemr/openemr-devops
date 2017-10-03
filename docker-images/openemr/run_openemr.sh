@@ -1,11 +1,11 @@
 #!/bin/sh
 # to be run by root with OpenEMR root dir as the CWD
 
-# allows customization of openemr credentials, preventing the need for manual setup
-#  - Required settings are MYSQL_HOST and MYSQL_ROOT_PASS
-#  -  (note that can force MYSQL_ROOT_PASS to be empty by passing as `BLANK` variable)
-#  - Optional settings:
-#    - MANUAL_SETUP ('yes' will force manual setup)
+# Allows customization of openemr credentials, preventing the need for manual setup
+#  (Note can force a manual setup by setting MANUAL_SETUP to 'yes')
+#  - Required settings for auto installation are MYSQL_HOST and MYSQL_ROOT_PASS
+#  -  (note that can force MYSQL_ROOT_PASS to be empty by passing as 'BLANK' variable)
+#  - Optional settings for auto installation are:
 #    - Setting db parameters MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE
 #    - Setting openemr parameters OE_USER, OE_PASS
 set -e
