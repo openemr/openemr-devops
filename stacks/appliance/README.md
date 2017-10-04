@@ -27,7 +27,7 @@ This example focuses on installing the OpenEMR appliance on a 64-bit Windows 7 o
 
 ## Administration
 
-The OpenEMR appliance is a Ubuntu 16.04 instance built around the [OpenEMR Docker](https://hub.docker.com/r/openemr/openemr/) and a MySQL 5.7 container equipped with Duplicity and Percona XtraBackup. You may ssh or scp to the instance on localhost:22 (see below for credentials), and you can consult the notes on our (cloud solution)[../single-server/README.md] for more about the automated backups and how to interact with service containers.
+The OpenEMR appliance is a Ubuntu 16.04 instance built around the [OpenEMR Docker](https://hub.docker.com/r/openemr/openemr/) and a MySQL 5.7 container equipped with Duplicity and Percona XtraBackup. You may ssh or scp to the instance on localhost:22 (see below for credentials), and you can consult the notes on our [cloud solution](../single-server/README.md) for more about the automated backups and how to interact with service containers.
 
 ### Credentials
 
