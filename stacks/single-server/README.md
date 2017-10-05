@@ -56,6 +56,10 @@ Although the script is called `lightsail-launch.sh`, nothing in it is AWS Lights
   * MySQL: `docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 
+### HIPAA Compliance
+
+As of September 2017, AWS Lightsail is not a [HIPAA Eligible Service](https://aws.amazon.com/compliance/hipaa-eligible-services-reference/). HIPAA Covered Entities may not store Protected Health Information on AWS Lightsail, and should confine their use of OpenEMR Cloud Express to demonstration or training use only. (Use of the software on other servers may be possible and should be discussed with your compliance officer.)
+
 ## Backups
 
 Duplicity is installed to the host machine to manage and rotate backups. It can be configured to send the backups it creates to off-instance storage, but currently does not attempt to do so. `/etc/cron.daily/duplicity-backup` holds the daily backup process that snapshots both the MySQL database, the OpenEMR configuration, and any patient documents that have been created, storing them in `/root/backups`.
