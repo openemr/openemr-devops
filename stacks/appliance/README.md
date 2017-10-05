@@ -14,6 +14,9 @@ This example focuses on installing the OpenEMR appliance on a 64-bit Windows 7 o
 
 1. Download and install [VirtualBox](https://www.virtualbox.org/wiki/Downloads).
 2. Download the [OpenEMR Appliance](https://sourceforge.net/totally-legit-link/) OVA.
+   * Current release: 2017-10-04
+   * MD5: EE6216FA31E6B8E9CEC64540AC3744DB
+   * SHA-1: FA91079B1A783B68AB15451DE94F33554A4570AC
 3. Start VirtualBox, and select **Import Appliance** from the **File** menu.
 4. Select the download OVA and select **Next**.
 5. You should be installing the `OpenEMR Appliance`! Select **Import**.
@@ -55,6 +58,6 @@ AWS Lightsail uses the same backup and recovery regimen your appliance does. The
 
 If another virtualized host or system service is holding on to port 22 or 80, VirtualBox won't be able to hook the guest machine to the hosts's network on those ports. You may be running another virtual system somewhere, or perhaps you've installed WampServer or XAMPP and the embedded Apache is running.
 
-You can disable or uninstall these services, or if you prefer, under **Settings**, **Network**, **Network 1**, **Advanced**, **Port Forwarding** (VirtualBox) you can find the connections forwarding traffic from host to guest. Reconnecting the hosts' 8888 to the guest's 80 will allow you to connect to OpenEMR if a rogue service on port 80 is the source of the problem.
+You can disable or uninstall these services, or if you prefer, under **Settings**, **Network**, **Network 1**, **Advanced**, **Port Forwarding** (VirtualBox) you can find the connections forwarding traffic from host to guest. Reconnecting the host's 8888 to the guest's 80 will allow you to connect to OpenEMR if a rogue service on port 80 is the source of the problem.
 
 While you've got this panel open, though, note the host binding on port 22, the ssh port. This allows us to say that only connections from 127.0.0.1 &mdash; the host itself &mdash; should be allowed to connect to the guest. This is acceptable, but you might also delete this rule as a general security measure and briefly put it back whenever you need secure shell access to the guest.

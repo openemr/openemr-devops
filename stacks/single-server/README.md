@@ -1,4 +1,4 @@
-# OpenEMR Micro-Instance
+# OpenEMR Cloud Express
 
 This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.0 instance on your Ubuntu server, providing an embedded MySQL server and providing rotated, automatic backups of all OpenEMR configuration and patient health information.
 
@@ -77,7 +77,7 @@ See the `mysql-xtrabackup` container for more information about the `xbackup.sh`
 
 ### Next Steps
 
-There is an important and immediate flaw in the backup regimen to address &mdash; your backups will not be stored safely off the instance; until this is amended, if something happens to the server, your backups will be lost as well. Duplicity can be configured with a *bewildering* array of remote storage backends, and I encourage you to explore them as soon as possible. 
+There is an important and immediate flaw in the backup regimen to address &mdash; your backups will not be stored safely off the instance; until this is amended, if something happens to the server, your backups will be lost as well. Duplicity can be configured with a *bewildering* array of remote storage backends, and I encourage you to explore them as soon as possible.
 
 ## Support
 
