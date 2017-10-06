@@ -15,5 +15,5 @@ $currentPassword = "pass";
 $catchErrorMessage = "";
 update_password(1, 1, $currentPassword, $newPassword, $catchErrorMessage);
 if (!empty($catchErrorMessage)) {
-    echo "ERROR: " . $catchErrorMessage;
+    echo "ERROR: " . $catchErrorMessage . "\n";
 }
