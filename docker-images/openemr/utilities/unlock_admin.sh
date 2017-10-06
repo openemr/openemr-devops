@@ -1,4 +1,4 @@
 #!/bin/sh
 
-cd /var/www/localhost/htdocs/openemr
+cd /root
 php ./unlock_admin.php $1
