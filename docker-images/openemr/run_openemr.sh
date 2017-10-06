@@ -79,5 +79,8 @@ if [ "$CONFIG" == "0" ] &&
     echo "Setup Complete!"
 fi
 
+# ensure the auto_configure.php script has been removed
+rm auto_configure.php
+
 echo "Starting apache!"
 /usr/sbin/httpd -D FOREGROUND
