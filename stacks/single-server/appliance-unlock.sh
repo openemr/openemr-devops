@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# /root/appliance-unlock.sh <new-admin-password>
+# appliance-unlock.sh <new-admin-password>
+
 # unlocks OpenEMR appliance and resets password if it has been locked prior to distribution
 # *not* a general-purpose password recovery utility
 
