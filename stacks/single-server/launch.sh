@@ -9,7 +9,7 @@
 exec > /tmp/lightsail-launch.log 2>&1
 
 SWAPAMT=1
-SWAPPATHNAME = /mnt/auto.swap
+SWAPPATHNAME=/mnt/auto.swap
 REPOBRANCH=master
 DEVELOPERMODE=0
 

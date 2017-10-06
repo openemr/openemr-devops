@@ -20,7 +20,7 @@ COPY openemr.conf /etc/apache2/conf.d/
 COPY run_openemr.sh auto_configure.php utilities/unlock_admin.php .
 COPY utilities/unlock_admin.sh /root
 RUN chmod 500 run_openemr.sh \
-    && chmod 500 /root/unlock_admin.sh
+    && chmod 500 /root/unlock_admin.sh \
     && chmod 000 auto_configure.php unlock_admin.php \
     && ln -s /usr/bin/php7 /usr/bin/php
 #fix issue with apache2 dying prematurely
