@@ -17,8 +17,8 @@ ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php7/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
 #add runner and auto_configure and prevent auto_configure from being run w/o being enabled
-COPY run_openemr.sh auto_configure.php unlock_admin.php .
-COPY unlock_admin.sh /root
+COPY run_openemr.sh auto_configure.php utilities/unlock_admin.php .
+COPY utilities/unlock_admin.sh /root
 RUN chmod 500 run_openemr.sh \
     && chmod 500 /root/unlock_admin.sh
     && chmod 000 auto_configure.php unlock_admin.php \
