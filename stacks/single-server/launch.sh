@@ -1,16 +1,48 @@
 #!/bin/bash
 
+# OpenEMR Cloud Express launcher
+# usage: launch.sh -s 2 -b wip-feature -d
+#        -s: amount of swap to allocate, in gigabytes
+#        -b: repo branch to load instead of master
+#        -d: start in developer mode, force local dockers and open ports
+
 exec > /tmp/lightsail-launch.log 2>&1
+
+SWAPAMT=1
+SWAPPATHNAME = /mnt/auto.swap
+REPOBRANCH=master
+DEVELOPERMODE=0
+
+while getopts "s:b:d" opt; do
+  case $opt in
+    s)
+      SWAPAMT=$OPTARG
+      ;;
+    b)
+      REPOBRANCH=$OPTARG
+      ;;
+    d)
+      DEVELOPERMODE=1
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG" >&2
+      ;;
+  esac
+done
 
 cd /root
 
-# bad news for EC2, *necessary* for Lightsail
-echo Allocating swap for AWS Lightsail...
-fallocate -l 1G /mnt/1GB.swap
-mkswap /mnt/1GB.swap
-chmod 600 /mnt/1GB.swap
-swapon /mnt/1GB.swap
-echo "/mnt/1GB.swap  none  swap  sw 0  0" >> /etc/fstab
+# bad news for EC2, *necessary* for Lightsail nano
+if [[ $SWAPAMT != 0 ]]; then
+  echo Allocating ${SWAPAMT}G swap...
+  fallocate -l ${SWAPAMT}G $SWAPPATHNAME
+  mkswap $SWAPPATHNAME
+  chmod 600 $SWAPPATHNAME
+  swapon $SWAPPATHNAME
+  echo "$SWAPPATHNAME  none  swap  sw 0  0" >> /etc/fstab
+else
+  echo Skipping swap allocation...
+fi
 
 apt-get update
 apt-get install -y apt-transport-https ca-certificates git jq duplicity
@@ -22,9 +54,20 @@ service docker start
 
 mkdir backups
 
-git clone https://github.com/openemr/openemr-devops.git && cd openemr-devops/stacks/single-server
+if [[ $REPOBRANCH == master ]]; then
+  git clone --single-branch https://github.com/openemr/openemr-devops.git && cd openemr-devops/stacks/single-server
+else
+  git clone --single-branch --branch $REPOBRANCH https://github.com/openemr/openemr-devops.git && cd openemr-devops/stacks/single-server
+fi
 curl -L https://github.com/docker/compose/releases/download/1.15.0/docker-compose-`uname -s`-`uname -m` > docker-compose
 chmod +x docker-compose
+
+# I'm pretty sure I'm doing this wrong
+if [[ $DEVELOPERMODE == 0 ]]; then
+  ln -s docker-compose.prod.yml docker-compose.yml
+else
+  ln -s docker-compose.dev.yml docker-compose.yml
+fi
 ./docker-compose up -d --build
 
 chmod a+x *.sh
