@@ -30,5 +30,6 @@ chmod +x docker-compose
 chmod a+x *.sh
 ./duplicity-setup.sh
 cp duplicity-restore.sh /root/restore.sh
+cp appliance-unlock.sh /root
 
 echo "launch.sh: done"
