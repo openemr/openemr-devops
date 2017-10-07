@@ -20,7 +20,7 @@ curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/stacks/s
 chmod +x ./lightsail-launch.sh && sudo ./lightsail-launch.sh
 ```
 5. Select an instance size that meets your budget.
-6. Name your instance and *Create*.
+6. Name your instance and click *Create*.
 7. The instance will shortly be visible as `Pending`, and then `Active`.
 8. You can connect to the instance (see below) and monitor the logs, or you can let it bake for perhaps ten minutes. Either way, once installation has completed, browse to the IP shown in Lightsail and log in to OpenEMR.
    * Login: `admin`
