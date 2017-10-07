@@ -89,7 +89,9 @@ There is an important and immediate flaw in the backup regimen to address &mdash
 
 * *-b* &lt;branch-name&gt;: load specific branch of openemr-devops repository
 * *-s* &lt;swap-size-GB&gt;: amount of swap to allocate for small instances; 0 for none
-* *-d*: build local docker images instead of hub images, open all ports
+* *-d*: use the developer docker-compose file
+  * use `build` directive instead of `image` to run repository containers instead of hub
+  * force MySQL port world-readable
 
 ## Support
 
