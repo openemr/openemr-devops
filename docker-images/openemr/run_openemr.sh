@@ -32,7 +32,33 @@ auto_setup() {
     chmod -R 600 .
     php auto_configure.php -f ${CONFIGURATION} || return 1
 
-    echo "OpenEMR configured. Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
+    echo "OpenEMR configured."
+    CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
+    if [ "$CONFIG" == "0" ]; then
+        echo "Error in auto-config. Configuration failed."
+        exit 2
+    fi
+}
+
+CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
+if [ "$CONFIG" == "0" ] &&
+   [ "$MYSQL_HOST" != "" ] &&
+   [ "$MYSQL_ROOT_PASS" != "" ] &&
+   [ "$MANUAL_SETUP" != "yes" ]; then
+
+    echo "Running quick setup!"
+    while ! auto_setup; do
+        echo "Couldn't set up. Any of these reasons could be what's wrong:"
+        echo " - You didn't spin up a MySQL container or connect your OpenEMR container to a mysql instance"
+        echo " - MySQL is still starting up and wasn't ready for connection yet"
+        echo " - The Mysql credentials were incorrect"
+        sleep 1;
+    done
+    echo "Setup Complete!"
+fi
+
+if [ "$CONFIG" == "1" ]; then
+    echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
     #set all directories to 500
     find . -type d -print0 | xargs -0 chmod 500
     #set all file access to 400
@@ -52,32 +78,16 @@ auto_setup() {
 
     echo "Removing remaining setup scripts"
     #remove all setup scripts
-    rm acl_setup.php
-    rm acl_upgrade.php
-    rm setup.php
-    rm sql_upgrade.php
-    rm ippf_upgrade.php
-    rm gacl/setup.php
-    rm auto_configure.php
+    rm -f acl_setup.php
+    rm -f acl_upgrade.php
+    rm -f setup.php
+    rm -f sql_upgrade.php
+    rm -f ippf_upgrade.php
+    rm -f gacl/setup.php
     echo "Setup scripts removed, we should be ready to go now!"
-}
-
-CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-if [ "$CONFIG" == "0" ] &&
-   [ "$MYSQL_HOST" != "" ] &&
-   [ "$MYSQL_ROOT_PASS" != "" ] &&
-   [ "$MANUAL_SETUP" != "yes" ]; then
-
-    echo "Running quick setup!"
-    while ! auto_setup; do
-        echo "Couldn't set up. Any of these reasons could be what's wrong:"
-        echo " - You didn't spin up a MySQL container or connect your OpenEMR container to a mysql instance"
-        echo " - MySQL is still starting up and wasn't ready for connection yet"
-        echo " - The Mysql credentials were incorrect"
-        sleep 1;
-    done
-    echo "Setup Complete!"
 fi
+# ensure the auto_configure.php script has been removed
+rm -f auto_configure.php
 
 echo "Starting apache!"
 /usr/sbin/httpd -D FOREGROUND
