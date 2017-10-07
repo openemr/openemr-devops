@@ -17,10 +17,10 @@ ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php7/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
 #add runner and auto_configure and prevent auto_configure from being run w/o being enabled
-COPY run_openemr.sh .
-COPY auto_configure.php .
-RUN chmod 700 run_openemr.sh \
-    && chmod 000 auto_configure.php \
+COPY run_openemr.sh auto_configure.php /var/www/localhost/htdocs/openemr/
+COPY utilities/unlock_admin.php utilities/unlock_admin.sh /root/
+RUN chmod 500 run_openemr.sh /root/unlock_admin.sh \
+    && chmod 000 auto_configure.php /root/unlock_admin.php \
     && ln -s /usr/bin/php7 /usr/bin/php
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2

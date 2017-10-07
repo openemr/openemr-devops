@@ -83,6 +83,16 @@ See the `mysql-xtrabackup` container for more information about the `xbackup.sh`
 
 There is an important and immediate flaw in the backup regimen to address &mdash; your backups will not be stored safely off the instance; until this is amended, if something happens to the server, your backups will be lost as well. Duplicity can be configured with a *bewildering* array of remote storage backends, and I encourage you to explore them as soon as possible.
 
+## Developer Notes
+
+### launch.sh Command-Line Parameters
+
+* *-b* &lt;branch-name&gt;: load specific branch of openemr-devops repository
+* *-s* &lt;swap-size-GB&gt;: amount of swap to allocate for small instances; 0 for none
+* *-d*: use the developer docker-compose file
+  * use `build` directive instead of `image` to run repository containers instead of hub
+  * force MySQL port world-readable
+
 ## Support
 
 The OpenEMR [forums](https://community.open-emr.org/) and [chat](https://chat.open-emr.org/) are available if you have any questions. We'll be happy to help!
