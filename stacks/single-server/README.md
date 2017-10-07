@@ -38,7 +38,7 @@ Lightsail has the ability to assign static IPs to instances, and the ability to 
 
 #### Lightsail Snapshots
 
-You can stop your OpenEMR instance to take a full copy of it, and then restart it; the snapshot copy will persist, and can be independently started as a seperate instance, allowing you to create ad-hoc backups or test beds for OS upgrades, OpenEMR security patches, or to try out procedures like the recovery process before you use them in production.
+You can stop your OpenEMR instance to take a full copy of it, and then restart it; the snapshot copy will persist, and can be independently started as a separate instance, allowing you to create ad-hoc backups or test beds for OS upgrades, OpenEMR security patches, or to try out procedures like the recovery process before you use them in production.
 
 ### Non-Lightsail Installation
 
