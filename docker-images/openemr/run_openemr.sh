@@ -32,34 +32,12 @@ auto_setup() {
     chmod -R 600 .
     php auto_configure.php -f ${CONFIGURATION} || return 1
 
-    echo "OpenEMR configured. Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
-    #set all directories to 500
-    find . -type d -print0 | xargs -0 chmod 500
-    #set all file access to 400
-    find . -type f -print0 | xargs -0 chmod 400
-
-    echo "Default file permissions and ownership set, allowing writing to specific directories"
-    chmod 700 run_openemr.sh
-    # Set file and directory permissions
-    chmod 600 interface/modules/zend_modules/config/application.config.php
-    find sites/default/documents -type d -print0 | xargs -0 chmod 700
-    find sites/default/edi -type d -print0 | xargs -0 chmod 700
-    find sites/default/era -type d -print0 | xargs -0 chmod 700
-    find sites/default/letter_templates -type d -print0 | xargs -0 chmod 700
-    find interface/main/calendar/modules/PostCalendar/pntemplates/cache -type d -print0 | xargs -0 chmod 700
-    find interface/main/calendar/modules/PostCalendar/pntemplates/compiled -type d -print0 | xargs -0 chmod 700
-    find gacl/admin/templates_c -type d -print0 | xargs -0 chmod 700
-
-    echo "Removing remaining setup scripts"
-    #remove all setup scripts
-    rm acl_setup.php
-    rm acl_upgrade.php
-    rm setup.php
-    rm sql_upgrade.php
-    rm ippf_upgrade.php
-    rm gacl/setup.php
-    rm auto_configure.php
-    echo "Setup scripts removed, we should be ready to go now!"
+    echo "OpenEMR configured."
+    CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
+    if [ "$CONFIG" == "0" ]; then
+        echo "Error in auto-config. Configuration failed."
+        exit 2
+    fi
 }
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
@@ -79,8 +57,37 @@ if [ "$CONFIG" == "0" ] &&
     echo "Setup Complete!"
 fi
 
+if [ "$CONFIG" == "1" ]; then
+    echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
+    #set all directories to 500
+    find . -type d -print0 | xargs -0 chmod 500
+    #set all file access to 400
+    find . -type f -print0 | xargs -0 chmod 400
+
+    echo "Default file permissions and ownership set, allowing writing to specific directories"
+    chmod 700 run_openemr.sh
+    # Set file and directory permissions
+    chmod 600 interface/modules/zend_modules/config/application.config.php
+    find sites/default/documents -type d -print0 | xargs -0 chmod 700
+    find sites/default/edi -type d -print0 | xargs -0 chmod 700
+    find sites/default/era -type d -print0 | xargs -0 chmod 700
+    find sites/default/letter_templates -type d -print0 | xargs -0 chmod 700
+    find interface/main/calendar/modules/PostCalendar/pntemplates/cache -type d -print0 | xargs -0 chmod 700
+    find interface/main/calendar/modules/PostCalendar/pntemplates/compiled -type d -print0 | xargs -0 chmod 700
+    find gacl/admin/templates_c -type d -print0 | xargs -0 chmod 700
+
+    echo "Removing remaining setup scripts"
+    #remove all setup scripts
+    rm -f acl_setup.php
+    rm -f acl_upgrade.php
+    rm -f setup.php
+    rm -f sql_upgrade.php
+    rm -f ippf_upgrade.php
+    rm -f gacl/setup.php
+    echo "Setup scripts removed, we should be ready to go now!"
+fi
 # ensure the auto_configure.php script has been removed
-rm auto_configure.php
+rm -f auto_configure.php
 
 echo "Starting apache!"
 /usr/sbin/httpd -D FOREGROUND
