@@ -41,7 +41,7 @@ Although the script is called `lightsail-launch.sh`, nothing in it is AWS Lights
   * Transient build failures are possible if container dependencies are temporarily unavailable, just retry
   * You will need network access, don't try to build from a private IP without NAT egress
   * Check the process list, make sure `auto_configure.php` isn't running before you attempt to log in.
-* Need access to the containers? Log into root, and...
+* Need access to the containers? Log into root (`sudo -i`), and...
   * Apache: `docker exec $(docker ps | grep openemr | cut -f 1 -d " ") /bin/sh`
   * MySQL: `docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
