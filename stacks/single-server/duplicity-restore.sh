@@ -16,8 +16,8 @@ exit 1
 
 # todo: add getopts support, passthrough options for things like duplicity --time
 
-rm -rf $(docker volume inspect docker_sqlbackup | jq -r ".[0].Mountpoint")/*
-rm -rf $(docker volume inspect docker_sitevolume | jq -r ".[0].Mountpoint")/*
+rm -rf $(docker volume inspect singleserver_sqlbackup | jq -r ".[0].Mountpoint")/*
+rm -rf $(docker volume inspect singleserver_sitevolume | jq -r ".[0].Mountpoint")/*
 duplicity --no-encryption --force file:///root/backups /
 
 DR_SETSWAP=0
@@ -55,5 +55,5 @@ if [[ $DR_SETSWAP -eq 1 ]]; then
   echo you\'re operating in AWS LightSail or EC2 and you leave swap activated. Please
   echo do not forget to reboot this instance and delete /mnt/2GB.swap as soon as
   echo practical.
-  echo 
+  echo
 fi
