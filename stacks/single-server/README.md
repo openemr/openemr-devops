@@ -73,7 +73,7 @@ Full backups are made every seven days, with incrementals for the other days. Th
 It is recommended, in the strongest possible terms, that you familiarize yourself with the recovery process as soon as possible. Launch a backup process, move the created backup files to a fresh instance, and try to recover them &mdash; this test, performed regularly, ensures smooth recovery in the face of catastrophe.
 
 1. If necessary, place the compressed backup archive bundle in `/root/backups`.
-2. As root, launch `/root/duplicity-restore.sh`, and carefully read the warning it supplies you.
+2. As root, launch `/root/restore.sh`, and carefully read the warning it supplies you.
 3. Take the actions it suggests &mdash; make an image snapshot if possible &mdash; and then, once ready, edit the script as instructed and run it anew.
 4. Duplicity will unpack the MySQL backups it's holding, the OpenEMR configuration directory, and any patient documents that have been saved.
 5. XtraBackup will launch, applying the most recent full backup and all the daily incrementals.
