@@ -16,15 +16,17 @@
 usage()
 {
 cat<<EOF >&2
-   usage: xbackup.sh -t <type> -s timestamp -i incremental-basedir -b backup-dir -d datadir -f -l binlogs -a
+   usage: xbackup.sh -t <type> -s timestamp -i incremental-basedir -b backup-dir -d datadir -f -l binlogs -u initial-database -m memory-pool -a
 
    Only <type> is mandatory, and it can be one of full or incr
 
    ts is a timestamp to mark the backup with. defaults to $(date +%Y-%m-%d_%H_%M_%S)
    incremental-basedir will be passed to innobackupex as --incremental-basedir, if present and type was incr. defaults to the last backup taken
    datadir is mysql's datadir, needed if it can't be found on my.cnf or obtained from mysql
+   -m is the memory pool available for APPLY_LOG, expressed as 256M or 1G
    -f will force the script to run, even if a lock file was present
    binlogs is the binlgo directory. if this option is set, binlogs will be copied with the backup. by default, they are not.
+   -u will (re)set the target DB for the backup storage table, must be done once
    -a will force the creation of the backup storage table, then exit
 
 EOF
@@ -67,9 +69,15 @@ BNLGDIR=/var/lib/mysql
 # the oldest backup that exists
 COPY_BINLOGS=1
 
+# Used as --use-memory option for innobackupex when APPLY_LOG is
+# enabled
+USE_MEMORY=1G
+
+RESETDATABASE=
+
 CREATETABLE=
 
-while  getopts "t:s:i:b:d:l:fa" OPTION; do
+while  getopts "t:s:i:b:d:l:u:m:fa" OPTION; do
     case $OPTION in
         t)
             BKP_TYPE=$OPTARG
@@ -89,6 +97,13 @@ while  getopts "t:s:i:b:d:l:fa" OPTION; do
         l)
             BNLGDIR=$OPTARG
             COPY_BINLOGS=1
+            ;;
+        u)
+            NEWDATABASENAME=$OPTARG
+            RESETDATABASE=1
+            ;;
+        m)
+            USE_MEMORY=$OPTARG
             ;;
         f)
             rm -f /tmp/xbackup.lock
@@ -136,15 +151,27 @@ KEEP_LCL=0
 # Will be used as --defaults-file for innobackupex and mysql, must not be empty
 #DEFAULTS_FILE=/sbx/msb/msb_5_5_38/my.sandbox.cnf
 DEFAULTS_FILE=/root/innobackupex.cnf
-# Used as --use-memory option for innobackupex when APPLY_LOG is
-# enabled
-# Lightsail rig is so tight -- do I need to make this configureable?
-USE_MEMORY=25M
+
+# holds name of DB for xtradb_backups table
+DATABASE_FILE=/root/xtrabackup.database.txt
+
+if [ "x$RESETDATABASE" == "x1" ]; then
+  # write the file containing the name of the DB xtrabackup should store data in
+  echo $NEWDATABASENAME > $DATABASE_FILE
+  chmod 600 $DATABASE_FILE
+fi
+
+if [ ! -f $DATABASE_FILE ]; then
+  echo no defined xtradb reporting database: cannot proceed
+  exit 1
+else
+  XTRABACKUP_RECORDS=$(cat $DATABASE_FILE)
+fi
 
 # mysql client command line that will give access to the schema
 # and table where backups information will be stored. See
 # backup table structure below.
-MY="mysql --defaults-file=$DEFAULTS_FILE --database=openemr"
+MY="mysql --defaults-file=$DEFAULTS_FILE --database=$XTRABACKUP_RECORDS"
 
 # How to flush logs, on versions < 5.5.3, the BINARY clause
 # is not yet supported. Not used at the moment.

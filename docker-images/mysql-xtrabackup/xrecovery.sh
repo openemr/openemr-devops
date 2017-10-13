@@ -4,16 +4,41 @@ ROOTDIR=/mnt/backups/bkps
 WORKDIR=/mnt/backups/recovery
 
 cd $ROOTDIR
+
+USE_MEMORY=1G
+CURLOG=$(ls -1 *-info.log | tail -n 1 | sed -e 's/\(.*\)-info.log/\1/')
+
+usage()
+{
+cat<<EOF >&2
+   usage: xrecovery.sh [-f <timestamp>] [-m <memory_pool>]
+
+   -f <timestamp>: filename batch (without extension) to start recovery from, default latest
+   -m <memory_pool>: memory to allocate to recovery process, expressed as 250M or 2G, default 1G
+
+EOF
+
+}
+
+while  getopts "f:m:" OPTION; do
+    case $OPTION in
+        f)
+            CURLOG=$OPTARG
+            ;;
+        m)
+            USE_MEMORY=$OPTARG
+            ;;
+        ?)
+        usage
+        exit 1
+        ;;
+    esac
+done
+
 rm -rf $WORKDIR chain-search.txt chain.txt
 
-if [[ -z "${1// }" ]]; then
-  CURLOG=$(ls -1 *-info.log | tail -n 1 | sed -e 's/\(.*\)-info.log/\1/')
-else
-  CURLOG=$1
-fi
-
 if [ ! -f $CURLOG.tar.gz ]; then
-  echo recovery: invalid starting point
+  echo recovery: invalid starting point $CURLOG.tar.gz
   exit 1
 fi
 
@@ -61,7 +86,7 @@ while read line; do
   tar -zxf $line.tar.gz
   if [ $MAXLINE -eq 1 ]; then
     echo recovery: process single backup $line
-    xtrabackup --use-memory 25M --prepare --target-dir=$line
+    xtrabackup --use-memory $USE_MEMORY --prepare --target-dir=$line
     if [ $? -ne 0 ]; then
       echo recovery: backup preparation failed! not deleting workdir
       exit 1
@@ -69,7 +94,7 @@ while read line; do
     mv $line $WORKDIR
   elif [ $CURLINE -eq 1 ]; then
     echo recovery: obtain full backup $line
-    xtrabackup --use-memory 25M --prepare --apply-log-only --target-dir=$line
+    xtrabackup --use-memory $USE_MEMORY --prepare --apply-log-only --target-dir=$line
     if [ $? -ne 0 ]; then
       echo recovery: initial backup preparation failed! not deleting workdir
       exit 1
@@ -77,7 +102,7 @@ while read line; do
     mv $line $WORKDIR
   elif [ $CURLINE -lt $MAXLINE ]; then
     echo recovery: apply intermediate incremental $line
-    xtrabackup --use-memory 25M --prepare --apply-log-only --target-dir=$WORKDIR --incremental-dir=`pwd`/$line
+    xtrabackup --use-memory $USE_MEMORY --prepare --apply-log-only --target-dir=$WORKDIR --incremental-dir=`pwd`/$line
     if [ $? -ne 0 ]; then
       echo recovery: intermediate recovery failed! not deleting workdir
       exit 1
@@ -85,7 +110,7 @@ while read line; do
     rm -rf $line
   else
     echo recovery: apply final incremental $line
-    xtrabackup --use-memory 25M --prepare --target-dir=$WORKDIR --incremental-dir=$line
+    xtrabackup --use-memory $USE_MEMORY --prepare --target-dir=$WORKDIR --incremental-dir=$line
     if [ $? -ne 0 ]; then
       echo recovery: final incremental failed! not deleting workdir
       exit 1

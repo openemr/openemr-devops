@@ -41,7 +41,7 @@ if [[ $(free --total --mega | grep Total | awk '{ print $4 }') -lt 1024 ]]; then
   fi
 fi
 
-docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /root/xrecovery.sh
+docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /root/xrecovery.sh -m 125M
 
 if [[ $DR_SETSWAP -eq 1 ]]; then
   echo
