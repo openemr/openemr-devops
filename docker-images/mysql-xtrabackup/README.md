@@ -20,7 +20,12 @@ The [official Docker](https://hub.docker.com/_/mysql/) should be consulted for i
 
   * Do you need to copy the backup files into the instance? `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")` to visit the volume on the host.
   * Call `/root/xrecovery.sh` by itself or with a specific backup's `-info.log` file.
-  * `xrecovery.sh` will determine if it's loading a full or incremental backup, construct a chain of incrementals to backtrack to a full backup if required, apply all required backups, and restart the docker to complete the alterations to the local MySQL datadir.  
+    * `-m <memory_pool>` will set XtraBackup's allowed allocation, given as `750M` or `2.5G`.
+  * `xrecovery.sh` will determine if it's loading a full or incremental backup, construct a chain of incrementals to backtrack to a full backup if required, apply all required backups, and restart the docker to complete the alterations to the local MySQL datadir.
+
+#### Low Memory Users
+
+If the backup process fails citing problems with open files, and you have less than a gigabyte of memory in total, try launching `xrecovery.sh` with an `-m` option like `125M` or even `25M`.
 
 ### Administration
 
