@@ -36,7 +36,4 @@ If the backup process fails citing problems with open files, and you have less t
 
 ## Known Issues
 
- * `xbackup.sh` hardcodes the `openemr` database &mdash; this is non-optimal.
- * `innobackup.cnf` hardcodes the local MySQL root password as 'root'.
- * `xrecovery.sh` locks the recovery process to an insanely small amount of RAM; you may find it necessary to increase this amount.
- * `xrecovery.sh` requires a gig of free memory to function; swap allocation may be required in tight quarters.   
+ * `innobackup.cnf` hardcodes the local MySQL root password as 'root', but the initial config should be setting this.
