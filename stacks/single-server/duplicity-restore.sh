@@ -11,7 +11,7 @@ echo recovery in a test copy or instance of this system before you proceed.
 echo
 echo Edit this file and remove the \'exit\' line after your tests are
 echo complete.
-echo.
+echo
 exit 1
 
 # todo: add getopts support, passthrough options for things like duplicity --time
