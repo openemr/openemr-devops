@@ -1,8 +1,12 @@
-# OpenEMR Cloud
+# OpenEMR Cloud FS
 
 A production grade solution for facilities and hospitals to run their OpenEMR v5 installation in the Amazon cloud.
 
 Many OpenEMR users run their system on premise and have not yet realized the benefits of cloud technologies. This repository provides a HIPAA and [BAA](http://searchhealthit.techtarget.com/definition/HIPAA-business-associate-agreement-BAA)-friendly solution for deploying OpenEMR securely and reliably to the cloud.
+
+a. For AWS customers that are HIPAA covered entities, before deployment of OpenEMR Cloud FS, you must navigate to the "Artifacts" section of the AWS console, find the AWS non-disclosure agreement (NDA), read it and accept it, then find the AWS Business Associate amendment (BAA), read it and accept it.
+ 
+b. For AWS customers that are HIPAA covered entities, OpenEMR Cloud FS must be deployed in the U.S. East (N. Virginia) Region (preferred) or U.S. West (Oregon) Region.
 
 ## 📒 Setup Guide
 
