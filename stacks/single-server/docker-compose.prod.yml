@@ -2,11 +2,10 @@ version: '3.1'
 services:
   mysql:
     restart: always
-    build: ../../docker-images/mysql-xtrabackup/
+    image: openemr/mysql-xtrabackup:1.0.0
     command: ['mysqld','--character-set-server=utf8']
     volumes:
-    - sqlbackup:/mnt/backups
-    #this forces mysql to use utf8, versus latin-1 (the default). Necessary for multilingual OpenEMR.
+    - sqlbackup:/mnt/backups    
     environment:
       MYSQL_ROOT_PASSWORD: root
   openemr:
