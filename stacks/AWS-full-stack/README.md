@@ -1,12 +1,12 @@
-# OpenEMR Cloud FS
+# OpenEMR Cloud Full Stack
 
-A production grade solution for facilities and hospitals to run their OpenEMR v5 installation in the Amazon cloud.
+A production grade solution for facilities and hospitals to run OpenEMR v5  in the Amazon Web Service public cloud.
 
-Many OpenEMR users run their system on premise and have not yet realized the benefits of cloud technologies. This repository provides a HIPAA and [BAA](http://searchhealthit.techtarget.com/definition/HIPAA-business-associate-agreement-BAA)-friendly solution for deploying OpenEMR securely and reliably to the cloud.
+Many OpenEMR users run their system on premise and have not yet realized the benefits of cloud technologies. This repository provides a HIPAA compliant solution for deploying OpenEMR securely and reliably to the cloud.
 
-a. For AWS customers that are HIPAA covered entities, before deployment of OpenEMR Cloud FS, you must navigate to the "Artifacts" section of the AWS console, find the AWS non-disclosure agreement (NDA), read it and accept it, then find the AWS Business Associate amendment (BAA), read it and accept it.
+a. For AWS customers that are HIPAA covered entities, before deployment of OpenEMR Cloud Full Stack, you must navigate to the "Artifacts" section of the AWS console, find the AWS non-disclosure agreement (NDA), read it and accept it, then find the AWS Business Associate Amendment (BAA), read it and accept it.
  
-b. For AWS customers that are HIPAA covered entities, OpenEMR Cloud FS must be deployed in the U.S. East (N. Virginia) Region (preferred) or U.S. West (Oregon) Region.
+b. For AWS customers that are HIPAA covered entities, OpenEMR Cloud Full Stack must be deployed in the U.S. East (N. Virginia) Region (preferred) or U.S. West (Oregon) Region.
 
 ## 📒 Setup Guide
 
@@ -21,4 +21,4 @@ While this setup is mostly automated, you are asked to fill in certain details t
 
 ## License
 
-MIT
+GNU Public Licence (GPL-3)
