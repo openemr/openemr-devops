@@ -17,7 +17,7 @@ if [ "$DOMAIN" != "" ]; then
     fi
     # if a domain has been set
     certbot certonly --webroot -n -w /var/www/localhost/htdocs/openemr/ -d $DOMAIN -m $EMAIL --agree-tos
-    echo "1\t23\t*\t*\t*\tcertbot renew -q --post-hook \"httpd -k graceful\""
+    echo "1\t23\t*\t*\t*\tcertbot renew -q --post-hook \"httpd -k graceful\"" >> /etc/crontabs/root
     # run letsencrypt as a daemon and reference the correct cert
     rm -f /etc/ssl/certs/webserver.cert.pem
     rm -f /etc/ssl/private/webserver.key.pem
