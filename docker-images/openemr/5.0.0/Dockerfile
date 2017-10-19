@@ -21,7 +21,7 @@ RUN git clone https://github.com/openemr/openemr.git --branch rel-500 --depth 1 
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
     && apk del --no-cache git build-base libffi-dev python-dev
 WORKDIR /var/www/localhost/htdocs/openemr
-VOLUME [ "/var/www/localhost/htdocs/openemr/sites", "/etc/letsencrypt/" ]
+VOLUME [ "/var/www/localhost/htdocs/openemr/sites", "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
 ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php7/php.ini
