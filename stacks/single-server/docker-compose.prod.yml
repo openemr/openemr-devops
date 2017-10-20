@@ -5,7 +5,7 @@ services:
     image: openemr/mysql-xtrabackup:1.0.0
     command: ['mysqld','--character-set-server=utf8']
     volumes:
-    - sqlbackup:/mnt/backups    
+    - sqlbackup:/mnt/backups
     environment:
       MYSQL_ROOT_PASSWORD: root
   openemr:
@@ -13,6 +13,7 @@ services:
     image: openemr/openemr:5.0.0
     ports:
     - 80:80
+    - 443:443
     volumes:
     - logvolume01:/var/log
     - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
