@@ -6,7 +6,7 @@
 #        -b: repo branch to load instead of master
 #        -d: start in developer mode, force local dockers and open ports
 
-exec > /tmp/lightsail-launch.log 2>&1
+exec > /tmp/launch.log 2>&1
 
 SWAPAMT=1
 SWAPPATHNAME=/mnt/auto.swap
@@ -26,6 +26,7 @@ while getopts "s:b:d" opt; do
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
+      exit 1
       ;;
   esac
 done

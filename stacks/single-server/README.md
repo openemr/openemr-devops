@@ -39,9 +39,9 @@ Although built for AWS Lightsail, nothing in `launch.sh` is specific to that pla
 ### General
 
 * The instance should be answering on port 80 inside of ten minutes. If it's not...
-  * `tail -f /tmp/lightsail-launch.log` to see if it's still running, or where it got stuck
-  * Transient build failures are possible if container dependencies are temporarily unavailable, just retry
-  * You will need network access, don't try to build from a private IP without NAT egress
+  * `tail -f /tmp/launch.log` to see if it's still running, or where it got stuck.
+  * Transient build failures are possible if container dependencies are temporarily unavailable, just retry.
+  * You will need network access, don't try to build from a private IP without NAT egress.
   * Check the process list, make sure `auto_configure.php` isn't running before you attempt to log in.
 * Need access to the containers? Log into root, and...
   * Apache: `docker exec -it $(docker ps | grep openemr | cut -f 1 -d " ") /bin/sh`
