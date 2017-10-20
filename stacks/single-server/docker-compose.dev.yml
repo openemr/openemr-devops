@@ -16,6 +16,7 @@ services:
     build: ../../docker-images/openemr/5.0.0
     ports:
     - 80:80
+    - 443:443
     volumes:
     - logvolume01:/var/log
     - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
