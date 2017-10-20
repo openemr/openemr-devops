@@ -70,9 +70,8 @@ else
 fi
 ./docker-compose up -d --build
 
-chmod a+x *.sh
+chmod a+x *.sh utilities/*.sh
 ./duplicity-setup.sh
 cp duplicity-restore.sh /root/restore.sh
-cp appliance-unlock.sh /root
 
 echo "launch.sh: done"
