@@ -22,11 +22,13 @@ chmod +x ./lightsail-launch.sh && sudo ./lightsail-launch.sh
 5. Select an instance size that meets your budget.
 6. Name your instance and click *Create*.
 7. The instance will shortly be visible as `Pending`, and then `Active`.
-8. You can connect to the instance (see below) and monitor the logs, or you can let it bake for perhaps ten minutes. Either way, once installation has completed, browse to the IP shown in Lightsail and log in to OpenEMR.
+8. Before you connect, select `...`, then `Manage`, then the `Networking` tab, and add the `HTTPS` port to the firewall passthrough.
+9. You can connect to the instance (see below) and monitor the logs, or you can let it bake for perhaps ten minutes. Either way, once installation has completed, browse to the IP shown in Lightsail and log in to OpenEMR.
    * Login: `admin`
    * Password: `pass`
-   * After login, under `Administration` and `Users`, you'll find the `admin` user and a chance to change that password.
-9. OpenEMR is now ready for use!
+   * After login, under `Administration` and `Users`, you'll find the `admin` user and a chance to change that password.   
+   * Optionally connect with https://<your instance ip>, using the temporary self-signed certificate. Accept the security exception for now.
+10. OpenEMR is now ready for use!
 
 ### Non-Lightsail Installation
 
