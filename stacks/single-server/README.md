@@ -32,7 +32,7 @@ chmod +x ./launch.sh && sudo ./launch.sh
 
 ### Non-Lightsail Installation
 
-Although built for AWS Lightsail, nothing in `launch.sh` is specific to that platform AWS; on any Ubuntu 16.04 instance, you may download and run the script as root to install the two Docker containers, `openemr` and `mysql-xtrabackup`, that represent the application. If you have more than a gigabyte of memory, or you are specifically billed for I/O activity, you may wish to review the command-line parameters to disable the automatic allocation of swap space.
+Although built for AWS Lightsail, nothing in `launch.sh` is specific to that platform; on any Ubuntu 16.04 instance, you may download and run the script as root to install the two Docker containers, `openemr` and `mysql-xtrabackup`, that represent the application. If you have more than a gigabyte of memory, or you are specifically billed for I/O activity, you may wish to review the command-line parameters to disable the automatic allocation of swap space.
 
 ## Administration
 
