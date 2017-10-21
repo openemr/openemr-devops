@@ -1,6 +1,14 @@
 #!/bin/bash
-# chkconfig: 345 99 10
-# description: on-boot check for contextual post-install changes
+
+### BEGIN INIT INFO
+# Provides:          ami-rekey
+# Required-Start:    docker
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: on-boot check for contextual post-install changes
+# Description:       multiline_description
+### END INIT INFO
 
 # Normally I would say installation as a service is wild overkill, but cron's
 # @reboot isn't willing to make any guarantees about when exactly it runs what
@@ -25,13 +33,13 @@ if [ -f /etc/appliance-unlocked ]; then
 fi
 
 # reset password
-docker exec $(docker ps | grep openemr | cut -f 1 -d " ") /root/unlock_admin.sh $(curl http://169.254.169.254/latest/meta-data/instance-id)
+docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") /root/unlock_admin.sh $(curl http://169.254.169.254/latest/meta-data/instance-id)
 
 # reset SSL
-docker exec $(docker ps | grep openemr | cut -f 1 -d " ") rm -rf /etc/ssl/private/*
+docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh -c 'rm -rf /etc/ssl/private/*'
 docker restart singleserver_openemr_1
 
 # let's never speak of this again
 touch /etc/appliance-unlocked
-chkconfig --del ami-rekey
+update-rc.d -f ami-rekey remove
 exit 0
