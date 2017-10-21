@@ -2,12 +2,26 @@
 
 This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.0 instance on your Ubuntu server, providing an embedded MySQL server and providing rotated, automatic backups of all OpenEMR configuration and health information.
 
-## Requirements
-
-* Ubuntu 16.04 server (root access, 512 MB RAM, 20 GB storage)
-* Outbound internet access (during installation)
-
 ## Installation
+
+### AWS Marketplace
+
+1. From the AWS EC2 Dashboard, select *Launch Instance*.
+2. Select *AWS Marketplace*, search for `OpenEMR`, then *Select* it.
+3. Select *Continue*.
+4. Select a suitable instance type (we recommend a minimum `t2.small`), then *Next: Configure Instance Details*.
+5. Specify how you'd like the instance connected to Amazon's network and the internet, then select *Next: Add Storage*.
+   * Your default VPC will probable be fine. *Auto-Assign Public IP* should be `Enable`.
+6. Create a root instance with enough room to hold your projected patient files, minimum *8* GB, and then select *Next: Add Tags*.
+7. Assuming you don't have any tags to add here, proceed to *Next: Configure Security Group*.
+8. Select `Select an existing security group` to accept the default OpenEMR security settings, which you can customize.
+   * You probably don't want SSH open to the world &mdash; you could tighten it to just your own IP, or just your office, right now.
+9. Select *Review and Launch*, then *Launch*, then *View Instances*.
+10. Click the instance in EC2 that's currently being created. Note the *IPv4 Public IP* and *Instance ID* entries.
+11. Your OpenEMR installation is being constructed! In a few minutes, you can log in.
+    * URL: `http://&lt;your-public-ip&gt;`
+    * Username: `admin`
+    * Password: `&lt;your-instance-id&gt;` (this will start with 'i-')
 
 ### AWS Lightsail
 
@@ -32,7 +46,18 @@ chmod +x ./launch.sh && sudo ./launch.sh
 
 ### Non-Lightsail Installation
 
+#### Requirements
+
+* Ubuntu 16.04 server (root access, 512 MB RAM, 20 GB storage)
+* Outbound internet access (during installation)
+
+#### Synopsis
+
 Although built for AWS Lightsail, nothing in `launch.sh` is specific to that platform; on any Ubuntu 16.04 instance, you may download and run the script as root to install the two Docker containers, `openemr` and `mysql-xtrabackup`, that represent the application. If you have more than a gigabyte of memory, or you are specifically billed for I/O activity, you may wish to review the command-line parameters to disable the automatic allocation of swap space.
+
+#### Directions
+
+To install on a non-Lightsail instance, run the same launch script, make sure you're provided inbound access to ports 22, 80 and 443, and largely follow the Lightsail directions as given.
 
 ## Administration
 
@@ -48,21 +73,29 @@ Although built for AWS Lightsail, nothing in `launch.sh` is specific to that pla
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 
-### Lightsail SSH Keys
+### Lightsail
+
+#### SSH Keys
 
 Lightsail has its own SSH key manager, independent of EC2. You may create or upload a key you'd like Lightsail to use, or you can elect to use the Lightsail default key AWS assigns your account. If you don't download the key, you can still use the Lightsail-supplied browser client to securely connect to your instance. Click the icon of a monitor with a shell cursor to do so.
 
-### Lightsail DNS, Static IP, Networking
+#### DNS, Static IP, Networking
 
 Lightsail has the ability to assign static IPs to instances, and the ability to manage domains and subdomains to direct traffic to them, but a tutorial on their use is beyond the scope of this guide. The `Manage`, `Networking` options will allow you to control the ports available to the instance, perhaps turning SSH off when not in use (by you) for added security, or turning SSL on if a domain certificate is installed to the Apache container.
 
-### Lightsail Snapshots
+#### Snapshots
 
 You can stop your OpenEMR instance to take a full copy of it, and then restart it; the snapshot copy will persist, and can be independently started as a separate instance, allowing you to create ad-hoc backups or test beds for OS upgrades, OpenEMR security patches, or to try out procedures like the recovery process before you use them in production.
 
-### HIPAA Compliance
+#### HIPAA Compliance
 
 As of September 2017, AWS Lightsail is not a [HIPAA Eligible Service](https://aws.amazon.com/compliance/hipaa-eligible-services-reference/). HIPAA Covered Entities may not store Protected Health Information on AWS Lightsail, and should confine their use of OpenEMR Cloud Express to demonstration or training use only. (Use of the software on other servers may be possible and should be discussed with your compliance officer.)
+
+### AWS Marketplace
+
+#### HIPAA Compliance
+
+Although Amazon EC2 is a [HIPAA Eligible Service](https://aws.amazon.com/compliance/hipaa-eligible-services-reference/), the Marketplace-supplied instance of OpenEMR Cloud Express does not meet some parts of the HIPAA Security Rule. HIPAA Covered Entities may not store Protected Health Information on this product, and should confine their use of OpenEMR Cloud Express to demonstration or training use only.
 
 ### Backups
 
@@ -70,7 +103,7 @@ Duplicity is installed to the host machine to manage and rotate backups. It can 
 
 Full backups are made every seven days, with incrementals for the other days. The Duplicity backups encompass the MySQL database backups.
 
-### Recovering from Backup
+#### Recovering from Backup
 
 It is recommended, in the strongest possible terms, that you familiarize yourself with the recovery process as soon as possible. Launch a backup process, move the created backup files to a fresh instance, and try to recover them &mdash; this test, performed regularly, ensures smooth recovery in the face of catastrophe.
 
