@@ -46,6 +46,8 @@ Regardless of if you planning on making a lot or a few changes to the OpenEMR so
 
 The most robust and maintainable approach for deployments is to keep an internal changelog of your changes along with associated [version control tags](https://git-scm.com/book/en/v2/Git-Basics-Tagging). Not only will this help you stay organized, but you can also reference it in the case you wish to rollback to a previous deployment and aid in reapplying your custom changes when a newer version of OpenEMR is available.
 
+To create a new deployment, you can add the contents of the [eb](../assets/eb) folder to your OpenEMR codebase under a new top-level folder called `.ebextensions` and compress it down to `openemr.zip`; for the sake of comparison, you can retrieve the original OpenEMR deployment package from the region-specific S3 bucket Elastic Beanstalk created in your account.
+
 1. In the AWS Management Console, click **Services**, **Elastic Beanstalk**, and then choose your environment.
 2. Click the **Upload and Deploy** button in the center of the screen.
 3. Click **Choose File** and select "**openemr.zip**". Note that the name of this file must be exact.
