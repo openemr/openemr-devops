@@ -32,6 +32,9 @@ if [ -f /etc/appliance-unlocked ]; then
   exit 0
 fi
 
+# we need to wait a little while longer for MySQL to crank
+sleep 15
+
 # reset password
 docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") /root/unlock_admin.sh $(curl http://169.254.169.254/latest/meta-data/instance-id)
 
