@@ -74,7 +74,6 @@ fi
 chmod a+x *.sh utilities/*.sh duplicity/*.sh
 
 cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
-chmod a+x /etc/cron.daily/duplicity-backups
 cp duplicity/restore.sh /root/restore.sh
 
 echo "launch.sh: done"
