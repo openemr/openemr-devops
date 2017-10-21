@@ -16,35 +16,35 @@ This process will install a fully-functional, secured, preconfigured OpenEMR 5.0
 3. For *Instance Image*, select *OS Only*, then *Ubuntu 16.04 LTS*.
 4. Click the *+* to add a launch script, then paste the following.
 ```
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/stacks/single-server/launch.sh > ./lightsail-launch.sh
-chmod +x ./lightsail-launch.sh && sudo ./lightsail-launch.sh
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/stacks/single-server/launch.sh > ./launch.sh
+chmod +x ./launch.sh && sudo ./launch.sh
 ```
 5. Select an instance size that meets your budget.
 6. Name your instance and click *Create*.
 7. The instance will shortly be visible as `Pending`, and then `Active`.
-8. Before you connect, select `...`, then `Manage`, then the `Networking` tab, and add the `HTTPS` port to the firewall passthrough.
+8. Before you connect, select `...`, then `Manage`, then the `Networking` tab, and add the `HTTPS` port to the firewall pass-through.
 9. You can connect to the instance (see below) and monitor the logs, or you can let it bake for perhaps ten minutes. Either way, once installation has completed, browse to the IP shown in Lightsail and log in to OpenEMR.
    * Login: `admin`
    * Password: `pass`
    * After login, under `Administration` and `Users`, you'll find the `admin` user and a chance to change that password.   
-   * Optionally connect with https://<your instance ip>, using the temporary self-signed certificate. Accept the security exception for now.
+   * Optionally connect with https://&lt;your instance ip&gt;, using the temporary self-signed certificate. Accept the security exception for now.
 10. OpenEMR is now ready for use!
 
 ### Non-Lightsail Installation
 
-Although the script is called `lightsail-launch.sh`, nothing in it is AWS Lightsail-specific; download and run the script as root to install the two Docker containers, `openemr` and `mysql-xtrabackup`, that represent the application. If you have more than a gigabyte of memory, or you are specifically billed for I/O activity, you may wish to consider editing the script before launch and removing the swap-allocating functionality.
+Although built for AWS Lightsail, nothing in `launch.sh` is specific to that platform; on any Ubuntu 16.04 instance, you may download and run the script as root to install the two Docker containers, `openemr` and `mysql-xtrabackup`, that represent the application. If you have more than a gigabyte of memory, or you are specifically billed for I/O activity, you may wish to review the command-line parameters to disable the automatic allocation of swap space.
 
 ## Administration
 
 ### General
 
 * The instance should be answering on port 80 inside of ten minutes. If it's not...
-  * `tail -f /tmp/lightsail-launch.log` to see if it's still running, or where it got stuck
-  * Transient build failures are possible if container dependencies are temporarily unavailable, just retry
-  * You will need network access, don't try to build from a private IP without NAT egress
+  * `tail -f /tmp/launch.log` to see if it's still running, or where it got stuck.
+  * Transient build failures are possible if container dependencies are temporarily unavailable, just retry.
+  * You will need network access, don't try to build from a private IP without NAT egress.
   * Check the process list, make sure `auto_configure.php` isn't running before you attempt to log in.
 * Need access to the containers? Log into root, and...
-  * Apache: `docker exec -it $(docker ps | grep openemr | cut -f 1 -d " ") /bin/sh`
+  * Apache: `docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 
@@ -93,7 +93,7 @@ There is an important and immediate flaw in the backup regimen to address &mdash
 
 * *-b* &lt;branch-name&gt;: load specific branch of openemr-devops repository
 * *-s* &lt;swap-size-GB&gt;: amount of swap to allocate for small instances; 0 for none
-* *-d*: use the developer docker-compose file
+* *-d*: use the developer docker-compose file variant
   * use `build` directive instead of `image` to run repository containers instead of hub
   * force MySQL port world-readable
 
