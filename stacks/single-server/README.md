@@ -1,6 +1,6 @@
 # OpenEMR Cloud Express
 
-This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.0 instance on your Ubuntu server, providing an embedded MySQL server and providing rotated, automatic backups of all OpenEMR configuration and health information.
+This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.0 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Installation
 
@@ -19,9 +19,9 @@ This process will install a fully-functional, secured, preconfigured OpenEMR 5.0
 9. Select *Review and Launch*, then *Launch*, then *View Instances*.
 10. Click the instance in EC2 that's currently being created. Note the *IPv4 Public IP* and *Instance ID* entries.
 11. Your OpenEMR installation is being constructed! In a few minutes, you can log in.
-    * URL: `http://&lt;your-public-ip&gt;`
+    * URL: `http://your-public-ip`
     * Username: `admin`
-    * Password: `&lt;your-instance-id&gt;` (this will start with 'i-')
+    * Password: `your-instance-id` (this will start with 'i-')
 
 ### AWS Lightsail
 
@@ -44,7 +44,7 @@ chmod +x ./launch.sh && sudo ./launch.sh
    * Optionally connect with https://&lt;your instance ip&gt;, using the temporary self-signed certificate. Accept the security exception for now.
 10. OpenEMR is now ready for use!
 
-### Non-Lightsail Installation
+### Custom Cloud Installation
 
 #### Requirements
 
@@ -53,11 +53,11 @@ chmod +x ./launch.sh && sudo ./launch.sh
 
 #### Synopsis
 
-Although built for AWS Lightsail, nothing in `launch.sh` is specific to that platform; on any Ubuntu 16.04 instance, you may download and run the script as root to install the two Docker containers, `openemr` and `mysql-xtrabackup`, that represent the application. If you have more than a gigabyte of memory, or you are specifically billed for I/O activity, you may wish to review the command-line parameters to disable the automatic allocation of swap space.
+Although built for AWS Lightsail and EC2 Marketplace, nothing in `launch.sh` is specific to that platform; on any Ubuntu 16.04 instance, you may download and run the script as root to install the two Docker containers, `openemr` and `mysql-xtrabackup`, that represent the application. If you have more than a gigabyte of memory, or you are specifically billed for I/O activity, you may wish to review the command-line parameters to disable the automatic allocation of swap space.
 
 #### Directions
 
-To install on a non-Lightsail instance, run the same launch script, make sure you're provided inbound access to ports 22, 80 and 443, and largely follow the Lightsail directions as given.
+To install, run the same launch script, make sure you're provided inbound access to ports 22, 80 and 443, and largely follow the Lightsail directions as given.
 
 ## Administration
 
@@ -73,7 +73,7 @@ To install on a non-Lightsail instance, run the same launch script, make sure yo
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 
-### Lightsail
+### Lightsail Administration Notes
 
 #### SSH Keys
 
