@@ -1,6 +1,6 @@
 # OpenEMR Cloud Express
 
-This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.0 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information.
+This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.0 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information. While AWS is the main target, there is documentation around deploying on-premise as well.
 
 ## Installation
 
@@ -11,12 +11,13 @@ This process will install a fully-functional, secured, preconfigured OpenEMR 5.0
 3. Select *Continue*.
 4. Select a suitable instance type (we recommend a minimum `t2.small`), then *Next: Configure Instance Details*.
 5. Specify how you'd like the instance connected to Amazon's network and the internet, then select *Next: Add Storage*.
-   * Your default VPC will probable be fine. *Auto-Assign Public IP* should be `Enable`.
+   * Your default VPC will probably be fine. *Auto-Assign Public IP* should be `Enable`.
 6. Create a root instance with enough room to hold your projected patient files, minimum *8* GB, and then select *Next: Add Tags*.
 7. Assuming you don't have any tags to add here, proceed to *Next: Configure Security Group*.
 8. Select `Select an existing security group` to accept the default OpenEMR security settings, which you can customize.
    * You probably don't want SSH open to the world &mdash; you could tighten it to just your own IP, or just your office, right now.
 9. Select *Review and Launch*, then *Launch*, then *View Instances*.
+   * A message box concerning keypairs may show up, simply follow the prompts.
 10. Click the instance in EC2 that's currently being created. Note the *IPv4 Public IP* and *Instance ID* entries.
 11. Your OpenEMR installation is being constructed! In a few minutes, you can log in.
     * URL: `http://your-public-ip`
