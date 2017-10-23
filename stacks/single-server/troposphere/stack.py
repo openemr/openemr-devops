@@ -27,12 +27,61 @@ def setInputs(t, args):
         MinValue = '10'
     ))
 
+    t.add_parameter(Parameter(
+        'InstanceSize',
+        Description = 'EC2 instance size for tbe webserver (minimum t2.small recommended)',
+        Default = 't2.small',
+        Type = 'String',
+        AllowedValues = [
+            't2.nano', 't2.micro', 't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
+        ]
+    ))
+
     return t
 
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
-            "UbuntuAMI": "ami-d15a75c7"
+            "UbuntuAMI": "ami-cd0f5cb6"
+        },
+        "us-east-2" : {
+            "UbuntuAMI": "ami-10547475"
+        },
+        "us-west-1" : {
+            "UbuntuAMI": "ami-09d2fb69"
+        },
+        "us-west-2" : {
+            "UbuntuAMI": "ami-6e1a0117"
+        },
+        "ap-south-1" : {
+            "UbuntuAMI": "ami-099fe766"
+        },
+        "ap-northeast-1" : {
+            "UbuntuAMI": "ami-ea4eae8c"
+        },
+        "ap-northeast-2" : {
+            "UbuntuAMI": "ami-d28a53bc"
+        },
+        "ap-southeast-1" : {
+            "UbuntuAMI": "ami-6f198a0c"
+        },
+        "ap-southeast-2" : {
+            "UbuntuAMI": "ami-e2021d81"
+        },
+        "sa-east-1" : {
+            "UbuntuAMI": "ami-10186f7c"
+        },
+        "ca-central-1" : {
+            "UbuntuAMI": "ami-b3d965d7"
+        },
+        "eu-central-1" : {
+            "UbuntuAMI": "ami-1e339e71"
+        },
+        "eu-west-1" : {
+            "UbuntuAMI": "ami-785db401"
+        },
+        "eu-west-2" : {
+            "UbuntuAMI": "ami-996372fd"
         }
     })
     return t
@@ -99,7 +148,7 @@ def buildInfrastructure(t, args):
     t.add_resource(
         kms.Key(
             'OpenEMRKey',
-            DeletionPolicy = 'Delete' if args.dev else 'Retain',
+            DeletionPolicy = 'Delete',
             KeyPolicy = {
                 "Version": "2012-10-17",
                 "Id": "key-default-1",
@@ -182,7 +231,7 @@ def buildInstance(t, args):
 
     t.add_resource(
         ec2.SecurityGroupIngress(
-            'WebserverSGIngress',
+            'WebserverSGIngress1',
             GroupId = Ref('WebserverSG'),
             IpProtocol = 'tcp',
             CidrIp = '0.0.0.0/0',
@@ -193,7 +242,7 @@ def buildInstance(t, args):
 
     t.add_resource(
         ec2.SecurityGroupIngress(
-            'WebserverSGIngress',
+            'WebserverSGIngress2',
             GroupId = Ref('WebserverSG'),
             IpProtocol = 'tcp',
             CidrIp = '0.0.0.0/0',
@@ -204,7 +253,7 @@ def buildInstance(t, args):
 
     t.add_resource(
         ec2.SecurityGroupIngress(
-            'WebserverSGIngress',
+            'WebserverSGIngress3',
             GroupId = Ref('WebserverSG'),
             IpProtocol = 'tcp',
             CidrIp = '0.0.0.0/0',
@@ -324,8 +373,8 @@ def buildInstance(t, args):
         "S3=", Ref('S3Bucket'), "\n",
         "KMS=", OpenEMRKeyID, "\n",
         "touch /root/cloud-backups-enabled\n",
-        "cat $S3 > /root/.cloud-s3.txt\n",
-        "cat $KMS > /root/.cloud-kms.txt\n",
+        "echo $S3 > /root/.cloud-s3.txt\n",
+        "echo $KMS > /root/.cloud-kms.txt\n",
         "touch /tmp/mypass\n",
         "chmod 500 /tmp/mypass\n",
         "openssl rand -base64 32 >> /tmp/mypass\n",
@@ -376,10 +425,14 @@ def buildInstance(t, args):
             'WebserverInstance',
             Metadata = bootstrapMetadata,
             ImageId = FindInMap('RegionData', ref_region, 'UbuntuAMI'),
-            InstanceType = 't2.nano',
-            SubnetId = Ref('PublicSubnet1'),
+            InstanceType = Ref('InstanceSize'),
+            NetworkInterfaces = [ec2.NetworkInterfaceProperty(
+                AssociatePublicIpAddress = True,
+                DeviceIndex = "0",
+                GroupSet = [ Ref('WebserverSG') ],
+                SubnetId = Ref('PublicSubnet1')
+            )],
             KeyName = Ref('EC2KeyPair'),
-            SecurityGroupIds = [Ref('WebserverSG')],
             IamInstanceProfile = Ref('WebserverInstanceProfile'),
             Volumes = [{
                 "Device" : "/dev/sdd",
@@ -402,8 +455,8 @@ def setOutputs(t, args):
     t.add_output(
         Output(
             'OpenEMR',
-            Description='OpenEMR Recovery' if args.recovery else 'OpenEMR Setup',
-            Value=Join('', ['http://', GetAtt('EBEnvironment', 'EndpointURL'), '/openemr'])
+            Description='OpenEMR Setup',
+            Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp')])
         )
     )
     return t
@@ -424,7 +477,7 @@ OpenEMRKeyARN = GetAtt('OpenEMRKey', 'Arn')
 
 setInputs(t,args)
 setMappings(t,args)
-buildFoundation(t, args)
+buildInfrastructure(t, args)
 buildInstance(t, args)
 setOutputs(t, args)
 
