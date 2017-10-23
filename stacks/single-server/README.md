@@ -26,7 +26,7 @@ This process will install a fully-functional, secured, preconfigured OpenEMR 5.0
 
 ### AWS Lightsail
 
-1. Click *Create Instance*.
+1. From the AWS Lightsail Dashboard, click *Create Instance*.
 2. Consider changing your region, or accept the datacenter Amazon has selected.
 3. For *Instance Image*, select *OS Only*, then *Ubuntu 16.04 LTS*.
 4. Click the *+* to add a launch script, then paste the following.
