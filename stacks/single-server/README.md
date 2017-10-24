@@ -7,7 +7,7 @@ This process will install a fully-functional, secured, preconfigured OpenEMR 5.0
 ### AWS Marketplace
 
 1. From the AWS EC2 Dashboard, select *Launch Instance*.
-2. Select *AWS Marketplace*, search for `OpenEMR Express`, then *Select* it.
+2. Select *Community AMIs*, search for `OpenEMR Express`, then *Select* it.
 3. Select *Continue*.
 4. Select a suitable instance type (we recommend a minimum `t2.small`), then *Next: Configure Instance Details*.
 5. Specify how you'd like the instance connected to Amazon's network and the internet, then select *Next: Add Storage*.
