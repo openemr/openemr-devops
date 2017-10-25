@@ -6,10 +6,12 @@ Up until now, we've only discussed the basic form of the OpenEMR stack, a single
 
 ## stack.py
 
-The CloudFormation template is constructed from ``/cloud/assets/troposphere/stack.py`` via the Troposphere library, taking command-line options and emitting the constructed CFN stack to standard output. It can take the following options:
+The CloudFormation template is constructed from ``assets/troposphere/stack.py`` via the Troposphere library, taking command-line options and emitting the constructed CFN stack to standard output. It can take the following options:
 
  * **--dual-az**: Builds a stack capable of running in two AWS Availability Zones, and continuing to function even if one AZ is down.
+ * **--skip-document-store**: Does not create CouchDB server(s), instead storing any uploaded patient files into the webserver's default document space, on the shared EFS instance. Note that AWS EFS is not a HIPAA-eligible service, and storing Protected Health Information on EFS would be a breach of your AWS BAA.
  * **--beanstalk-key BEANSTALK-KEY**: Use a non-standard Elastic Beanstalk application archive. (Expect to hardcode the mappings to use your own regional deployment buckets.)
+ * **--beanstalk-version BEANSTALK-VERSION**: Use a (possibly more recent) version of the [Elastic Beanstalk platform](http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/concepts.platforms.html).
  * **--recovery**: Builds a recovery OpenEMR stack that can accept snapshots and backups and restore the entire, configured application.
  * **--dev**: Constructs a stack in developer mode, which will make the following concessions.
    * Delete, instead of snapshot, as many resources as possible when the stack is deleted.
@@ -32,7 +34,8 @@ Making backups is important, but an untested backup is no backup at all. Schedul
 ### Before you begin
 
  * If you're using custom OpenEMR code, be sure that your revised, deployed beanstalk file is in S3, and modify the stack file to hardcode your new archive bucket.
- * The backup will require a full copy of the EFS mount, which must be performed /after/ the initial configuration of the system. This process normally happens once a day, but if you're seeking to perform a backup test immediately after installation, you may find it necessary to connect to the NFS Backup instance and run /root/backup.sh **after** you've completed OpenEMR setup. You can confirm that the backup has been successfully run by seeing a selection of .gz files in your S3 bucket's /Backup location.
+ * Be sure the ``--recovery`` command-line matches the original; toggling ``--dual-az`` or ``--skip-document-store`` in error will give you nothing but tears.
+ * The backup will require a full copy of the EFS mount, which must be performed /after/ the initial configuration of the system. This process normally happens once a day, but if you're seeking to perform a backup test immediately after installation, you may find it necessary to connect to the NFS Backup instance and run ``/root/backup.sh`` **after** you've completed OpenEMR setup. You can confirm that the backup has been successfully run by seeing a selection of .gz files in your S3 bucket's /Backup location.
  * You're welcome to manually run the backups yourself, to ensure all three of the snapshots are taken at the same time. In production, there's no guarantee the backups will happen at the same time of day, which might cause odd desynchronizations between the patient records and patient documents. You might consider modifying the stack (or just the elements after the fact) to ensure that the RDS snapshot, the Lambda-powered document snapshot, and the cron-powered daily EFS backup all happen around the same time each day.
  * Only one of the two CouchDB masters is backed up -- since they're in master-master replication, this should be fine, but you may consider creating and keeping the other master's snapshot around too.
  * If you want to restore in a new region, copy the snapshots to the new region before you begin.

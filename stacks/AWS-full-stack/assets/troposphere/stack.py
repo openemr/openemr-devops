@@ -1,9 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# TODO: fix timezone -- where is it?! [ready, rezip and repush]
-# TODO: force two-way replication of views (or do I /need/ them?)
-
 from troposphere import Base64, FindInMap, GetAtt, GetAZs, Join, Select, Split, Output
 from troposphere import Parameter, Ref, Tags, Template
 from troposphere import ec2, route53, kms, s3, efs, elasticache, cloudtrail, rds, iam, cloudformation, awslambda, events, elasticbeanstalk
@@ -15,7 +12,8 @@ ref_region = Ref('AWS::Region')
 ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
-currentBeanstalkKey = 'beanstalk/openemr-5.0.0-008.zip'
+currentBeanstalkKey = 'openemr.zip'
+currentBeanstalkPlatform = '64bit Amazon Linux 2017.03 v2.5.0 running PHP 7.0'
 
 def setInputs(t, args):
     t.add_parameter(Parameter(
@@ -35,11 +33,12 @@ def setInputs(t, args):
             Description = 'The database snapshot ARN for the previous stack (''arn:aws:rds...'')',
             Type = 'String'
         ))
-        t.add_parameter(Parameter(
-            'RecoveryCouchDBSnapshot',
-            Description = 'The document store snapshot ID for the previous stack',
-            Type = 'String'
-        ))
+        if (not args.skip_document_store):
+            t.add_parameter(Parameter(
+                'RecoveryCouchDBSnapshot',
+                Description = 'The document store snapshot ID for the previous stack',
+                Type = 'String'
+            ))
         t.add_parameter(Parameter(
             'RecoveryS3Bucket',
             Description = 'The S3 bucket for the previous stack',
@@ -71,40 +70,55 @@ def setInputs(t, args):
             MinValue = '10'
         ))
 
-        t.add_parameter(Parameter(
-            'DocumentStorage',
-            Description = 'Document database for patient documents (minimum 500 GB)',
-            Default = '500',
-            Type = 'Number',
-            MinValue = '10'
-        ))
+        if (not args.skip_document_store):
+            t.add_parameter(Parameter(
+                'DocumentStorage',
+                Description = 'Document database for patient documents (minimum 500 GB)',
+                Default = '500',
+                Type = 'Number',
+                MinValue = '10'
+            ))
     return t
 
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
-            "RegionBucket": "openemr-useast1",
+            "RegionBucket": "openemr-cfn-useast1",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.27",
             "AmazonAMI": "ami-a4c7edb2",
             "UbuntuAMI": "ami-d15a75c7"
         },
+        "us-east-2" : {
+            "RegionBucket": "openemr-cfn-useast2",
+            "ApplicationSource": args.beanstalk_key,
+            "MySQLVersion": "5.6.27",
+            "AmazonAMI": "ami-c5062ba0",
+            "UbuntuAMI": "ami-10547475"
+        },
         "us-west-2" : {
-            "RegionBucket": "openemr-uswest2",
+            "RegionBucket": "openemr-cfn-uswest2",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.27",
             "AmazonAMI": "ami-6df1e514",
             "UbuntuAMI": "ami-835b4efa"
         },
+        "eu-central-1" : {
+            "RegionBucket": "openemr-cfn-eucentral1",
+            "ApplicationSource": args.beanstalk_key,
+            "MySQLVersion": "5.6.27",
+            "AmazonAMI": "ami-c7ee5ca8",
+            "UbuntuAMI": "ami-1e339e71"
+        },
         "eu-west-1" : {
-            "RegionBucket": "openemr-euwest1",
+            "RegionBucket": "openemr-cfn-euwest1",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.27",
             "AmazonAMI": "ami-d7b9a2b1",
             "UbuntuAMI": "ami-6d48500b"
         },
         "ap-southeast-2" : {
-            "RegionBucket": "openemr-apsoutheast2",
+            "RegionBucket": "openemr-cfn-apsoutheast2",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.27",
             "AmazonAMI": "ami-10918173",
@@ -511,6 +525,8 @@ def buildEFS(t, dev):
         efs.FileSystem(
             'ElasticFileSystem',
             DeletionPolicy = 'Delete' if dev else 'Retain',
+            Encrypted = True,
+            KmsKeyId = OpenEMRKeyID,
             FileSystemTags = Tags(Name='OpenEMR Codebase')
         )
     )
@@ -1885,6 +1901,13 @@ def buildApplication(t, args):
     ]
 
     if (args.dual_az):
+        options.append(elasticbeanstalk.OptionSettings(
+            Namespace='aws:autoscaling:asg',
+            OptionName='MinSize',
+            Value='2'
+        ))
+
+    if (args.dual_az and not args.skip_document_store):
         couchDBZoneFile = [
             '{ "segment24": {',
             '"10.0.1": "couchdb-az1.openemr.local",',
@@ -1893,17 +1916,11 @@ def buildApplication(t, args):
             '"10.0.4": "couchdb-az2.openemr.local",',
             '} }'
         ]
-        options.extend([
-            elasticbeanstalk.OptionSettings(
+        options.append(elasticbeanstalk.OptionSettings(
                 Namespace='aws:elasticbeanstalk:application:environment',
                 OptionName='COUCHDBZONE',
                 Value=Join("", couchDBZoneFile)
-            ), elasticbeanstalk.OptionSettings(
-                Namespace='aws:autoscaling:asg',
-                OptionName='MinSize',
-                Value='2'
-            )
-        ])
+        ))
 
     if (not args.recovery):
         options.append(elasticbeanstalk.OptionSettings(
@@ -1912,13 +1929,18 @@ def buildApplication(t, args):
             Value=Ref('TimeZone')
         ))
 
+
+    ebDeps = ["DNSEFS", "DNSRedis", "DNSMySQL"]
+    if (not args.skip_document_store):
+        ebDeps.append("DNSCouchDB")
+
     t.add_resource(
         elasticbeanstalk.Environment(
             'EBEnvironment',
-            DependsOn = ["DNSEFS", "DNSRedis", "DNSCouchDB", "DNSMySQL"],
+            DependsOn = ebDeps,
             ApplicationName = Ref('EBApplication'),
             Description = 'OpenEMR v5.0.0 cloud deployment',
-            SolutionStackName = '64bit Amazon Linux 2017.03 v2.5.0 running PHP 7.0',
+            SolutionStackName = args.beanstalk_version,
             VersionLabel = Ref('EBApplicationVersion'),
             OptionSettings = options
         )
@@ -1938,7 +1960,9 @@ def setOutputs(t, args):
 
 parser = argparse.ArgumentParser(description="OpenEMR stack builder")
 parser.add_argument("--beanstalk-key", help="select compressed OpenEMR beanstalk", default=currentBeanstalkKey)
-parser.add_argument("--dual-az", help="build AZ-hardened stack [in progress!]", action="store_true")
+parser.add_argument("--beanstalk-version", help="select Elastic Beanstalk platform", default=currentBeanstalkPlatform)
+parser.add_argument("--skip-document-store", help="use EFS for patient documents [*not* HIPAA eligible!]", action="store_true")
+parser.add_argument("--dual-az", help="build AZ-hardened stack", action="store_true")
 parser.add_argument("--recovery", help="load OpenEMR stack from backups", action="store_true")
 parser.add_argument("--dev", help="build [security breaching!] development resources", action="store_true")
 parser.add_argument("--force-bastion", help="force developer bastion outside of development", action="store_true")
@@ -1956,8 +1980,12 @@ if (args.dual_az):
     descString+=' [dual-AZ]'
 if (args.recovery):
     descString+=' [recovery]'
+if (args.skip_document_store):
+    descString+=' [no document store]'
+if (not args.beanstalk_version == currentBeanstalkPlatform):
+    descString+=' [eb: ' + args.beanstalk_version + ']'
 if (not args.beanstalk_key == currentBeanstalkKey):
-    descString+=' [eb: ' + args.beanstalk_key + ']'
+    descString+=' [eb-app: ' + args.beanstalk_key + ']'
 t.add_description(descString)
 
 # reduce to consistent names
@@ -1979,8 +2007,9 @@ buildRedis(t, args.dual_az)
 buildMySQL(t, args)
 buildCertWriter(t, args.dev)
 buildNFSBackup(t, args)
-buildDocumentStore(t, args)
-buildDocumentBackups(t)
+if (not args.skip_document_store):
+    buildDocumentStore(t, args)
+    buildDocumentBackups(t)
 buildApplication(t, args)
 setOutputs(t, args)
 

@@ -1,6 +1,7 @@
 # OpenEMR Official Docker Image
 
-This is the official OpenEMR docker image!
+The docker image is maintained at https://hub.docker.com/r/openemr/openemr/
+(see there for more details)
 
 ## Tags
 
@@ -14,7 +15,7 @@ It is recommended to specify a version number in production, to ensure your buil
 
 *You **need** to run an instance of mysql/mariadb as well and connect it to this container! You can then either use auto-setup with environment variables (see below) or you can manually set up, telling the server where to find the db.* The easiest way is to use `docker-compose`. The following `docker-compose.yml` file is a good example:
 ```yaml
-# Use root/pass as user/password credentials
+# Use admin/pass as user/password credentials
 version: '3.1'
 services:
   mysql:
@@ -25,9 +26,10 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     restart: always
-    build: ../../docker-images/openemr/
+    image: openemr/openemr
     ports:
     - 80:80
+    - 443:443
     volumes:
     - logvolume01:/var/log
     - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
@@ -48,7 +50,13 @@ volumes:
 
 ## Environment Variables
 
-Setting `MYSQL_USER`, `MYSQL_ROOT_PASS`, `MYSQL_PASS`, `MYSQL_HOST`, `OE_USER`, and `OE_PASS` will do the first-time setup process without manual intervention, setting the database connection using the `MYSQL_*` variables and adding an admin user to OpenEMR using `OE_USER` and `OE_PASS`. 
+Required environment settings for auto installation are `MYSQL_HOST` and `MYSQL_ROOT_PASS` (Note that can force `MYSQL_ROOT_PASS` to be empty by passing as 'BLANK' variable).
+
+Optional settings for the auto installation include database parameters `MYSQL_USER`, `MYSQL_PASS`, `MYSQL_DATABASE`, and openemr parameters `OE_USER`, `OE_PASS`.
+
+Can override auto installation and force manual installation by setting `MANUAL_SETUP` environment setting to 'yes'.
+
+Can use both port 80 and 443. Port 80 is standard http. Port 443 is https/ssl and uses a self-signed certificate by default; if assign the `DOMAIN` and `EMAIL`(optional) environment settings, then it will set up and maintain certificates via letsencrypt.
 
 ## Where to get help?
 

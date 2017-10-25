@@ -6,7 +6,7 @@
 #        -b: repo branch to load instead of master
 #        -d: start in developer mode, force local dockers and open ports
 
-exec > /tmp/lightsail-launch.log 2>&1
+exec > /tmp/launch.log 2>&1
 
 SWAPAMT=1
 SWAPPATHNAME=/mnt/auto.swap
@@ -26,6 +26,7 @@ while getopts "s:b:d" opt; do
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
+      exit 1
       ;;
   esac
 done
@@ -70,9 +71,9 @@ else
 fi
 ./docker-compose up -d --build
 
-chmod a+x *.sh
-./duplicity-setup.sh
-cp duplicity-restore.sh /root/restore.sh
-cp appliance-unlock.sh /root
+chmod a+x *.sh utilities/*.sh duplicity/*.sh
+
+cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
+cp duplicity/restore.sh /root/restore.sh
 
 echo "launch.sh: done"
