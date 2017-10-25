@@ -11,6 +11,7 @@ The CloudFormation template is constructed from ``assets/troposphere/stack.py`` 
  * **--dual-az**: Builds a stack capable of running in two AWS Availability Zones, and continuing to function even if one AZ is down.
  * **--skip-document-store**: Does not create CouchDB server(s), instead storing any uploaded patient files into the webserver's default document space, on the shared EFS instance. Note that AWS EFS is not a HIPAA-eligible service, and storing Protected Health Information on EFS would be a breach of your AWS BAA.
  * **--beanstalk-key BEANSTALK-KEY**: Use a non-standard Elastic Beanstalk application archive. (Expect to hardcode the mappings to use your own regional deployment buckets.)
+ * **--beanstalk-version BEANSTALK-VERSION**: Use a (possibly more recent) version of the [Elastic Beanstalk platform](http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/concepts.platforms.html).
  * **--recovery**: Builds a recovery OpenEMR stack that can accept snapshots and backups and restore the entire, configured application.
  * **--dev**: Constructs a stack in developer mode, which will make the following concessions.
    * Delete, instead of snapshot, as many resources as possible when the stack is deleted.

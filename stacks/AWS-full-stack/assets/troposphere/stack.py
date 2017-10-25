@@ -13,6 +13,7 @@ ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
 currentBeanstalkKey = 'openemr.zip'
+currentBeanstalkPlatform = '64bit Amazon Linux 2017.03 v2.5.0 running PHP 7.0'
 
 def setInputs(t, args):
     t.add_parameter(Parameter(
@@ -88,12 +89,26 @@ def setMappings(t, args):
             "AmazonAMI": "ami-a4c7edb2",
             "UbuntuAMI": "ami-d15a75c7"
         },
+        "us-east-2" : {
+            "RegionBucket": "openemr-cfn-useast2",
+            "ApplicationSource": args.beanstalk_key,
+            "MySQLVersion": "5.6.27",
+            "AmazonAMI": "ami-c5062ba0",
+            "UbuntuAMI": "ami-10547475"
+        },
         "us-west-2" : {
             "RegionBucket": "openemr-cfn-uswest2",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.27",
             "AmazonAMI": "ami-6df1e514",
             "UbuntuAMI": "ami-835b4efa"
+        },
+        "eu-central-1" : {
+            "RegionBucket": "openemr-cfn-eucentral1",
+            "ApplicationSource": args.beanstalk_key,
+            "MySQLVersion": "5.6.27",
+            "AmazonAMI": "ami-c7ee5ca8",
+            "UbuntuAMI": "ami-1e339e71"
         },
         "eu-west-1" : {
             "RegionBucket": "openemr-cfn-euwest1",
@@ -1917,7 +1932,7 @@ def buildApplication(t, args):
 
     ebDeps = ["DNSEFS", "DNSRedis", "DNSMySQL"]
     if (not args.skip_document_store):
-        ebDeps.extend("DNSCouchDB")
+        ebDeps.append("DNSCouchDB")
 
     t.add_resource(
         elasticbeanstalk.Environment(
@@ -1925,7 +1940,7 @@ def buildApplication(t, args):
             DependsOn = ebDeps,
             ApplicationName = Ref('EBApplication'),
             Description = 'OpenEMR v5.0.0 cloud deployment',
-            SolutionStackName = '64bit Amazon Linux 2017.03 v2.5.0 running PHP 7.0',
+            SolutionStackName = args.beanstalk_version,
             VersionLabel = Ref('EBApplicationVersion'),
             OptionSettings = options
         )
@@ -1945,6 +1960,7 @@ def setOutputs(t, args):
 
 parser = argparse.ArgumentParser(description="OpenEMR stack builder")
 parser.add_argument("--beanstalk-key", help="select compressed OpenEMR beanstalk", default=currentBeanstalkKey)
+parser.add_argument("--beanstalk-version", help="select Elastic Beanstalk platform", default=currentBeanstalkPlatform)
 parser.add_argument("--skip-document-store", help="use EFS for patient documents [*not* HIPAA eligible!]", action="store_true")
 parser.add_argument("--dual-az", help="build AZ-hardened stack", action="store_true")
 parser.add_argument("--recovery", help="load OpenEMR stack from backups", action="store_true")
@@ -1966,8 +1982,10 @@ if (args.recovery):
     descString+=' [recovery]'
 if (args.skip_document_store):
     descString+=' [no document store]'
+if (not args.beanstalk_version == currentBeanstalkPlatform):
+    descString+=' [eb: ' + args.beanstalk_version + ']'
 if (not args.beanstalk_key == currentBeanstalkKey):
-    descString+=' [eb: ' + args.beanstalk_key + ']'
+    descString+=' [eb-app: ' + args.beanstalk_key + ']'
 t.add_description(descString)
 
 # reduce to consistent names

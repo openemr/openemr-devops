@@ -9,10 +9,10 @@ _[next chapter >](02-Application-Servers.md)_
 
 ### Select a Region
 
-This guide uses services that are _only_ available in certain AWS regions. As of this writing, you will need to make sure you're in one the of four Amazon regions described below.
+This guide uses services that are _only_ available in certain AWS regions. As of this writing, you will need to make sure you're in one the of six Amazon regions described below.
 
 1. In the AWS Management Console, click **Services**, and then click **EC2**.
-2. In the region dropdown in the top right corner, select either **N. Virginia** (least expensive), **Oregon**, **Ireland**, or **Sydney**. Be sure to remain in this region for the remainder of this guide.
+2. In the region dropdown in the top right corner, select either **N. Virginia** (least expensive), **Ohio**, **Oregon**, **Frankfurt**, **Ireland**, or **Sydney**. Be sure to remain in this region for the remainder of this guide.
 
 ### Generate an SSH Keypair
 
@@ -25,10 +25,12 @@ This guide uses services that are _only_ available in certain AWS regions. As of
 ### Launch your Cloud
 
 1. Click the region link below that corresponds to the region you created your keypair in:
-   * [N. Virginia](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-useast1/OpenEMR.019.json)
-   * [Oregon](https://console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-uswest2/OpenEMR.019.json)
-   * [Ireland](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-euwest1/OpenEMR.019.json)
-   * [Sydney](https://console.aws.amazon.com/cloudformation/home?region=ap-southeast-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-apsoutheast2/OpenEMR.019.json)
+   * [N. Virginia](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-useast1/OpenEMR.json)
+   * [Ohio](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-useast2/OpenEMR.json)
+   * [Oregon](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-uswest2/OpenEMR.json)
+   * [Frankfurt](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-eucentral1/OpenEMR.json)
+   * [Ireland](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-euwest1/OpenEMR.json)
+   * [Sydney](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-apsoutheast2/OpenEMR.json)
 2. Click **Next**, and configure your stack on this page.
    * For **DocumentStorage**, enter the size of your patient documents database in gigabytes.
    * For **EC2KeyPair**, select the key pair you created in the last section.
