@@ -45,7 +45,33 @@ chmod +x ./launch.sh && sudo ./launch.sh
    * Optionally connect with https://&lt;your instance ip&gt;, using the temporary self-signed certificate. Accept the security exception for now.
 10. OpenEMR is now ready for use!
 
-### Custom Cloud Installation
+### AWS CloudFormation
+
+We offer an AWS CloudFormation template, which slightly increases the billable AWS resources past a single server (expected additional outlay: $2-$5/mo) but offers HIPAA eligibility, backups uploaded daily to S3, CloudTrail auditing, and AWS KMS encryption of all Protected Health Information at all steps of its lifecycle.
+
+1. Click the link corresponding to the region you plan to launch.
+   * [N. Virginia](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-useast1/OpenEMR-Express.json) (least expensive)
+   * [Ohio](https://console.aws.amazon.com/cloudformation/home?region=us-east-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-useast2/OpenEMR-Express.json)
+   * [N. California](https://console.aws.amazon.com/cloudformation/home?region=us-west-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-uswest1/OpenEMR-Express.json)  
+   * [Oregon](https://console.aws.amazon.com/cloudformation/home?region=us-west-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-uswest2/OpenEMR-Express.json)  
+   * [Mumbai](https://console.aws.amazon.com/cloudformation/home?region=ap-south-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-apsouth1/OpenEMR-Express.json)  
+   * [Seoul](https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-apnortheast2/OpenEMR-Express.json)  
+   * [Singapore](https://console.aws.amazon.com/cloudformation/home?region=ap-southeast-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-apsoutheast1/OpenEMR-Express.json)  
+   * [Sydney](https://console.aws.amazon.com/cloudformation/home?region=ap-southeast-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-apsoutheast2/OpenEMR-Express.json)  
+   * [Tokyo](https://console.aws.amazon.com/cloudformation/home?region=ap-northeast-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-apnortheast1/OpenEMR-Express.json)  
+   * [Canada](https://console.aws.amazon.com/cloudformation/home?region=ca-central-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-cacentral1/OpenEMR-Express.json)  
+   * [Frankfurt](https://console.aws.amazon.com/cloudformation/home?region=eu-central-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-eucentral1/OpenEMR-Express.json)  
+   * [Ireland](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-euwest1/OpenEMR-Express.json)  
+   * [London](https://console.aws.amazon.com/cloudformation/home?region=eu-west-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-euwest2/OpenEMR-Express.json)  
+   * [Sao Paolo](https://console.aws.amazon.com/cloudformation/home?region=sa-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-saeast1/OpenEMR-Express.json)  
+2. Enter your primary key, your Express instance size, and the amount of storage to reserve for your practice.
+3. Proceed and launch.
+4. Once CloudFormation finishes the stack, you may log in to the IP given in the ``Output`` tab.
+   * User: `admin`
+   * Password: `pass`
+   * Change this password before proceeding.
+
+### Custom Installation
 
 #### Requirements
 
