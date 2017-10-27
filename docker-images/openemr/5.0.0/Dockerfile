@@ -5,7 +5,7 @@ FROM alpine:3.5
 RUN apk add --no-cache \
     apache2 git php7 php7-ctype php7-session php7-apache2 php7-xml \
     php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-mcrypt \
-    php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring \
+    php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring php7-zlib \
     php7-mysqli curl imagemagick-dev \
     python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron && \
     apk add apache2-ssl --no-cache --repository http://dl-cdn.alpinelinux.org/alpine/v3.6/main
