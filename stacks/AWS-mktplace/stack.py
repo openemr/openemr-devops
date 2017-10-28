@@ -30,13 +30,49 @@ def setInputs(t, args):
     ))
 
     t.add_parameter(Parameter(
-        'InstanceSize',
-        Description = 'EC2 instance size for tbe webserver (minimum t2.small recommended)',
+        'PatientRecords',
+        Description = 'Database storage for patient records (minimum 10 GB)',
+        Default = '10',
+        Type = 'Number',
+        MinValue = '10'
+    ))
+
+    t.add_parameter(Parameter(
+        'WebserverInstanceSize',
+        Description = 'EC2 instance size for the webserver',
         Default = 't2.small',
         Type = 'String',
         AllowedValues = [
-            't2.nano', 't2.micro', 't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
+            't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
         ]
+    ))
+
+    t.add_parameter(Parameter(
+        'AdminPassword',
+        NoEcho = True,
+        Description = 'The OpenEMR admin account password',
+        Type = 'String',
+        MinLength = '8',
+        MaxLength = '41'
+    ))
+
+    t.add_parameter(Parameter(
+        'RDSInstanceSize',
+        Description = 'RDS instance size for the back-end database',
+        Default = 'db.t2.small',
+        Type = 'String',
+        AllowedValues = [
+            'db.t2.micro', 'db.t2.small', 'db.t2.medium', 'db.t2.large', 'db.m4.large'
+        ]
+    ))
+
+    t.add_parameter(Parameter(
+        'RDSPassword',
+        NoEcho = True,
+        Description = 'The database admin account password',
+        Type = 'String',
+        MinLength = '8',
+        MaxLength = '41'
     ))
 
     return t
@@ -44,13 +80,14 @@ def setInputs(t, args):
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
-            "OpenEMRMktPlaceAMI": "ami-cd0f5cb6"
+            "OpenEMRMktPlaceAMI": "ami-cd0f5cb6",
+            "MySQLVersion": "5.6.27"
         }
     )
 
     return t
 
-def buildInfrastructure(t, args):
+def buildVPC(t, args):
     t.add_resource(
         ec2.VPC(
             'VPC',
@@ -69,6 +106,32 @@ def buildInfrastructure(t, args):
         )
     )
 
+    t.add_resource(
+        ec2.Subnet(
+            'PrivateSubnet1',
+            VpcId = Ref('VPC'),
+            CidrBlock = '10.0.2.0/24',
+            AvailabilityZone = Select("0", GetAZs(""))
+        )
+    )
+
+    t.add_resource(
+        ec2.Subnet(
+            'PublicSubnet2',
+            VpcId = Ref('VPC'),
+            CidrBlock = '10.0.3.0/24',
+            AvailabilityZone = Select("1", GetAZs(""))
+        )
+    )
+
+    t.add_resource(
+        ec2.Subnet(
+            'PrivateSubnet2',
+            VpcId = Ref('VPC'),
+            CidrBlock = '10.0.4.0/24',
+            AvailabilityZone = Select("1", GetAZs(""))
+        )
+    )
 
     t.add_resource(
         ec2.InternetGateway(
@@ -110,9 +173,45 @@ def buildInfrastructure(t, args):
     )
 
     t.add_resource(
+        ec2.SubnetRouteTableAssociation(
+            'rtPublic2Attach',
+            SubnetId = Ref('PublicSubnet2'),
+            RouteTableId = Ref('rtTablePublic')
+        )
+    )
+
+
+    t.add_resource(
+        ec2.RouteTable(
+            'rtTablePrivate',
+            VpcId = Ref('VPC')
+        )
+    )
+
+    t.add_resource(
+        ec2.SubnetRouteTableAssociation(
+            'rtPrivate1Attach',
+            SubnetId = Ref('PrivateSubnet1'),
+            RouteTableId = Ref('rtTablePrivate')
+        )
+    )
+
+    t.add_resource(
+        ec2.SubnetRouteTableAssociation(
+            'rtPrivate2Attach',
+            SubnetId = Ref('PrivateSubnet2'),
+            RouteTableId = Ref('rtTablePrivate')
+        )
+    )
+
+    return t
+
+def buildInfrastructure(t, args):
+
+    t.add_resource(
         kms.Key(
             'OpenEMRKey',
-            DeletionPolicy = 'Delete',
+            DeletionPolicy = 'Delete' if args.dev else 'Retain',
             KeyPolicy = {
                 "Version": "2012-10-17",
                 "Id": "key-default-1",
@@ -181,12 +280,71 @@ def buildInfrastructure(t, args):
         )
     )
 
+    t.add_resource(
+        ec2.SecurityGroup(
+            'ApplicationSecurityGroup',
+            GroupDescription = 'Application Security Group',
+            VpcId = Ref('VPC'),
+            Tags = Tags(Name='Application')
+        )
+    )
+
+    return t
+
+def buildMySQL(t, args):
+    t.add_resource(
+        ec2.SecurityGroup(
+            'DBSecurityGroup',
+            GroupDescription = 'Patient Records',
+            VpcId = Ref('VPC'),
+            Tags = Tags(Name='MySQL Access')
+        )
+    )
+
+    t.add_resource(
+        ec2.SecurityGroupIngress(
+            'DBSGIngress',
+            GroupId = Ref('DBSecurityGroup'),
+            IpProtocol = '-1',
+            SourceSecurityGroupId = Ref('ApplicationSecurityGroup')
+        )
+    )
+
+    t.add_resource(
+        rds.DBSubnetGroup(
+            'RDSSubnetGroup',
+            DBSubnetGroupDescription = 'MySQL node locations',
+            SubnetIds = [Ref('PrivateSubnet1'), Ref('PrivateSubnet2')]
+        )
+    )
+
+    t.add_resource(
+        rds.DBInstance(
+            'RDSInstance',
+            DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
+            DBName = 'openemr',
+            AllocatedStorage = Ref('PatientRecords'),
+            DBInstanceClass = Red('RDSInstanceSize'),
+            Engine = 'MySQL',
+            EngineVersion = FindInMap('RegionData', ref_region, 'MySQLVersion'),
+            MasterUsername = 'openemr',
+            MasterUserPassword = Ref('RDSPassword'),
+            PubliclyAccessible = False,
+            DBSubnetGroupName = Ref('RDSSubnetGroup'),
+            VPCSecurityGroups = [Ref('DBSecurityGroup')],
+            KmsKeyId = OpenEMRKeyID,
+            StorageEncrypted = True,
+            MultiAZ = True,
+            Tags = Tags(Name='Patient Records')
+        )
+    )
+
     return t
 
 def buildInstance(t, args):
     t.add_resource(
         ec2.SecurityGroup(
-            'WebserverSG',
+            'WebserverIngressSG',
             GroupDescription = 'Global Webserver Access',
             VpcId = Ref('VPC'),
             Tags = Tags(Name='Global Webserver Access')
@@ -195,8 +353,8 @@ def buildInstance(t, args):
 
     t.add_resource(
         ec2.SecurityGroupIngress(
-            'WebserverSGIngress1',
-            GroupId = Ref('WebserverSG'),
+            'WebserverIngressSG1',
+            GroupId = Ref('WebserverIngressSG'),
             IpProtocol = 'tcp',
             CidrIp = '0.0.0.0/0',
             FromPort = '22',
@@ -206,8 +364,8 @@ def buildInstance(t, args):
 
     t.add_resource(
         ec2.SecurityGroupIngress(
-            'WebserverSGIngress2',
-            GroupId = Ref('WebserverSG'),
+            'WebserverIngressSG2',
+            GroupId = Ref('WebserverIngressSG'),
             IpProtocol = 'tcp',
             CidrIp = '0.0.0.0/0',
             FromPort = '80',
@@ -217,8 +375,8 @@ def buildInstance(t, args):
 
     t.add_resource(
         ec2.SecurityGroupIngress(
-            'WebserverSGIngress3',
-            GroupId = Ref('WebserverSG'),
+            'WebserverIngressSG3',
+            GroupId = Ref('WebserverIngressSG'),
             IpProtocol = 'tcp',
             CidrIp = '0.0.0.0/0',
             FromPort = '443',
@@ -307,10 +465,7 @@ def buildInstance(t, args):
 
     bootstrapScript = [
         "#!/bin/bash -x\n",
-        "exec > /tmp/part-001.log 2>&1\n",
-        "apt-get -y update\n",
-        "apt-get -y install python-pip\n",
-        "pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+        "exec > /var/log/openemr-cfn-bootstrap 2>&1\n",
         "cfn-init -v ",
         "         --stack ", ref_stack_name,
         "         --resource WebserverInstance ",
@@ -325,32 +480,16 @@ def buildInstance(t, args):
     setupScript = [
         "#!/bin/bash -xe\n",
         "exec > /tmp/cloud-setup.log 2>&1\n",
-
-        "DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" --force-yes\n",
-        "mkfs -t ext4 /dev/xvdd\n",
-        "mkdir /mnt/docker\n",
-        "cat /root/fstab.append >> /etc/fstab\n",
-        "mount /mnt/docker\n",
-        "ln -s /mnt/docker /var/lib/docker\n",
-
-        "apt-get -y install python-boto awscli\n",
-        "S3=", Ref('S3Bucket'), "\n",
-        "KMS=", OpenEMRKeyID, "\n",
-        "touch /root/cloud-backups-enabled\n",
-        "echo $S3 > /root/.cloud-s3.txt\n",
-        "echo $KMS > /root/.cloud-kms.txt\n",
-        "touch /tmp/mypass\n",
-        "chmod 500 /tmp/mypass\n",
-        "openssl rand -base64 32 >> /tmp/mypass\n",
-        "aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS\n",
-        "rm /tmp/mypass\n",
-
-        "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/stacks/single-server/launch.sh > /root/launch.sh\n",
-        "chmod +x /root/launch.sh && /root/launch.sh -s 0\n"
+        "/root/openemr-devops/stacks/AWS-mktplace/ami-configure.sh\n"
     ]
 
-    fstabFile = [
-        "/dev/xvdd /mnt/docker ext4 defaults,nofail 0 0\n"
+    stackPassthroughFile = [
+        "S3=", Ref('S3Bucket'), "\n",
+        "KMS=", OpenEMRKeyID, "\n"
+    ]
+
+    dockerComposeFile = [
+
     ]
 
     bootstrapInstall = cloudformation.InitConfig(
@@ -361,9 +500,15 @@ def buildInstance(t, args):
                 "owner" : "root",
                 "group" : "root"
             },
-            "/root/fstab.append" : {
-                "content" : Join("", fstabFile),
-                "mode"  : "000400",
+            "/root/cloud-variables" : {
+                "content" : Join("", stackPassthroughFile),
+                "mode"  : "000500",
+                "owner" : "root",
+                "group" : "root"
+            },
+            "/root/openemr-devops/stacks/AWS-mktplace/docker-compose.yaml" : {
+                "content" : Join("", stackPassthroughFile),
+                "mode"  : "000500",
                 "owner" : "root",
                 "group" : "root"
             }
@@ -389,11 +534,11 @@ def buildInstance(t, args):
             'WebserverInstance',
             Metadata = bootstrapMetadata,
             ImageId = FindInMap('RegionData', ref_region, 'OpenEMRMktPlaceAMI'),
-            InstanceType = Ref('InstanceSize'),
+            InstanceType = Ref('WebserverInstanceSize'),
             NetworkInterfaces = [ec2.NetworkInterfaceProperty(
                 AssociatePublicIpAddress = True,
                 DeviceIndex = "0",
-                GroupSet = [ Ref('WebserverSG') ],
+                GroupSet = [ Ref('ApplicationSecurityGroup'), Ref('WebserverIngressSG') ],
                 SubnetId = Ref('PublicSubnet1')
             )],
             KeyName = Ref('EC2KeyPair'),
@@ -441,6 +586,7 @@ OpenEMRKeyARN = GetAtt('OpenEMRKey', 'Arn')
 
 setInputs(t,args)
 setMappings(t,args)
+buildVPC(t, args)
 buildInfrastructure(t, args)
 buildInstance(t, args)
 setOutputs(t, args)
