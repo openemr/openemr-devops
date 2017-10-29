@@ -83,7 +83,7 @@ def setMappings(t, args):
             "OpenEMRMktPlaceAMI": "ami-cd0f5cb6",
             "MySQLVersion": "5.6.27"
         }
-    )
+    })
 
     return t
 
