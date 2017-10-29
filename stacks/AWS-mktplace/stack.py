@@ -489,7 +489,26 @@ def buildInstance(t, args):
     ]
 
     dockerComposeFile = [
-
+        "version: '3.1'\n",
+        "services:\n",
+        "  openemr:\n",
+        "    restart: always\n",
+        "    image: openemr/openemr", docker_version, "\n",
+        "    ports:\n",
+        "    - 80:80\n",
+        "    - 443:443\n",
+        "    volumes:\n",
+        "    - logvolume01:/var/log\n",
+        "    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default\n",
+        "    environment:\n",
+        "      MYSQL_HOST: ", GetAtt('RDSInstance', 'Endpoint.Address'), "\n",
+        "      MYSQL_ROOT: openemr\n",
+        "      MYSQL_ROOT_PASS: ", Ref('RDSPassword'), "\n",
+        "      OE_USER: admin\n",
+        "      OE_PASS: ", Ref('AWS::StackId'), "\n",
+        "volumes:\n",
+        "  logvolume01: {}\n",
+        "  sitevolume: {}\n"
     ]
 
     bootstrapInstall = cloudformation.InitConfig(
@@ -552,7 +571,7 @@ def buildInstance(t, args):
             UserData = Base64(Join('', bootstrapScript)),
             CreationPolicy = {
               "ResourceSignal" : {
-                "Timeout" : "PT25M"
+                "Timeout" : "PT15M"
               }
             }
         )
@@ -563,11 +582,19 @@ def buildInstance(t, args):
 def setOutputs(t, args):
     t.add_output(
         Output(
-            'OpenEMR',
-            Description='OpenEMR Setup',
-            Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp')])
+            'OpenEMRURL',
+            Description='OpenEMR Installation',
+            Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp'), '/'])
         )
-    )
+    ),
+
+    t.add_output(
+        Output(
+            'OpenEMRCredentials',
+            Description='OpenEMR Login',
+            Value=Join('', ['admin / ', Ref('AWS::StackId')])
+        )
+    ),
     return t
 
 parser = argparse.ArgumentParser(description="OpenEMR Express stack builder")
