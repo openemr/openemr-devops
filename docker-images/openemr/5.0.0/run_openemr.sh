@@ -42,6 +42,12 @@ fi
 auto_setup() {
 
     CONFIGURATION="server=${MYSQL_HOST} rootpass=${MYSQL_ROOT_PASS} loginhost=%"
+    if [ "$MYSQL_ROOT_USER" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} root=${MYSQL_ROOT_USER}"
+    fi
+    if [ "$MYSQL_ROOT_PASS" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} rootpass=${MYSQL_ROOT_PASS}"
+    fi
     if [ "$MYSQL_USER" != "" ]; then
         CONFIGURATION="${CONFIGURATION} login=${MYSQL_USER}"
     fi
