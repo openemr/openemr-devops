@@ -2,6 +2,6 @@
 
 rm /root/.ssh/authorized_keys
 rm /home/ubuntu/.ssh/authorized_keys
-# should I delete bash histories here?
+rm /home/ubuntu/.bash_history
 sync
 shutdown -h now
