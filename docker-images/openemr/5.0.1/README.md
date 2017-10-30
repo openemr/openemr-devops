@@ -53,7 +53,7 @@ volumes:
 
 Required environment settings for auto installation are `MYSQL_HOST` and `MYSQL_ROOT_PASS` (Note that can force `MYSQL_ROOT_PASS` to be empty by passing as 'BLANK' variable).
 
-Optional settings for the auto installation include database parameters `MYSQL_USER`, `MYSQL_PASS`, `MYSQL_DATABASE`, and openemr parameters `OE_USER`, `OE_PASS`.
+Optional settings for the auto installation include database parameters `MYSQL_ROOT_USER`, `MYSQL_USER`, `MYSQL_PASS`, `MYSQL_DATABASE`, and openemr parameters `OE_USER`, `OE_PASS`.
 
 Can override auto installation and force manual installation by setting `MANUAL_SETUP` environment setting to 'yes'.
 
