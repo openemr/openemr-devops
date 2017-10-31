@@ -5,7 +5,7 @@
         "RegionData": {
             "us-east-1": {
                 "MySQLVersion": "5.6.27",
-                "OpenEMRMktPlaceAMI": "ami-cd0f5cb6"
+                "OpenEMRMktPlaceAMI": "ami-5eeb4424"
             }
         }
     },
@@ -188,6 +188,33 @@
             },
             "Type": "AWS::CloudTrail::Trail"
         },
+        "DBSGIngress": {
+            "Properties": {
+                "GroupId": {
+                    "Ref": "DBSecurityGroup"
+                },
+                "IpProtocol": "-1",
+                "SourceSecurityGroupId": {
+                    "Ref": "ApplicationSecurityGroup"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroupIngress"
+        },
+        "DBSecurityGroup": {
+            "Properties": {
+                "GroupDescription": "Patient Records",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "MySQL Access"
+                    }
+                ],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        },
         "DockerVolume": {
             "DeletionPolicy": "Snapshot",
             "Properties": {
@@ -317,6 +344,67 @@
                 }
             },
             "Type": "AWS::EC2::Subnet"
+        },
+        "RDSInstance": {
+            "DeletionPolicy": "Snapshot",
+            "Properties": {
+                "AllocatedStorage": {
+                    "Ref": "PatientRecords"
+                },
+                "DBInstanceClass": {
+                    "Ref": "RDSInstanceSize"
+                },
+                "DBName": "openemr",
+                "DBSubnetGroupName": {
+                    "Ref": "RDSSubnetGroup"
+                },
+                "Engine": "MySQL",
+                "EngineVersion": {
+                    "Fn::FindInMap": [
+                        "RegionData",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        "MySQLVersion"
+                    ]
+                },
+                "KmsKeyId": {
+                    "Ref": "OpenEMRKey"
+                },
+                "MasterUserPassword": {
+                    "Ref": "RDSPassword"
+                },
+                "MasterUsername": "openemr",
+                "MultiAZ": "true",
+                "PubliclyAccessible": "false",
+                "StorageEncrypted": "true",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Patient Records"
+                    }
+                ],
+                "VPCSecurityGroups": [
+                    {
+                        "Ref": "DBSecurityGroup"
+                    }
+                ]
+            },
+            "Type": "AWS::RDS::DBInstance"
+        },
+        "RDSSubnetGroup": {
+            "Properties": {
+                "DBSubnetGroupDescription": "MySQL node locations",
+                "SubnetIds": [
+                    {
+                        "Ref": "PrivateSubnet1"
+                    },
+                    {
+                        "Ref": "PrivateSubnet2"
+                    }
+                ]
+            },
+            "Type": "AWS::RDS::DBSubnetGroup"
         },
         "S3Bucket": {
             "DeletionPolicy": "Retain",
@@ -461,16 +549,49 @@
                                     "Fn::Join": [
                                         "",
                                         [
-                                            "S3=",
+                                            "version: '3.1'\n",
+                                            "services:\n",
+                                            "  openemr:\n",
+                                            "    restart: always\n",
+                                            "    image: openemr/openemr",
+                                            "@sha256:32a7d23eb8f663f012b27cf2189de4416eb00fc901ee918ffa9f2856b74d9fdf",
+                                            "\n",
+                                            "    ports:\n",
+                                            "    - 80:80\n",
+                                            "    - 443:443\n",
+                                            "    volumes:\n",
+                                            "    - logvolume01:/var/log\n",
+                                            "    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default\n",
+                                            "    environment:\n",
+                                            "      MYSQL_HOST: ",
                                             {
-                                                "Ref": "S3Bucket"
+                                                "Fn::GetAtt": [
+                                                    "RDSInstance",
+                                                    "Endpoint.Address"
+                                                ]
                                             },
                                             "\n",
-                                            "KMS=",
+                                            "      MYSQL_ROOT_USER: openemr\n",
+                                            "      MYSQL_ROOT_PASS: ",
                                             {
-                                                "Ref": "OpenEMRKey"
+                                                "Ref": "RDSPassword"
                                             },
-                                            "\n"
+                                            "\n",
+                                            "      MYSQL_USER: openemr\n",
+                                            "      MYSQL_PASS: ",
+                                            {
+                                                "Ref": "RDSPassword"
+                                            },
+                                            "\n",
+                                            "      OE_USER: admin\n",
+                                            "      OE_PASS: ",
+                                            {
+                                                "Ref": "AWS::StackId"
+                                            },
+                                            "\n",
+                                            "volumes:\n",
+                                            "  logvolume01: {}\n",
+                                            "  sitevolume: {}\n"
                                         ]
                                     ]
                                 },

@@ -80,7 +80,7 @@ def setInputs(t, args):
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
-            "OpenEMRMktPlaceAMI": "ami-cd0f5cb6",
+            "OpenEMRMktPlaceAMI": "ami-5eeb4424",
             "MySQLVersion": "5.6.27"
         }
     })
@@ -324,7 +324,7 @@ def buildMySQL(t, args):
             DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
             DBName = 'openemr',
             AllocatedStorage = Ref('PatientRecords'),
-            DBInstanceClass = Red('RDSInstanceSize'),
+            DBInstanceClass = Ref('RDSInstanceSize'),
             Engine = 'MySQL',
             EngineVersion = FindInMap('RegionData', ref_region, 'MySQLVersion'),
             MasterUsername = 'openemr',
@@ -528,7 +528,7 @@ def buildInstance(t, args):
                 "group" : "root"
             },
             "/root/openemr-devops/stacks/AWS-mktplace/docker-compose.yaml" : {
-                "content" : Join("", stackPassthroughFile),
+                "content" : Join("", dockerComposeFile),
                 "mode"  : "000500",
                 "owner" : "root",
                 "group" : "root"
@@ -617,6 +617,7 @@ setInputs(t,args)
 setMappings(t,args)
 buildVPC(t, args)
 buildInfrastructure(t, args)
+buildMySQL(t, args)
 buildInstance(t, args)
 setOutputs(t, args)
 

@@ -27,8 +27,8 @@ chmod 500 /tmp/mypass
 openssl rand -base64 32 >> /tmp/mypass
 aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS
 rm /tmp/mypass
-ln -s /etc/cron.daily/duplicity-backups /root/openemr-devops/stacks/AWS-mktplace/backup.sh
-ln -s /root/restore.sh /root/openemr-devops/stacks/AWS-mktplace/restore.sh
+ln -s /root/openemr-devops/stacks/AWS-mktplace/backup.sh /etc/cron.daily/duplicity-backups
+ln -s /root/openemr-devops/stacks/AWS-mktplace/restore.sh /root/restore.sh
 
 # launch the CFN-supplied docker-compose.yaml
 cd /root/openemr-devops/stacks/AWS-mktplace
