@@ -51,3 +51,5 @@ fi
 chmod a+x /root/openemr-devops/stacks/AWS-mktplace/*.sh
 curl -L https://github.com/docker/compose/releases/download/1.15.0/docker-compose-`uname -s`-`uname -m` > docker-compose
 chmod +x docker-compose
+
+echo ami-build.sh: done

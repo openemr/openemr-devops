@@ -5,25 +5,11 @@
         "RegionData": {
             "us-east-1": {
                 "MySQLVersion": "5.6.27",
-                "OpenEMRMktPlaceAMI": "ami-5eeb4424"
+                "OpenEMRMktPlaceAMI": "ami-9acf60e0"
             }
         }
     },
     "Outputs": {
-        "OpenEMRCredentials": {
-            "Description": "OpenEMR Login",
-            "Value": {
-                "Fn::Join": [
-                    "",
-                    [
-                        "admin / ",
-                        {
-                            "Ref": "AWS::StackId"
-                        }
-                    ]
-                ]
-            }
-        },
         "OpenEMRURL": {
             "Description": "OpenEMR Installation",
             "Value": {
@@ -586,7 +572,7 @@
                                             "      OE_USER: admin\n",
                                             "      OE_PASS: ",
                                             {
-                                                "Ref": "AWS::StackId"
+                                                "Ref": "AdminPassword"
                                             },
                                             "\n",
                                             "volumes:\n",

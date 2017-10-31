@@ -80,7 +80,7 @@ def setInputs(t, args):
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
-            "OpenEMRMktPlaceAMI": "ami-5eeb4424",
+            "OpenEMRMktPlaceAMI": "ami-9acf60e0",
             "MySQLVersion": "5.6.27"
         }
     })
@@ -589,7 +589,7 @@ def setOutputs(t, args):
             Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp'), '/'])
         )
     )
-    
+
     return t
 
 parser = argparse.ArgumentParser(description="OpenEMR Express stack builder")
