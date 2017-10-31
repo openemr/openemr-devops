@@ -507,7 +507,7 @@ def buildInstance(t, args):
         "      MYSQL_USER: openemr\n",
         "      MYSQL_PASS: ", Ref('RDSPassword'), "\n",
         "      OE_USER: admin\n",
-        "      OE_PASS: ", Ref('AWS::StackId'), "\n",
+        "      OE_PASS: ", Ref('AdminPassword'), "\n",
         "volumes:\n",
         "  logvolume01: {}\n",
         "  sitevolume: {}\n"
@@ -588,15 +588,8 @@ def setOutputs(t, args):
             Description='OpenEMR Installation',
             Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp'), '/'])
         )
-    ),
-
-    t.add_output(
-        Output(
-            'OpenEMRCredentials',
-            Description='OpenEMR Login',
-            Value=Join('', ['admin / ', Ref('AWS::StackId')])
-        )
-    ),
+    )
+    
     return t
 
 parser = argparse.ArgumentParser(description="OpenEMR Express stack builder")
