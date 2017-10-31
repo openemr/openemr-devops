@@ -6,12 +6,12 @@ REPOBRANCH=master
 #DOCKERLABEL=:5.0.0
 DOCKERLABEL=@sha256:32a7d23eb8f663f012b27cf2189de4416eb00fc901ee918ffa9f2856b74d9fdf
 
-while getopts "b:" opt; do
+while getopts "b:d:" opt; do
   case $opt in
     b)
       REPOBRANCH=$OPTARG
       ;;
-    h)
+    d)
       DOCKERLABEL=$OPTARG
       ;;
     \?)
