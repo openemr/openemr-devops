@@ -4,7 +4,7 @@ exec > /var/log/openemr-launch.log 2>&1
 
 REPOBRANCH=master
 #DOCKERLABEL=:5.0.0
-DOCKERLABEL=@sha256:b07df8e81aee0f70d2e815b791b248010bd7d3244dab94120f1f5b3ab1c67fd6
+DOCKERLABEL=@sha256:32a7d23eb8f663f012b27cf2189de4416eb00fc901ee918ffa9f2856b74d9fdf
 
 while getopts "b:" opt; do
   case $opt in
