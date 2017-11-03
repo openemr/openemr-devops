@@ -1,0 +1,35 @@
+version: '3.1'
+services:
+  mysql:
+    restart: always
+    build: ../../docker/mysql-xtrabackup/
+    ports:
+    - 3306:3306
+    command: ['mysqld','--character-set-server=utf8']
+    volumes:
+    - sqlbackup:/mnt/backups
+    #this forces mysql to use utf8, versus latin-1 (the default). Necessary for multilingual OpenEMR.
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+  openemr:
+    restart: always
+    build: ../../docker/openemr/5.0.0
+    ports:
+    - 80:80
+    - 443:443
+    volumes:
+    - logvolume01:/var/log
+    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASS: root
+      MYSQL_USER: root
+      MYSQL_PASS: root
+      OE_USER: admin
+      OE_PASS: pass
+    links:
+    - mysql
+volumes:
+  logvolume01: {}
+  sitevolume: {}
+  sqlbackup: {}
