@@ -22,4 +22,4 @@ describe backups
 
 ## Legal Note
 
-link to EULA
+[End User License Agreement](https://github.com/openemr/openemr-devops/tree/master/stacks/AWS-mktplace/EULA.txt)
