@@ -48,7 +48,7 @@ if [[ $REPOBRANCH == master ]]; then
 else
   git clone --single-branch --branch $REPOBRANCH https://github.com/openemr/openemr-devops.git && cd openemr-devops/stacks/AWS-mktplace
 fi
-chmod a+x /root/openemr-devops/stacks/AWS-mktplace/*.sh
+chmod a+x /root/openemr-devops/stacks/AWS-mktplace/ami/*.sh
 curl -L https://github.com/docker/compose/releases/download/1.15.0/docker-compose-`uname -s`-`uname -m` > docker-compose
 chmod +x docker-compose
 

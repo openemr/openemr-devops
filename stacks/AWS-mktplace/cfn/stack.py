@@ -1,6 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+# TODO: remove unneeded troposphere imports
+# TODO: update docs to discuss admin SSH access
+# TODO: rebuild AMI following pending reorg
+# TODO: don't I need an essay thing somewhere in metadata?
+
 from troposphere import Base64, FindInMap, GetAtt, GetAZs, Join, Select, Split, Output
 from troposphere import Parameter, Ref, Tags, Template
 from troposphere import ec2, route53, kms, s3, efs, elasticache, cloudtrail, rds, iam, cloudformation, awslambda, events, elasticbeanstalk
@@ -15,11 +20,15 @@ ref_account = Ref('AWS::AccountId')
 docker_version = '@sha256:32a7d23eb8f663f012b27cf2189de4416eb00fc901ee918ffa9f2856b74d9fdf'
 
 def setInputs(t, args):
+    paramLabels = {}
+
     t.add_parameter(Parameter(
         'EC2KeyPair',
         Description = 'Amazon EC2 Key Pair',
         Type = 'AWS::EC2::KeyPair::KeyName'
     ))
+
+    paramLabels["EC2KeyPair"] = { 'default': 'Your EC2 SSH key for connecting to OpenEMR''s shell.' }
 
     t.add_parameter(Parameter(
         'PracticeStorage',
@@ -29,6 +38,8 @@ def setInputs(t, args):
         MinValue = '10'
     ))
 
+    paramLabels["PracticeStorage"] = { 'default': 'How much space should we reserve for patient documents?' }
+
     t.add_parameter(Parameter(
         'PatientRecords',
         Description = 'Database storage for patient records (minimum 10 GB)',
@@ -36,6 +47,8 @@ def setInputs(t, args):
         Type = 'Number',
         MinValue = '10'
     ))
+
+    paramLabels["PatientRecords"] = { 'default': 'How much database space should we reserve for patient records?' }
 
     t.add_parameter(Parameter(
         'WebserverInstanceSize',
@@ -47,6 +60,8 @@ def setInputs(t, args):
         ]
     ))
 
+    paramLabels["WebserverInstanceSize"] = { 'default': 'What size webserver should we create in EC2?' }
+
     t.add_parameter(Parameter(
         'AdminPassword',
         NoEcho = True,
@@ -55,6 +70,8 @@ def setInputs(t, args):
         MinLength = '8',
         MaxLength = '41'
     ))
+
+    paramLabels["AdminPassword"] = { 'default': 'Pick a strong password for your OpenEMR administrator account.' }
 
     t.add_parameter(Parameter(
         'RDSInstanceSize',
@@ -66,6 +83,8 @@ def setInputs(t, args):
         ]
     ))
 
+    paramLabels["RDSInstanceSize"] = { 'default': 'How powerful should our database be?' }
+
     t.add_parameter(Parameter(
         'RDSPassword',
         NoEcho = True,
@@ -74,6 +93,24 @@ def setInputs(t, args):
         MinLength = '8',
         MaxLength = '41'
     ))
+
+    paramLabels["RDSPassword"] = { 'default': 'Pick a strong password for your MySQL administrator account.' }
+
+    t.add_metadata({
+        'AWS::CloudFormation::Interface': {
+            'ParameterGroups': [
+                {
+                    'Label': {'default': 'Credentials and Passwords'},
+                    'Parameters': ['AdminPassword', 'RDSPassword', 'EC2KeyPair']
+                },
+                {
+                    'Label': {'default': 'Size and Capacity'},
+                    'Parameters': ['WebserverInstanceSize', 'PracticeStorage', 'RDSInstanceSize', 'PatientRecords']
+                },
+            ],
+            'ParameterLabels': paramLabels
+        }
+    })
 
     return t
 
@@ -353,18 +390,7 @@ def buildInstance(t, args):
 
     t.add_resource(
         ec2.SecurityGroupIngress(
-            'WebserverIngressSG1',
-            GroupId = Ref('WebserverIngressSG'),
-            IpProtocol = 'tcp',
-            CidrIp = '0.0.0.0/0',
-            FromPort = '22',
-            ToPort = '22'
-        )
-    )
-
-    t.add_resource(
-        ec2.SecurityGroupIngress(
-            'WebserverIngressSG2',
+            'WebserverIngressSG80',
             GroupId = Ref('WebserverIngressSG'),
             IpProtocol = 'tcp',
             CidrIp = '0.0.0.0/0',
@@ -375,12 +401,21 @@ def buildInstance(t, args):
 
     t.add_resource(
         ec2.SecurityGroupIngress(
-            'WebserverIngressSG3',
+            'WebserverIngress443',
             GroupId = Ref('WebserverIngressSG'),
             IpProtocol = 'tcp',
             CidrIp = '0.0.0.0/0',
             FromPort = '443',
             ToPort = '443'
+        )
+    )
+
+    t.add_resource(
+        ec2.SecurityGroup(
+            'SysAdminAccessSG',
+            GroupDescription = 'System Administrator Access',
+            VpcId = Ref('VPC'),
+            Tags = Tags(Name='System Administrator Access')
         )
     )
 
@@ -480,7 +515,7 @@ def buildInstance(t, args):
     setupScript = [
         "#!/bin/bash -xe\n",
         "exec > /tmp/cloud-setup.log 2>&1\n",
-        "/root/openemr-devops/stacks/AWS-mktplace/ami-configure.sh\n"
+        "/root/openemr-devops/stacks/AWS-mktplace/ami/ami-configure.sh\n"
     ]
 
     stackPassthroughFile = [
@@ -559,7 +594,7 @@ def buildInstance(t, args):
             NetworkInterfaces = [ec2.NetworkInterfaceProperty(
                 AssociatePublicIpAddress = True,
                 DeviceIndex = "0",
-                GroupSet = [ Ref('ApplicationSecurityGroup'), Ref('WebserverIngressSG') ],
+                GroupSet = [ Ref('ApplicationSecurityGroup'), Ref('WebserverIngressSG'), Ref('SysAdminAccessSG') ],
                 SubnetId = Ref('PublicSubnet1')
             )],
             KeyName = Ref('EC2KeyPair'),

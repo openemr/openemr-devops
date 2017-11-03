@@ -1,4 +1,2 @@
 docker-compose
 docker-compose.yml
-*.json
-!OpenEMR.json

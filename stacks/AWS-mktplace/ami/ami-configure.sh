@@ -8,7 +8,7 @@ cd /root/openemr-devops/stacks/AWS-mktplace
 mkfs -t ext4 /dev/xvdd
 mkdir /mnt/docker
 chown 711 /mnt/docker
-cat fstab.append >> /etc/fstab
+cat snippets/fstab.append >> /etc/fstab
 mount /mnt/docker
 
 # move Docker infrastructure to encrypted volume (could I move less than this?)
@@ -27,8 +27,8 @@ chmod 500 /tmp/mypass
 openssl rand -base64 32 >> /tmp/mypass
 aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS
 rm /tmp/mypass
-ln -s /root/openemr-devops/stacks/AWS-mktplace/backup.sh /etc/cron.daily/duplicity-backups
-ln -s /root/openemr-devops/stacks/AWS-mktplace/restore.sh /root/restore.sh
+ln -s /root/openemr-devops/stacks/AWS-mktplace/scripts/backup.sh /etc/cron.daily/duplicity-backups
+ln -s /root/openemr-devops/stacks/AWS-mktplace/scripts/restore.sh /root/restore.sh
 
 # launch the CFN-supplied docker-compose.yaml
 cd /root/openemr-devops/stacks/AWS-mktplace

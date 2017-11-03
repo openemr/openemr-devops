@@ -1,14 +1,25 @@
-# OpenEMR Hyper
+# OpenEMR Standard
 
-(that's not what it's called)
+link to marketplace entry
 
-## Bootstrap Process
+## Introducution
 
-```
-cd /root
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/wip-aws-mktplace/stacks/AWS-mktplace/ami-build.sh > bootstrap.sh
-chmod a+x bootstrap.sh
-./bootstrap.sh -b wip-aws-mktplace
-rm bootstrap.sh
-/root/openemr-devops/stacks/AWS-mktplace/ami-seal.sh
-```
+link to datasheet
+
+cost overview
+
+## Setup
+
+describe options in stack (self-explanatory)
+
+## Administration
+
+describe ssh access requirements
+
+quick overview of docker interactions
+
+describe backups
+
+## Legal Note
+
+link to EULA

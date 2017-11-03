@@ -9,6 +9,56 @@
             }
         }
     },
+    "Metadata": {
+        "AWS::CloudFormation::Interface": {
+            "ParameterGroups": [
+                {
+                    "Label": {
+                        "default": "Credentials and Passwords"
+                    },
+                    "Parameters": [
+                        "AdminPassword",
+                        "RDSPassword",
+                        "EC2KeyPair"
+                    ]
+                },
+                {
+                    "Label": {
+                        "default": "Size and Capacity"
+                    },
+                    "Parameters": [
+                        "WebserverInstanceSize",
+                        "PracticeStorage",
+                        "RDSInstanceSize",
+                        "PatientRecords"
+                    ]
+                }
+            ],
+            "ParameterLabels": {
+                "AdminPassword": {
+                    "default": "Pick a strong password for your OpenEMR administrator account."
+                },
+                "EC2KeyPair": {
+                    "default": "Your EC2 SSH key for connecting to OpenEMRs shell."
+                },
+                "PatientRecords": {
+                    "default": "How much database space should we reserve for patient records?"
+                },
+                "PracticeStorage": {
+                    "default": "How much space should we reserve for patient documents?"
+                },
+                "RDSInstanceSize": {
+                    "default": "How powerful should our database be?"
+                },
+                "RDSPassword": {
+                    "default": "Pick a strong password for your MySQL administrator account."
+                },
+                "WebserverInstanceSize": {
+                    "default": "What size webserver should we create in EC2?"
+                }
+            }
+        }
+    },
     "Outputs": {
         "OpenEMRURL": {
             "Description": "OpenEMR Installation",
@@ -419,6 +469,21 @@
             },
             "Type": "AWS::S3::Bucket"
         },
+        "SysAdminAccessSG": {
+            "Properties": {
+                "GroupDescription": "System Administrator Access",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "System Administrator Access"
+                    }
+                ],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        },
         "VPC": {
             "Properties": {
                 "CidrBlock": "10.0.0.0/16",
@@ -426,6 +491,18 @@
                 "EnableDnsSupport": "true"
             },
             "Type": "AWS::EC2::VPC"
+        },
+        "WebserverIngress443": {
+            "Properties": {
+                "CidrIp": "0.0.0.0/0",
+                "FromPort": "443",
+                "GroupId": {
+                    "Ref": "WebserverIngressSG"
+                },
+                "IpProtocol": "tcp",
+                "ToPort": "443"
+            },
+            "Type": "AWS::EC2::SecurityGroupIngress"
         },
         "WebserverIngressSG": {
             "Properties": {
@@ -442,19 +519,7 @@
             },
             "Type": "AWS::EC2::SecurityGroup"
         },
-        "WebserverIngressSG1": {
-            "Properties": {
-                "CidrIp": "0.0.0.0/0",
-                "FromPort": "22",
-                "GroupId": {
-                    "Ref": "WebserverIngressSG"
-                },
-                "IpProtocol": "tcp",
-                "ToPort": "22"
-            },
-            "Type": "AWS::EC2::SecurityGroupIngress"
-        },
-        "WebserverIngressSG2": {
+        "WebserverIngressSG80": {
             "Properties": {
                 "CidrIp": "0.0.0.0/0",
                 "FromPort": "80",
@@ -463,18 +528,6 @@
                 },
                 "IpProtocol": "tcp",
                 "ToPort": "80"
-            },
-            "Type": "AWS::EC2::SecurityGroupIngress"
-        },
-        "WebserverIngressSG3": {
-            "Properties": {
-                "CidrIp": "0.0.0.0/0",
-                "FromPort": "443",
-                "GroupId": {
-                    "Ref": "WebserverIngressSG"
-                },
-                "IpProtocol": "tcp",
-                "ToPort": "443"
             },
             "Type": "AWS::EC2::SecurityGroupIngress"
         },
@@ -624,6 +677,9 @@
                             },
                             {
                                 "Ref": "WebserverIngressSG"
+                            },
+                            {
+                                "Ref": "SysAdminAccessSG"
                             }
                         ],
                         "SubnetId": {
