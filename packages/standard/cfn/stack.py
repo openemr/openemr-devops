@@ -603,7 +603,7 @@ def buildInstance(t, args):
                 "Device" : "/dev/sdd",
                 "VolumeId" : Ref('DockerVolume')
             }],
-            Tags = Tags(Name='OpenEMR Express'),
+            Tags = Tags(Name='OpenEMR Cloud Standard'),
             InstanceInitiatedShutdownBehavior = 'stop',
             UserData = Base64(Join('', bootstrapScript)),
             CreationPolicy = {
@@ -627,7 +627,7 @@ def setOutputs(t, args):
 
     return t
 
-parser = argparse.ArgumentParser(description="OpenEMR Express stack builder")
+parser = argparse.ArgumentParser(description="OpenEMR Standard stack builder")
 parser.add_argument("--dev", help="purge development resources on exit", action="store_true")
 args = parser.parse_args()
 
