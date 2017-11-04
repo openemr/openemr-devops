@@ -117,7 +117,7 @@ def setInputs(t, args):
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
-            "OpenEMRMktPlaceAMI": "ami-9acf60e0",
+            "OpenEMRMktPlaceAMI": "ami-3ef94d44",
             "MySQLVersion": "5.6.27"
         }
     })
@@ -634,7 +634,9 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR Express v5.0.0.5 cloud deployment'
+descString='OpenEMR Cloud Standard v5.0.0.5 cloud deployment'
+if (args.dev):
+    descString+=' [developer]'
 t.add_description(descString)
 
 # holdover from parent
