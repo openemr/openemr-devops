@@ -2,7 +2,7 @@ sudo: required
 services:
  - docker
 script:
-      - cd docker-images/mysql-xtrabackup
+      - cd docker/mysql-xtrabackup
       - docker build .
-      - cd ../../docker-images/openemr
+      - cd ../../docker/openemr
       - for D in *; do [ -d "${D}" ] && docker build "$D"; done

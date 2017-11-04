@@ -5,16 +5,24 @@ OpenEMR administration and deployment tooling
 
 ## Resource Index
 
-### Full OpenEMR Installations
+### Installations for Amazon Web Services
 
-* [OpenEMR Cloud Cluster](stacks/AWS-full-stack): AWS CloudFormation multi-node OpenEMR cluster
-* [OpenEMR Cloud Express](stacks/single-server): AWS Lightsail single-server OpenEMR instance
-* [OpenEMR Virtual Appliance](stacks/appliance): Pre-configured virtualized OpenEMR installation
+* [OpenEMR Cloud Standard](packages/standard): OpenEMR webserver and seperate, managed database instance
+* [OpenEMR Cloud Express](packages/express): AWS Marketplace-supplied preconfigured OpenEMR instance
+* [OpenEMR Cloud Express Plus](packages/express_plus): Self-contained OpenEMR instance with more complex features
+* [OpenEMR Cloud Full Stack](packages/full_stack): Multi-node CloudFormation OpenEMR cluster with tight AWS integration
+
+todo: link to feature chart on wiki
+
+### Other Hosting
+
+* [Ubuntu Installer](packages/lightsail): Launch OpenEMR on any Ubuntu 16.04 instance; examples given for AWS Lightsail hosting
+* [Virtual Appliance](packages/appliance): Downloadable virtual appliance encapsulating a full OpenEMR install
 
 ### Components and Infrastructure
 
-* [Official OpenEMR Docker](docker-images/openemr): Source repository for the [Docker](https://hub.docker.com/r/openemr/openemr/) library
-* [mysql-xtrabackup Docker](docker-images/mysql-xtrabackup): MySQL 5.7 / Percona XtraBackup Docker container  
+* [Official OpenEMR Docker](docker/openemr): Source repository for the [Docker](https://hub.docker.com/r/openemr/openemr/) library
+* [mysql-xtrabackup Docker](docker/mysql-xtrabackup): MySQL 5.7 / Percona XtraBackup Docker container  
 
 ## Contact Us
 
