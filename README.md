@@ -7,7 +7,7 @@ OpenEMR administration and deployment tooling
 
 ### Installations for Amazon Web Services
 
-* [OpenEMR Cloud Standard](packages/standard): OpenEMR webserver and seperate, managed database instance
+* [OpenEMR Cloud Standard](packages/standard): OpenEMR webserver and separate, managed database instance
 * [OpenEMR Cloud Express](packages/express): AWS Marketplace-supplied preconfigured OpenEMR instance
 * [OpenEMR Cloud Express Plus](packages/express_plus): Self-contained OpenEMR instance with more complex features
 * [OpenEMR Cloud Full Stack](packages/full_stack): Multi-node CloudFormation OpenEMR cluster with tight AWS integration

@@ -2,7 +2,7 @@
 
 link to marketplace entry
 
-## Introducution
+## Introduction
 
 link to datasheet
 
