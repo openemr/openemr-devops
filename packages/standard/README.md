@@ -1,24 +1,24 @@
 # OpenEMR Standard
 
-link to marketplace entry
+TODO: link to marketplace entry
 
 ## Introduction
 
-link to datasheet
+TODO: link to datasheet
 
-cost overview
+TODO: cost overview
 
 ## Setup
 
-describe options in stack (self-explanatory)
+TODO: describe options in stack (self-explanatory)
 
 ## Administration
 
-describe ssh access requirements
+TODO: describe ssh access requirements
 
-quick overview of docker interactions
+TODO: quick overview of docker interactions
 
-describe backups
+TODO: describe backups
 
 ## Legal Note
 

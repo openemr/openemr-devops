@@ -1,14 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# TODO: remove unneeded troposphere imports
 # TODO: update docs to discuss admin SSH access
-# TODO: rebuild AMI following pending reorg
-# TODO: don't I need an essay thing somewhere in metadata?
 
 from troposphere import Base64, FindInMap, GetAtt, GetAZs, Join, Select, Split, Output
 from troposphere import Parameter, Ref, Tags, Template
-from troposphere import ec2, route53, kms, s3, efs, elasticache, cloudtrail, rds, iam, cloudformation, awslambda, events, elasticbeanstalk
+from troposphere import ec2, kms, s3, cloudtrail, rds, iam, cloudformation
 
 import argparse
 

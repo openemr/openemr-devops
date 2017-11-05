@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# todo: add getopts support, passthrough options for things like duplicity --time
+# TODO: add getopts support, passthrough options for things like duplicity --time
 
 source /root/cloud-variables
 PASSPHRASE=$(aws s3 cp s3://$S3/Backup/passphrase.txt - --sse aws:kms --sse-kms-key-id $KMS)

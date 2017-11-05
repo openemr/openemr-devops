@@ -12,7 +12,7 @@ OpenEMR administration and deployment tooling
 * [OpenEMR Cloud Express Plus](packages/express_plus): Self-contained OpenEMR instance with more complex features
 * [OpenEMR Cloud Full Stack](packages/full_stack): Multi-node CloudFormation OpenEMR cluster with tight AWS integration
 
-todo: link to feature chart on wiki
+See our [product comparison](http://www.open-emr.org/wiki/index.php/AWS_Cloud_Packages_Comparison) for more information on the costs and features of each offering. 
 
 ### Other Hosting
 

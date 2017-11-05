@@ -46,7 +46,7 @@ We offer an AWS CloudFormation template, which slightly increases the billable A
 
 ### HIPAA Compliance
 
-[todo: this is the one that *is* HIPAA-eligible]
+[TODO: this is the one that *is* HIPAA-eligible]
 
 ### Backups
 
@@ -55,8 +55,6 @@ Duplicity is installed to the host machine to manage and rotate backups, sending
 Full backups are made every seven days, with incrementals for the other days. The Duplicity backups encompass the MySQL database backups.
 
 #### Recovering from Backup
-
-[todo: include key migration technology or provide a recovery-mode script]
 
 It is recommended, in the strongest possible terms, that you familiarize yourself with the recovery process as soon as possible.
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# todo: add getopts support, passthrough options for things like duplicity --time
+# TODO: add getopts support, passthrough options for things like duplicity --time
 
 if [ "$1" -ne "--confirm" ]; then
   echo

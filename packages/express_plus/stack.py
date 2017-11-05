@@ -2,11 +2,10 @@
 # -*- coding: utf-8 -*-
 
 # TODO: work out S3 lifycycle rules to allow undeleting backups
-# TODO: delete extra troposphere imports
 
 from troposphere import Base64, FindInMap, GetAtt, GetAZs, Join, Select, Split, Output
 from troposphere import Parameter, Ref, Tags, Template
-from troposphere import ec2, route53, kms, s3, efs, elasticache, cloudtrail, rds, iam, cloudformation, awslambda, events, elasticbeanstalk
+from troposphere import ec2, kms, s3, cloudtrail, iam, cloudformation
 
 import argparse
 
