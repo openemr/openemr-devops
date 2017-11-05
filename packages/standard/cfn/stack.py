@@ -371,7 +371,7 @@ def buildMySQL(t, args):
             VPCSecurityGroups = [Ref('DBSecurityGroup')],
             KmsKeyId = OpenEMRKeyID,
             StorageEncrypted = True,
-            MultiAZ = True,
+            MultiAZ = not args.dev,
             Tags = Tags(Name='Patient Records')
         )
     )
