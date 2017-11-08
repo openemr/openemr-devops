@@ -46,7 +46,7 @@ We offer an AWS CloudFormation template, which slightly increases the billable A
 
 ### HIPAA Compliance
 
-a. For AWS customers that are HIPAA covered entities, before deployment of OpenEMR Express Plus, you must navigate to the "Artifacts" section of the AWS console, find the AWS non-disclosure agreement (NDA), read it and accept it, then find the AWS Business Associate Amendment (BAA), read it and accept it.
+a. For AWS customers that are HIPAA covered entities, before deployment of OpenEMR Express Plus, you must navigate to the Services->Artifact->Agreements section of the AWS console, find the AWS Nondisclosure Agreement (AWS Artifact NDA).  Download, read and accept it.  Then find the AWS Business Associate Addendum (AWS BAA).  Download, read and accept it.
 
 b. For AWS customers that are HIPAA covered entities, OpenEMR Express Plus must be deployed in the U.S. East (N. Virginia) Region (preferred) or U.S. West (Oregon) Region.
 
