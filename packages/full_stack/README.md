@@ -4,7 +4,7 @@ A production grade solution for facilities and hospitals to run OpenEMR v5 in th
 
 Many OpenEMR users run their system on premise and have not yet realized the benefits of cloud technologies. This repository provides a HIPAA-eligible solution for deploying OpenEMR securely and reliably to the cloud.
 
-a. For AWS customers that are HIPAA covered entities, before deployment of OpenEMR Cloud Full Stack, you must navigate to the "Artifacts" section of the AWS console, find the AWS non-disclosure agreement (NDA), read it and accept it, then find the AWS Business Associate Amendment (BAA), read it and accept it.
+a. For AWS customers that are HIPAA covered entities, before deployment of OpenEMR Cloud Full Stack, you must navigate to the Services->Artifact->Agreements section of the AWS console, find the AWS Nondisclosure Agreement (AWS Artifact NDA).  Download, read and accept it.  Then find the AWS Business Associate Addendum (AWS BAA).  Download, read and accept it.
 
 b. For AWS customers that are HIPAA covered entities, OpenEMR Cloud Full Stack must be deployed in the U.S. East (N. Virginia) Region (preferred) or U.S. West (Oregon) Region.
 
