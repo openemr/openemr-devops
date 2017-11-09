@@ -1956,6 +1956,14 @@ def setOutputs(t, args):
             Value=Join('', ['http://', GetAtt('EBEnvironment', 'EndpointURL'), '/openemr'])
         )
     )
+
+    t.add_output(
+        Output(
+            'OpenEMRVPC',
+            Description='OpenEMR VPC',
+            Value=Ref('VPC')
+        )
+    )
     return t
 
 parser = argparse.ArgumentParser(description="OpenEMR stack builder")
