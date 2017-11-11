@@ -30,6 +30,16 @@ rm /tmp/mypass
 ln -s /root/openemr-devops/packages/standard/scripts/backup.sh /etc/cron.daily/duplicity-backups
 ln -s /root/openemr-devops/packages/standard/scripts/restore.sh /root/restore.sh
 
-# launch the CFN-supplied docker-compose.yaml
 cd /root/openemr-devops/packages/standard
-./docker-compose up --build -d
+if [ -z "$RECOVERYS3" ]; then
+  # launch the CFN-supplied docker-compose.yaml
+  ./docker-compose up --build -d
+else
+  # configure, but do not launch, OpenEMR docker
+  ./docker-compose up --build --no-start
+  # seed the target volumes with the stack backups
+  # TODO: are there timing issues here? am I sure these volumes exist and won't be smashed?
+  ./scripts/restore.sh -r import
+  # okay, now go
+  ./docker-compose up -d
+fi
