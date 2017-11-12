@@ -14,7 +14,7 @@ ref_region = Ref('AWS::Region')
 ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
-docker_version = '@sha256:32a7d23eb8f663f012b27cf2189de4416eb00fc901ee918ffa9f2856b74d9fdf'
+docker_version = '@sha256:29d76778a535dd936094425fba87d727aac94639bccda0dbda10072c36b0b871'
 
 def setInputs(t, args):
     paramLabels = {}
@@ -111,10 +111,103 @@ def setInputs(t, args):
 
     return t
 
+def setRecoveryInputs(t, args):
+    paramLabels = {}
+
+    t.add_parameter(Parameter(
+        'EC2KeyPair',
+        Description = 'Amazon EC2 Key Pair',
+        Type = 'AWS::EC2::KeyPair::KeyName'
+    ))
+
+    paramLabels["EC2KeyPair"] = { 'default': 'Your EC2 SSH key for connecting to OpenEMR''s shell.' }
+
+    t.add_parameter(Parameter(
+        'PracticeStorage',
+        Description = 'Storage for the OpenEMR practice (minimum 10 GB)',
+        Default = '10',
+        Type = 'Number',
+        MinValue = '10'
+    ))
+
+    paramLabels["PracticeStorage"] = { 'default': 'How much space should we reserve for patient documents?' }
+
+    t.add_parameter(Parameter(
+        'WebserverInstanceSize',
+        Description = 'EC2 instance size for the webserver',
+        Default = 't2.small',
+        Type = 'String',
+        AllowedValues = [
+            't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
+        ]
+    ))
+
+    paramLabels["WebserverInstanceSize"] = { 'default': 'What size webserver should we create in EC2?' }
+
+    t.add_parameter(Parameter(
+        'RDSInstanceSize',
+        Description = 'RDS instance size for the back-end database',
+        Default = 'db.t2.small',
+        Type = 'String',
+        AllowedValues = [
+            'db.t2.micro', 'db.t2.small', 'db.t2.medium', 'db.t2.large', 'db.m4.large'
+        ]
+    ))
+
+    paramLabels["RDSInstanceSize"] = { 'default': 'How powerful should our database be?' }
+
+    t.add_parameter(Parameter(
+        'RecoveryKMSKey',
+        Description = 'KMS ARN ("arn:aws:kms...")',
+        Type = 'String'
+    ))
+
+    paramLabels["RecoveryKMSKey"] = { 'default': 'What KMS key was OpenEMR using?' }
+
+    t.add_parameter(Parameter(
+        'RecoveryRDSSnapshotARN',
+        Description = 'RDS snapshot ARN ("arn:aws:rds...")',
+        Type = 'String'
+    ))
+
+    paramLabels["RecoveryRDSSnapshotARN"] = { 'default': 'What RDS snapshot should we recover from?' }
+
+    t.add_parameter(Parameter(
+        'RecoveryS3Bucket',
+        Description = 'S3 bucket name',
+        Type = 'String'
+    ))
+
+    paramLabels["RecoveryS3Bucket"] = { 'default': 'What S3 bucket should we recover from?' }
+
+    t.add_metadata({
+        'AWS::CloudFormation::Interface': {
+            'ParameterGroups': [
+                {
+                    'Label': {'default': 'Credentials and Passwords'},
+                    'Parameters': ['EC2KeyPair']
+                },
+
+                {
+                    'Label': {'default': 'Size and Capacity'},
+                    'Parameters': ['WebserverInstanceSize', 'PracticeStorage', 'RDSInstanceSize', 'PatientRecords']
+                },
+
+                {
+                    'Label': {'default': 'Stack Recovery'},
+                    'Parameters': ['RecoveryKMSKey', 'RecoveryRDSSnapshotARN', 'RecoveryS3Bucket']
+                }
+            ],
+            'ParameterLabels': paramLabels
+        }
+    })
+
+    return t
+
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
-            "OpenEMRMktPlaceAMI": "ami-3ef94d44",
+            "OpenEMRMktPlaceAMI": "ami-82e05bf8",
             "MySQLVersion": "5.6.27"
         }
     })
@@ -242,27 +335,28 @@ def buildVPC(t, args):
 
 def buildInfrastructure(t, args):
 
-    t.add_resource(
-        kms.Key(
-            'OpenEMRKey',
-            DeletionPolicy = 'Delete' if args.dev else 'Retain',
-            KeyPolicy = {
-                "Version": "2012-10-17",
-                "Id": "key-default-1",
-                "Statement": [{
-                    "Sid": "1",
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": [
-                            Join(':', ['arn:aws:iam:', ref_account, 'root'])
-                        ]
-                    },
-                    "Action": "kms:*",
-                    "Resource": "*"
-                }]
-            }
+    if (not args.recovery):
+        t.add_resource(
+            kms.Key(
+                'OpenEMRKey',
+                DeletionPolicy = 'Retain' if args.recovery else 'Delete' if args.dev else 'Retain',
+                KeyPolicy = {
+                    "Version": "2012-10-17",
+                    "Id": "key-default-1",
+                    "Statement": [{
+                        "Sid": "1",
+                        "Effect": "Allow",
+                        "Principal": {
+                            "AWS": [
+                                Join(':', ['arn:aws:iam:', ref_account, 'root'])
+                            ]
+                        },
+                        "Action": "kms:*",
+                        "Resource": "*"
+                    }]
+                }
+            )
         )
-    )
 
     t.add_resource(
         s3.Bucket(
@@ -352,26 +446,41 @@ def buildMySQL(t, args):
         )
     )
 
-    t.add_resource(
-        rds.DBInstance(
-            'RDSInstance',
-            DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
-            DBName = 'openemr',
-            AllocatedStorage = Ref('PatientRecords'),
-            DBInstanceClass = Ref('RDSInstanceSize'),
-            Engine = 'MySQL',
-            EngineVersion = FindInMap('RegionData', ref_region, 'MySQLVersion'),
-            MasterUsername = 'openemr',
-            MasterUserPassword = Ref('RDSPassword'),
-            PubliclyAccessible = False,
-            DBSubnetGroupName = Ref('RDSSubnetGroup'),
-            VPCSecurityGroups = [Ref('DBSecurityGroup')],
-            KmsKeyId = OpenEMRKeyID,
-            StorageEncrypted = True,
-            MultiAZ = not args.dev,
-            Tags = Tags(Name='Patient Records')
+    if (args.recovery):
+        t.add_resource(
+            rds.DBInstance(
+                'RDSInstance',
+                DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
+                DBSnapshotIdentifier = Ref('RecoveryRDSSnapshotARN'),
+                DBInstanceClass = Ref('RDSInstanceSize'),
+                PubliclyAccessible = False,
+                DBSubnetGroupName = Ref('RDSSubnetGroup'),
+                VPCSecurityGroups = [Ref('DBSecurityGroup')],
+                MultiAZ = not args.dev,
+                Tags = Tags(Name='Patient Records')
+            )
         )
-    )
+    else:
+        t.add_resource(
+            rds.DBInstance(
+                'RDSInstance',
+                DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
+                DBName = 'openemr',
+                AllocatedStorage = Ref('PatientRecords'),
+                DBInstanceClass = Ref('RDSInstanceSize'),
+                Engine = 'MySQL',
+                EngineVersion = FindInMap('RegionData', ref_region, 'MySQLVersion'),
+                MasterUsername = 'openemr',
+                MasterUserPassword = Ref('RDSPassword'),
+                PubliclyAccessible = False,
+                DBSubnetGroupName = Ref('RDSSubnetGroup'),
+                VPCSecurityGroups = [Ref('DBSecurityGroup')],
+                KmsKeyId = OpenEMRKeyID,
+                StorageEncrypted = True,
+                MultiAZ = not args.dev,
+                Tags = Tags(Name='Patient Records')
+            )
+        )
 
     return t
 
@@ -416,6 +525,18 @@ def buildInstance(t, args):
         )
     )
 
+    if (args.dev):
+        t.add_resource(
+            ec2.SecurityGroupIngress(
+                'DevSysadminIngress22',
+                GroupId = Ref('SysAdminAccessSG'),
+                IpProtocol = 'tcp',
+                CidrIp = '0.0.0.0/0',
+                FromPort = '22',
+                ToPort = '22'
+            )
+        )
+
     rolePolicyStatements = [
         {
           "Sid": "Stmt1500699052003",
@@ -444,6 +565,24 @@ def buildInstance(t, args):
             "Resource": [ OpenEMRKeyARN ]
         }
     ]
+
+    if (args.recovery):
+        rolePolicyStatements.extend([
+            {
+                "Sid": "Stmt1500699052004",
+                "Effect": "Allow",
+                "Action": ["s3:ListBucket"],
+                "Resource" : [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket')])]
+            },
+            {
+                "Sid": "Stmt1500699052005",
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                ],
+                "Resource": [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket'), '/Backup/*'])]
+            },
+        ])
 
     t.add_resource(
         iam.ManagedPolicy(
@@ -520,30 +659,56 @@ def buildInstance(t, args):
         "KMS=", OpenEMRKeyID, "\n"
     ]
 
-    dockerComposeFile = [
-        "version: '3.1'\n",
-        "services:\n",
-        "  openemr:\n",
-        "    restart: always\n",
-        "    image: openemr/openemr", docker_version, "\n",
-        "    ports:\n",
-        "    - 80:80\n",
-        "    - 443:443\n",
-        "    volumes:\n",
-        "    - logvolume01:/var/log\n",
-        "    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default\n",
-        "    environment:\n",
-        "      MYSQL_HOST: ", GetAtt('RDSInstance', 'Endpoint.Address'), "\n",
-        "      MYSQL_ROOT_USER: openemr\n",
-        "      MYSQL_ROOT_PASS: ", Ref('RDSPassword'), "\n",
-        "      MYSQL_USER: openemr\n",
-        "      MYSQL_PASS: ", Ref('RDSPassword'), "\n",
-        "      OE_USER: admin\n",
-        "      OE_PASS: ", Ref('AdminPassword'), "\n",
-        "volumes:\n",
-        "  logvolume01: {}\n",
-        "  sitevolume: {}\n"
-    ]
+    if (args.recovery):
+        stackPassthroughFile.extend([
+            "RECOVERYS3=", Ref('RecoveryS3Bucket'), "\n",
+            "RECOVERY_NEWRDS=", GetAtt('RDSInstance', 'Endpoint.Address'), "\n",
+        ])
+
+    if (args.recovery):
+        dockerComposeFile = [
+            "version: '3.1'\n",
+            "services:\n",
+            "  openemr:\n",
+            "    restart: always\n",
+            "    image: openemr/openemr", docker_version, "\n",
+            "    ports:\n",
+            "    - 80:80\n",
+            "    - 443:443\n",
+            "    volumes:\n",
+            "    - logvolume01:/var/log\n",
+            "    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default\n",
+            "    environment:\n",
+            "      MANUAL_SETUP: 1\n",
+            "volumes:\n",
+            "  logvolume01: {}\n",
+            "  sitevolume: {}\n"
+        ]
+    else:
+        dockerComposeFile = [
+            "version: '3.1'\n",
+            "services:\n",
+            "  openemr:\n",
+            "    restart: always\n",
+            "    image: openemr/openemr", docker_version, "\n",
+            "    ports:\n",
+            "    - 80:80\n",
+            "    - 443:443\n",
+            "    volumes:\n",
+            "    - logvolume01:/var/log\n",
+            "    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default\n",
+            "    environment:\n",
+            "      MYSQL_HOST: ", GetAtt('RDSInstance', 'Endpoint.Address'), "\n",
+            "      MYSQL_ROOT_USER: openemr\n",
+            "      MYSQL_ROOT_PASS: ", Ref('RDSPassword'), "\n",
+            "      MYSQL_USER: openemr\n",
+            "      MYSQL_PASS: ", Ref('RDSPassword'), "\n",
+            "      OE_USER: admin\n",
+            "      OE_PASS: ", Ref('AdminPassword'), "\n",
+            "volumes:\n",
+            "  logvolume01: {}\n",
+            "  sitevolume: {}\n"
+        ]
 
     bootstrapInstall = cloudformation.InitConfig(
         files = {
@@ -614,33 +779,53 @@ def buildInstance(t, args):
     return t
 
 def setOutputs(t, args):
-    t.add_output(
-        Output(
-            'OpenEMRURL',
-            Description='OpenEMR Installation',
-            Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp'), '/'])
+    if (args.recovery):
+        t.add_output(
+            Output(
+                'OpenEMRURL',
+                Description='OpenEMR Recovery',
+                Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp'), '/'])
+            )
         )
-    )
+    else:
+        t.add_output(
+            Output(
+                'OpenEMRURL',
+                Description='OpenEMR Installation',
+                Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp'), '/'])
+            )
+        )
 
     return t
 
 parser = argparse.ArgumentParser(description="OpenEMR Standard stack builder")
+parser.add_argument("--recovery", help="load OpenEMR stack from backups", action="store_true")
 parser.add_argument("--dev", help="purge development resources on exit", action="store_true")
 args = parser.parse_args()
 
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR Cloud Standard v5.0.0.5 cloud deployment'
+descString='OpenEMR Cloud Standard v5.0.0.6 cloud deployment'
 if (args.dev):
     descString+=' [developer]'
+if (args.recovery):
+    descString+=' [recovery]'
 t.add_description(descString)
 
-# holdover from parent
-OpenEMRKeyID = Ref('OpenEMRKey')
-OpenEMRKeyARN = GetAtt('OpenEMRKey', 'Arn')
+# reduce to consistent names
+if (args.recovery):
+    OpenEMRKeyID = Select('1', Split('/', Ref('RecoveryKMSKey')))
+    OpenEMRKeyARN = Ref('RecoveryKMSKey')
+else:
+    OpenEMRKeyID = Ref('OpenEMRKey')
+    OpenEMRKeyARN = GetAtt('OpenEMRKey', 'Arn')
 
-setInputs(t,args)
+if (args.recovery):
+    setRecoveryInputs(t,args)
+else:
+    setInputs(t,args)
+
 setMappings(t,args)
 buildVPC(t, args)
 buildInfrastructure(t, args)

@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR Cloud Standard v5.0.0.6 cloud deployment",
+    "Description": "OpenEMR Cloud Standard v5.0.0.6 cloud deployment [recovery]",
     "Mappings": {
         "RegionData": {
             "us-east-1": {
@@ -17,8 +17,6 @@
                         "default": "Credentials and Passwords"
                     },
                     "Parameters": [
-                        "AdminPassword",
-                        "RDSPassword",
                         "EC2KeyPair"
                     ]
                 },
@@ -32,17 +30,21 @@
                         "RDSInstanceSize",
                         "PatientRecords"
                     ]
+                },
+                {
+                    "Label": {
+                        "default": "Stack Recovery"
+                    },
+                    "Parameters": [
+                        "RecoveryKMSKey",
+                        "RecoveryRDSSnapshotARN",
+                        "RecoveryS3Bucket"
+                    ]
                 }
             ],
             "ParameterLabels": {
-                "AdminPassword": {
-                    "default": "Pick a strong password for your OpenEMR administrator account."
-                },
                 "EC2KeyPair": {
                     "default": "Your EC2 SSH key for connecting to OpenEMRs shell."
-                },
-                "PatientRecords": {
-                    "default": "How much database space should we reserve for patient records?"
                 },
                 "PracticeStorage": {
                     "default": "How much space should we reserve for patient documents?"
@@ -50,8 +52,14 @@
                 "RDSInstanceSize": {
                     "default": "How powerful should our database be?"
                 },
-                "RDSPassword": {
-                    "default": "Pick a strong password for your MySQL administrator account."
+                "RecoveryKMSKey": {
+                    "default": "What KMS key was OpenEMR using?"
+                },
+                "RecoveryRDSSnapshotARN": {
+                    "default": "What RDS snapshot should we recover from?"
+                },
+                "RecoveryS3Bucket": {
+                    "default": "What S3 bucket should we recover from?"
                 },
                 "WebserverInstanceSize": {
                     "default": "What size webserver should we create in EC2?"
@@ -61,7 +69,7 @@
     },
     "Outputs": {
         "OpenEMRURL": {
-            "Description": "OpenEMR Installation",
+            "Description": "OpenEMR Recovery",
             "Value": {
                 "Fn::Join": [
                     "",
@@ -80,22 +88,9 @@
         }
     },
     "Parameters": {
-        "AdminPassword": {
-            "Description": "The OpenEMR admin account password",
-            "MaxLength": "41",
-            "MinLength": "8",
-            "NoEcho": true,
-            "Type": "String"
-        },
         "EC2KeyPair": {
             "Description": "Amazon EC2 Key Pair",
             "Type": "AWS::EC2::KeyPair::KeyName"
-        },
-        "PatientRecords": {
-            "Default": "10",
-            "Description": "Database storage for patient records (minimum 10 GB)",
-            "MinValue": "10",
-            "Type": "Number"
         },
         "PracticeStorage": {
             "Default": "10",
@@ -115,11 +110,16 @@
             "Description": "RDS instance size for the back-end database",
             "Type": "String"
         },
-        "RDSPassword": {
-            "Description": "The database admin account password",
-            "MaxLength": "41",
-            "MinLength": "8",
-            "NoEcho": true,
+        "RecoveryKMSKey": {
+            "Description": "KMS ARN (\"arn:aws:kms...\")",
+            "Type": "String"
+        },
+        "RecoveryRDSSnapshotARN": {
+            "Description": "RDS snapshot ARN (\"arn:aws:rds...\")",
+            "Type": "String"
+        },
+        "RecoveryS3Bucket": {
+            "Description": "S3 bucket name",
             "Type": "String"
         },
         "WebserverInstanceSize": {
@@ -264,7 +264,17 @@
                 },
                 "Encrypted": "true",
                 "KmsKeyId": {
-                    "Ref": "OpenEMRKey"
+                    "Fn::Select": [
+                        "1",
+                        {
+                            "Fn::Split": [
+                                "/",
+                                {
+                                    "Ref": "RecoveryKMSKey"
+                                }
+                            ]
+                        }
+                    ]
                 },
                 "Size": {
                     "Ref": "PracticeStorage"
@@ -278,40 +288,6 @@
                 "VolumeType": "gp2"
             },
             "Type": "AWS::EC2::Volume"
-        },
-        "OpenEMRKey": {
-            "DeletionPolicy": "Retain",
-            "Properties": {
-                "KeyPolicy": {
-                    "Id": "key-default-1",
-                    "Statement": [
-                        {
-                            "Action": "kms:*",
-                            "Effect": "Allow",
-                            "Principal": {
-                                "AWS": [
-                                    {
-                                        "Fn::Join": [
-                                            ":",
-                                            [
-                                                "arn:aws:iam:",
-                                                {
-                                                    "Ref": "AWS::AccountId"
-                                                },
-                                                "root"
-                                            ]
-                                        ]
-                                    }
-                                ]
-                            },
-                            "Resource": "*",
-                            "Sid": "1"
-                        }
-                    ],
-                    "Version": "2012-10-17"
-                }
-            },
-            "Type": "AWS::KMS::Key"
         },
         "PrivateSubnet1": {
             "Properties": {
@@ -384,36 +360,17 @@
         "RDSInstance": {
             "DeletionPolicy": "Snapshot",
             "Properties": {
-                "AllocatedStorage": {
-                    "Ref": "PatientRecords"
-                },
                 "DBInstanceClass": {
                     "Ref": "RDSInstanceSize"
                 },
-                "DBName": "openemr",
+                "DBSnapshotIdentifier": {
+                    "Ref": "RecoveryRDSSnapshotARN"
+                },
                 "DBSubnetGroupName": {
                     "Ref": "RDSSubnetGroup"
                 },
-                "Engine": "MySQL",
-                "EngineVersion": {
-                    "Fn::FindInMap": [
-                        "RegionData",
-                        {
-                            "Ref": "AWS::Region"
-                        },
-                        "MySQLVersion"
-                    ]
-                },
-                "KmsKeyId": {
-                    "Ref": "OpenEMRKey"
-                },
-                "MasterUserPassword": {
-                    "Ref": "RDSPassword"
-                },
-                "MasterUsername": "openemr",
                 "MultiAZ": "true",
                 "PubliclyAccessible": "false",
-                "StorageEncrypted": "true",
                 "Tags": [
                     {
                         "Key": "Name",
@@ -573,7 +530,30 @@
                                             "\n",
                                             "KMS=",
                                             {
-                                                "Ref": "OpenEMRKey"
+                                                "Fn::Select": [
+                                                    "1",
+                                                    {
+                                                        "Fn::Split": [
+                                                            "/",
+                                                            {
+                                                                "Ref": "RecoveryKMSKey"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            "\n",
+                                            "RECOVERYS3=",
+                                            {
+                                                "Ref": "RecoveryS3Bucket"
+                                            },
+                                            "\n",
+                                            "RECOVERY_NEWRDS=",
+                                            {
+                                                "Fn::GetAtt": [
+                                                    "RDSInstance",
+                                                    "Endpoint.Address"
+                                                ]
                                             },
                                             "\n"
                                         ]
@@ -602,32 +582,7 @@
                                             "    - logvolume01:/var/log\n",
                                             "    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default\n",
                                             "    environment:\n",
-                                            "      MYSQL_HOST: ",
-                                            {
-                                                "Fn::GetAtt": [
-                                                    "RDSInstance",
-                                                    "Endpoint.Address"
-                                                ]
-                                            },
-                                            "\n",
-                                            "      MYSQL_ROOT_USER: openemr\n",
-                                            "      MYSQL_ROOT_PASS: ",
-                                            {
-                                                "Ref": "RDSPassword"
-                                            },
-                                            "\n",
-                                            "      MYSQL_USER: openemr\n",
-                                            "      MYSQL_PASS: ",
-                                            {
-                                                "Ref": "RDSPassword"
-                                            },
-                                            "\n",
-                                            "      OE_USER: admin\n",
-                                            "      OE_PASS: ",
-                                            {
-                                                "Ref": "AdminPassword"
-                                            },
-                                            "\n",
+                                            "      MANUAL_SETUP: 1\n",
                                             "volumes:\n",
                                             "  logvolume01: {}\n",
                                             "  sitevolume: {}\n"
@@ -806,13 +761,51 @@
                             "Effect": "Allow",
                             "Resource": [
                                 {
-                                    "Fn::GetAtt": [
-                                        "OpenEMRKey",
-                                        "Arn"
-                                    ]
+                                    "Ref": "RecoveryKMSKey"
                                 }
                             ],
                             "Sid": "Stmt1500612724002"
+                        },
+                        {
+                            "Action": [
+                                "s3:ListBucket"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "RecoveryS3Bucket"
+                                            }
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Sid": "Stmt1500699052004"
+                        },
+                        {
+                            "Action": [
+                                "s3:GetObject"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "RecoveryS3Bucket"
+                                            },
+                                            "/Backup/*"
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Sid": "Stmt1500699052005"
                         }
                     ],
                     "Version": "2012-10-17"
