@@ -21,13 +21,12 @@ service docker start
 # pick up cloud settings
 source /root/cloud-variables
 
-# configure Duplicity backups
+# configure Duplicity backup and restore
 touch /tmp/mypass
 chmod 500 /tmp/mypass
 openssl rand -base64 32 >> /tmp/mypass
 aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS
 rm /tmp/mypass
-ln -s /root/openemr-devops/packages/standard/scripts/backup.sh /etc/cron.daily/duplicity-backups
 ln -s /root/openemr-devops/packages/standard/scripts/restore.sh /root/restore.sh
 
 cd /root/openemr-devops/packages/standard
@@ -38,8 +37,12 @@ else
   # configure, but do not launch, OpenEMR docker
   ./docker-compose create
   # seed the target volumes with the stack backups
-  # TODO: are there timing issues here? am I sure these volumes exist and won't be smashed?
   ./scripts/restore.sh -r import
+  # the old OpenEMR instance points to the old database, so repoint
+  sed -i "s/^\\\$host\t=.*\;$/\$host\t= '$RECOVERY_NEWRDS'\;/" /mnt/docker/volumes/standard_sitevolume/_data/sqlconf.php
   # okay, now go
   ./docker-compose up -d
 fi
+
+# schedule Duplicity backups
+ln -s /root/openemr-devops/packages/standard/scripts/backup.sh /etc/cron.daily/duplicity-backups
