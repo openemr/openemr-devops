@@ -36,7 +36,7 @@ if [ -z "$RECOVERYS3" ]; then
   ./docker-compose up --build -d
 else
   # configure, but do not launch, OpenEMR docker
-  ./docker-compose up --build --no-start
+  ./docker-compose create
   # seed the target volumes with the stack backups
   # TODO: are there timing issues here? am I sure these volumes exist and won't be smashed?
   ./scripts/restore.sh -r import
