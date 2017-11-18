@@ -1,36 +1,35 @@
 # OpenEMR Cloud Express
 
-This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.0 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information. While AWS is the main target, there is documentation around deploying on-premise as well.
+OpenEMR Cloud Express on the AWS Marketplace provides OpenEMR 5.0.0, an embedded MySQL server, and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Installation
 
-1. From the AWS EC2 Dashboard, select *Launch Instance*.
-2. Select *AWS Marketplace*, search for `OpenEMR Express`, then *Select* it.
-3. Select *Continue*.
-4. Select a suitable instance type (we recommend a minimum `t2.small`), then *Next: Configure Instance Details*.
-5. Specify how you'd like the instance connected to Amazon's network and the internet, then select *Next: Add Storage*.
-   * Your default VPC will probably be fine. *Auto-Assign Public IP* should be `Enable`.
-6. Create a root instance with enough room to hold your projected patient files, minimum *8* GB, and then select *Next: Add Tags*.
-7. Assuming you don't have any tags to add here, proceed to *Next: Configure Security Group*.
-8. Select `Select an existing security group` to accept the default OpenEMR security settings, which you can customize.
-   * You probably don't want SSH open to the world &mdash; you could tighten it to just your own IP, or just your office, right now.
-9. Select *Review and Launch*, then *Launch*, then *View Instances*.
-   * A message box concerning keypairs may show up, simply follow the prompts.
-10. Click the instance in EC2 that's currently being created. Note the *IPv4 Public IP* and *Instance ID* entries.
-11. Your OpenEMR installation is being constructed! In a few minutes, you can log in.
-    * URL: `http://your-public-ip`
-    * Username: `admin`
-    * Password: `your-instance-id` (this will start with 'i-')
+### Requirements
+
+Before you begin, you will need to create an SSH key pair in Amazon EC2, in the region you wish to launch OpenEMR. [Amazon's documentation](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#having-ec2-create-your-key-pair) covers this process in more detail.
+
+### Directions
+
+1. Navigate to the OpenEMR Cloud Express [Marketplace entry](https://aws.amazon.com/marketplace/pp/B077G76DWN).
+2. Click *Continue*.
+3. Leave the *1-Click Launch* tab selected.
+4. Select the AWS region in which you wish to launch OpenEMR.
+5. Select the size of the instance; you can see the approximate monthly cost calculated in the right column.
+6. The VPC and subnet defaults are adequate, but you may change them if you wish to integrate the new instance with an existing VPC.
+7. Select a security group to use for the new instance. The default group is adequate, but you should adjust the SSH port to allow traffic only from "My IP" instead of "Anywhere".
+8. Select the EC2 key pair (discussed in Requirements) to assign to this instance.
+9. Review these chances, and click *Launch with 1-Click* when you're ready.
+
+### Usage
+
+Navigate to the EC2 Console, and observe the instance that was just created. (The name of the instance will be blank; take this opportunity to name it.) Click the instance, and note the *Public DNS*, given as a hostname ending in "amazonaws.com", and the *Instance ID*, given as "i-" plus a long string of letters and numbers.
+
+In a couple of minutes, once OpenEMR has finished the final setup procedures, it will start responding on `http://<Public DNS>`. Login with a user name of `admin` and a password of `<Instance ID>`.
 
 ## Administration
 
 ### General
 
-* The instance should be answering on port 80 inside of ten minutes. If it's not...
-  * `tail -f /tmp/launch.log` to see if it's still running, or where it got stuck.
-  * Transient build failures are possible if container dependencies are temporarily unavailable, just retry.
-  * You will need network access, don't try to build from a private IP without NAT egress.
-  * Check the process list, make sure `auto_configure.php` isn't running before you attempt to log in.
 * Need access to the containers? Log into root, and...
   * Apache: `docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
@@ -58,6 +57,10 @@ It is recommended, in the strongest possible terms, that you familiarize yoursel
 6. The MySQL container will be restarted to pick up the newly constructed data directory, and at this point your backups should be completely restored.
 
 See the `mysql-xtrabackup` container for more information about the `xbackup.sh` and `xrecovery.sh` scripts called by the Duplicity wrappers.
+
+#### Backup Cross-Compatibility
+
+OpenEMR Cloud Express backup files are cross-compatible with the [Appliance](../appliance) and [Ubuntu Installer](../lightsail) deployment packages; you should be able to migrate your practice between any of the three if you move the backups onto the target.
 
 ### Next Steps
 
