@@ -18,7 +18,7 @@ Before you begin, you will need to create an SSH key pair in Amazon EC2, in the 
 6. The VPC and subnet defaults are adequate, but you may change them if you wish to integrate the new instance with an existing VPC.
 7. Select a security group to use for the new instance. The default group is adequate, but you should adjust the SSH port to allow traffic only from "My IP" instead of "Anywhere".
 8. Select the EC2 key pair (discussed in Requirements) to assign to this instance.
-9. Review these chances, and click *Launch with 1-Click* when you're ready.
+9. Review these changes, and click *Launch with 1-Click* when you're ready.
 
 ### Usage
 
