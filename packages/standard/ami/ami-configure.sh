@@ -31,8 +31,12 @@ ln -s /root/openemr-devops/packages/standard/scripts/restore.sh /root/restore.sh
 
 cd /root/openemr-devops/packages/standard
 if [ -z "$RECOVERYS3" ]; then
-  # launch the CFN-supplied docker-compose.yaml
-  ./docker-compose up --build -d
+  # configure, but do not launch, OpenEMR docker
+  ./docker-compose create
+  # load the Amazon CA
+  cp snippets/rds-combined-ca-bundle.pem /mnt/docker/volumes/standard_sitevolume/_data/documents/certificates/mysql-ca
+  # okay, now go
+  ./docker-compose up -d
 else
   # configure, but do not launch, OpenEMR docker
   ./docker-compose create

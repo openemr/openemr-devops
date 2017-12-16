@@ -14,7 +14,7 @@ ref_region = Ref('AWS::Region')
 ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
-docker_version = '@sha256:29d76778a535dd936094425fba87d727aac94639bccda0dbda10072c36b0b871'
+docker_version = ':5.0.0'
 
 def setInputs(t, args):
     paramLabels = {}

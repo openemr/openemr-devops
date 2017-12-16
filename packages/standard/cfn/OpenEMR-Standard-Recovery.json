@@ -573,7 +573,7 @@
                                             "  openemr:\n",
                                             "    restart: always\n",
                                             "    image: openemr/openemr",
-                                            "@sha256:29d76778a535dd936094425fba87d727aac94639bccda0dbda10072c36b0b871",
+                                            ":5.0.0",
                                             "\n",
                                             "    ports:\n",
                                             "    - 80:80\n",
