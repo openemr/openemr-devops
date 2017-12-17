@@ -12,5 +12,5 @@ curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages
 chmod a+x bootstrap.sh
 ./bootstrap.sh
 rm bootstrap.sh
-/root/openemr-devops/packages/standard/ami/ami-seal.sh
+./openemr-devops/packages/standard/ami/ami-seal.sh
 ```
