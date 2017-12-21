@@ -35,6 +35,12 @@ In a couple of minutes, once OpenEMR has finished the final setup procedures, it
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 
+#### Set Local Timezone
+
+1. See http://php.net/manual/en/timezones.php for the PHP timezone for your region.
+2. `sudo docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") sed -i 's^;date.timezone\ =^date.timezone = <your timezone>^' /etc/php7/php.ini`
+3. `sudo docker restart $(docker ps | grep _openemr | cut -f 1 -d " ")`
+
 ### HIPAA Compliance
 
 Although Amazon EC2 is a [HIPAA Eligible Service](https://aws.amazon.com/compliance/hipaa-eligible-services-reference/), the Marketplace-supplied instance of OpenEMR Cloud Express does not meet some parts of the HIPAA Security Rule. HIPAA Covered Entities may not store Protected Health Information on this product, and should confine their use of OpenEMR Cloud Express to demonstration or training use only.
