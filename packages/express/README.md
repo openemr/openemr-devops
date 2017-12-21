@@ -38,8 +38,9 @@ In a couple of minutes, once OpenEMR has finished the final setup procedures, it
 #### Set Local Timezone
 
 1. See http://php.net/manual/en/timezones.php for the PHP timezone for your region.
-2. `sudo docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") sed -i 's^;date.timezone\ =^date.timezone = <your timezone>^' /etc/php7/php.ini`
-3. `sudo docker restart $(docker ps | grep _openemr | cut -f 1 -d " ")`
+2. `sudo bash`
+3. `docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") sed -i 's^;date.timezone\ =^date.timezone = <your timezone>^' /etc/php7/php.ini`
+4. `docker restart $(docker ps | grep _openemr | cut -f 1 -d " ")`
 
 ### HIPAA Compliance
 
