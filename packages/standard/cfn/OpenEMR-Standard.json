@@ -5,7 +5,7 @@
         "RegionData": {
             "us-east-1": {
                 "MySQLVersion": "5.6.27",
-                "OpenEMRMktPlaceAMI": "ami-82e05bf8"
+                "OpenEMRMktPlaceAMI": "ami-ca0740b0"
             }
         }
     },

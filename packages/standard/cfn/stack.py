@@ -207,7 +207,7 @@ def setRecoveryInputs(t, args):
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
-            "OpenEMRMktPlaceAMI": "ami-82e05bf8",
+            "OpenEMRMktPlaceAMI": "ami-ca0740b0",
             "MySQLVersion": "5.6.27"
         }
     })
@@ -806,7 +806,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR Cloud Standard v5.0.0.6 cloud deployment'
+descString='OpenEMR Cloud Standard v5.0.0.7 cloud deployment'
 if (args.dev):
     descString+=' [developer]'
 if (args.recovery):
