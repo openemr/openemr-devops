@@ -65,6 +65,8 @@ def setInputs(t, args):
         Description = 'The OpenEMR admin account password',
         Type = 'String',
         MinLength = '8',
+        AllowedPattern = '[A-Za-z0-9/!@#%:_,\.\^\-\+]+',
+        ConstraintDescription = 'password must contain only letters, numbers, and /!@#%:_,.^-+',
         MaxLength = '41'
     ))
 
@@ -87,6 +89,8 @@ def setInputs(t, args):
         NoEcho = True,
         Description = 'The database admin account password',
         Type = 'String',
+        AllowedPattern = '[A-Za-z0-9/!@#%:_,\.\^\-\+]+',
+        ConstraintDescription = 'password must contain only letters, numbers, and /!@#%:_,.^-+',
         MinLength = '8',
         MaxLength = '41'
     ))
