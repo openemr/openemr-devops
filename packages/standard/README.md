@@ -22,9 +22,9 @@ Two restore procedures exist, an automated process using a CloudFormation recove
 Download the automated [stack recovery template](cfn/OpenEMR-Standard-Recovery.json) and create a stack with it in AWS CloudFormation. You'll be answered many of the same questions you were asked when you created your original OpenEMR Standard deployment, but the third section has three new questions.
 * Your *KMS key*'s Amazon Resource Name is available from the IAM control panel, under *Encryption Keys*. Remember that an ARN starts with `arn:aws...`. If you can't identify the key used by the stack you want to recover, check the *Resources* tab in CloudFormation for the *OpenEMRKey* entry.
 * Your *RDS Snapshot* is the copy of the database you want to restore. Find it in the RDS control panel, under *Snapshots*. This is an ARN, not a name, so click the snapshot to bring up the details.
-* You *S3 Bucket* is the bucket created for your backups and audit trail. You can find that under CloudFormation's *Resources* too. Do not provide an ARN here, only the name of the bucket.
+* Your *S3 Bucket* is the bucket created for your backups and audit trail. You can find that under CloudFormation's *Resources* too. Do not provide an ARN here, only the name of the bucket.
 
-With all the questions answered, click through to launch the recovery stack. Once the process has ended, your OpenEMR system will be operating in an entirely new VPC with newly allocated resources, without disturbing the original installation. This faculty can be used to recovery from disaster (reassigning DNS to the new adresses as necessary), to migrate an instance between regions, or just as a monthly scheduled test of the recovery procedure.  
+With all the questions answered, click through to launch the recovery stack. Once the process has ended, your OpenEMR system will be operating in an entirely new VPC with newly allocated resources, without disturbing the original installation. This faculty can be used to recover from disaster (reassigning DNS to the new addresses as necessary), to migrate an instance between regions, or just as a monthly scheduled test of the recovery procedure.  
 
 #### Manual Recovery
 
