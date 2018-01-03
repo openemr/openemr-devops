@@ -13,6 +13,12 @@ OpenEMR is a 2014 ONC Complete EHR Certified medical practice management solutio
 
 Your RDS instance will take regular automated snapshots at the configured time of day, and encrypted backups of the OpenEMR filesystem and patient records are made via Duplicity to a stack-provided KMS-managed S3 bucket.
 
+#### Administrator's Note
+
+Because the database backup and document backup are separate processes, you may find the default times selected by Amazon unsuitable. You can adjust the daily database backup time through the AWS RDS control panels &mdash; *Modify* your database instance and select a time in GMT that you'd prefer &mdash; and you can establish a new `crontab` if the default timing of `/etc/cron.daily/duplicity-backups` isn't consistent.
+
+Note that if you haven't taken these steps but you're running the backup process prior to either a test or a formal migration, you will want to trigger both a database snapshot (again in the RDS control panel) and run `/etc/cron.daily/duplicity-backups` on the OpenEMR instance as `root` to ensure mutually-consistent results.
+
 ### Restore Procedure
 
 Two restore procedures exist, an automated process using a CloudFormation recovery stack, and a more manual process requiring an administrator put the pieces together.
