@@ -99,10 +99,11 @@ There is an important and immediate flaw in the backup regimen to address &mdash
 
 ### launch.sh Command-Line Parameters
 
-* *-b* &lt;branch-name&gt;: load specific branch of openemr-devops repository
+* *-t* &lt;container-label&gt;: OpenEMR container to load from Docker hub
 * *-s* &lt;swap-size-GB&gt;: amount of swap to allocate for small instances; 0 for none
-* *-d*: use the developer docker-compose file variant
-  * use `build` directive instead of `image` to run repository containers instead of hub
+* *-b* &lt;branch-name&gt;: load specific branch of openemr-devops repository
+* *-d* &lt;openemr-dockerfile-version&gt;: developer mode
+  * uses `build` directive instead of `image` to run specific local repository Dockerfile
   * force MySQL port world-readable
 
 ## Support
