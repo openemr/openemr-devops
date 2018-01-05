@@ -1,19 +1,26 @@
 #!/bin/bash
 
-# OpenEMR Cloud Express launcher
-# usage: launch.sh -s 2 -b wip-feature -d
+# OpenEMR Lightsail single-server launcher
+# usage: launch.sh -t openemr:dev -s 2 -b wip-feature -d 5.0.0
+#        -t: specific OpenEMR container to load
 #        -s: amount of swap to allocate, in gigabytes
-#        -b: repo branch to load instead of master
-#        -d: start in developer mode, force local dockers and open ports
+#        -b: oe-devops repo branch to load instead of master
+#        -d: specify repository build file to start in developer mode (local containers, open ports)
 
 exec > /tmp/launch.log 2>&1
 
 SWAPAMT=1
 SWAPPATHNAME=/mnt/auto.swap
-REPOBRANCH=master
-DEVELOPERMODE=0
 
-while getopts "s:b:d" opt; do
+CURRENTDOCKER=openemr:latest
+OVERRIDEDOCKER=$TARGETDOCKER
+
+DEVELOPERMODE=0
+REPOBRANCH=master
+CURRENTBUILD=5.0.0
+OVERRIDEBUILD=$CURRENTBUILD
+
+while getopts "s:b:t:d" opt; do
   case $opt in
     s)
       SWAPAMT=$OPTARG
@@ -22,7 +29,11 @@ while getopts "s:b:d" opt; do
       REPOBRANCH=$OPTARG
       ;;
     d)
+      OVERRIDEBUILD=$OPTARG
       DEVELOPERMODE=1
+      ;;
+    t)
+      OVERRIDEDOCKER=$OPTARG
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
@@ -63,11 +74,16 @@ fi
 curl -L https://github.com/docker/compose/releases/download/1.15.0/docker-compose-`uname -s`-`uname -m` > docker-compose
 chmod +x docker-compose
 
-# I'm pretty sure I'm doing this wrong
 if [[ $DEVELOPERMODE == 0 ]]; then
   ln -s docker-compose.prod.yml docker-compose.yml
+  if [[ $CURRENTDOCKER != $TARGETDOCKER ]]; then
+    sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+  fi
 else
   ln -s docker-compose.dev.yml docker-compose.yml
+  if [[ $CURRENTBUILD != $TARGETBUILD ]]; then
+    sed -i "s^../../docker/openemr/$CURRENTBUILD^../../docker/openemr/$OVERRIDEBUILD^" docker-compose.yml
+  fi
 fi
 ./docker-compose up -d --build
 
