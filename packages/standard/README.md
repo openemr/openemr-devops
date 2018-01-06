@@ -39,7 +39,7 @@ With all the questions answered, click through to launch the recovery stack. Onc
   * A full copy of *both* EBS volumes attached to the OpenEMR instance.
   * A snapshot of the production database you are about to overwrite.
 * Restore from the most recent Duplicity backup with `sudo /root/restore.sh`.
-* Restore the most recent snapshot via the AWS console &mdash; make sure to restore the snapshot into the correct VPC and subnet &mdash; and update your OpenEMR configuration file (`globals.php`) with the endpoint of the new instance.
+* Restore the most recent snapshot via the AWS console &mdash; make sure to restore the snapshot into the correct VPC and subnet &mdash; and update your OpenEMR configuration file (`sqlconf.php`) with the endpoint of the new instance.
 
 ## Legal Note
 
