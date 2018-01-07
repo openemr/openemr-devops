@@ -13,7 +13,7 @@ ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
 currentBeanstalkKey = 'openemr.zip'
-currentBeanstalkPlatform = '64bit Amazon Linux 2017.03 v2.5.0 running PHP 7.0'
+currentBeanstalkPlatform = '64bit Amazon Linux 2017.09 v2.6.2 running PHP 7.0'
 
 def setInputs(t, args):
     t.add_parameter(Parameter(
@@ -1939,7 +1939,7 @@ def buildApplication(t, args):
             'EBEnvironment',
             DependsOn = ebDeps,
             ApplicationName = Ref('EBApplication'),
-            Description = 'OpenEMR v5.0.0 cloud deployment',
+            Description = 'OpenEMR v5.0.0.7 cloud deployment',
             SolutionStackName = args.beanstalk_version,
             VersionLabel = Ref('EBApplicationVersion'),
             OptionSettings = options
@@ -1979,7 +1979,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR v5.0.0.5 cloud deployment'
+descString='OpenEMR v5.0.0.7 cloud deployment'
 if (args.dev):
     descString+=' [developer]'
 if (args.force_bastion):

@@ -1,34 +1,48 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR v5.0.0.5 cloud deployment",
+    "Description": "OpenEMR v5.0.0.7 cloud deployment",
     "Mappings": {
         "RegionData": {
             "ap-southeast-2": {
                 "AmazonAMI": "ami-10918173",
-                "ApplicationSource": "beanstalk/openemr-5.0.0-008.zip",
+                "ApplicationSource": "openemr.zip",
                 "MySQLVersion": "5.6.27",
-                "RegionBucket": "openemr-apsoutheast2",
+                "RegionBucket": "openemr-cfn-apsoutheast2",
                 "UbuntuAMI": "ami-e94e5e8a"
+            },
+            "eu-central-1": {
+                "AmazonAMI": "ami-c7ee5ca8",
+                "ApplicationSource": "openemr.zip",
+                "MySQLVersion": "5.6.27",
+                "RegionBucket": "openemr-cfn-eucentral1",
+                "UbuntuAMI": "ami-1e339e71"
             },
             "eu-west-1": {
                 "AmazonAMI": "ami-d7b9a2b1",
-                "ApplicationSource": "beanstalk/openemr-5.0.0-008.zip",
+                "ApplicationSource": "openemr.zip",
                 "MySQLVersion": "5.6.27",
-                "RegionBucket": "openemr-euwest1",
+                "RegionBucket": "openemr-cfn-euwest1",
                 "UbuntuAMI": "ami-6d48500b"
             },
             "us-east-1": {
                 "AmazonAMI": "ami-a4c7edb2",
-                "ApplicationSource": "beanstalk/openemr-5.0.0-008.zip",
+                "ApplicationSource": "openemr.zip",
                 "MySQLVersion": "5.6.27",
-                "RegionBucket": "openemr-useast1",
+                "RegionBucket": "openemr-cfn-useast1",
                 "UbuntuAMI": "ami-d15a75c7"
+            },
+            "us-east-2": {
+                "AmazonAMI": "ami-c5062ba0",
+                "ApplicationSource": "openemr.zip",
+                "MySQLVersion": "5.6.27",
+                "RegionBucket": "openemr-cfn-useast2",
+                "UbuntuAMI": "ami-10547475"
             },
             "us-west-2": {
                 "AmazonAMI": "ami-6df1e514",
-                "ApplicationSource": "beanstalk/openemr-5.0.0-008.zip",
+                "ApplicationSource": "openemr.zip",
                 "MySQLVersion": "5.6.27",
-                "RegionBucket": "openemr-uswest2",
+                "RegionBucket": "openemr-cfn-uswest2",
                 "UbuntuAMI": "ami-835b4efa"
             }
         }
@@ -50,6 +64,12 @@
                         "/openemr"
                     ]
                 ]
+            }
+        },
+        "OpenEMRVPC": {
+            "Description": "OpenEMR VPC",
+            "Value": {
+                "Ref": "VPC"
             }
         }
     },
@@ -1295,14 +1315,14 @@
             "DependsOn": [
                 "DNSEFS",
                 "DNSRedis",
-                "DNSCouchDB",
-                "DNSMySQL"
+                "DNSMySQL",
+                "DNSCouchDB"
             ],
             "Properties": {
                 "ApplicationName": {
                     "Ref": "EBApplication"
                 },
-                "Description": "OpenEMR v5.0.0 cloud deployment",
+                "Description": "OpenEMR v5.0.0.7 cloud deployment",
                 "OptionSettings": [
                     {
                         "Namespace": "aws:autoscaling:launchconfiguration",
@@ -1463,7 +1483,7 @@
                         }
                     }
                 ],
-                "SolutionStackName": "64bit Amazon Linux 2017.03 v2.5.0 running PHP 7.0",
+                "SolutionStackName": "64bit Amazon Linux 2017.09 v2.6.2 running PHP 7.0",
                 "VersionLabel": {
                     "Ref": "EBApplicationVersion"
                 }
@@ -1532,12 +1552,16 @@
         "ElasticFileSystem": {
             "DeletionPolicy": "Retain",
             "Properties": {
+                "Encrypted": "true",
                 "FileSystemTags": [
                     {
                         "Key": "Name",
                         "Value": "OpenEMR Codebase"
                     }
-                ]
+                ],
+                "KmsKeyId": {
+                    "Ref": "OpenEMRKey"
+                }
             },
             "Type": "AWS::EFS::FileSystem"
         },
@@ -1560,7 +1584,7 @@
                             }
                         },
                         "files": {
-                            "/etc/cron.daily/backup.sh": {
+                            "/etc/cron.daily/backup": {
                                 "content": {
                                     "Fn::Join": [
                                         "",
