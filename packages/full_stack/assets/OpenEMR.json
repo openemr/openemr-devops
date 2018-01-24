@@ -1483,7 +1483,7 @@
                         }
                     }
                 ],
-                "SolutionStackName": "64bit Amazon Linux 2017.09 v2.6.2 running PHP 7.0",
+                "SolutionStackName": "64bit Amazon Linux 2017.09 v2.6.4 running PHP 7.0",
                 "VersionLabel": {
                     "Ref": "EBApplicationVersion"
                 }

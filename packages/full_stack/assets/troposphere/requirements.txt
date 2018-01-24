@@ -1,1 +1,1 @@
-troposphere==1.9.5
+troposphere==2.0.2

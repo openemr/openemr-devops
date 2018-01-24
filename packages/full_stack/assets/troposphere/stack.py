@@ -13,7 +13,7 @@ ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
 currentBeanstalkKey = 'openemr.zip'
-currentBeanstalkPlatform = '64bit Amazon Linux 2017.09 v2.6.2 running PHP 7.0'
+currentBeanstalkPlatform = '64bit Amazon Linux 2017.09 v2.6.4 running PHP 7.0'
 
 def setInputs(t, args):
     t.add_parameter(Parameter(
