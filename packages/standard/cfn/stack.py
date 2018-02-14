@@ -97,6 +97,61 @@ def setInputs(t, args):
 
     paramLabels["RDSPassword"] = { 'default': 'Pick a strong password for your MySQL administrator account.' }
 
+    t.add_parameter(Parameter(
+        'UserCidr',
+        Description = 'VPC CIDR block',
+        Default = '10.0.0.0/16',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserCidr"] = { 'default': 'Enter a valid CIDR for the OpenEMR VPC' }
+
+    t.add_parameter(Parameter(
+        'UserSubnetPublic1',
+        Description = 'Public Subnet (AZ #1)',
+        Default = '10.0.1.0/24',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserSubnetPublic1"] = { 'default': 'Add the first public subnet to the VPC' }
+
+    t.add_parameter(Parameter(
+        'UserSubnetPrivate1',
+        Description = 'Private Subnet (AZ #1)',
+        Default = '10.0.2.0/24',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserSubnetPrivate1"] = { 'default': 'Add the first private subnet to the VPC' }
+
+    t.add_parameter(Parameter(
+        'UserSubnetPublic2',
+        Description = 'Public Subnet (AZ #2)',
+        Default = '10.0.3.0/24',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserSubnetPublic2"] = { 'default': 'Add the second public subnet to the VPC' }
+
+    t.add_parameter(Parameter(
+        'UserSubnetPrivate2',
+        Description = 'Private Subnet (AZ #2)',
+        Default = '10.0.4.0/24',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserSubnetPrivate2"] = { 'default': 'Add the second private subnet to the VPC' }
+
     t.add_metadata({
         'AWS::CloudFormation::Interface': {
             'ParameterGroups': [
@@ -107,6 +162,10 @@ def setInputs(t, args):
                 {
                     'Label': {'default': 'Size and Capacity'},
                     'Parameters': ['WebserverInstanceSize', 'PracticeStorage', 'RDSInstanceSize', 'PatientRecords']
+                },
+                {
+                    'Label': {'default': 'Network Settings'},
+                    'Parameters': ['UserCidr', 'UserSubnetPublic1', 'UserSubnetPrivate1', 'UserSubnetPublic2', 'UserSubnetPrivate2']
                 },
             ],
             'ParameterLabels': paramLabels
@@ -184,6 +243,61 @@ def setRecoveryInputs(t, args):
 
     paramLabels["RecoveryS3Bucket"] = { 'default': 'What S3 bucket should we recover from?' }
 
+    t.add_parameter(Parameter(
+        'UserCidr',
+        Description = 'VPC CIDR block',
+        Default = '10.0.0.0/16',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserCidr"] = { 'default': 'Select a valid CIDR for the OpenEMR VPC' }
+
+    t.add_parameter(Parameter(
+        'UserSubnetPublic1',
+        Description = 'Public Subnet (AZ #1)',
+        Default = '10.0.1.0/24',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserSubnetPublic1"] = { 'default': 'Select a valid CIDR for the first public subnet' }
+
+    t.add_parameter(Parameter(
+        'UserSubnetPrivate1',
+        Description = 'Private Subnet (AZ #1)',
+        Default = '10.0.2.0/24',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserSubnetPrivate1"] = { 'default': 'Select a valid CIDR for the first private subnet' }
+
+    t.add_parameter(Parameter(
+        'UserSubnetPublic2',
+        Description = 'Public Subnet (AZ #2)',
+        Default = '10.0.3.0/24',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserSubnetPublic2"] = { 'default': 'Select a valid CIDR for the second public subnet' }
+
+    t.add_parameter(Parameter(
+        'UserSubnetPrivate2',
+        Description = 'Private Subnet (AZ #2)',
+        Default = '10.0.4.0/24',
+        Type = 'String',
+        AllowedPattern = '[0-9/\.]+',
+        ConstraintDescription = 'must be a valid CIDR'
+    ))
+
+    paramLabels["UserSubnetPrivate2"] = { 'default': 'Select a valid CIDR for the second private subnet' }
+
     t.add_metadata({
         'AWS::CloudFormation::Interface': {
             'ParameterGroups': [
@@ -200,7 +314,11 @@ def setRecoveryInputs(t, args):
                 {
                     'Label': {'default': 'Stack Recovery'},
                     'Parameters': ['RecoveryKMSKey', 'RecoveryRDSSnapshotARN', 'RecoveryS3Bucket']
-                }
+                },
+                {
+                    'Label': {'default': 'Network Settings'},
+                    'Parameters': ['UserCidr', 'UserSubnetPublic1', 'UserSubnetPrivate1', 'UserSubnetPublic2', 'UserSubnetPrivate2']
+                },
             ],
             'ParameterLabels': paramLabels
         }
@@ -233,7 +351,7 @@ def buildVPC(t, args):
     t.add_resource(
         ec2.VPC(
             'VPC',
-            CidrBlock='10.0.0.0/16',
+            CidrBlock=Ref('UserCidr'),
             EnableDnsSupport='true',
             EnableDnsHostnames='true'
         )
@@ -243,7 +361,7 @@ def buildVPC(t, args):
         ec2.Subnet(
             'PublicSubnet1',
             VpcId = Ref('VPC'),
-            CidrBlock = '10.0.1.0/24',
+            CidrBlock = Ref('UserSubnetPublic1'),
             AvailabilityZone = Select("0", GetAZs(""))
         )
     )
@@ -252,7 +370,7 @@ def buildVPC(t, args):
         ec2.Subnet(
             'PrivateSubnet1',
             VpcId = Ref('VPC'),
-            CidrBlock = '10.0.2.0/24',
+            CidrBlock = Ref('UserSubnetPrivate1'),
             AvailabilityZone = Select("0", GetAZs(""))
         )
     )
@@ -261,7 +379,7 @@ def buildVPC(t, args):
         ec2.Subnet(
             'PublicSubnet2',
             VpcId = Ref('VPC'),
-            CidrBlock = '10.0.3.0/24',
+            CidrBlock = Ref('UserSubnetPublic2'),
             AvailabilityZone = Select("1", GetAZs(""))
         )
     )
@@ -270,7 +388,7 @@ def buildVPC(t, args):
         ec2.Subnet(
             'PrivateSubnet2',
             VpcId = Ref('VPC'),
-            CidrBlock = '10.0.4.0/24',
+            CidrBlock = Ref('UserSubnetPrivate2'),
             AvailabilityZone = Select("1", GetAZs(""))
         )
     )

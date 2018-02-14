@@ -88,6 +88,18 @@
                         "RDSInstanceSize",
                         "PatientRecords"
                     ]
+                },
+                {
+                    "Label": {
+                        "default": "Network Settings"
+                    },
+                    "Parameters": [
+                        "UserCidr",
+                        "UserSubnetPublic1",
+                        "UserSubnetPrivate1",
+                        "UserSubnetPublic2",
+                        "UserSubnetPrivate2"
+                    ]
                 }
             ],
             "ParameterLabels": {
@@ -108,6 +120,21 @@
                 },
                 "RDSPassword": {
                     "default": "Pick a strong password for your MySQL administrator account."
+                },
+                "UserCidr": {
+                    "default": "Enter a valid CIDR for the OpenEMR VPC"
+                },
+                "UserSubnetPrivate1": {
+                    "default": "Add the first private subnet to the VPC"
+                },
+                "UserSubnetPrivate2": {
+                    "default": "Add the second private subnet to the VPC"
+                },
+                "UserSubnetPublic1": {
+                    "default": "Add the first public subnet to the VPC"
+                },
+                "UserSubnetPublic2": {
+                    "default": "Add the second public subnet to the VPC"
                 },
                 "WebserverInstanceSize": {
                     "default": "What size webserver should we create in EC2?"
@@ -180,6 +207,41 @@
             "MaxLength": "41",
             "MinLength": "8",
             "NoEcho": true,
+            "Type": "String"
+        },
+        "UserCidr": {
+            "AllowedPattern": "[0-9/\\.]+",
+            "ConstraintDescription": "must be a valid CIDR",
+            "Default": "10.0.0.0/16",
+            "Description": "VPC CIDR block",
+            "Type": "String"
+        },
+        "UserSubnetPrivate1": {
+            "AllowedPattern": "[0-9/\\.]+",
+            "ConstraintDescription": "must be a valid CIDR",
+            "Default": "10.0.2.0/24",
+            "Description": "Private Subnet (AZ #1)",
+            "Type": "String"
+        },
+        "UserSubnetPrivate2": {
+            "AllowedPattern": "[0-9/\\.]+",
+            "ConstraintDescription": "must be a valid CIDR",
+            "Default": "10.0.4.0/24",
+            "Description": "Private Subnet (AZ #2)",
+            "Type": "String"
+        },
+        "UserSubnetPublic1": {
+            "AllowedPattern": "[0-9/\\.]+",
+            "ConstraintDescription": "must be a valid CIDR",
+            "Default": "10.0.1.0/24",
+            "Description": "Public Subnet (AZ #1)",
+            "Type": "String"
+        },
+        "UserSubnetPublic2": {
+            "AllowedPattern": "[0-9/\\.]+",
+            "ConstraintDescription": "must be a valid CIDR",
+            "Default": "10.0.3.0/24",
+            "Description": "Public Subnet (AZ #2)",
             "Type": "String"
         },
         "WebserverInstanceSize": {
@@ -383,7 +445,9 @@
                         }
                     ]
                 },
-                "CidrBlock": "10.0.2.0/24",
+                "CidrBlock": {
+                    "Ref": "UserSubnetPrivate1"
+                },
                 "VpcId": {
                     "Ref": "VPC"
                 }
@@ -400,7 +464,9 @@
                         }
                     ]
                 },
-                "CidrBlock": "10.0.4.0/24",
+                "CidrBlock": {
+                    "Ref": "UserSubnetPrivate2"
+                },
                 "VpcId": {
                     "Ref": "VPC"
                 }
@@ -417,7 +483,9 @@
                         }
                     ]
                 },
-                "CidrBlock": "10.0.1.0/24",
+                "CidrBlock": {
+                    "Ref": "UserSubnetPublic1"
+                },
                 "VpcId": {
                     "Ref": "VPC"
                 }
@@ -434,7 +502,9 @@
                         }
                     ]
                 },
-                "CidrBlock": "10.0.3.0/24",
+                "CidrBlock": {
+                    "Ref": "UserSubnetPublic2"
+                },
                 "VpcId": {
                     "Ref": "VPC"
                 }
@@ -546,7 +616,9 @@
         },
         "VPC": {
             "Properties": {
-                "CidrBlock": "10.0.0.0/16",
+                "CidrBlock": {
+                    "Ref": "UserCidr"
+                },
                 "EnableDnsHostnames": "true",
                 "EnableDnsSupport": "true"
             },
