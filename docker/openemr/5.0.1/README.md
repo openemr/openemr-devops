@@ -16,7 +16,10 @@ It is recommended to specify a version number in production, to ensure your buil
 
 *You **need** to run an instance of mysql/mariadb as well and connect it to this container! You can then either use auto-setup with environment variables (see below) or you can manually set up, telling the server where to find the db.* The easiest way is to use `docker-compose`. The following `docker-compose.yml` file is a good example:
 ```yaml
-# Use admin/pass as user/password credentials
+# Use admin/pass as user/password credentials to login to openemr (from OE_USER and OE_PASS below)
+# MYSQL_HOST and MYSQL_ROOT_PASS are required for openemr
+# MYSQL_USER, MYSQL_PASS, OE_USER, MYSQL_PASS are optional for openemr and
+#   if not provided, then default to openemr, openemr, admin, and pass respectively.
 version: '3.1'
 services:
   mysql:
@@ -27,18 +30,18 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     restart: always
-    image: openemr/openemr
+    image: openemr/openemr:5.0.1
     ports:
     - 80:80
     - 443:443
     volumes:
     - logvolume01:/var/log
-    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
+    - sitevolume:/var/www/localhost/htdocs/openemr/sites
     environment:
       MYSQL_HOST: mysql
       MYSQL_ROOT_PASS: root
-      MYSQL_USER: root
-      MYSQL_PASS: root
+      MYSQL_USER: openemr
+      MYSQL_PASS: openemr
       OE_USER: admin
       OE_PASS: pass
     links:
