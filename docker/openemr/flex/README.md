@@ -52,7 +52,7 @@ volumes:
   logvolume01: {}
   sitevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/TheToolbox/457811557ac45c4475b97ee0f346c9df/raw/288c1e67946148524b26f364208ed929e67e88bb/docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/6972c32d0af9dc42b96f2ad7c11f06ef/raw/98f3de76aebb96fef9e05c9a01f99b06b928597a/openemr-flex-docker-example-docker-compose.yml)
 
 ## Environment Variables
 Required environment settings for flex are `FLEX_REPOSITORY` and (`FLEX_REPOSITORY_BRANCH` or `FLEX_REPOSITORY_TAG`). `FLEX_REPOSITORY` is the public git repository holding the openemr version that will be used. And `FLEX_REPOSITORY_BRANCH` or `FLEX_REPOSITORY_TAG` represent the branch or tag to use in this git repository, respectively.
