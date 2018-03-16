@@ -7,8 +7,10 @@ The docker image is maintained at https://hub.docker.com/r/openemr/openemr/
 
 Tags and their current aliases are shown below:
 
+ - `5.0.2`: dev
  - `5.0.1`: next
  - `5.0.0`: latest
+ - `flex`
 
 It is recommended to specify a version number in production, to ensure your build process pulls what you expect it to.
 
@@ -30,7 +32,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     restart: always
-    image: openemr/openemr:5.0.1
+    image: openemr/openemr:5.0.2
     ports:
     - 80:80
     - 443:443
@@ -50,7 +52,7 @@ volumes:
   logvolume01: {}
   sitevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/b629738d5d9aee6c2e8c036e7916c719/raw/369959a7baf769a0a294dd138b6ddc71402e0b1a/openemr-501-docker-example-docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/8f8dc5215b07d287f7dc0fed80bf2b9d/raw/08cb16812b2998283e58a2647c6d36521f7e7b7c/openemr-502-docker-example-docker-compose.yml)
 
 ## Environment Variables
 

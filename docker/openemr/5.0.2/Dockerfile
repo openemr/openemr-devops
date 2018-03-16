@@ -8,7 +8,7 @@ RUN apk add --no-cache \
     php7-mysqli php7-sockets perl mysql-client tar curl imagemagick-dev \
     python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron
 #clone openemr
-RUN git clone https://github.com/openemr/openemr.git --branch rel-501 --depth 1 \
+RUN git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
     && chmod 666 openemr/sites/default/sqlconf.php \
     && chmod 666 openemr/interface/modules/zend_modules/config/application.config.php \

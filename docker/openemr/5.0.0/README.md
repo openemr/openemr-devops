@@ -7,7 +7,7 @@ The docker image is maintained at https://hub.docker.com/r/openemr/openemr/
 
 Tags and their current aliases are shown below:
 
- - `5.0.0`: latest, stable
+ - `5.0.0`: latest
 
 It is recommended to specify a version number in production, to ensure your build process pulls what you expect it to.
 
