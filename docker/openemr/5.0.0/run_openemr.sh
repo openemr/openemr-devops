@@ -121,6 +121,11 @@ fi
 # ensure the auto_configure.php script has been removed
 rm -f auto_configure.php
 
+echo ""
+echo "Love OpenEMR? You can now support the project via the open collective:"
+echo " > https://opencollective.com/openemr/donate"
+echo ""
+
 echo "Starting cron daemon!"
 crond
 echo "Starting apache!"
