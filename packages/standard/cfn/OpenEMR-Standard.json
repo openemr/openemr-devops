@@ -734,32 +734,32 @@
                                             "    - logvolume01:/var/log\n",
                                             "    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default\n",
                                             "    environment:\n",
-                                            "      MYSQL_HOST: ",
+                                            "      MYSQL_HOST: '",
                                             {
                                                 "Fn::GetAtt": [
                                                     "RDSInstance",
                                                     "Endpoint.Address"
                                                 ]
                                             },
-                                            "\n",
+                                            "'\n",
                                             "      MYSQL_ROOT_USER: openemr\n",
-                                            "      MYSQL_ROOT_PASS: ",
+                                            "      MYSQL_ROOT_PASS: '",
                                             {
                                                 "Ref": "RDSPassword"
                                             },
-                                            "\n",
+                                            "'\n",
                                             "      MYSQL_USER: openemr\n",
-                                            "      MYSQL_PASS: ",
+                                            "      MYSQL_PASS: '",
                                             {
                                                 "Ref": "RDSPassword"
                                             },
-                                            "\n",
+                                            "'\n",
                                             "      OE_USER: admin\n",
-                                            "      OE_PASS: ",
+                                            "      OE_PASS: '",
                                             {
                                                 "Ref": "AdminPassword"
                                             },
-                                            "\n",
+                                            "'\n",
                                             "volumes:\n",
                                             "  logvolume01: {}\n",
                                             "  sitevolume: {}\n"
