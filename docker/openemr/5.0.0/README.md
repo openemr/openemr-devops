@@ -25,6 +25,8 @@ services:
     restart: always
     image: mysql
     command: ['mysqld','--character-set-server=utf8']
+    volumes:
+    - databasevolume:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
   openemr:
@@ -48,6 +50,7 @@ services:
 volumes:
   logvolume01: {}
   sitevolume: {}
+  databasevolume: {}
 ```
 [![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/TheToolbox/457811557ac45c4475b97ee0f346c9df/raw/288c1e67946148524b26f364208ed929e67e88bb/docker-compose.yml)
 
