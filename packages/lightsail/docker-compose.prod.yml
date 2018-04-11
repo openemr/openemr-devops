@@ -6,6 +6,7 @@ services:
     command: ['mysqld','--character-set-server=utf8']
     volumes:
     - sqlbackup:/mnt/backups
+    - databasevolume:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
   openemr:
