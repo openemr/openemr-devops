@@ -8,7 +8,8 @@ services:
     command: ['mysqld','--character-set-server=utf8']
     volumes:
     - sqlbackup:/mnt/backups
-    #this forces mysql to use utf8, versus latin-1 (the default). Necessary for multilingual OpenEMR.
+    # declining to define volume for ephemeral dev container
+    #- databasevolume:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
   openemr:
