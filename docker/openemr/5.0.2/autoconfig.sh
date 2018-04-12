@@ -8,37 +8,40 @@
 #    - Setting openemr parameters OE_USER, OE_PASS
 set -e
 
+# ensure a self-signed cert has been generated and is referenced
+if ! [ -f /etc/ssl/private/selfsigned.key.pem ]; then
+    openssl req -x509 -newkey rsa:4096 \
+    -keyout /etc/ssl/private/selfsigned.key.pem \
+    -out /etc/ssl/certs/selfsigned.cert.pem \
+    -days 365 -nodes \
+    -subj "/C=xx/ST=x/L=x/O=x/OU=x/CN=localhost" 
+fi
+rm -f /etc/ssl/certs/webserver.cert.pem
+rm -f /etc/ssl/private/webserver.key.pem
+ln -s /etc/ssl/certs/selfsigned.cert.pem /etc/ssl/certs/webserver.cert.pem 
+ln -s /etc/ssl/private/selfsigned.key.pem /etc/ssl/private/webserver.key.pem 
+
 if [ "$DOMAIN" != "" ]; then
     if [ "$EMAIL" != "" ]; then 
         echo "WARNING: SETTING AN EMAIL VIA \$EMAIL is HIGHLY RECOMMENDED IN ORDER TO"
         echo "         RECEIVE ALERTS FROM LETSENCRYPT ABOUT YOUR SSL CERTIFICATE."
     fi
-    # if a domain has been set
-    /usr/sbin/httpd -k start
-    sleep 1
-    certbot certonly --webroot -n -w /var/www/localhost/htdocs/openemr/ -d $DOMAIN -m $EMAIL --agree-tos
-    /usr/sbin/httpd -k stop
+    # if a domain has been set, set up LE and target those certs
+
+    if ! [ -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ]; then
+        /usr/sbin/httpd -k start
+        sleep 2
+        certbot certonly --webroot -n -w /var/www/localhost/htdocs/openemr/ -d $DOMAIN -m $EMAIL --agree-tos
+        /usr/sbin/httpd -k stop
+        echo "1 23  *   *   *   certbot renew -q --post-hook \"httpd -k graceful\"" >> /etc/crontabs/root
+    fi
     
-    echo "1\t23\t*\t*\t*\tcertbot renew -q --post-hook \"httpd -k graceful\"" >> /etc/crontabs/root
+    
     # run letsencrypt as a daemon and reference the correct cert
     rm -f /etc/ssl/certs/webserver.cert.pem
     rm -f /etc/ssl/private/webserver.key.pem
     ln -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/ssl/certs/webserver.cert.pem
     ln -s /etc/letsencrypt/live/$DOMAIN/privkey.pem /etc/ssl/private/webserver.key.pem
-else
-    # if a domain hasn't been set
-    # ensure a self-signed cert has been generated and is referenced
-    if ! [ -f /etc/ssl/private/selfsigned.key.pem ]; then
-        openssl req -x509 -newkey rsa:4096 \
-        -keyout /etc/ssl/private/selfsigned.key.pem \
-        -out /etc/ssl/certs/selfsigned.cert.pem \
-        -days 365 -nodes \
-        -subj "/C=xx/ST=x/L=x/O=x/OU=x/CN=localhost" 
-    fi
-    rm -f /etc/ssl/certs/webserver.cert.pem
-    rm -f /etc/ssl/private/webserver.key.pem
-    ln -s /etc/ssl/certs/selfsigned.cert.pem /etc/ssl/certs/webserver.cert.pem 
-    ln -s /etc/ssl/private/selfsigned.key.pem /etc/ssl/private/webserver.key.pem 
 fi
 
 auto_setup() {

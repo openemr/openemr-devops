@@ -30,7 +30,7 @@ if [ "$DOMAIN" != "" ]; then
 
     if ! [ -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ]; then
         /usr/sbin/httpd -k start
-        sleep 1
+        sleep 2
         certbot certonly --webroot -n -w /var/www/localhost/htdocs/openemr/ -d $DOMAIN -m $EMAIL --agree-tos
         /usr/sbin/httpd -k stop
         echo "1 23  *   *   *   certbot renew -q --post-hook \"httpd -k graceful\"" >> /etc/crontabs/root
