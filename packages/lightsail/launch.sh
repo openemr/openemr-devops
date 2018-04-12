@@ -76,12 +76,14 @@ chmod +x docker-compose
 
 if [[ $DEVELOPERMODE == 0 ]]; then
   ln -s docker-compose.prod.yml docker-compose.yml
-  if [[ $CURRENTDOCKER != $TARGETDOCKER ]]; then
+  if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
+    echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
     sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
   fi
 else
   ln -s docker-compose.dev.yml docker-compose.yml
-  if [[ $CURRENTBUILD != $TARGETBUILD ]]; then
+  if [[ $CURRENTBUILD != $OVERRIDEBUILD ]]; then
+    echo launch.sh: switching to developer build $OVERRIDEBUILD, from $CURRENTBUILD
     sed -i "s^../../docker/openemr/$CURRENTBUILD^../../docker/openemr/$OVERRIDEBUILD^" docker-compose.yml
   fi
 fi
