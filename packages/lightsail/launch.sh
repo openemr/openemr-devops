@@ -20,7 +20,7 @@ REPOBRANCH=master
 CURRENTBUILD=5.0.0
 OVERRIDEBUILD=$CURRENTBUILD
 
-while getopts "s:b:t:d" opt; do
+while getopts "s:b:t:d:" opt; do
   case $opt in
     s)
       SWAPAMT=$OPTARG
@@ -36,7 +36,7 @@ while getopts "s:b:t:d" opt; do
       OVERRIDEDOCKER=$OPTARG
       ;;
     \?)
-      echo "Invalid option: -$OPTARG" >&2
+      echo "Invalid option: -$opt" >&2
       exit 1
       ;;
   esac
