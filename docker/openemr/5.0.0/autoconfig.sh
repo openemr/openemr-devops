@@ -14,7 +14,11 @@ if [ "$DOMAIN" != "" ]; then
         echo "         RECEIVE ALERTS FROM LETSENCRYPT ABOUT YOUR SSL CERTIFICATE."
     fi
     # if a domain has been set
+    /usr/sbin/httpd -k start
+    sleep 1
     certbot certonly --webroot -n -w /var/www/localhost/htdocs/openemr/ -d $DOMAIN -m $EMAIL --agree-tos
+    /usr/sbin/httpd -k stop
+    
     echo "1\t23\t*\t*\t*\tcertbot renew -q --post-hook \"httpd -k graceful\"" >> /etc/crontabs/root
     # run letsencrypt as a daemon and reference the correct cert
     rm -f /etc/ssl/certs/webserver.cert.pem
