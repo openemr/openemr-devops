@@ -34,3 +34,4 @@ volumes:
   logvolume01: {}
   sitevolume: {}
   sqlbackup: {}
+  #databasevolume: {}
