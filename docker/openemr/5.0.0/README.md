@@ -45,7 +45,7 @@ services:
       MYSQL_PASS: openemr
       OE_USER: admin
       OE_PASS: pass
-    links:
+    depends_on:
     - mysql
 volumes:
   logvolume01: {}
