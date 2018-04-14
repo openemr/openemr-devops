@@ -28,6 +28,8 @@ services:
     restart: always
     image: mysql
     command: ['mysqld','--character-set-server=utf8']
+    volumes:
+    - databasevolume:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
   openemr:
@@ -46,13 +48,14 @@ services:
       MYSQL_PASS: openemr
       OE_USER: admin
       OE_PASS: pass
-    links:
+    depends_on:
     - mysql
 volumes:
   logvolume01: {}
   sitevolume: {}
+  databasevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/8f8dc5215b07d287f7dc0fed80bf2b9d/raw/08cb16812b2998283e58a2647c6d36521f7e7b7c/openemr-502-docker-example-docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/8f8dc5215b07d287f7dc0fed80bf2b9d/raw/4f05017ccad17cee1cd3f309f63c3470233eb179/openemr-502-docker-example-docker-compose.yml)
 
 ## Environment Variables
 
