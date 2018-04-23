@@ -1,7 +1,7 @@
 #!/bin/sh
 # to be run by root with OpenEMR root dir as the CWD
 
-./autoconfig.sh
+sh autoconfig.sh
 
 echo ""
 echo "Love OpenEMR? You can now support the project via the open collective:"
