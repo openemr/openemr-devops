@@ -1,6 +1,6 @@
 # OpenEMR Cloud Express Plus
 
-This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.0 instance on an AWS Ubuntu server (and several other Amazon services), providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information.
+This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.1 instance on an AWS Ubuntu server (and several other Amazon services), providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Installation
 

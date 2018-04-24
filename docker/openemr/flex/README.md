@@ -8,9 +8,9 @@ The docker image is maintained at https://hub.docker.com/r/openemr/openemr/
 Tags and their current aliases are shown below:
 
  - `flex`: (special development docker that can use OpenEMR version from any public git repository)
- - `5.0.2`: dev
- - `5.0.1`: next
- - `5.0.0`: latest
+ - `5.0.2`: next
+ - `5.0.1`: latest
+ - `5.0.0`
 
 ## How can I just spin up OpenEMR?
 
