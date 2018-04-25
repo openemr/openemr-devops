@@ -4,7 +4,7 @@ services:
     restart: always
     image: openemr/mysql-xtrabackup:latest
     command: ['mysqld','--character-set-server=utf8']
-    volumes:s
+    volumes:
     - sqlbackup:/mnt/backups
     - databasevolume:/var/lib/mysql
     environment:
