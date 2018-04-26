@@ -1,47 +1,47 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR v5.0.0.7 cloud deployment",
+    "Description": "OpenEMR v5.0.1 cloud deployment",
     "Mappings": {
         "RegionData": {
             "ap-southeast-2": {
                 "AmazonAMI": "ami-10918173",
                 "ApplicationSource": "openemr.zip",
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "RegionBucket": "openemr-cfn-apsoutheast2",
                 "UbuntuAMI": "ami-e94e5e8a"
             },
             "eu-central-1": {
                 "AmazonAMI": "ami-c7ee5ca8",
                 "ApplicationSource": "openemr.zip",
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "RegionBucket": "openemr-cfn-eucentral1",
                 "UbuntuAMI": "ami-1e339e71"
             },
             "eu-west-1": {
                 "AmazonAMI": "ami-d7b9a2b1",
                 "ApplicationSource": "openemr.zip",
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "RegionBucket": "openemr-cfn-euwest1",
                 "UbuntuAMI": "ami-6d48500b"
             },
             "us-east-1": {
                 "AmazonAMI": "ami-a4c7edb2",
                 "ApplicationSource": "openemr.zip",
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "RegionBucket": "openemr-cfn-useast1",
                 "UbuntuAMI": "ami-d15a75c7"
             },
             "us-east-2": {
                 "AmazonAMI": "ami-c5062ba0",
                 "ApplicationSource": "openemr.zip",
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "RegionBucket": "openemr-cfn-useast2",
                 "UbuntuAMI": "ami-10547475"
             },
             "us-west-2": {
                 "AmazonAMI": "ami-6df1e514",
                 "ApplicationSource": "openemr.zip",
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "RegionBucket": "openemr-cfn-uswest2",
                 "UbuntuAMI": "ami-835b4efa"
             }
@@ -1322,7 +1322,7 @@
                 "ApplicationName": {
                     "Ref": "EBApplication"
                 },
-                "Description": "OpenEMR v5.0.0.7 cloud deployment",
+                "Description": "OpenEMR v5.0.1 cloud deployment",
                 "OptionSettings": [
                     {
                         "Namespace": "aws:autoscaling:launchconfiguration",
@@ -1483,7 +1483,7 @@
                         }
                     }
                 ],
-                "SolutionStackName": "64bit Amazon Linux 2017.09 v2.6.4 running PHP 7.0",
+                "SolutionStackName": "64bit Amazon Linux 2017.09 v2.6.6 running PHP 7.0",
                 "VersionLabel": {
                     "Ref": "EBApplicationVersion"
                 }

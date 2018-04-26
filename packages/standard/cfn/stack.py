@@ -328,21 +328,21 @@ def setRecoveryInputs(t, args):
 
 def setMappings(t, args):
     t.add_mapping('RegionData', {
-        "ap-northeast-1" : { "OpenEMRMktPlaceAMI": "ami-17dcbd71", "MySQLVersion": "5.6.27" },
-        "ap-northeast-2" : { "OpenEMRMktPlaceAMI": "ami-5afa5934", "MySQLVersion": "5.6.27" },
-        "ap-south-1" : { "OpenEMRMktPlaceAMI": "ami-0edf8961", "MySQLVersion": "5.6.27" },
-        "ap-southeast-1" : { "OpenEMRMktPlaceAMI": "ami-8d4f31f1", "MySQLVersion": "5.6.27" },
-        "ap-southeast-2" : { "OpenEMRMktPlaceAMI": "ami-4316e921", "MySQLVersion": "5.6.27" },
+        "ap-northeast-1" : { "OpenEMRMktPlaceAMI": "ami-17dcbd71", "MySQLVersion": "5.6.39" },
+        "ap-northeast-2" : { "OpenEMRMktPlaceAMI": "ami-5afa5934", "MySQLVersion": "5.6.39" },
+        "ap-south-1" : { "OpenEMRMktPlaceAMI": "ami-0edf8961", "MySQLVersion": "5.6.39" },
+        "ap-southeast-1" : { "OpenEMRMktPlaceAMI": "ami-8d4f31f1", "MySQLVersion": "5.6.39" },
+        "ap-southeast-2" : { "OpenEMRMktPlaceAMI": "ami-4316e921", "MySQLVersion": "5.6.39" },
         "ca-central-1" : { "OpenEMRMktPlaceAMI": "ami-6e71f40a", "MySQLVersion": "5.6.39" },
-        "eu-central-1" : { "OpenEMRMktPlaceAMI": "ami-7ce57b13", "MySQLVersion": "5.6.27" },
-        "eu-west-1" : { "OpenEMRMktPlaceAMI": "ami-d435aead", "MySQLVersion": "5.6.27" },
+        "eu-central-1" : { "OpenEMRMktPlaceAMI": "ami-7ce57b13", "MySQLVersion": "5.6.39" },
+        "eu-west-1" : { "OpenEMRMktPlaceAMI": "ami-d435aead", "MySQLVersion": "5.6.39" },
         "eu-west-2" : { "OpenEMRMktPlaceAMI": "ami-d7e4ffb3", "MySQLVersion": "5.6.39" },
         "eu-west-3" : { "OpenEMRMktPlaceAMI": "ami-b2d660cf", "MySQLVersion": "5.6.39" },
-        "sa-east-1" : { "OpenEMRMktPlaceAMI": "ami-75b0fd19", "MySQLVersion": "5.6.27" },
-        "us-east-1" : { "OpenEMRMktPlaceAMI": "ami-ca0740b0", "MySQLVersion": "5.6.27" },
+        "sa-east-1" : { "OpenEMRMktPlaceAMI": "ami-75b0fd19", "MySQLVersion": "5.6.39" },
+        "us-east-1" : { "OpenEMRMktPlaceAMI": "ami-ca0740b0", "MySQLVersion": "5.6.39" },
         "us-east-2" : { "OpenEMRMktPlaceAMI": "ami-a3cde7c6", "MySQLVersion": "5.6.39" },
-        "us-west-1" : { "OpenEMRMktPlaceAMI": "ami-54a9ab34", "MySQLVersion": "5.6.27" },
-        "us-west-2" : { "OpenEMRMktPlaceAMI": "ami-7335870b", "MySQLVersion": "5.6.27" }
+        "us-west-1" : { "OpenEMRMktPlaceAMI": "ami-54a9ab34", "MySQLVersion": "5.6.39" },
+        "us-west-2" : { "OpenEMRMktPlaceAMI": "ami-7335870b", "MySQLVersion": "5.6.39" }
     })
 
     return t
