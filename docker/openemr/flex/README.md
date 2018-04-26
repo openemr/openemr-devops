@@ -25,7 +25,7 @@ version: '3.1'
 services:
   mysql:
     restart: always
-    image: mysql
+    image: mariadb
     command: ['mysqld','--character-set-server=utf8']
     volumes:
     - databasevolume:/var/lib/mysql
@@ -56,7 +56,7 @@ volumes:
   sitevolume: {}
   databasevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/6972c32d0af9dc42b96f2ad7c11f06ef/raw/4dc42d6e3bac535ef06f409ad5b9d423a0f5e137/openemr-flex-docker-example-docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/6972c32d0af9dc42b96f2ad7c11f06ef/raw/8cec003c103e0fd29b5ba34215e2f8f5af86c439/openemr-flex-docker-example-docker-compose.yml)
 
 ## Environment Variables
 Required environment settings for flex are `FLEX_REPOSITORY` and (`FLEX_REPOSITORY_BRANCH` or `FLEX_REPOSITORY_TAG`). `FLEX_REPOSITORY` is the public git repository holding the openemr version that will be used. And `FLEX_REPOSITORY_BRANCH` or `FLEX_REPOSITORY_TAG` represent the branch or tag to use in this git repository, respectively.
