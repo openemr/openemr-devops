@@ -14,7 +14,7 @@ This process will install a fully-functional, secured, preconfigured OpenEMR 5.0
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > ./launch.sh
 chmod +x ./launch.sh && sudo ./launch.sh
 ```
-5. Select an instance size that meets your budget.
+5. Select an instance size (minimum 'micro') that meets your budget.
 6. Name your instance and click *Create*.
 7. The instance will shortly be visible as `Pending`, and then `Active`.
 8. Before you connect, select `...`, then `Manage`, then the `Networking` tab, and add the `HTTPS` port to the firewall pass-through.
@@ -29,7 +29,7 @@ chmod +x ./launch.sh && sudo ./launch.sh
 
 #### Requirements
 
-* Ubuntu 16.04 server (root access, 512 MB RAM, 20 GB storage)
+* Ubuntu 16.04 server (root access, 1 GB RAM, 20 GB storage)
 * Outbound internet access (during installation)
 
 #### Synopsis
