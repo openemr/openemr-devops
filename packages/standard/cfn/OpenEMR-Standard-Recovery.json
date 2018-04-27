@@ -701,7 +701,7 @@
                                             "  openemr:\n",
                                             "    restart: always\n",
                                             "    image: openemr/openemr",
-                                            ":5.0.0",
+                                            ":5.0.1",
                                             "\n",
                                             "    ports:\n",
                                             "    - 80:80\n",
