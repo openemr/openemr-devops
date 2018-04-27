@@ -36,7 +36,7 @@ if [ -z "$RECOVERYS3" ]; then
   # load the Amazon CA
   cp snippets/rds-combined-ca-bundle.pem /mnt/docker/volumes/standard_sitevolume/_data/default/documents/certificates/mysql-ca
   # I'm not convinced this is stable
-  chown 100 /mnt/docker/volumes/standard_sitevolume/_data/documents/certificates/mysql-ca
+  chown 100 /mnt/docker/volumes/standard_sitevolume/_data/default/documents/certificates/mysql-ca
   # okay, now go
   ./docker-compose up -d
 else
