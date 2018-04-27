@@ -51,7 +51,7 @@ docker exec $OE_INSTANCE chmod 400 /var/www/localhost/htdocs/openemr/sql_upgrade
 
 ### Step Three
 
-Navigate to `http://&lt;_your-instance_&gt;/sql_upgrade.php` and select `5.0.0`.
+Navigate to `http://<your-instance>/sql_upgrade.php` and select `5.0.0`.
 
 ### Step Four
 
