@@ -14,7 +14,7 @@ while getopts "b:d:" opt; do
       DOCKERLABEL=$OPTARG
       ;;
     \?)
-      echo "Invalid option: -$OPTARG" >&2
+      echo "Invalid option: -$opt" >&2
       exit 1
       ;;
   esac
