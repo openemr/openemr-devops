@@ -53,6 +53,7 @@ To install, run the same launch script, make sure you're provided inbound access
   * Apache: `docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
+* Upgrading to new version? See [our guide](upgrade.md).
 
 ### Lightsail Administration Notes
 
