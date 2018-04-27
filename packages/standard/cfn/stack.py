@@ -14,7 +14,7 @@ ref_region = Ref('AWS::Region')
 ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
-docker_version = ':5.0.0'
+docker_version = ':5.0.1'
 
 def setInputs(t, args):
     paramLabels = {}
@@ -339,7 +339,7 @@ def setMappings(t, args):
         "eu-west-2" : { "OpenEMRMktPlaceAMI": "ami-d7e4ffb3", "MySQLVersion": "5.6.39" },
         "eu-west-3" : { "OpenEMRMktPlaceAMI": "ami-b2d660cf", "MySQLVersion": "5.6.39" },
         "sa-east-1" : { "OpenEMRMktPlaceAMI": "ami-75b0fd19", "MySQLVersion": "5.6.39" },
-        "us-east-1" : { "OpenEMRMktPlaceAMI": "ami-ca0740b0", "MySQLVersion": "5.6.39" },
+        "us-east-1" : { "OpenEMRMktPlaceAMI": "ami-c977c7b6", "MySQLVersion": "5.6.39" },
         "us-east-2" : { "OpenEMRMktPlaceAMI": "ami-a3cde7c6", "MySQLVersion": "5.6.39" },
         "us-west-1" : { "OpenEMRMktPlaceAMI": "ami-54a9ab34", "MySQLVersion": "5.6.39" },
         "us-west-2" : { "OpenEMRMktPlaceAMI": "ami-7335870b", "MySQLVersion": "5.6.39" }
@@ -939,7 +939,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR Cloud Standard v5.0.0.7 cloud deployment'
+descString='OpenEMR Cloud Standard v5.0.1 cloud deployment'
 if (args.dev):
     descString+=' [developer]'
 if (args.recovery):
