@@ -339,7 +339,7 @@ def setMappings(t, args):
         "eu-west-2" : { "OpenEMRMktPlaceAMI": "ami-d7e4ffb3", "MySQLVersion": "5.6.39" },
         "eu-west-3" : { "OpenEMRMktPlaceAMI": "ami-b2d660cf", "MySQLVersion": "5.6.39" },
         "sa-east-1" : { "OpenEMRMktPlaceAMI": "ami-75b0fd19", "MySQLVersion": "5.6.39" },
-        "us-east-1" : { "OpenEMRMktPlaceAMI": "ami-2463d35b", "MySQLVersion": "5.6.39" },
+        "us-east-1" : { "OpenEMRMktPlaceAMI": "ami-73e15c0c", "MySQLVersion": "5.6.39" },
         "us-east-2" : { "OpenEMRMktPlaceAMI": "ami-a3cde7c6", "MySQLVersion": "5.6.39" },
         "us-west-1" : { "OpenEMRMktPlaceAMI": "ami-54a9ab34", "MySQLVersion": "5.6.39" },
         "us-west-2" : { "OpenEMRMktPlaceAMI": "ami-7335870b", "MySQLVersion": "5.6.39" }
@@ -939,7 +939,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR Cloud Standard v5.0.1 cloud deployment'
+descString='OpenEMR Cloud Standard v5.0.1-1 cloud deployment'
 if (args.dev):
     descString+=' [developer]'
 if (args.recovery):

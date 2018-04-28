@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR Cloud Standard v5.0.1 cloud deployment",
+    "Description": "OpenEMR Cloud Standard v5.0.1-1 cloud deployment",
     "Mappings": {
         "RegionData": {
             "ap-northeast-1": {
@@ -49,7 +49,7 @@
             },
             "us-east-1": {
                 "MySQLVersion": "5.6.39",
-                "OpenEMRMktPlaceAMI": "ami-2463d35b"
+                "OpenEMRMktPlaceAMI": "ami-73e15c0c"
             },
             "us-east-2": {
                 "MySQLVersion": "5.6.39",
