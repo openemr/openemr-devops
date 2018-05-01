@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR v5.0.1 cloud deployment",
+    "Description": "OpenEMR v5.0.1-1 cloud deployment",
     "Mappings": {
         "RegionData": {
             "ap-southeast-2": {
