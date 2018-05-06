@@ -3,7 +3,7 @@
 exec > /var/log/openemr-launch.log 2>&1
 
 REPOBRANCH=master
-DOCKERLABEL=:5.0.0
+DOCKERLABEL=:5.0.1
 
 while getopts "b:d:" opt; do
   case $opt in
@@ -14,7 +14,7 @@ while getopts "b:d:" opt; do
       DOCKERLABEL=$OPTARG
       ;;
     \?)
-      echo "Invalid option: -$OPTARG" >&2
+      echo "Invalid option: -$opt" >&2
       exit 1
       ;;
   esac

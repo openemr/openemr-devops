@@ -35,7 +35,7 @@ def setInputs(t, args):
         Default = 't2.small',
         Type = 'String',
         AllowedValues = [
-            't2.nano', 't2.micro', 't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
+            't2.micro', 't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
         ]
     ))
 
@@ -470,7 +470,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR Express Plus v5.0.0.5 cloud deployment'
+descString='OpenEMR Express Plus v5.0.1-1 cloud deployment'
 t.add_description(descString)
 
 # holdover from parent

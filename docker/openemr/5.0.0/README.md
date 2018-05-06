@@ -7,7 +7,7 @@ The docker image is maintained at https://hub.docker.com/r/openemr/openemr/
 
 Tags and their current aliases are shown below:
 
- - `5.0.0`: latest
+ - `5.0.1`: latest
 
 It is recommended to specify a version number in production, to ensure your build process pulls what you expect it to.
 
@@ -23,7 +23,7 @@ version: '3.1'
 services:
   mysql:
     restart: always
-    image: mysql
+    image: mariadb:10.2
     command: ['mysqld','--character-set-server=utf8']
     volumes:
     - databasevolume:/var/lib/mysql
@@ -45,14 +45,14 @@ services:
       MYSQL_PASS: openemr
       OE_USER: admin
       OE_PASS: pass
-    links:
+    depends_on:
     - mysql
 volumes:
   logvolume01: {}
   sitevolume: {}
   databasevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/TheToolbox/457811557ac45c4475b97ee0f346c9df/raw/288c1e67946148524b26f364208ed929e67e88bb/docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/988d5105e38ffd8f6fb3cf49bbfae9f0/raw/1811364f169261286dbaf72d78f5d51b37914d90/openemr-500-docker-example-docker-compose.yml)
 
 ## Environment Variables
 

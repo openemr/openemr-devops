@@ -8,9 +8,9 @@ The docker image is maintained at https://hub.docker.com/r/openemr/openemr/
 Tags and their current aliases are shown below:
 
  - `flex`: (special development docker that can use OpenEMR version from any public git repository)
- - `5.0.2`: dev
- - `5.0.1`: next
- - `5.0.0`: latest
+ - `5.0.2`: next
+ - `5.0.1`: latest
+ - `5.0.0`
 
 ## How can I just spin up OpenEMR?
 
@@ -25,8 +25,10 @@ version: '3.1'
 services:
   mysql:
     restart: always
-    image: mysql
+    image: mariadb:10.2
     command: ['mysqld','--character-set-server=utf8']
+    volumes:
+    - databasevolume:/var/lib/mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
   openemr:
@@ -47,13 +49,14 @@ services:
       OE_PASS: pass
       FLEX_REPOSITORY: https://github.com/openemr/openemr.git
       FLEX_REPOSITORY_BRANCH: master
-    links:
+    depends_on:
     - mysql
 volumes:
   logvolume01: {}
   sitevolume: {}
+  databasevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/6972c32d0af9dc42b96f2ad7c11f06ef/raw/98f3de76aebb96fef9e05c9a01f99b06b928597a/openemr-flex-docker-example-docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/6972c32d0af9dc42b96f2ad7c11f06ef/raw/0549cfacc77cd537fa36568e3db41d8879b395ec/openemr-flex-docker-example-docker-compose.yml)
 
 ## Environment Variables
 Required environment settings for flex are `FLEX_REPOSITORY` and (`FLEX_REPOSITORY_BRANCH` or `FLEX_REPOSITORY_TAG`). `FLEX_REPOSITORY` is the public git repository holding the openemr version that will be used. And `FLEX_REPOSITORY_BRANCH` or `FLEX_REPOSITORY_TAG` represent the branch or tag to use in this git repository, respectively.

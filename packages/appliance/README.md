@@ -1,4 +1,4 @@
-# OpenEMR 5.0.0 Appliance
+# OpenEMR 5.0.1 Appliance
 
 A self-contained, pre-configured OpenEMR virtual appliance, compatible with VirtualBox and VMWare.
 
@@ -13,10 +13,10 @@ A self-contained, pre-configured OpenEMR virtual appliance, compatible with Virt
 This example focuses on installing the OpenEMR appliance on a 64-bit Windows 7 or 10 desktop via VirtualBox.
 
 1. Download and install [VirtualBox](https://www.virtualbox.org/wiki/Downloads).
-2. Download the [OpenEMR Appliance](https://downloads.sourceforge.net/openemr/OpenEMR-Appliance-5-0-0-5_1.ova) OVA.
-   * Current release: 2017-10-31
-   * MD5: 8acfc510141078f2659cc540a95ce6f2
-   * SHA-1: ed0f649ac8ce99ad8db1cb22cfd3d418d649dbf3
+2. Download the [OpenEMR Appliance](https://downloads.sourceforge.net/openemr/OpenEMR-Appliance-5-0-1-1.ova) OVA.
+   * Current release: 2018-04-30
+   * MD5: 80DA5815EAB8E3B2D878CF84345ECD2C
+   * SHA-1: 29B92BFE55A5EA27AAC1A64B8F4305E109C57769
 3. Start VirtualBox, and select **Import Appliance** from the **File** menu.
 4. Select the download OVA and select **Next**.
 5. You should be installing the `OpenEMR Appliance`! Select **Import**.
@@ -24,7 +24,7 @@ This example focuses on installing the OpenEMR appliance on a 64-bit Windows 7 o
 
 ## Operation
 
-1. Right-click the image and select **Start...*, then **Headless Start**.
+1. Right-click the image and select **Start...**, then **Headless Start**.
 2. In a minute or two, OpenEMR will spin up and be ready for use!
 3. Connect to OpenEMR from localhost:80, and log in with user `admin`, password `pass`. Note that any computer on your network can also connect to OpenEMR on your IP.
 

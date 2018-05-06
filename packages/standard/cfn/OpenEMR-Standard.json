@@ -1,26 +1,26 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR Cloud Standard v5.0.0.7 cloud deployment",
+    "Description": "OpenEMR Cloud Standard v5.0.1-1 cloud deployment",
     "Mappings": {
         "RegionData": {
             "ap-northeast-1": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-17dcbd71"
             },
             "ap-northeast-2": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-5afa5934"
             },
             "ap-south-1": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-0edf8961"
             },
             "ap-southeast-1": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-8d4f31f1"
             },
             "ap-southeast-2": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-4316e921"
             },
             "ca-central-1": {
@@ -28,11 +28,11 @@
                 "OpenEMRMktPlaceAMI": "ami-6e71f40a"
             },
             "eu-central-1": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-7ce57b13"
             },
             "eu-west-1": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-d435aead"
             },
             "eu-west-2": {
@@ -44,23 +44,23 @@
                 "OpenEMRMktPlaceAMI": "ami-b2d660cf"
             },
             "sa-east-1": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-75b0fd19"
             },
             "us-east-1": {
-                "MySQLVersion": "5.6.27",
-                "OpenEMRMktPlaceAMI": "ami-ca0740b0"
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-73e15c0c"
             },
             "us-east-2": {
                 "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-a3cde7c6"
             },
             "us-west-1": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-54a9ab34"
             },
             "us-west-2": {
-                "MySQLVersion": "5.6.27",
+                "MySQLVersion": "5.6.39",
                 "OpenEMRMktPlaceAMI": "ami-7335870b"
             }
         }
@@ -725,14 +725,14 @@
                                             "  openemr:\n",
                                             "    restart: always\n",
                                             "    image: openemr/openemr",
-                                            ":5.0.0",
+                                            ":5.0.1",
                                             "\n",
                                             "    ports:\n",
                                             "    - 80:80\n",
                                             "    - 443:443\n",
                                             "    volumes:\n",
                                             "    - logvolume01:/var/log\n",
-                                            "    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default\n",
+                                            "    - sitevolume:/var/www/localhost/htdocs/openemr/sites\n",
                                             "    environment:\n",
                                             "      MYSQL_HOST: '",
                                             {

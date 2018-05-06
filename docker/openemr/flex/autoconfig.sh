@@ -1,6 +1,11 @@
 #!/bin/sh
 # Allows customization of openemr credentials, preventing the need for manual setup
 #  (Note can force a manual setup by setting MANUAL_SETUP to 'yes')
+#  - Required settings for this special flex openemr docker are FLEX_REPOSITORY
+#    and (FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG). FLEX_REPOSITORY is the
+#    public git repository holding the openemr version that will be used. And
+#    FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG represent the branch or tag
+#    to use in this git repository, respectively.
 #  - Required settings for auto installation are MYSQL_HOST and MYSQL_ROOT_PASS
 #  -  (note that can force MYSQL_ROOT_PASS to be empty by passing as 'BLANK' variable)
 #  - Optional settings for auto installation are:
@@ -27,7 +32,6 @@ if [ "$DOMAIN" != "" ]; then
         echo "         RECEIVE ALERTS FROM LETSENCRYPT ABOUT YOUR SSL CERTIFICATE."
     fi
     # if a domain has been set, set up LE and target those certs
-
     if ! [ -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ]; then
         /usr/sbin/httpd -k start
         sleep 2
@@ -35,7 +39,6 @@ if [ "$DOMAIN" != "" ]; then
         /usr/sbin/httpd -k stop
         echo "1 23  *   *   *   certbot renew -q --post-hook \"httpd -k graceful\"" >> /etc/crontabs/root
     fi
-
 
     # run letsencrypt as a daemon and reference the correct cert
     rm -f /etc/ssl/certs/webserver.cert.pem
@@ -76,6 +79,38 @@ auto_setup() {
         exit 2
     fi
 }
+
+if [ -f auto_configure.php ]; then
+    echo "Configuring a new flex openemr docker"
+    if [ "$FLEX_REPOSITORY" == "" ]; then
+        echo "Exiting from OpenEMR flex docker since missing required FLEX_REPOSITORY environment setting."
+        exit 1
+    fi
+    if [ "$FLEX_REPOSITORY_BRANCH" == "" ] &&
+       [ "$FLEX_REPOSITORY_TAG" == "" ]; then
+        echo "Exiting from OpenEMR flex docker since missing required FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG environment setting."
+        exit 1
+    fi
+
+    cd /
+
+    if [ "$FLEX_REPOSITORY_BRANCH" != "" ]; then
+        echo "Collecting $FLEX_REPOSITORY_BRANCH branch from $FLEX_REPOSITORY repository"
+        git clone "$FLEX_REPOSITORY" --branch "$FLEX_REPOSITORY_BRANCH" --depth 1
+    else
+        echo "Collecting $FLEX_REPOSITORY_TAG tag from $FLEX_REPOSITORY repository"
+        git clone "$FLEX_REPOSITORY"
+        cd openemr
+        git checkout "$FLEX_REPOSITORY_TAG"
+        cd ../
+    fi
+    rsync --recursive --links --exclude .git openemr /var/www/localhost/htdocs/
+    rm -fr openemr
+    chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
+    chmod 666 /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/config/application.config.php
+    chown -R apache /var/www/localhost/htdocs/openemr/
+    cd /var/www/localhost/htdocs/openemr/
+fi
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
 if [ "$CONFIG" == "0" ] &&

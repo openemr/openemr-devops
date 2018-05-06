@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OpenEMR Lightsail single-server launcher
-# usage: launch.sh -t openemr:dev -s 2 -b wip-feature -d 5.0.0
+# usage: launch.sh -t openemr:dev -s 2 -b wip-feature -d 5.0.1
 #        -t: specific OpenEMR container to load
 #        -s: amount of swap to allocate, in gigabytes
 #        -b: oe-devops repo branch to load instead of master

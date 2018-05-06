@@ -2,7 +2,7 @@ version: '3.1'
 services:
   mysql:
     restart: always
-    image: openemr/mysql-xtrabackup:1.0.1
+    image: openemr/mysql-xtrabackup:latest
     command: ['mysqld','--character-set-server=utf8']
     volumes:
     - sqlbackup:/mnt/backups
@@ -11,13 +11,13 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     restart: always
-    image: openemr/openemr:latest
+    image: openemr/openemr:5.0.1
     ports:
     - 80:80
     - 443:443
     volumes:
     - logvolume01:/var/log
-    - sitevolume:/var/www/localhost/htdocs/openemr/sites/default
+    - sitevolume:/var/www/localhost/htdocs/openemr/sites
     environment:
       MYSQL_HOST: mysql
       MYSQL_ROOT_PASS: root
@@ -31,3 +31,4 @@ volumes:
   logvolume01: {}
   sitevolume: {}
   sqlbackup: {}
+  databasevolume: {}

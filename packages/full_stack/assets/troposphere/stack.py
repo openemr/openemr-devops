@@ -13,7 +13,7 @@ ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
 currentBeanstalkKey = 'openemr.zip'
-currentBeanstalkPlatform = '64bit Amazon Linux 2017.09 v2.6.4 running PHP 7.0'
+currentBeanstalkPlatform = '64bit Amazon Linux 2017.09 v2.6.6 running PHP 7.0'
 
 def setInputs(t, args):
     t.add_parameter(Parameter(
@@ -85,42 +85,42 @@ def setMappings(t, args):
         "us-east-1" : {
             "RegionBucket": "openemr-cfn-useast1",
             "ApplicationSource": args.beanstalk_key,
-            "MySQLVersion": "5.6.27",
+            "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-a4c7edb2",
             "UbuntuAMI": "ami-d15a75c7"
         },
         "us-east-2" : {
             "RegionBucket": "openemr-cfn-useast2",
             "ApplicationSource": args.beanstalk_key,
-            "MySQLVersion": "5.6.27",
+            "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-c5062ba0",
             "UbuntuAMI": "ami-10547475"
         },
         "us-west-2" : {
             "RegionBucket": "openemr-cfn-uswest2",
             "ApplicationSource": args.beanstalk_key,
-            "MySQLVersion": "5.6.27",
+            "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-6df1e514",
             "UbuntuAMI": "ami-835b4efa"
         },
         "eu-central-1" : {
             "RegionBucket": "openemr-cfn-eucentral1",
             "ApplicationSource": args.beanstalk_key,
-            "MySQLVersion": "5.6.27",
+            "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-c7ee5ca8",
             "UbuntuAMI": "ami-1e339e71"
         },
         "eu-west-1" : {
             "RegionBucket": "openemr-cfn-euwest1",
             "ApplicationSource": args.beanstalk_key,
-            "MySQLVersion": "5.6.27",
+            "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-d7b9a2b1",
             "UbuntuAMI": "ami-6d48500b"
         },
         "ap-southeast-2" : {
             "RegionBucket": "openemr-cfn-apsoutheast2",
             "ApplicationSource": args.beanstalk_key,
-            "MySQLVersion": "5.6.27",
+            "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-10918173",
             "UbuntuAMI": "ami-e94e5e8a"
         }
@@ -1939,7 +1939,7 @@ def buildApplication(t, args):
             'EBEnvironment',
             DependsOn = ebDeps,
             ApplicationName = Ref('EBApplication'),
-            Description = 'OpenEMR v5.0.0.7 cloud deployment',
+            Description = 'OpenEMR v5.0.1 cloud deployment',
             SolutionStackName = args.beanstalk_version,
             VersionLabel = Ref('EBApplicationVersion'),
             OptionSettings = options
@@ -1979,7 +1979,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR v5.0.0.7 cloud deployment'
+descString='OpenEMR v5.0.1-1 cloud deployment'
 if (args.dev):
     descString+=' [developer]'
 if (args.force_bastion):
