@@ -8,20 +8,20 @@ RUN apk add --no-cache \
     php7-mysqli php7-sockets php7-xmlreader perl mysql-client tar curl imagemagick-dev \
     python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
     rsync
-#clone openemr
+#some other stuff
 RUN mkdir -p /var/www/localhost/htdocs/openemr/sites \
     && git clone https://github.com/letsencrypt/letsencrypt /opt/certbot \
     && pip install -e /opt/certbot/acme -e /opt/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
     && apk del --no-cache build-base libffi-dev python-dev
-WORKDIR /var/www/localhost/htdocs/openemr
-VOLUME [ "/var/www/localhost/htdocs/openemr/sites", "/etc/letsencrypt/", "/etc/ssl" ]
+WORKDIR /var/www/localhost/htdocs
+VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
 ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php7/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
 #add runner and auto_configure and prevent auto_configure from being run w/o being enabled
-COPY run_openemr.sh autoconfig.sh auto_configure.php /var/www/localhost/htdocs/openemr/
+COPY run_openemr.sh autoconfig.sh auto_configure.php /var/www/localhost/htdocs/
 COPY utilities/unlock_admin.php utilities/unlock_admin.sh /root/
 RUN chmod 500 run_openemr.sh autoconfig.sh /root/unlock_admin.sh \
     && chmod 000 auto_configure.php /root/unlock_admin.php

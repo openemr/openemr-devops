@@ -69,8 +69,8 @@ auto_setup() {
         CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
     fi
 
-    chmod -R 600 .
-    php auto_configure.php -f ${CONFIGURATION} || return 1
+    chmod -R 600 /var/www/localhost/htdocs/openemr
+    php /var/www/localhost/htdocs/auto_configure.php -f ${CONFIGURATION} || return 1
 
     echo "OpenEMR configured."
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
@@ -80,7 +80,8 @@ auto_setup() {
     fi
 }
 
-if [ -f auto_configure.php ]; then
+if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
+   [ "$EMPTY" != "yes" ] ; then
     echo "Configuring a new flex openemr docker"
     if [ "$FLEX_REPOSITORY" == "" ]; then
         echo "Exiting from OpenEMR flex docker since missing required FLEX_REPOSITORY environment setting."
@@ -106,16 +107,20 @@ if [ -f auto_configure.php ]; then
     fi
     rsync --recursive --links --exclude .git openemr /var/www/localhost/htdocs/
     rm -fr openemr
+    cd /var/www/localhost/htdocs/
+fi
+
+if [ -f /var/www/localhost/htdocs/auto_configure.php ] ; then
     chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     chmod 666 /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/config/application.config.php
     chown -R apache /var/www/localhost/htdocs/openemr/
-    cd /var/www/localhost/htdocs/openemr/
 fi
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
 if [ "$CONFIG" == "0" ] &&
    [ "$MYSQL_HOST" != "" ] &&
    [ "$MYSQL_ROOT_PASS" != "" ] &&
+   [ "$EMPTY" != "yes" ] &&
    [ "$MANUAL_SETUP" != "yes" ]; then
 
     echo "Running quick setup!"
@@ -131,7 +136,8 @@ fi
 
 if [ "$CONFIG" == "1" ]; then
     # OpenEMR has been configured
-    if [ -f auto_configure.php ]; then
+    if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
+        cd /var/www/localhost/htdocs/openemr/
         # This section only runs once after above configuration since auto_configure.php gets removed after this script
         echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
         #set all directories to 500
@@ -140,7 +146,7 @@ if [ "$CONFIG" == "1" ]; then
         find . -type f -print0 | xargs -0 chmod 400
 
         echo "Default file permissions and ownership set, allowing writing to specific directories"
-        chmod 700 run_openemr.sh
+        chmod 700 /var/www/localhost/htdocs/run_openemr.sh
         # Set file and directory permissions
         chmod 600 interface/modules/zend_modules/config/application.config.php
         find sites/default/documents -type d -print0 | xargs -0 chmod 700
@@ -160,7 +166,9 @@ if [ "$CONFIG" == "1" ]; then
         rm -f ippf_upgrade.php
         rm -f gacl/setup.php
         echo "Setup scripts removed, we should be ready to go now!"
+        cd /var/www/localhost/htdocs/
     fi
 fi
+
 # ensure the auto_configure.php script has been removed
-rm -f auto_configure.php
+rm -f /var/www/localhost/htdocs/auto_configure.php
