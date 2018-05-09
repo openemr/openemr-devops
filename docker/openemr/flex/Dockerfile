@@ -8,12 +8,17 @@ RUN apk add --no-cache \
     php7-mysqli php7-sockets php7-xmlreader perl mysql-client tar curl imagemagick-dev \
     python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
     rsync
-#some other stuff
+#Stuff for developers since this predominantly a developer/tester docker
+RUN apk add --no-cache \
+    php7-phar nodejs unzip vim nano bash bash-doc bash-completion tree
+RUN npm install -g bower
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
+#some other stuff (note not deleting build-base, libffi-dev, and python-dev since this
+# is predominantly a developer/tester docker)
 RUN mkdir -p /var/www/localhost/htdocs/openemr/sites \
     && git clone https://github.com/letsencrypt/letsencrypt /opt/certbot \
     && pip install -e /opt/certbot/acme -e /opt/certbot \
-    && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache build-base libffi-dev python-dev
+    && mkdir -p /etc/ssl/certs /etc/ssl/private
 WORKDIR /var/www/localhost/htdocs
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
