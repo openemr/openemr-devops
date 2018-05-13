@@ -328,21 +328,66 @@ def setRecoveryInputs(t, args):
 
 def setMappings(t, args):
     t.add_mapping('RegionData', {
-        "ap-northeast-1" : { "OpenEMRMktPlaceAMI": "ami-17dcbd71", "MySQLVersion": "5.6.39" },
-        "ap-northeast-2" : { "OpenEMRMktPlaceAMI": "ami-5afa5934", "MySQLVersion": "5.6.39" },
-        "ap-south-1" : { "OpenEMRMktPlaceAMI": "ami-0edf8961", "MySQLVersion": "5.6.39" },
-        "ap-southeast-1" : { "OpenEMRMktPlaceAMI": "ami-8d4f31f1", "MySQLVersion": "5.6.39" },
-        "ap-southeast-2" : { "OpenEMRMktPlaceAMI": "ami-4316e921", "MySQLVersion": "5.6.39" },
-        "ca-central-1" : { "OpenEMRMktPlaceAMI": "ami-6e71f40a", "MySQLVersion": "5.6.39" },
-        "eu-central-1" : { "OpenEMRMktPlaceAMI": "ami-7ce57b13", "MySQLVersion": "5.6.39" },
-        "eu-west-1" : { "OpenEMRMktPlaceAMI": "ami-d435aead", "MySQLVersion": "5.6.39" },
-        "eu-west-2" : { "OpenEMRMktPlaceAMI": "ami-d7e4ffb3", "MySQLVersion": "5.6.39" },
-        "eu-west-3" : { "OpenEMRMktPlaceAMI": "ami-b2d660cf", "MySQLVersion": "5.6.39" },
-        "sa-east-1" : { "OpenEMRMktPlaceAMI": "ami-75b0fd19", "MySQLVersion": "5.6.39" },
-        "us-east-1" : { "OpenEMRMktPlaceAMI": "ami-73e15c0c", "MySQLVersion": "5.6.39" },
-        "us-east-2" : { "OpenEMRMktPlaceAMI": "ami-a3cde7c6", "MySQLVersion": "5.6.39" },
-        "us-west-1" : { "OpenEMRMktPlaceAMI": "ami-54a9ab34", "MySQLVersion": "5.6.39" },
-        "us-west-2" : { "OpenEMRMktPlaceAMI": "ami-7335870b", "MySQLVersion": "5.6.39" }
+        "ap-northeast-1": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-2086695f"
+            },
+            "ap-northeast-2": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-d04ce5be"
+            },
+            "ap-south-1": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-d2bd9dbd"
+            },
+            "ap-southeast-1": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-2fb49f53"
+            },
+            "ap-southeast-2": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-2a459148"
+            },
+            "ca-central-1": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-8de666e9"
+            },
+            "eu-central-1": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-b105265a"
+            },
+            "eu-west-1": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-dd99b2a4"
+            },
+            "eu-west-2": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-96da38f1"
+            },
+            "eu-west-3": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-6c902111"
+            },
+            "sa-east-1": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-56e5b73a"
+            },
+            "us-east-1": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-a650d4d9"
+            },
+            "us-east-2": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-f97f429c"
+            },
+            "us-west-1": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-f5d6c995"
+            },
+            "us-west-2": {
+                "MySQLVersion": "5.6.39",
+                "OpenEMRMktPlaceAMI": "ami-8b4d3af3"
+            }
     })
 
     return t
