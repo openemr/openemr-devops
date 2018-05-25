@@ -13,111 +13,113 @@ ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
 currentBeanstalkKey = 'openemr.zip'
-currentBeanstalkPlatform = '64bit Amazon Linux 2017.09 v2.6.6 running PHP 7.0'
+currentBeanstalkPlatform = '64bit Amazon Linux 2017.09 v2.7.0 running PHP 7.0'
+
 
 def setInputs(t, args):
     t.add_parameter(Parameter(
         'EC2KeyPair',
-        Description = 'Amazon EC2 Key Pair',
-        Type = 'AWS::EC2::KeyPair::KeyName'
+        Description='Amazon EC2 Key Pair',
+        Type='AWS::EC2::KeyPair::KeyName'
     ))
 
     if (args.recovery):
         t.add_parameter(Parameter(
             'RecoveryKMSKey',
-            Description = 'The KMS key ARN for the previous stack (''arn:aws:kms...'')',
-            Type = 'String'
+            Description='The KMS key ARN for the previous stack (''arn:aws:kms...'')',
+            Type='String'
         ))
         t.add_parameter(Parameter(
             'RecoveryRDSSnapshotARN',
-            Description = 'The database snapshot ARN for the previous stack (''arn:aws:rds...'')',
-            Type = 'String'
+            Description='The database snapshot ARN for the previous stack (''arn:aws:rds...'')',
+            Type='String'
         ))
         if (not args.skip_document_store):
             t.add_parameter(Parameter(
                 'RecoveryCouchDBSnapshot',
-                Description = 'The document store snapshot ID for the previous stack',
-                Type = 'String'
+                Description='The document store snapshot ID for the previous stack',
+                Type='String'
             ))
         t.add_parameter(Parameter(
             'RecoveryS3Bucket',
-            Description = 'The S3 bucket for the previous stack',
-            Type = 'String'
+            Description='The S3 bucket for the previous stack',
+            Type='String'
         ))
     else:
         t.add_parameter(Parameter(
             'TimeZone',
-            Description = 'The timezone OpenEMR will run in',
-            Default = 'America/Chicago',
-            Type = 'String',
-            MaxLength = '41'
+            Description='The timezone OpenEMR will run in',
+            Default='America/Chicago',
+            Type='String',
+            MaxLength='41'
         ))
 
         t.add_parameter(Parameter(
             'RDSPassword',
-            NoEcho = True,
-            Description = 'The database admin account password',
-            Type = 'String',
-            MinLength = '8',
-            MaxLength = '41'
+            NoEcho=True,
+            Description='The database admin account password',
+            Type='String',
+            MinLength='8',
+            MaxLength='41'
         ))
 
         t.add_parameter(Parameter(
             'PatientRecords',
-            Description = 'Database storage for patient records (minimum 10 GB)',
-            Default = '10',
-            Type = 'Number',
-            MinValue = '10'
+            Description='Database storage for patient records (minimum 10 GB)',
+            Default='10',
+            Type='Number',
+            MinValue='10'
         ))
 
         if (not args.skip_document_store):
             t.add_parameter(Parameter(
                 'DocumentStorage',
-                Description = 'Document database for patient documents (minimum 500 GB)',
-                Default = '500',
-                Type = 'Number',
-                MinValue = '10'
+                Description='Document database for patient documents (minimum 500 GB)',
+                Default='500',
+                Type='Number',
+                MinValue='10'
             ))
     return t
 
+
 def setMappings(t, args):
     t.add_mapping('RegionData', {
-        "us-east-1" : {
+        "us-east-1": {
             "RegionBucket": "openemr-cfn-useast1",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-a4c7edb2",
             "UbuntuAMI": "ami-d15a75c7"
         },
-        "us-east-2" : {
+        "us-east-2": {
             "RegionBucket": "openemr-cfn-useast2",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-c5062ba0",
             "UbuntuAMI": "ami-10547475"
         },
-        "us-west-2" : {
+        "us-west-2": {
             "RegionBucket": "openemr-cfn-uswest2",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-6df1e514",
             "UbuntuAMI": "ami-835b4efa"
         },
-        "eu-central-1" : {
+        "eu-central-1": {
             "RegionBucket": "openemr-cfn-eucentral1",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-c7ee5ca8",
             "UbuntuAMI": "ami-1e339e71"
         },
-        "eu-west-1" : {
+        "eu-west-1": {
             "RegionBucket": "openemr-cfn-euwest1",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.39",
             "AmazonAMI": "ami-d7b9a2b1",
             "UbuntuAMI": "ami-6d48500b"
         },
-        "ap-southeast-2" : {
+        "ap-southeast-2": {
             "RegionBucket": "openemr-cfn-apsoutheast2",
             "ApplicationSource": args.beanstalk_key,
             "MySQLVersion": "5.6.39",
@@ -126,6 +128,7 @@ def setMappings(t, args):
         }
     })
     return t
+
 
 def buildVPC(t, dual_az):
     t.add_resource(
@@ -140,36 +143,36 @@ def buildVPC(t, dual_az):
     t.add_resource(
         ec2.Subnet(
             'PublicSubnet1',
-            VpcId = Ref('VPC'),
-            CidrBlock = '10.0.1.0/24',
-            AvailabilityZone = Select("0", GetAZs(""))
+            VpcId=Ref('VPC'),
+            CidrBlock='10.0.1.0/24',
+            AvailabilityZone=Select("0", GetAZs(""))
         )
     )
 
     t.add_resource(
         ec2.Subnet(
             'PrivateSubnet1',
-            VpcId = Ref('VPC'),
-            CidrBlock = '10.0.2.0/24',
-            AvailabilityZone = Select("0", GetAZs(""))
+            VpcId=Ref('VPC'),
+            CidrBlock='10.0.2.0/24',
+            AvailabilityZone=Select("0", GetAZs(""))
         )
     )
 
     t.add_resource(
         ec2.Subnet(
             'PublicSubnet2',
-            VpcId = Ref('VPC'),
-            CidrBlock = '10.0.3.0/24',
-            AvailabilityZone = Select("1", GetAZs(""))
+            VpcId=Ref('VPC'),
+            CidrBlock='10.0.3.0/24',
+            AvailabilityZone=Select("1", GetAZs(""))
         )
     )
 
     t.add_resource(
         ec2.Subnet(
             'PrivateSubnet2',
-            VpcId = Ref('VPC'),
-            CidrBlock = '10.0.4.0/24',
-            AvailabilityZone = Select("1", GetAZs(""))
+            VpcId=Ref('VPC'),
+            CidrBlock='10.0.4.0/24',
+            AvailabilityZone=Select("1", GetAZs(""))
         )
     )
 
@@ -182,41 +185,41 @@ def buildVPC(t, dual_az):
     t.add_resource(
         ec2.VPCGatewayAttachment(
             'igAttach',
-            VpcId = Ref('VPC'),
-            InternetGatewayId = Ref('ig')
+            VpcId=Ref('VPC'),
+            InternetGatewayId=Ref('ig')
         )
     )
 
     t.add_resource(
         ec2.RouteTable(
             'rtTablePublic',
-            VpcId = Ref('VPC')
+            VpcId=Ref('VPC')
         )
     )
 
     t.add_resource(
         ec2.Route(
             'rtPublic',
-            RouteTableId = Ref('rtTablePublic'),
-            DestinationCidrBlock = '0.0.0.0/0',
-            GatewayId = Ref('ig'),
-            DependsOn = 'igAttach'
+            RouteTableId=Ref('rtTablePublic'),
+            DestinationCidrBlock='0.0.0.0/0',
+            GatewayId=Ref('ig'),
+            DependsOn='igAttach'
         )
     )
 
     t.add_resource(
         ec2.SubnetRouteTableAssociation(
             'rtPublic1Attach',
-            SubnetId = Ref('PublicSubnet1'),
-            RouteTableId = Ref('rtTablePublic')
+            SubnetId=Ref('PublicSubnet1'),
+            RouteTableId=Ref('rtTablePublic')
         )
     )
 
     t.add_resource(
         ec2.SubnetRouteTableAssociation(
             'rtPublic2Attach',
-            SubnetId = Ref('PublicSubnet2'),
-            RouteTableId = Ref('rtTablePublic')
+            SubnetId=Ref('PublicSubnet2'),
+            RouteTableId=Ref('rtTablePublic')
         )
     )
 
@@ -224,129 +227,130 @@ def buildVPC(t, dual_az):
         t.add_resource(
             ec2.RouteTable(
                 'rtTablePrivate1',
-                VpcId = Ref('VPC')
+                VpcId=Ref('VPC')
             )
         )
 
         t.add_resource(
             ec2.EIP(
                 'natIp1',
-                Domain = 'vpc'
+                Domain='vpc'
             )
         )
 
         t.add_resource(
             ec2.NatGateway(
                 'nat1',
-                AllocationId = GetAtt('natIp1', 'AllocationId'),
-                SubnetId = Ref('PublicSubnet1')
+                AllocationId=GetAtt('natIp1', 'AllocationId'),
+                SubnetId=Ref('PublicSubnet1')
             )
         )
 
         t.add_resource(
             ec2.Route(
                 'rtPrivate1',
-                RouteTableId = Ref('rtTablePrivate1'),
-                DestinationCidrBlock = '0.0.0.0/0',
-                NatGatewayId = Ref('nat1')
+                RouteTableId=Ref('rtTablePrivate1'),
+                DestinationCidrBlock='0.0.0.0/0',
+                NatGatewayId=Ref('nat1')
             )
         )
 
         t.add_resource(
             ec2.SubnetRouteTableAssociation(
                 'rtPrivate1Attach',
-                SubnetId = Ref('PrivateSubnet1'),
-                RouteTableId = Ref('rtTablePrivate1')
+                SubnetId=Ref('PrivateSubnet1'),
+                RouteTableId=Ref('rtTablePrivate1')
             )
         )
 
         t.add_resource(
             ec2.RouteTable(
                 'rtTablePrivate2',
-                VpcId = Ref('VPC')
+                VpcId=Ref('VPC')
             )
         )
 
         t.add_resource(
             ec2.EIP(
                 'natIp2',
-                Domain = 'vpc'
+                Domain='vpc'
             )
         )
 
         t.add_resource(
             ec2.NatGateway(
                 'nat2',
-                AllocationId = GetAtt('natIp2', 'AllocationId'),
-                SubnetId = Ref('PublicSubnet2')
+                AllocationId=GetAtt('natIp2', 'AllocationId'),
+                SubnetId=Ref('PublicSubnet2')
             )
         )
 
         t.add_resource(
             ec2.Route(
                 'rtPrivate2',
-                RouteTableId = Ref('rtTablePrivate2'),
-                DestinationCidrBlock = '0.0.0.0/0',
-                NatGatewayId = Ref('nat2')
+                RouteTableId=Ref('rtTablePrivate2'),
+                DestinationCidrBlock='0.0.0.0/0',
+                NatGatewayId=Ref('nat2')
             )
         )
 
         t.add_resource(
             ec2.SubnetRouteTableAssociation(
                 'rtPrivate2Attach',
-                SubnetId = Ref('PrivateSubnet2'),
-                RouteTableId = Ref('rtTablePrivate2')
+                SubnetId=Ref('PrivateSubnet2'),
+                RouteTableId=Ref('rtTablePrivate2')
             )
         )
     else:
         t.add_resource(
             ec2.RouteTable(
                 'rtTablePrivate',
-                VpcId = Ref('VPC')
+                VpcId=Ref('VPC')
             )
         )
 
         t.add_resource(
             ec2.EIP(
                 'natIp',
-                Domain = 'vpc'
+                Domain='vpc'
             )
         )
 
         t.add_resource(
             ec2.NatGateway(
                 'nat',
-                AllocationId = GetAtt('natIp', 'AllocationId'),
-                SubnetId = Ref('PublicSubnet1')
+                AllocationId=GetAtt('natIp', 'AllocationId'),
+                SubnetId=Ref('PublicSubnet1')
             )
         )
 
         t.add_resource(
             ec2.Route(
                 'rtPrivate',
-                RouteTableId = Ref('rtTablePrivate'),
-                DestinationCidrBlock = '0.0.0.0/0',
-                NatGatewayId = Ref('nat')
+                RouteTableId=Ref('rtTablePrivate'),
+                DestinationCidrBlock='0.0.0.0/0',
+                NatGatewayId=Ref('nat')
             )
         )
 
         t.add_resource(
             ec2.SubnetRouteTableAssociation(
                 'rtPrivate1Attach',
-                SubnetId = Ref('PrivateSubnet1'),
-                RouteTableId = Ref('rtTablePrivate')
+                SubnetId=Ref('PrivateSubnet1'),
+                RouteTableId=Ref('rtTablePrivate')
             )
         )
 
         t.add_resource(
             ec2.SubnetRouteTableAssociation(
                 'rtPrivate2Attach',
-                SubnetId = Ref('PrivateSubnet2'),
-                RouteTableId = Ref('rtTablePrivate')
+                SubnetId=Ref('PrivateSubnet2'),
+                RouteTableId=Ref('rtTablePrivate')
             )
         )
 
     return t
+
 
 def buildFoundation(t, args):
 
@@ -354,9 +358,9 @@ def buildFoundation(t, args):
         route53.HostedZone(
             'DNS',
             Name='openemr.local',
-            VPCs = [route53.HostedZoneVPCs(
-                VPCId = Ref('VPC'),
-                VPCRegion = ref_region
+            VPCs=[route53.HostedZoneVPCs(
+                VPCId=Ref('VPC'),
+                VPCRegion=ref_region
             )]
         )
     )
@@ -365,8 +369,8 @@ def buildFoundation(t, args):
         t.add_resource(
             kms.Key(
                 'OpenEMRKey',
-                DeletionPolicy = 'Delete' if args.dev else 'Retain',
-                KeyPolicy = {
+                DeletionPolicy='Delete' if args.dev else 'Retain',
+                KeyPolicy={
                     "Version": "2012-10-17",
                     "Id": "key-default-1",
                     "Statement": [{
@@ -374,7 +378,8 @@ def buildFoundation(t, args):
                         "Effect": "Allow",
                         "Principal": {
                             "AWS": [
-                                Join(':', ['arn:aws:iam:', ref_account, 'root'])
+                                Join(':', ['arn:aws:iam:',
+                                           ref_account, 'root'])
                             ]
                         },
                         "Action": "kms:*",
@@ -387,36 +392,37 @@ def buildFoundation(t, args):
     t.add_resource(
         s3.Bucket(
             'S3Bucket',
-            DeletionPolicy = 'Retain',
-            BucketName = Join('-', ['openemr', Select('2', Split('/', ref_stack_id))])
+            DeletionPolicy='Retain',
+            BucketName=Join(
+                '-', ['openemr', Select('2', Split('/', ref_stack_id))])
         )
     )
 
     t.add_resource(
         s3.BucketPolicy(
             'BucketPolicy',
-            Bucket = Ref('S3Bucket'),
-            PolicyDocument = {
+            Bucket=Ref('S3Bucket'),
+            PolicyDocument={
                 "Version": "2012-10-17",
                 "Statement": [
                     {
-                      "Sid": "AWSCloudTrailAclCheck",
-                      "Effect": "Allow",
-                      "Principal": { "Service":"cloudtrail.amazonaws.com"},
-                      "Action": "s3:GetBucketAcl",
-                      "Resource": { "Fn::Join" : ["", ["arn:aws:s3:::", {"Ref":"S3Bucket"}]]}
+                        "Sid": "AWSCloudTrailAclCheck",
+                        "Effect": "Allow",
+                        "Principal": {"Service": "cloudtrail.amazonaws.com"},
+                        "Action": "s3:GetBucketAcl",
+                        "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "S3Bucket"}]]}
                     },
                     {
-                      "Sid": "AWSCloudTrailWrite",
-                      "Effect": "Allow",
-                      "Principal": { "Service":"cloudtrail.amazonaws.com"},
-                      "Action": "s3:PutObject",
-                      "Resource": { "Fn::Join" : ["", ["arn:aws:s3:::", {"Ref":"S3Bucket"}, "/AWSLogs/", {"Ref":"AWS::AccountId"}, "/*"]]},
-                      "Condition": {
-                        "StringEquals": {
-                          "s3:x-amz-acl": "bucket-owner-full-control"
+                        "Sid": "AWSCloudTrailWrite",
+                        "Effect": "Allow",
+                        "Principal": {"Service": "cloudtrail.amazonaws.com"},
+                        "Action": "s3:PutObject",
+                        "Resource": {"Fn::Join": ["", ["arn:aws:s3:::", {"Ref": "S3Bucket"}, "/AWSLogs/", {"Ref": "AWS::AccountId"}, "/*"]]},
+                        "Condition": {
+                            "StringEquals": {
+                                "s3:x-amz-acl": "bucket-owner-full-control"
+                            }
                         }
-                      }
                     }
                 ]
             }
@@ -426,68 +432,70 @@ def buildFoundation(t, args):
     t.add_resource(
         cloudtrail.Trail(
             'CloudTrail',
-            DependsOn = 'BucketPolicy',
-            IsLogging = True,
-            IncludeGlobalServiceEvents = True,
-            IsMultiRegionTrail = True,
-            S3BucketName = Ref('S3Bucket')
+            DependsOn='BucketPolicy',
+            IsLogging=True,
+            IncludeGlobalServiceEvents=True,
+            IsMultiRegionTrail=True,
+            S3BucketName=Ref('S3Bucket')
         )
     )
 
     t.add_resource(
         ec2.SecurityGroup(
             'ApplicationSecurityGroup',
-            GroupDescription = 'Application Security Group',
-            VpcId = Ref('VPC'),
-            Tags = [ { "Key" : "Name", "Value" : "Application" } ]
+            GroupDescription='Application Security Group',
+            VpcId=Ref('VPC'),
+            Tags=[{"Key": "Name", "Value": "Application"}]
         )
     )
 
     t.add_resource(
         ec2.SecurityGroupIngress(
             'AppSGIngress',
-            GroupId = Ref('ApplicationSecurityGroup'),
-            IpProtocol = '-1',
-            SourceSecurityGroupId = Ref('ApplicationSecurityGroup')
+            GroupId=Ref('ApplicationSecurityGroup'),
+            IpProtocol='-1',
+            SourceSecurityGroupId=Ref('ApplicationSecurityGroup')
         )
     )
 
     return t
+
 
 def buildDeveloperBastion(t):
 
     t.add_resource(
         ec2.SecurityGroup(
             'SSHSecurityGroup',
-            GroupDescription = 'insecure worldwide SSH access',
-            VpcId = Ref('VPC'),
-            Tags = [ { "Key" : "Name", "Value" : "Global SSH" } ]
+            GroupDescription='insecure worldwide SSH access',
+            VpcId=Ref('VPC'),
+            Tags=[{"Key": "Name", "Value": "Global SSH"}]
         )
     )
 
     t.add_resource(
         ec2.SecurityGroupIngress(
             'SSHSGIngress',
-            GroupId = Ref('SSHSecurityGroup'),
-            IpProtocol = 'tcp',
-            CidrIp = '0.0.0.0/0',
-            FromPort = '22',
-            ToPort = '22'
+            GroupId=Ref('SSHSecurityGroup'),
+            IpProtocol='tcp',
+            CidrIp='0.0.0.0/0',
+            FromPort='22',
+            ToPort='22'
         )
     )
 
     t.add_resource(
         ec2.Instance(
             'DeveloperBastion',
-            ImageId = FindInMap('RegionData', ref_region, 'AmazonAMI'),
-            InstanceType = 't2.nano',
-            KeyName = Ref('EC2KeyPair'),
+            ImageId=FindInMap('RegionData', ref_region, 'AmazonAMI'),
+            InstanceType='t2.nano',
+            KeyName=Ref('EC2KeyPair'),
             Tags=Tags(Name="Developer Bastion"),
-            NetworkInterfaces = [ec2.NetworkInterfaceProperty(
-                AssociatePublicIpAddress = True,
-                DeviceIndex = "0",
-                GroupSet = [ Ref('SSHSecurityGroup'), Ref('ApplicationSecurityGroup') ],
-                SubnetId = Ref('PublicSubnet2')
+            NetworkInterfaces=[ec2.NetworkInterfaceProperty(
+                AssociatePublicIpAddress=True,
+                DeviceIndex="0",
+                GroupSet=[Ref('SSHSecurityGroup'), Ref(
+                    'ApplicationSecurityGroup')],
+                SubnetId=Ref('PublicSubnet2')
             )]
         )
     )
@@ -502,91 +510,94 @@ def buildDeveloperBastion(t):
 
     return t
 
+
 def buildEFS(t, dev):
     t.add_resource(
         ec2.SecurityGroup(
             'EFSSecurityGroup',
-            GroupDescription = 'Webworker NFS Access',
-            VpcId = Ref('VPC'),
-            Tags = Tags(Name='NFS Access')
+            GroupDescription='Webworker NFS Access',
+            VpcId=Ref('VPC'),
+            Tags=Tags(Name='NFS Access')
         )
     )
 
     t.add_resource(
         ec2.SecurityGroupIngress(
             'EFSSGIngress',
-            GroupId = Ref('EFSSecurityGroup'),
-            IpProtocol = '-1',
-            SourceSecurityGroupId = Ref('ApplicationSecurityGroup')
+            GroupId=Ref('EFSSecurityGroup'),
+            IpProtocol='-1',
+            SourceSecurityGroupId=Ref('ApplicationSecurityGroup')
         )
     )
 
     t.add_resource(
         efs.FileSystem(
             'ElasticFileSystem',
-            DeletionPolicy = 'Delete' if dev else 'Retain',
-            Encrypted = True,
-            KmsKeyId = OpenEMRKeyID,
-            FileSystemTags = Tags(Name='OpenEMR Codebase')
+            DeletionPolicy='Delete' if dev else 'Retain',
+            Encrypted=True,
+            KmsKeyId=OpenEMRKeyID,
+            FileSystemTags=Tags(Name='OpenEMR Codebase')
         )
     )
 
     t.add_resource(
         efs.MountTarget(
             'EFSMountPrivate1',
-            FileSystemId = Ref('ElasticFileSystem'),
-            SubnetId = Ref('PrivateSubnet1'),
-            SecurityGroups = [Ref('EFSSecurityGroup')]
+            FileSystemId=Ref('ElasticFileSystem'),
+            SubnetId=Ref('PrivateSubnet1'),
+            SecurityGroups=[Ref('EFSSecurityGroup')]
         )
     )
 
     t.add_resource(
         efs.MountTarget(
             'EFSMountPrivate2',
-            FileSystemId = Ref('ElasticFileSystem'),
-            SubnetId = Ref('PrivateSubnet2'),
-            SecurityGroups = [Ref('EFSSecurityGroup')]
+            FileSystemId=Ref('ElasticFileSystem'),
+            SubnetId=Ref('PrivateSubnet2'),
+            SecurityGroups=[Ref('EFSSecurityGroup')]
         )
     )
 
     t.add_resource(
         route53.RecordSetType(
             'DNSEFS',
-            DependsOn = ['EFSMountPrivate1', 'EFSMountPrivate2'],
-            HostedZoneId = Ref('DNS'),
-            Name = 'nfs.openemr.local',
-            Type = 'CNAME',
-            TTL = '900',
-            ResourceRecords = [Join("", [Ref('ElasticFileSystem'), '.efs.', ref_region, ".amazonaws.com"])]
+            DependsOn=['EFSMountPrivate1', 'EFSMountPrivate2'],
+            HostedZoneId=Ref('DNS'),
+            Name='nfs.openemr.local',
+            Type='CNAME',
+            TTL='900',
+            ResourceRecords=[
+                Join("", [Ref('ElasticFileSystem'), '.efs.', ref_region, ".amazonaws.com"])]
         )
     )
 
     return t
 
+
 def buildRedis(t, dual_az):
     t.add_resource(
         ec2.SecurityGroup(
             'RedisSecurityGroup',
-            GroupDescription = 'Webworker Session Store',
-            VpcId = Ref('VPC'),
-            Tags = Tags(Name='Redis Access')
+            GroupDescription='Webworker Session Store',
+            VpcId=Ref('VPC'),
+            Tags=Tags(Name='Redis Access')
         )
     )
 
     t.add_resource(
         ec2.SecurityGroupIngress(
             'RedisSGIngress',
-            GroupId = Ref('RedisSecurityGroup'),
-            IpProtocol = '-1',
-            SourceSecurityGroupId = Ref('ApplicationSecurityGroup')
+            GroupId=Ref('RedisSecurityGroup'),
+            IpProtocol='-1',
+            SourceSecurityGroupId=Ref('ApplicationSecurityGroup')
         )
     )
 
     t.add_resource(
         elasticache.SubnetGroup(
             'RedisSubnets',
-            Description = 'Redis node locations',
-            SubnetIds = [Ref('PrivateSubnet1'), Ref('PrivateSubnet2')]
+            Description='Redis node locations',
+            SubnetIds=[Ref('PrivateSubnet1'), Ref('PrivateSubnet2')]
         )
     )
 
@@ -594,73 +605,76 @@ def buildRedis(t, dual_az):
         t.add_resource(
             elasticache.ReplicationGroup(
                 'RedisCluster',
-                AutomaticFailoverEnabled = True,
-                ReplicationGroupDescription = 'Beanstalk Sessions',
-                NumCacheClusters = 2,
-                Engine = 'redis',
-                CacheNodeType = 'cache.m3.medium',
-                CacheSubnetGroupName = Ref('RedisSubnets'),
-                SecurityGroupIds = [GetAtt('RedisSecurityGroup', 'GroupId')],
+                AutomaticFailoverEnabled=True,
+                ReplicationGroupDescription='Beanstalk Sessions',
+                NumCacheClusters=2,
+                Engine='redis',
+                CacheNodeType='cache.m3.medium',
+                CacheSubnetGroupName=Ref('RedisSubnets'),
+                SecurityGroupIds=[GetAtt('RedisSecurityGroup', 'GroupId')],
             )
         )
         t.add_resource(
             route53.RecordSetType(
                 'DNSRedis',
-                HostedZoneId = Ref('DNS'),
-                Name = 'redis.openemr.local',
-                Type = 'CNAME',
-                TTL = '900',
-                ResourceRecords = [GetAtt('RedisCluster', 'PrimaryEndPoint.Address')]
+                HostedZoneId=Ref('DNS'),
+                Name='redis.openemr.local',
+                Type='CNAME',
+                TTL='900',
+                ResourceRecords=[
+                    GetAtt('RedisCluster', 'PrimaryEndPoint.Address')]
             )
         )
     else:
         t.add_resource(
             elasticache.CacheCluster(
                 'RedisCluster',
-                CacheNodeType = 'cache.t2.small',
-                VpcSecurityGroupIds = [GetAtt('RedisSecurityGroup', 'GroupId')],
-                CacheSubnetGroupName = Ref('RedisSubnets'),
-                Engine = 'redis',
-                NumCacheNodes = 1
+                CacheNodeType='cache.t2.small',
+                VpcSecurityGroupIds=[GetAtt('RedisSecurityGroup', 'GroupId')],
+                CacheSubnetGroupName=Ref('RedisSubnets'),
+                Engine='redis',
+                NumCacheNodes=1
             )
         )
         t.add_resource(
             route53.RecordSetType(
                 'DNSRedis',
-                HostedZoneId = Ref('DNS'),
-                Name = 'redis.openemr.local',
-                Type = 'CNAME',
-                TTL = '900',
-                ResourceRecords = [GetAtt('RedisCluster', 'RedisEndpoint.Address')]
+                HostedZoneId=Ref('DNS'),
+                Name='redis.openemr.local',
+                Type='CNAME',
+                TTL='900',
+                ResourceRecords=[
+                    GetAtt('RedisCluster', 'RedisEndpoint.Address')]
             )
         )
 
     return t
 
+
 def buildMySQL(t, args):
     t.add_resource(
         ec2.SecurityGroup(
             'DBSecurityGroup',
-            GroupDescription = 'Patient Records',
-            VpcId = Ref('VPC'),
-            Tags = Tags(Name='MySQL Access')
+            GroupDescription='Patient Records',
+            VpcId=Ref('VPC'),
+            Tags=Tags(Name='MySQL Access')
         )
     )
 
     t.add_resource(
         ec2.SecurityGroupIngress(
             'DBSGIngress',
-            GroupId = Ref('DBSecurityGroup'),
-            IpProtocol = '-1',
-            SourceSecurityGroupId = Ref('ApplicationSecurityGroup')
+            GroupId=Ref('DBSecurityGroup'),
+            IpProtocol='-1',
+            SourceSecurityGroupId=Ref('ApplicationSecurityGroup')
         )
     )
 
     t.add_resource(
         rds.DBSubnetGroup(
             'RDSSubnetGroup',
-            DBSubnetGroupDescription = 'MySQL node locations',
-            SubnetIds = [Ref('PrivateSubnet1'), Ref('PrivateSubnet2')]
+            DBSubnetGroupDescription='MySQL node locations',
+            SubnetIds=[Ref('PrivateSubnet1'), Ref('PrivateSubnet2')]
         )
     )
 
@@ -668,89 +682,92 @@ def buildMySQL(t, args):
         t.add_resource(
             rds.DBInstance(
                 'RDSInstance',
-                DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
-                DBSnapshotIdentifier = Ref('RecoveryRDSSnapshotARN'),
-                DBInstanceClass = 'db.t2.small',
-                PubliclyAccessible = False,
-                DBSubnetGroupName = Ref('RDSSubnetGroup'),
-                VPCSecurityGroups = [Ref('DBSecurityGroup')],
-                MultiAZ = args.dual_az,
-                Tags = Tags(Name='Patient Records')
+                DeletionPolicy='Delete' if args.dev else 'Snapshot',
+                DBSnapshotIdentifier=Ref('RecoveryRDSSnapshotARN'),
+                DBInstanceClass='db.t2.small',
+                PubliclyAccessible=False,
+                DBSubnetGroupName=Ref('RDSSubnetGroup'),
+                VPCSecurityGroups=[Ref('DBSecurityGroup')],
+                MultiAZ=args.dual_az,
+                Tags=Tags(Name='Patient Records')
             )
         )
     else:
         t.add_resource(
             rds.DBInstance(
                 'RDSInstance',
-                DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
-                DBName = 'openemr',
-                AllocatedStorage = Ref('PatientRecords'),
-                DBInstanceClass = 'db.t2.small',
-                Engine = 'MySQL',
-                EngineVersion = FindInMap('RegionData', ref_region, 'MySQLVersion'),
-                MasterUsername = 'openemr',
-                MasterUserPassword = Ref('RDSPassword'),
-                PubliclyAccessible = False,
-                DBSubnetGroupName = Ref('RDSSubnetGroup'),
-                VPCSecurityGroups = [Ref('DBSecurityGroup')],
-                KmsKeyId = OpenEMRKeyID,
-                StorageEncrypted = True,
-                MultiAZ = args.dual_az,
-                Tags = Tags(Name='Patient Records')
+                DeletionPolicy='Delete' if args.dev else 'Snapshot',
+                DBName='openemr',
+                AllocatedStorage=Ref('PatientRecords'),
+                DBInstanceClass='db.t2.small',
+                Engine='MySQL',
+                EngineVersion=FindInMap(
+                    'RegionData', ref_region, 'MySQLVersion'),
+                MasterUsername='openemr',
+                MasterUserPassword=Ref('RDSPassword'),
+                PubliclyAccessible=False,
+                DBSubnetGroupName=Ref('RDSSubnetGroup'),
+                VPCSecurityGroups=[Ref('DBSecurityGroup')],
+                KmsKeyId=OpenEMRKeyID,
+                StorageEncrypted=True,
+                MultiAZ=args.dual_az,
+                Tags=Tags(Name='Patient Records')
             )
         )
 
     t.add_resource(
         route53.RecordSetType(
             'DNSMySQL',
-            HostedZoneId = Ref('DNS'),
-            Name = 'mysql.openemr.local',
-            Type = 'CNAME',
-            TTL = '900',
-            ResourceRecords = [GetAtt('RDSInstance', 'Endpoint.Address')]
+            HostedZoneId=Ref('DNS'),
+            Name='mysql.openemr.local',
+            Type='CNAME',
+            TTL='900',
+            ResourceRecords=[GetAtt('RDSInstance', 'Endpoint.Address')]
         )
     )
 
     return t
+
 
 def buildCertWriter(t, dev):
     t.add_resource(
         iam.ManagedPolicy(
             'CertWriterPolicy',
             Description='Policy for initial CA writer',
-            PolicyDocument = {
+            PolicyDocument={
                 "Version": "2012-10-17",
                 "Statement": [
-                {
-                  "Sid": "Stmt1500612724000",
-                  "Effect": "Allow",
-                  "Action": [
-                      "s3:*"
-                  ],
-                  "Resource": [
-                    Join('', ['arn:aws:s3:::', Ref('S3Bucket'), "/CA/*"])
-                  ]
-                },
-                {
-                  "Sid": "Stmt1500612724001",
-                  "Effect": "Allow",
-                  "Action": [
-                      "s3:ListBucket"
-                  ],
-                  "Resource": [
-                      Join('', ['arn:aws:s3:::', Ref('S3Bucket')])
-                  ]
-                },
-                {
-                  "Sid": "Stmt1500612724002",
-                  "Effect": "Allow",
-                  "Action": [
-                      "kms:GenerateDataKey*"
-                  ],
-                  "Resource": [
-                    OpenEMRKeyARN
-                  ]
-                }
+                    {
+                        "Sid": "Stmt1500612724000",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:*"
+                        ],
+                        "Resource": [
+                            Join('', ['arn:aws:s3:::',
+                                      Ref('S3Bucket'), "/CA/*"])
+                        ]
+                    },
+                    {
+                        "Sid": "Stmt1500612724001",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:ListBucket"
+                        ],
+                        "Resource": [
+                            Join('', ['arn:aws:s3:::', Ref('S3Bucket')])
+                        ]
+                    },
+                    {
+                        "Sid": "Stmt1500612724002",
+                        "Effect": "Allow",
+                        "Action": [
+                            "kms:GenerateDataKey*"
+                        ],
+                        "Resource": [
+                            OpenEMRKeyARN
+                        ]
+                    }
                 ]
             }
         )
@@ -759,26 +776,26 @@ def buildCertWriter(t, dev):
     t.add_resource(
         iam.Role(
             'CertWriterRole',
-            AssumeRolePolicyDocument = {
-               "Version" : "2012-10-17",
-               "Statement": [ {
-                  "Effect": "Allow",
-                  "Principal": {
-                     "Service": [ "ec2.amazonaws.com" ]
-                  },
-                  "Action": [ "sts:AssumeRole" ]
-               } ]
+            AssumeRolePolicyDocument={
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": ["ec2.amazonaws.com"]
+                    },
+                    "Action": ["sts:AssumeRole"]
+                }]
             },
             Path='/',
-            ManagedPolicyArns= [Ref('CertWriterPolicy')]
+            ManagedPolicyArns=[Ref('CertWriterPolicy')]
         )
     )
 
     t.add_resource(
         iam.InstanceProfile(
             'CertWriterInstanceProfile',
-            Path = '/',
-            Roles = [Ref('CertWriterRole')]
+            Path='/',
+            Roles=[Ref('CertWriterRole')]
         )
     )
 
@@ -793,8 +810,10 @@ def buildCertWriter(t, dev):
         "openssl x509 -req -in work/beanstalk.csr -out certs/beanstalk.crt -CA certs/ca.crt -CAkey keys/ca.key -CAcreateserial\n",
         "openssl req -new -nodes -newkey rsa:2048 -keyout keys/couch.key -out work/couch.csr -days 3648 -subj /CN=couchdb.openemr.local\n",
         "openssl x509 -req -in work/couch.csr -out certs/couch.crt -CA certs/ca.crt -CAkey keys/ca.key\n",
-        "aws s3 sync keys s3://", Ref('S3Bucket'), "/CA/keys --sse aws:kms --sse-kms-key-id ", OpenEMRKeyID, " --acl private\n",
-        "aws s3 sync certs s3://", Ref('S3Bucket'), "/CA/certs --acl public-read\n",
+        "aws s3 sync keys s3://", Ref(
+            'S3Bucket'), "/CA/keys --sse aws:kms --sse-kms-key-id ", OpenEMRKeyID, " --acl private\n",
+        "aws s3 sync certs s3://", Ref(
+            'S3Bucket'), "/CA/certs --acl public-read\n",
         "/opt/aws/bin/cfn-signal -e 0 ",
         "         --stack ", ref_stack_name,
         "         --resource CertWriterInstance ",
@@ -805,19 +824,19 @@ def buildCertWriter(t, dev):
     t.add_resource(
         ec2.Instance(
             'CertWriterInstance',
-            DependsOn = 'rtPrivate1Attach',
-            ImageId = FindInMap('RegionData', ref_region, 'AmazonAMI'),
-            InstanceType = 't2.nano',
-            SubnetId = Ref('PrivateSubnet1'),
-            KeyName = Ref('EC2KeyPair'),
-            IamInstanceProfile = Ref('CertWriterInstanceProfile'),
-            Tags = Tags(Name='Backend CA Processor'),
-            InstanceInitiatedShutdownBehavior = 'stop' if args.dev else 'terminate',
-            UserData = Base64(Join('', instanceScript)),
-            CreationPolicy = {
-              "ResourceSignal" : {
-                "Timeout" : "PT5M"
-              }
+            DependsOn='rtPrivate1Attach',
+            ImageId=FindInMap('RegionData', ref_region, 'AmazonAMI'),
+            InstanceType='t2.nano',
+            SubnetId=Ref('PrivateSubnet1'),
+            KeyName=Ref('EC2KeyPair'),
+            IamInstanceProfile=Ref('CertWriterInstanceProfile'),
+            Tags=Tags(Name='Backend CA Processor'),
+            InstanceInitiatedShutdownBehavior='stop' if args.dev else 'terminate',
+            UserData=Base64(Join('', instanceScript)),
+            CreationPolicy={
+                "ResourceSignal": {
+                    "Timeout": "PT5M"
+                }
             }
         )
     )
@@ -825,24 +844,25 @@ def buildCertWriter(t, dev):
     t.add_resource(
         iam.Role(
             'BarebonesLambdaRole',
-            AssumeRolePolicyDocument = {
-               "Version" : "2012-10-17",
-               "Statement": [ {
-                  "Effect": "Allow",
-                  "Principal": {
-                     "Service": [ "lambda.amazonaws.com" ]
-                  },
-                  "Action": [ "sts:AssumeRole" ]
-               } ]
+            AssumeRolePolicyDocument={
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": ["lambda.amazonaws.com"]
+                    },
+                    "Action": ["sts:AssumeRole"]
+                }]
             },
             Path='/',
             Policies=[iam.Policy(
                 PolicyName="root",
-                PolicyDocument= {
+                PolicyDocument={
                     "Version": "2012-10-17",
                     "Statement": [
-                      { "Effect": "Allow", "Action": ["logs:*"], "Resource": "arn:aws:logs:*:*:*" },
-                    ]
+                      {"Effect": "Allow", "Action": [
+                          "logs:*"], "Resource": "arn:aws:logs:*:*:*"},
+                      ]
                 }
             )]
         )
@@ -879,7 +899,7 @@ def buildCertWriter(t, dev):
             'CertGrabberFunction',
             Description='gets a certificate''s embedded key',
             Handler='index.lambda_handler',
-            Role=GetAtt('BarebonesLambdaRole','Arn'),
+            Role=GetAtt('BarebonesLambdaRole', 'Arn'),
             Code=awslambda.Code(
                 ZipFile=Join('\n', certGrabberScript)
             ),
@@ -892,29 +912,31 @@ def buildCertWriter(t, dev):
         cloudformation.CustomResource(
             'EBCert',
             DependsOn='CertWriterInstance',
-            ServiceToken = GetAtt('CertGrabberFunction', 'Arn'),
-            Url=Join('', ['https://', Ref('S3Bucket'), '.s3.amazonaws.com/CA/certs/beanstalk.crt'])
+            ServiceToken=GetAtt('CertGrabberFunction', 'Arn'),
+            Url=Join('', ['https://', Ref('S3Bucket'),
+                          '.s3.amazonaws.com/CA/certs/beanstalk.crt'])
         )
     )
 
     return t
 
+
 def buildNFSBackup(t, args):
     t.add_resource(
         ec2.SecurityGroup(
             'NFSBackupSecurityGroup',
-            GroupDescription = 'NFS Backup Access',
-            VpcId = Ref('VPC'),
-            Tags = Tags(Name='NFS Backup Access')
+            GroupDescription='NFS Backup Access',
+            VpcId=Ref('VPC'),
+            Tags=Tags(Name='NFS Backup Access')
         )
     )
 
     t.add_resource(
         ec2.SecurityGroupIngress(
             'NFSSGIngress',
-            GroupId = Ref('EFSSecurityGroup'),
-            IpProtocol = '-1',
-            SourceSecurityGroupId = Ref('NFSBackupSecurityGroup')
+            GroupId=Ref('EFSSecurityGroup'),
+            IpProtocol='-1',
+            SourceSecurityGroupId=Ref('NFSBackupSecurityGroup')
         )
     )
 
@@ -922,26 +944,26 @@ def buildNFSBackup(t, args):
         t.add_resource(
             ec2.SecurityGroupIngress(
                 'NFSBackupSGIngress',
-                GroupId = Ref('NFSBackupSecurityGroup'),
-                IpProtocol = '-1',
-                SourceSecurityGroupId = Ref('SSHSecurityGroup')
+                GroupId=Ref('NFSBackupSecurityGroup'),
+                IpProtocol='-1',
+                SourceSecurityGroupId=Ref('SSHSecurityGroup')
             )
         )
 
     rolePolicyStatements = [
         {
-          "Sid": "Stmt1500699052003",
-          "Effect": "Allow",
-          "Action": ["s3:ListBucket"],
-          "Resource" : [Join("", ["arn:aws:s3:::", Ref('S3Bucket')])]
+            "Sid": "Stmt1500699052003",
+            "Effect": "Allow",
+            "Action": ["s3:ListBucket"],
+            "Resource": [Join("", ["arn:aws:s3:::", Ref('S3Bucket')])]
         },
         {
             "Sid": "Stmt1500699052000",
             "Effect": "Allow",
             "Action": [
-              "s3:PutObject",
-              "s3:GetObject",
-              "s3:DeleteObject"
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:DeleteObject"
             ],
             "Resource": [Join("", ["arn:aws:s3:::", Ref('S3Bucket'), '/Backup/*'])]
         },
@@ -949,11 +971,11 @@ def buildNFSBackup(t, args):
             "Sid": "Stmt1500612724002",
             "Effect": "Allow",
             "Action": [
-              "kms:Encrypt",
-              "kms:Decrypt",
-              "kms:GenerateDataKey*"
+                "kms:Encrypt",
+                "kms:Decrypt",
+                "kms:GenerateDataKey*"
             ],
-            "Resource": [ OpenEMRKeyARN ]
+            "Resource": [OpenEMRKeyARN]
         }
     ]
 
@@ -963,13 +985,13 @@ def buildNFSBackup(t, args):
                 "Sid": "Stmt1500699052004",
                 "Effect": "Allow",
                 "Action": ["s3:ListBucket"],
-                "Resource" : [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket')])]
+                "Resource": [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket')])]
             },
             {
                 "Sid": "Stmt1500699052005",
                 "Effect": "Allow",
                 "Action": [
-                  "s3:GetObject",
+                    "s3:GetObject",
                 ],
                 "Resource": [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket'), '/Backup/*'])]
             },
@@ -979,7 +1001,7 @@ def buildNFSBackup(t, args):
         iam.ManagedPolicy(
             'NFSBackupPolicy',
             Description='Policy for ongoing NFS backup instance',
-            PolicyDocument = {
+            PolicyDocument={
                 "Version": "2012-10-17",
                 "Statement": rolePolicyStatements
             }
@@ -989,26 +1011,26 @@ def buildNFSBackup(t, args):
     t.add_resource(
         iam.Role(
             'NFSBackupRole',
-            AssumeRolePolicyDocument = {
-               "Version" : "2012-10-17",
-               "Statement": [ {
-                  "Effect": "Allow",
-                  "Principal": {
-                     "Service": [ "ec2.amazonaws.com" ]
-                  },
-                  "Action": [ "sts:AssumeRole" ]
-               } ]
+            AssumeRolePolicyDocument={
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": ["ec2.amazonaws.com"]
+                    },
+                    "Action": ["sts:AssumeRole"]
+                }]
             },
             Path='/',
-            ManagedPolicyArns= [Ref('NFSBackupPolicy')]
+            ManagedPolicyArns=[Ref('NFSBackupPolicy')]
         )
     )
 
     t.add_resource(
         iam.InstanceProfile(
             'NFSInstanceProfile',
-            Path = '/',
-            Roles = [Ref('NFSBackupRole')]
+            Path='/',
+            Roles=[Ref('NFSBackupRole')]
         )
     )
 
@@ -1066,29 +1088,29 @@ def buildNFSBackup(t, args):
     ]
 
     bootstrapInstall = cloudformation.InitConfig(
-        files = {
-            "/root/setup.sh" : {
-                "content" : Join("", setupScript),
-                "mode"  : "000500",
-                "owner" : "root",
-                "group" : "root"
+        files={
+            "/root/setup.sh": {
+                "content": Join("", setupScript),
+                "mode": "000500",
+                "owner": "root",
+                "group": "root"
             },
-            "/etc/cron.daily/backup" : {
-                "content" : Join("", backupScript),
-                "mode"  : "000500",
-                "owner" : "root",
-                "group" : "root"
+            "/etc/cron.daily/backup": {
+                "content": Join("", backupScript),
+                "mode": "000500",
+                "owner": "root",
+                "group": "root"
             },
-            "/root/recovery.sh" : {
-                "content" : Join("", generalRecoveryScript),
-                "mode"  : "000500",
-                "owner" : "root",
-                "group" : "root"
+            "/root/recovery.sh": {
+                "content": Join("", generalRecoveryScript),
+                "mode": "000500",
+                "owner": "root",
+                "group": "root"
             }
         },
-        commands = {
-            "01_setup" : {
-              "command" : "/root/setup.sh"
+        commands={
+            "01_setup": {
+                "command": "/root/setup.sh"
             }
         }
     )
@@ -1105,17 +1127,17 @@ def buildNFSBackup(t, args):
         ]
 
         bootstrapRecovery = cloudformation.InitConfig(
-            files = {
-                "/root/stackRestore.sh" : {
-                    "content" : Join("", stackRecoveryScript),
-                    "mode"  : "000500",
-                    "owner" : "root",
-                    "group" : "root"
+            files={
+                "/root/stackRestore.sh": {
+                    "content": Join("", stackRecoveryScript),
+                    "mode": "000500",
+                    "owner": "root",
+                    "group": "root"
                 }
             },
-            commands = {
-                "02_recover" : {
-                  "command" : "/root/stackRestore.sh"
+            commands={
+                "02_recover": {
+                    "command": "/root/stackRestore.sh"
                 }
             }
         )
@@ -1123,7 +1145,7 @@ def buildNFSBackup(t, args):
         bootstrapMetadata = cloudformation.Metadata(
             cloudformation.Init(
                 cloudformation.InitConfigSets(
-                    Setup = ['Install','Recover']
+                    Setup=['Install', 'Recover']
                 ),
                 Install=bootstrapInstall,
                 Recover=bootstrapRecovery
@@ -1133,7 +1155,7 @@ def buildNFSBackup(t, args):
         bootstrapMetadata = cloudformation.Metadata(
             cloudformation.Init(
                 cloudformation.InitConfigSets(
-                    Setup = ['Install']
+                    Setup=['Install']
                 ),
                 Install=bootstrapInstall
             )
@@ -1142,21 +1164,21 @@ def buildNFSBackup(t, args):
     t.add_resource(
         ec2.Instance(
             'NFSBackupInstance',
-            DependsOn = ['rtPrivate2Attach', 'DNSEFS'],
-            Metadata = bootstrapMetadata,
-            ImageId = FindInMap('RegionData', ref_region, 'UbuntuAMI'),
-            InstanceType = 't2.nano',
-            SubnetId = Ref('PrivateSubnet2'),
-            KeyName = Ref('EC2KeyPair'),
-            SecurityGroupIds = [Ref('NFSBackupSecurityGroup')],
-            IamInstanceProfile = Ref('NFSInstanceProfile'),
-            Tags = Tags(Name='NFS Backup Agent'),
-            InstanceInitiatedShutdownBehavior = 'stop',
-            UserData = Base64(Join('', bootstrapScript)),
-            CreationPolicy = {
-              "ResourceSignal" : {
-                "Timeout" : "PT15M" if args.recovery else "PT5M"
-              }
+            DependsOn=['rtPrivate2Attach', 'DNSEFS'],
+            Metadata=bootstrapMetadata,
+            ImageId=FindInMap('RegionData', ref_region, 'UbuntuAMI'),
+            InstanceType='t2.nano',
+            SubnetId=Ref('PrivateSubnet2'),
+            KeyName=Ref('EC2KeyPair'),
+            SecurityGroupIds=[Ref('NFSBackupSecurityGroup')],
+            IamInstanceProfile=Ref('NFSInstanceProfile'),
+            Tags=Tags(Name='NFS Backup Agent'),
+            InstanceInitiatedShutdownBehavior='stop',
+            UserData=Base64(Join('', bootstrapScript)),
+            CreationPolicy={
+                "ResourceSignal": {
+                    "Timeout": "PT15M" if args.recovery else "PT5M"
+                }
             }
         )
     )
@@ -1164,32 +1186,33 @@ def buildNFSBackup(t, args):
     t.add_resource(
         route53.RecordSetType(
             'DNSBackupAgent',
-            HostedZoneId = Ref('DNS'),
-            Name = 'nfsbackups.openemr.local',
-            Type = 'CNAME',
-            TTL = '900',
-            ResourceRecords = [GetAtt('NFSBackupInstance', 'PrivateDnsName')]
+            HostedZoneId=Ref('DNS'),
+            Name='nfsbackups.openemr.local',
+            Type='CNAME',
+            TTL='900',
+            ResourceRecords=[GetAtt('NFSBackupInstance', 'PrivateDnsName')]
         )
     )
 
     return t
 
+
 def buildDocumentStore(t, args):
     t.add_resource(
         ec2.SecurityGroup(
             'CouchDBSecurityGroup',
-            GroupDescription = 'Patient Document Access',
-            VpcId = Ref('VPC'),
-            Tags = Tags(Name='Patient Documents')
+            GroupDescription='Patient Document Access',
+            VpcId=Ref('VPC'),
+            Tags=Tags(Name='Patient Documents')
         )
     )
 
     t.add_resource(
         ec2.SecurityGroupIngress(
             'CouchDBSGIngress',
-            GroupId = Ref('CouchDBSecurityGroup'),
-            IpProtocol = '-1',
-            SourceSecurityGroupId = Ref('ApplicationSecurityGroup')
+            GroupId=Ref('CouchDBSecurityGroup'),
+            IpProtocol='-1',
+            SourceSecurityGroupId=Ref('ApplicationSecurityGroup')
         )
     )
 
@@ -1197,10 +1220,10 @@ def buildDocumentStore(t, args):
         t.add_resource(
             ec2.Volume(
                 'CouchDBVolume',
-                DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
-                AvailabilityZone = Select("0", GetAZs("")),
-                VolumeType = 'sc1',
-                SnapshotId = Ref('RecoveryCouchDBSnapshot'),
+                DeletionPolicy='Delete' if args.dev else 'Snapshot',
+                AvailabilityZone=Select("0", GetAZs("")),
+                VolumeType='sc1',
+                SnapshotId=Ref('RecoveryCouchDBSnapshot'),
                 Tags=Tags(Name="Patient Documents")
             )
         )
@@ -1208,12 +1231,12 @@ def buildDocumentStore(t, args):
         t.add_resource(
             ec2.Volume(
                 'CouchDBVolume',
-                DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
+                DeletionPolicy='Delete' if args.dev else 'Snapshot',
                 Size=Ref('DocumentStorage'),
-                AvailabilityZone = Select("0", GetAZs("")),
-                VolumeType = 'sc1',
-                Encrypted = True,
-                KmsKeyId = OpenEMRKeyID,
+                AvailabilityZone=Select("0", GetAZs("")),
+                VolumeType='sc1',
+                Encrypted=True,
+                KmsKeyId=OpenEMRKeyID,
                 Tags=Tags(Name="Patient Documents")
             )
         )
@@ -1222,27 +1245,29 @@ def buildDocumentStore(t, args):
         iam.ManagedPolicy(
             'CouchDBPolicy',
             Description='Policy to retrieve CouchDB SSL credentials',
-            PolicyDocument = {
+            PolicyDocument={
                 "Version": "2012-10-17",
                 "Statement": [
                     {
-                      "Sid": "Stmt1500699052000",
-                      "Effect": "Allow",
-                      "Action": [
-                          "s3:GetObject"
-                      ],
-                      "Resource": [
-                          { "Fn::Join" : ["", ["arn:aws:s3:::", Ref('S3Bucket'), "/CA/certs/*"]]},
-                          { "Fn::Join" : ["", ["arn:aws:s3:::", Ref('S3Bucket'), "/CA/keys/couch.key"]]}
-                      ]
+                        "Sid": "Stmt1500699052000",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:GetObject"
+                        ],
+                        "Resource": [
+                            {"Fn::Join": ["", ["arn:aws:s3:::",
+                                               Ref('S3Bucket'), "/CA/certs/*"]]},
+                            {"Fn::Join": ["", ["arn:aws:s3:::", Ref(
+                                'S3Bucket'), "/CA/keys/couch.key"]]}
+                        ]
                     },
                     {
-                      "Sid": "Stmt1500612724002",
-                      "Effect": "Allow",
-                      "Action": [
-                          "kms:Decrypt"
-                      ],
-                      "Resource": [ OpenEMRKeyARN ]
+                        "Sid": "Stmt1500612724002",
+                        "Effect": "Allow",
+                        "Action": [
+                            "kms:Decrypt"
+                        ],
+                        "Resource": [OpenEMRKeyARN]
                     }
                 ]
             }
@@ -1252,26 +1277,26 @@ def buildDocumentStore(t, args):
     t.add_resource(
         iam.Role(
             'CouchDBRole',
-            AssumeRolePolicyDocument = {
-               "Version" : "2012-10-17",
-               "Statement": [ {
-                  "Effect": "Allow",
-                  "Principal": {
-                     "Service": [ "ec2.amazonaws.com" ]
-                  },
-                  "Action": [ "sts:AssumeRole" ]
-               } ]
+            AssumeRolePolicyDocument={
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": ["ec2.amazonaws.com"]
+                    },
+                    "Action": ["sts:AssumeRole"]
+                }]
             },
             Path='/',
-            ManagedPolicyArns= [Ref('CouchDBPolicy')]
+            ManagedPolicyArns=[Ref('CouchDBPolicy')]
         )
     )
 
     t.add_resource(
         iam.InstanceProfile(
             'CouchDBInstanceProfile',
-            Path = '/',
-            Roles = [Ref('CouchDBRole')]
+            Path='/',
+            Roles=[Ref('CouchDBRole')]
         )
     )
 
@@ -1331,7 +1356,8 @@ def buildDocumentStore(t, args):
             "aws s3 cp s3://", Ref('S3Bucket'), "/CA/certs/ca.crt /etc/couchdb\n",
             "aws s3 cp s3://", Ref('S3Bucket'), "/CA/certs/couch.crt /etc/couchdb\n",
             "chmod 664 /etc/couchdb/*.crt\n",
-            "aws s3 cp s3://", Ref('S3Bucket'), "/CA/keys/couch.key /etc/couchdb --sse aws:kms --sse-kms-key-id ", OpenEMRKeyID, "\n",
+            "aws s3 cp s3://", Ref(
+                'S3Bucket'), "/CA/keys/couch.key /etc/couchdb --sse aws:kms --sse-kms-key-id ", OpenEMRKeyID, "\n",
             "chmod 660 /etc/couchdb/couch.key\n",
             "chown couchdb:couchdb /etc/couchdb/*.crt /etc/couchdb/*.key\n",
             "rm -rf /var/lib/couchdb\n",
@@ -1355,7 +1381,8 @@ def buildDocumentStore(t, args):
             "aws s3 cp s3://", Ref('S3Bucket'), "/CA/certs/ca.crt /etc/couchdb\n",
             "aws s3 cp s3://", Ref('S3Bucket'), "/CA/certs/couch.crt /etc/couchdb\n",
             "chmod 664 /etc/couchdb/*.crt\n",
-            "aws s3 cp s3://", Ref('S3Bucket'), "/CA/keys/couch.key /etc/couchdb --sse aws:kms --sse-kms-key-id ", OpenEMRKeyID, "\n",
+            "aws s3 cp s3://", Ref(
+                'S3Bucket'), "/CA/keys/couch.key /etc/couchdb --sse aws:kms --sse-kms-key-id ", OpenEMRKeyID, "\n",
             "chmod 660 /etc/couchdb/couch.key\n",
             "chown couchdb:couchdb /etc/couchdb/*.crt /etc/couchdb/*.key\n",
             "mv /var/lib/couchdb /mnt/db/couchdb\n",
@@ -1368,41 +1395,41 @@ def buildDocumentStore(t, args):
         ]
 
     bootstrapInstall = cloudformation.InitConfig(
-        files = {
-            "/root/couchdb.setup.sh" : {
-                "content" : Join("", setupScript),
-                "mode"  : "000500",
-                "owner" : "root",
-                "group" : "root"
+        files={
+            "/root/couchdb.setup.sh": {
+                "content": Join("", setupScript),
+                "mode": "000500",
+                "owner": "root",
+                "group": "root"
             },
-            "/root/ip.ini" : {
-                "content" : Join("", ipIniFile),
-                "mode"  : "000400",
-                "owner" : "root",
-                "group" : "root"
+            "/root/ip.ini": {
+                "content": Join("", ipIniFile),
+                "mode": "000400",
+                "owner": "root",
+                "group": "root"
             },
-            "/root/ssl.ini" : {
-                "content" : Join("", sslIniFile),
-                "mode"  : "000400",
-                "owner" : "root",
-                "group" : "root"
+            "/root/ssl.ini": {
+                "content": Join("", sslIniFile),
+                "mode": "000400",
+                "owner": "root",
+                "group": "root"
             },
-            "/root/replicator.ini" : {
-                "content" : Join("", replicatorIniFile),
-                "mode"  : "000400",
-                "owner" : "root",
-                "group" : "root"
+            "/root/replicator.ini": {
+                "content": Join("", replicatorIniFile),
+                "mode": "000400",
+                "owner": "root",
+                "group": "root"
             },
-            "/root/fstab.append" : {
-                "content" : Join("", fstabFile),
-                "mode"  : "000400",
-                "owner" : "root",
-                "group" : "root"
+            "/root/fstab.append": {
+                "content": Join("", fstabFile),
+                "mode": "000400",
+                "owner": "root",
+                "group": "root"
             }
         },
-        commands = {
-            "01_setup" : {
-              "command" : "/root/couchdb.setup.sh"
+        commands={
+            "01_setup": {
+                "command": "/root/couchdb.setup.sh"
             }
         }
     )
@@ -1420,17 +1447,17 @@ def buildDocumentStore(t, args):
     ]
 
     bootstrapReplicate = cloudformation.InitConfig(
-        files = {
-            "/root/couchdb.replicate.sh" : {
-                "content" : Join("", replicateScript),
-                "mode"  : "000500",
-                "owner" : "root",
-                "group" : "root"
+        files={
+            "/root/couchdb.replicate.sh": {
+                "content": Join("", replicateScript),
+                "mode": "000500",
+                "owner": "root",
+                "group": "root"
             }
         },
-        commands = {
-            "01_setup" : {
-              "command" : "/root/couchdb.replicate.sh"
+        commands={
+            "01_setup": {
+                "command": "/root/couchdb.replicate.sh"
             }
         }
     )
@@ -1438,7 +1465,7 @@ def buildDocumentStore(t, args):
     bootstrapMetadata = cloudformation.Metadata(
         cloudformation.Init(
             cloudformation.InitConfigSets(
-                Setup = ['Install']
+                Setup=['Install']
             ),
             Install=bootstrapInstall
         )
@@ -1448,37 +1475,36 @@ def buildDocumentStore(t, args):
     t.add_resource(
         ec2.Instance(
             'CouchDBInstance',
-            DependsOn = ['CertWriterInstance'],
-            Metadata = bootstrapMetadata,
-            ImageId = FindInMap('RegionData', ref_region, 'UbuntuAMI'),
-            InstanceType = 't2.micro',
-            SubnetId = Ref('PrivateSubnet1'),
-            KeyName = Ref('EC2KeyPair'),
-            SecurityGroupIds = [Ref('CouchDBSecurityGroup')],
-            IamInstanceProfile = Ref('CouchDBInstanceProfile'),
-            Volumes = [{
-                "Device" : "/dev/sdd",
-                "VolumeId" : Ref('CouchDBVolume')
+            DependsOn=['CertWriterInstance'],
+            Metadata=bootstrapMetadata,
+            ImageId=FindInMap('RegionData', ref_region, 'UbuntuAMI'),
+            InstanceType='t2.micro',
+            SubnetId=Ref('PrivateSubnet1'),
+            KeyName=Ref('EC2KeyPair'),
+            SecurityGroupIds=[Ref('CouchDBSecurityGroup')],
+            IamInstanceProfile=Ref('CouchDBInstanceProfile'),
+            Volumes=[{
+                "Device": "/dev/sdd",
+                "VolumeId": Ref('CouchDBVolume')
             }],
-            Tags = Tags(Name='Patient Document Store'),
-            InstanceInitiatedShutdownBehavior = 'stop',
-            UserData = Base64(Join('', bootstrapScript)),
-            CreationPolicy = {
-              "ResourceSignal" : {
-                "Timeout" : "PT25M"
-              }
+            Tags=Tags(Name='Patient Document Store'),
+            InstanceInitiatedShutdownBehavior='stop',
+            UserData=Base64(Join('', bootstrapScript)),
+            CreationPolicy={
+                "ResourceSignal": {
+                    "Timeout": "PT25M"
+                }
             }
         )
     )
-
 
     if (args.dual_az):
         t.add_resource(
             ec2.SecurityGroupIngress(
                 'CouchDBSGIngress2',
-                GroupId = Ref('CouchDBSecurityGroup'),
-                IpProtocol = '-1',
-                SourceSecurityGroupId = Ref('CouchDBSecurityGroup')
+                GroupId=Ref('CouchDBSecurityGroup'),
+                IpProtocol='-1',
+                SourceSecurityGroupId=Ref('CouchDBSecurityGroup')
             )
         )
 
@@ -1486,10 +1512,10 @@ def buildDocumentStore(t, args):
             t.add_resource(
                 ec2.Volume(
                     'RCouchDBVolume',
-                    DeletionPolicy = 'Delete',
-                    AvailabilityZone = Select("1", GetAZs("")),
-                    VolumeType = 'sc1',
-                    SnapshotId = Ref('RecoveryCouchDBSnapshot'),
+                    DeletionPolicy='Delete',
+                    AvailabilityZone=Select("1", GetAZs("")),
+                    VolumeType='sc1',
+                    SnapshotId=Ref('RecoveryCouchDBSnapshot'),
                     Tags=Tags(Name="Patient Documents")
                 )
             )
@@ -1497,12 +1523,12 @@ def buildDocumentStore(t, args):
             t.add_resource(
                 ec2.Volume(
                     'RCouchDBVolume',
-                    DeletionPolicy = 'Delete',
+                    DeletionPolicy='Delete',
                     Size=Ref('DocumentStorage'),
-                    AvailabilityZone = Select("1", GetAZs("")),
-                    VolumeType = 'sc1',
-                    Encrypted = True,
-                    KmsKeyId = OpenEMRKeyID,
+                    AvailabilityZone=Select("1", GetAZs("")),
+                    VolumeType='sc1',
+                    Encrypted=True,
+                    KmsKeyId=OpenEMRKeyID,
                     Tags=Tags(Name="Patient Documents")
                 )
             )
@@ -1510,7 +1536,7 @@ def buildDocumentStore(t, args):
         bootstrapReplicatedMetadata = cloudformation.Metadata(
             cloudformation.Init(
                 cloudformation.InitConfigSets(
-                    Setup = ['Install', 'StartReplication']
+                    Setup=['Install', 'StartReplication']
                 ),
                 Install=bootstrapInstall,
                 StartReplication=bootstrapReplicate
@@ -1537,25 +1563,25 @@ def buildDocumentStore(t, args):
         t.add_resource(
             ec2.Instance(
                 'CouchReplicatedDBInstance',
-                DependsOn = ['CertWriterInstance', 'CouchDBInstance'],
-                Metadata = bootstrapReplicatedMetadata,
-                ImageId = FindInMap('RegionData', ref_region, 'UbuntuAMI'),
-                InstanceType = 't2.micro',
-                SubnetId = Ref('PrivateSubnet2'),
-                KeyName = Ref('EC2KeyPair'),
-                SecurityGroupIds = [Ref('CouchDBSecurityGroup')],
-                IamInstanceProfile = Ref('CouchDBInstanceProfile'),
-                Volumes = [{
-                    "Device" : "/dev/sdd",
-                    "VolumeId" : Ref('RCouchDBVolume')
+                DependsOn=['CertWriterInstance', 'CouchDBInstance'],
+                Metadata=bootstrapReplicatedMetadata,
+                ImageId=FindInMap('RegionData', ref_region, 'UbuntuAMI'),
+                InstanceType='t2.micro',
+                SubnetId=Ref('PrivateSubnet2'),
+                KeyName=Ref('EC2KeyPair'),
+                SecurityGroupIds=[Ref('CouchDBSecurityGroup')],
+                IamInstanceProfile=Ref('CouchDBInstanceProfile'),
+                Volumes=[{
+                    "Device": "/dev/sdd",
+                    "VolumeId": Ref('RCouchDBVolume')
                 }],
-                Tags = Tags(Name='Patient Document Store'),
-                InstanceInitiatedShutdownBehavior = 'stop',
-                UserData = Base64(Join('', bootstrapReplicatorScript)),
-                CreationPolicy = {
-                  "ResourceSignal" : {
-                    "Timeout" : "PT25M"
-                  }
+                Tags=Tags(Name='Patient Document Store'),
+                InstanceInitiatedShutdownBehavior='stop',
+                UserData=Base64(Join('', bootstrapReplicatorScript)),
+                CreationPolicy={
+                    "ResourceSignal": {
+                        "Timeout": "PT25M"
+                    }
                 }
             )
         )
@@ -1563,59 +1589,62 @@ def buildDocumentStore(t, args):
         t.add_resource(
             route53.RecordSetType(
                 'DNSCouchDBAZ1',
-                HostedZoneId = Ref('DNS'),
-                Name = 'couchdb-az1.openemr.local',
-                Type = 'CNAME',
-                TTL = '900',
-                ResourceRecords = [GetAtt('CouchDBInstance', 'PrivateDnsName')]
+                HostedZoneId=Ref('DNS'),
+                Name='couchdb-az1.openemr.local',
+                Type='CNAME',
+                TTL='900',
+                ResourceRecords=[GetAtt('CouchDBInstance', 'PrivateDnsName')]
             )
         )
 
         t.add_resource(
             route53.RecordSetType(
                 'DNSCouchDBAZ2',
-                HostedZoneId = Ref('DNS'),
-                Name = 'couchdb-az2.openemr.local',
-                Type = 'CNAME',
-                TTL = '900',
-                ResourceRecords = [GetAtt('CouchReplicatedDBInstance', 'PrivateDnsName')]
+                HostedZoneId=Ref('DNS'),
+                Name='couchdb-az2.openemr.local',
+                Type='CNAME',
+                TTL='900',
+                ResourceRecords=[
+                    GetAtt('CouchReplicatedDBInstance', 'PrivateDnsName')]
             )
         )
 
     t.add_resource(
         route53.RecordSetType(
             'DNSCouchDB',
-            HostedZoneId = Ref('DNS'),
-            Name = 'couchdb.openemr.local',
-            Type = 'CNAME',
-            TTL = '900',
-            ResourceRecords = [GetAtt('CouchDBInstance', 'PrivateDnsName')]
+            HostedZoneId=Ref('DNS'),
+            Name='couchdb.openemr.local',
+            Type='CNAME',
+            TTL='900',
+            ResourceRecords=[GetAtt('CouchDBInstance', 'PrivateDnsName')]
         )
     )
 
     return t
 
+
 def buildDocumentBackups(t):
     t.add_resource(
         iam.Role(
             'DocumentBackupExecutionRole',
-            AssumeRolePolicyDocument = {
-               "Version" : "2012-10-17",
-               "Statement": [ {
-                  "Effect": "Allow",
-                  "Principal": {
-                     "Service": [ "lambda.amazonaws.com" ]
-                  },
-                  "Action": [ "sts:AssumeRole" ]
-               } ]
+            AssumeRolePolicyDocument={
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": ["lambda.amazonaws.com"]
+                    },
+                    "Action": ["sts:AssumeRole"]
+                }]
             },
             Path='/',
             Policies=[iam.Policy(
                 PolicyName="root",
-                PolicyDocument= {
+                PolicyDocument={
                     "Version": "2012-10-17",
                     "Statement": [
-                      { "Effect": "Allow", "Action": ["logs:*"], "Resource": "arn:aws:logs:*:*:*" },
+                      {"Effect": "Allow", "Action": [
+                          "logs:*"], "Resource": "arn:aws:logs:*:*:*"},
                       {
                           "Effect": "Allow",
                           "Action": [
@@ -1628,7 +1657,7 @@ def buildDocumentBackups(t):
                               "*"
                           ]
                       }
-                    ]
+                      ]
                 }
             )]
         )
@@ -1652,15 +1681,15 @@ def buildDocumentBackups(t):
             'DocumentBackupManagerFunction',
             Description='handles patient document (CouchDB) backups',
             Handler='index.lambda_handler',
-            Role=GetAtt('DocumentBackupExecutionRole','Arn'),
+            Role=GetAtt('DocumentBackupExecutionRole', 'Arn'),
             Code=awslambda.Code(
                 ZipFile=Join('\n', lambdaScript)
             ),
             Environment=awslambda.Environment(
                 Variables={
-                    "VOLUME_ID" : Ref("CouchDBVolume"),
-                    "DESCRIPTION" : "OpenEMR document backup",
-                    "COUNTRETAINED" : 3
+                    "VOLUME_ID": Ref("CouchDBVolume"),
+                    "DESCRIPTION": "OpenEMR document backup",
+                    "COUNTRETAINED": 3
                 }
             ),
             Runtime="python2.7",
@@ -1692,43 +1721,44 @@ def buildDocumentBackups(t):
     )
     return t
 
+
 def buildApplication(t, args):
 
     t.add_resource(
         iam.Role(
             'BeanstalkInstanceRole',
-            AssumeRolePolicyDocument = {
-               "Version" : "2012-10-17",
-               "Statement": [ {
-                  "Effect": "Allow",
-                  "Principal": {
-                     "Service": [ "ec2.amazonaws.com" ]
-                  },
-                  "Action": [ "sts:AssumeRole" ]
-               } ]
+            AssumeRolePolicyDocument={
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {
+                        "Service": ["ec2.amazonaws.com"]
+                    },
+                    "Action": ["sts:AssumeRole"]
+                }]
             },
             Path='/',
             Policies=[iam.Policy(
                 PolicyName="root",
-                PolicyDocument= {
+                PolicyDocument={
                     "Version": "2012-10-17",
                     "Statement": [
                         {
                             "Sid": "BucketAccess",
                             "Action": [
-                            "s3:Get*",
-                            "s3:List*",
-                            "s3:PutObject"
+                                "s3:Get*",
+                                "s3:List*",
+                                "s3:PutObject"
                             ],
                             "Effect": "Allow",
                             "Resource": [
-                            "arn:aws:s3:::elasticbeanstalk-*",
-                            "arn:aws:s3:::elasticbeanstalk-*/*"
+                                "arn:aws:s3:::elasticbeanstalk-*",
+                                "arn:aws:s3:::elasticbeanstalk-*/*"
                             ]
                         },
                         {
                             "Sid": "XRayAccess",
-                            "Action":[
+                            "Action": [
                                 "xray:PutTraceSegments",
                                 "xray:PutTelemetryRecords"
                             ],
@@ -1742,26 +1772,28 @@ def buildApplication(t, args):
                                 "logs:CreateLogStream"
                             ],
                             "Effect": "Allow",
-                            "Resource": [ "arn:aws:logs:*:*:log-group:/aws/elasticbeanstalk*" ]
+                            "Resource": ["arn:aws:logs:*:*:log-group:/aws/elasticbeanstalk*"]
                         },
                         {
                             "Sid": "Stmt1500699052000",
                             "Effect": "Allow",
                             "Action": [
-                              "s3:GetObject"
+                                "s3:GetObject"
                             ],
                             "Resource": [
-                                Join("", ["arn:aws:s3:::", Ref('S3Bucket'), "/CA/certs/*"]),
-                                Join("", ["arn:aws:s3:::", Ref('S3Bucket'), "/CA/keys/beanstalk.key"])
+                                Join("", ["arn:aws:s3:::", Ref(
+                                    'S3Bucket'), "/CA/certs/*"]),
+                                Join("", ["arn:aws:s3:::", Ref(
+                                    'S3Bucket'), "/CA/keys/beanstalk.key"])
                             ]
                         },
                         {
-                          "Sid": "Stmt1500612724002",
-                          "Effect": "Allow",
-                          "Action": [
-                              "kms:Decrypt"
-                          ],
-                          "Resource": [ OpenEMRKeyARN ]
+                            "Sid": "Stmt1500612724002",
+                            "Effect": "Allow",
+                            "Action": [
+                                "kms:Decrypt"
+                            ],
+                            "Resource": [OpenEMRKeyARN]
                         }
                     ]
                 }
@@ -1772,8 +1804,8 @@ def buildApplication(t, args):
     t.add_resource(
         iam.InstanceProfile(
             'BeanstalkInstanceProfile',
-            Path = '/',
-            Roles = [Ref('BeanstalkInstanceRole')]
+            Path='/',
+            Roles=[Ref('BeanstalkInstanceRole')]
         )
     )
 
@@ -1851,7 +1883,7 @@ def buildApplication(t, args):
         elasticbeanstalk.OptionSettings(
             Namespace='aws:elb:policies:backendkey',
             OptionName='PublicKey',
-            Value=GetAtt('EBCert','PublicKey')
+            Value=GetAtt('EBCert', 'PublicKey')
         ),
         elasticbeanstalk.OptionSettings(
             Namespace='aws:ec2:vpc',
@@ -1917,9 +1949,9 @@ def buildApplication(t, args):
             '} }'
         ]
         options.append(elasticbeanstalk.OptionSettings(
-                Namespace='aws:elasticbeanstalk:application:environment',
-                OptionName='COUCHDBZONE',
-                Value=Join("", couchDBZoneFile)
+            Namespace='aws:elasticbeanstalk:application:environment',
+            OptionName='COUCHDBZONE',
+            Value=Join("", couchDBZoneFile)
         ))
 
     if (not args.recovery):
@@ -1929,7 +1961,6 @@ def buildApplication(t, args):
             Value=Ref('TimeZone')
         ))
 
-
     ebDeps = ["DNSEFS", "DNSRedis", "DNSMySQL"]
     if (not args.skip_document_store):
         ebDeps.append("DNSCouchDB")
@@ -1937,23 +1968,25 @@ def buildApplication(t, args):
     t.add_resource(
         elasticbeanstalk.Environment(
             'EBEnvironment',
-            DependsOn = ebDeps,
-            ApplicationName = Ref('EBApplication'),
-            Description = 'OpenEMR v5.0.1 cloud deployment',
-            SolutionStackName = args.beanstalk_version,
-            VersionLabel = Ref('EBApplicationVersion'),
-            OptionSettings = options
+            DependsOn=ebDeps,
+            ApplicationName=Ref('EBApplication'),
+            Description='OpenEMR v5.0.1 cloud deployment',
+            SolutionStackName=args.beanstalk_version,
+            VersionLabel=Ref('EBApplicationVersion'),
+            OptionSettings=options
         )
     )
 
     return t
+
 
 def setOutputs(t, args):
     t.add_output(
         Output(
             'OpenEMR',
             Description='OpenEMR Recovery' if args.recovery else 'OpenEMR Setup',
-            Value=Join('', ['http://', GetAtt('EBEnvironment', 'EndpointURL'), '/openemr'])
+            Value=Join(
+                '', ['http://', GetAtt('EBEnvironment', 'EndpointURL'), '/openemr'])
         )
     )
 
@@ -1966,34 +1999,42 @@ def setOutputs(t, args):
     )
     return t
 
+
 parser = argparse.ArgumentParser(description="OpenEMR stack builder")
-parser.add_argument("--beanstalk-key", help="select compressed OpenEMR beanstalk", default=currentBeanstalkKey)
-parser.add_argument("--beanstalk-version", help="select Elastic Beanstalk platform", default=currentBeanstalkPlatform)
-parser.add_argument("--skip-document-store", help="use EFS for patient documents [*not* HIPAA eligible!]", action="store_true")
-parser.add_argument("--dual-az", help="build AZ-hardened stack", action="store_true")
-parser.add_argument("--recovery", help="load OpenEMR stack from backups", action="store_true")
-parser.add_argument("--dev", help="build [security breaching!] development resources", action="store_true")
-parser.add_argument("--force-bastion", help="force developer bastion outside of development", action="store_true")
+parser.add_argument(
+    "--beanstalk-key", help="select compressed OpenEMR beanstalk", default=currentBeanstalkKey)
+parser.add_argument("--beanstalk-version",
+                    help="select Elastic Beanstalk platform", default=currentBeanstalkPlatform)
+parser.add_argument("--skip-document-store",
+                    help="use EFS for patient documents [*not* HIPAA eligible!]", action="store_true")
+parser.add_argument(
+    "--dual-az", help="build AZ-hardened stack", action="store_true")
+parser.add_argument(
+    "--recovery", help="load OpenEMR stack from backups", action="store_true")
+parser.add_argument(
+    "--dev", help="build [security breaching!] development resources", action="store_true")
+parser.add_argument(
+    "--force-bastion", help="force developer bastion outside of development", action="store_true")
 args = parser.parse_args()
 
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR v5.0.1-1 cloud deployment'
+descString = 'OpenEMR v5.0.1-1 cloud deployment'
 if (args.dev):
-    descString+=' [developer]'
+    descString += ' [developer]'
 if (args.force_bastion):
-    descString+=' [keyhole]'
+    descString += ' [keyhole]'
 if (args.dual_az):
-    descString+=' [dual-AZ]'
+    descString += ' [dual-AZ]'
 if (args.recovery):
-    descString+=' [recovery]'
+    descString += ' [recovery]'
 if (args.skip_document_store):
-    descString+=' [no document store]'
+    descString += ' [no document store]'
 if (not args.beanstalk_version == currentBeanstalkPlatform):
-    descString+=' [eb: ' + args.beanstalk_version + ']'
+    descString += ' [eb: ' + args.beanstalk_version + ']'
 if (not args.beanstalk_key == currentBeanstalkKey):
-    descString+=' [eb-app: ' + args.beanstalk_key + ']'
+    descString += ' [eb-app: ' + args.beanstalk_key + ']'
 t.add_description(descString)
 
 # reduce to consistent names
@@ -2004,8 +2045,8 @@ else:
     OpenEMRKeyID = Ref('OpenEMRKey')
     OpenEMRKeyARN = GetAtt('OpenEMRKey', 'Arn')
 
-setInputs(t,args)
-setMappings(t,args)
+setInputs(t, args)
+setMappings(t, args)
 buildVPC(t, args.dual_az)
 buildFoundation(t, args)
 if (args.dev or args.force_bastion):

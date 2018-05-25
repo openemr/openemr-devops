@@ -53,7 +53,7 @@ To install, run the same launch script, make sure you're provided inbound access
   * Apache: `docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
-* Upgrading to new version? See [our guide](upgrade.md).
+* Run a quick backup? `/etc/cron.daily/duplicity-backups` as root.
 
 ### Lightsail Administration Notes
 
@@ -72,6 +72,24 @@ You can stop your OpenEMR instance to take a full copy of it, and then restart i
 #### HIPAA Compliance
 
 As of September 2017, AWS Lightsail is not a [HIPAA Eligible Service](https://aws.amazon.com/compliance/hipaa-eligible-services-reference/). HIPAA Covered Entities may not store Protected Health Information on AWS Lightsail, and should confine their use of OpenEMR Cloud Express to demonstration or training use only. (Use of the software on other servers may be possible and should be discussed with your compliance officer.)
+
+### Applying Upgrades and Security Patches
+
+If you're seeking to install a feature release (to upgrade from `5.0.0` to `5.0.1`, for example), see [our upgrade guide](upgrade.md) for the step-by-step process of replacing your OpenEMR container and updating your database. If instead you're applying a sub-version patch for bug-fixes or security updates (like `5.0.1-1` to `5.0.1-2`), walk through the following steps as root.
+
+```
+#!/bin/sh
+
+PATCHFILE=5-0-1-Patch-2.zip
+OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " "
+
+/etc/cron.daily/duplicity-backups
+# running OpenEMR Standard? don't forget to make an RDS snapshot
+docker exec -it $OE_INSTANCE wget https://www.open-emr.org/patch/$PATCHFILE
+docker exec -it $OE_INSTANCE unzip -o $PATCHFILE
+docker exec -it $OE_INSTANCE rm $PATCHFILE
+# visit http://<your-instance>/sql_patch.php in your browser and proceed
+```
 
 ### Backups
 

@@ -1,4 +1,4 @@
-FROM alpine:3.7
+FROM alpine:edge
 
 #Install dependencies
 RUN apk add --no-cache \
@@ -9,8 +9,9 @@ RUN apk add --no-cache \
     python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
     rsync
 #Stuff for developers since this predominantly a developer/tester docker
+#Note that Edge (and not 3.7) needs to have nodejs-npm for npm to work
 RUN apk add --no-cache \
-    php7-phar nodejs unzip vim nano bash bash-doc bash-completion tree
+    php7-phar nodejs unzip vim nano bash bash-doc bash-completion tree nodejs-npm
 RUN npm install -g bower
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 #some other stuff (note not deleting build-base, libffi-dev, and python-dev since this
