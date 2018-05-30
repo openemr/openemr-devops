@@ -2,6 +2,7 @@ FROM alpine:3.5
 
 #Install dependencies
 #php7-tokenizer will be needed when migrating to 7.1
+RUN apk --no-cache upgrade
 RUN apk add --no-cache \
     apache2 git php7 php7-ctype php7-session php7-apache2 php7-xml \
     php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-mcrypt php7-iconv \
