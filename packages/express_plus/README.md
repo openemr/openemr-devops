@@ -8,9 +8,8 @@ This process will install a fully-functional, secured, preconfigured OpenEMR 5.0
 
 We offer an AWS CloudFormation template, which slightly increases the billable AWS resources past a single server (expected additional outlay: $2-$5/mo) but offers HIPAA eligibility, backups uploaded daily to S3, CloudTrail auditing, and AWS KMS encryption of all Protected Health Information at all steps of its lifecycle.
 
-1. Ensure you have a valid Key Pair for the region you plan to launch.
-
-2. Click the link corresponding to the region you plan to launch.
+1. Be sure you have a valid [EC2 keypair](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html) for the region you're planning to launch your instance in.
+2. Click the link corresponding to this region.
    * [N. Virginia](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-useast1/OpenEMR-Express-Plus.json) (least expensive)
    * [Ohio](https://console.aws.amazon.com/cloudformation/home?region=us-east-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-useast2/OpenEMR-Express-Plus.json)
    * [N. California](https://console.aws.amazon.com/cloudformation/home?region=us-west-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-uswest1/OpenEMR-Express-Plus.json)  
