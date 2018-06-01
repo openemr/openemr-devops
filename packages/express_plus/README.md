@@ -8,7 +8,8 @@ This process will install a fully-functional, secured, preconfigured OpenEMR 5.0
 
 We offer an AWS CloudFormation template, which slightly increases the billable AWS resources past a single server (expected additional outlay: $2-$5/mo) but offers HIPAA eligibility, backups uploaded daily to S3, CloudTrail auditing, and AWS KMS encryption of all Protected Health Information at all steps of its lifecycle.
 
-1. Click the link corresponding to the region you plan to launch.
+1. Be sure you have a valid [EC2 keypair](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html) for the region you're planning to launch your instance in.
+2. Click the link corresponding to this region.
    * [N. Virginia](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-useast1/OpenEMR-Express-Plus.json) (least expensive)
    * [Ohio](https://console.aws.amazon.com/cloudformation/home?region=us-east-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-useast2/OpenEMR-Express-Plus.json)
    * [N. California](https://console.aws.amazon.com/cloudformation/home?region=us-west-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-uswest1/OpenEMR-Express-Plus.json)  
@@ -23,9 +24,9 @@ We offer an AWS CloudFormation template, which slightly increases the billable A
    * [Ireland](https://console.aws.amazon.com/cloudformation/home?region=eu-west-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-euwest1/OpenEMR-Express-Plus.json)  
    * [London](https://console.aws.amazon.com/cloudformation/home?region=eu-west-2#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-euwest2/OpenEMR-Express-Plus.json)  
    * [Sao Paolo](https://console.aws.amazon.com/cloudformation/home?region=sa-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-saeast1/OpenEMR-Express-Plus.json)  
-2. Enter your primary key, your Express instance size, and the amount of storage to reserve for your practice.
-3. Proceed and launch.
-4. Once CloudFormation finishes the stack, you may log in to the IP given in the ``Output`` tab.
+3. Enter your primary key, your Express instance size, and the amount of storage to reserve for your practice.
+4. Proceed and launch.
+5. Once CloudFormation finishes the stack, you may log in to the IP given in the ``Output`` tab.
    * User: `admin`
    * Password: `pass`
    * Change this password before proceeding.
