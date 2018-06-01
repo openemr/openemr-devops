@@ -55,6 +55,29 @@ To install, run the same launch script, make sure you're provided inbound access
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 * Run a quick backup? `/etc/cron.daily/duplicity-backups` as root.
 
+#### Direct MySQL Access
+
+You can open your container up for direct developer-grade database access.
+
+```
+cd /root/openemr-devops/packages/lightsail
+# edit docker-compose.yml: expose port 3306 in the mysql container
+./docker-compose up -d
+mysql -h 127.0.0.1 -u root -p; # (password is root)
+```
+Note that many MySQL clients are hardwired to try to connect to a socket that the container will not expose, if you do not specify a host or specify `localhost`. If you need to access your instance remotely, you'll need to add a pinhole for 3306 to the security group &mdash; consider changing the MySQL access passwords (and updating OpenEMR's `sqlconf.php`) before proceeding.
+
+#### Let's Encrypt SSL Certificates
+
+After installation, if you've assigned your instance a domain, you may choose to use the onboard Let's Encrypt tooling to acquire an SSL certificate. Be warned: Because this procedure will rebuild your containers, your records may be at risk. It's recommended you employ it before production use.
+
+```
+cd /root/openemr-devops/packages/lightsail
+# edit docker-compose.yml: add environment variables DOMAIN and EMAIL to the openemr container
+./docker-compose down
+./docker-compose up -d --build
+```
+
 ### Lightsail Administration Notes
 
 #### SSH Keys

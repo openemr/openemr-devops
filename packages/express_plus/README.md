@@ -40,10 +40,7 @@ We offer an AWS CloudFormation template, which slightly increases the billable A
   * Transient build failures are possible if container dependencies are temporarily unavailable, just retry.
   * You will need network access, don't try to build from a private IP without NAT egress.
   * Check the process list, make sure `auto_configure.php` isn't running before you attempt to log in.
-* Need access to the containers? Log into root, and...
-  * Apache: `docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
-  * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
-* Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
+* Express Plus is based on our (master installation script)[../lightsail] which contains complete notes on common administration tasks, including container interaction and installation of SSL certificates.
 
 ### HIPAA Compliance
 
