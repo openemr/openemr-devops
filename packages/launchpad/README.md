@@ -1,6 +1,8 @@
 # OpenEMR Cloud Launchpad
 
-OpenEMR Cloud Launchpad on the Google Cloud Platform provides OpenEMR 5.0.0, an embedded MySQL server, and rotated, automatic backups of all OpenEMR configuration and health information.
+[We regret the beta nature of this guide, but smooth deployment requires this branch be live for building before the installation process can be properly documented.]
+
+OpenEMR Cloud Launchpad on the Google Cloud Platform provides OpenEMR 5.0.1-3, an embedded MySQL server, and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Installation
 
