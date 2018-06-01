@@ -74,8 +74,7 @@ After installation, if you've assigned your instance a domain, you may choose to
 ```
 cd /root/openemr-devops/packages/lightsail
 # edit docker-compose.yml: add environment variables DOMAIN and EMAIL to the openemr container
-./docker-compose down
-./docker-compose up -d --build
+./docker-compose up -d
 ```
 
 ### Lightsail Administration Notes
