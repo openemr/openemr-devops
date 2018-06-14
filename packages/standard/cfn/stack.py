@@ -86,7 +86,7 @@ def setInputs(t, args):
         Default='db.t2.small',
         Type='String',
         AllowedValues=[
-            'db.t2.micro', 'db.t2.small', 'db.t2.medium', 'db.t2.large', 'db.t2.xlarge', 'db.t2.2xlarge',
+            'db.t2.small', 'db.t2.medium', 'db.t2.large', 'db.t2.xlarge', 'db.t2.2xlarge',
             'db.m4.large', 'db.m4.xlarge', 'db.m4.2xlarge', 'db.m4.4xlarge',
             'db.r4.large', 'db.r4.xlarge', 'db.r4.2xlarge', 'db.r4.4xlarge'
         ]

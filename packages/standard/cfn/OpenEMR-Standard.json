@@ -190,7 +190,6 @@
         },
         "RDSInstanceSize": {
             "AllowedValues": [
-                "db.t2.micro",
                 "db.t2.small",
                 "db.t2.medium",
                 "db.t2.large",
