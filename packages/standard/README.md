@@ -6,7 +6,7 @@
 
 ## Administration
 
-* Access the OpenEMR container: `sudo docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
+* Access the OpenEMR container: `sudo docker exec -it $(sudo docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 
 ### Backups
