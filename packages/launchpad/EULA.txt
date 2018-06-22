@@ -1,0 +1,45 @@
+EULA for OpenEMR Cloud services on Google Cloud Services
+
+1. Your use of OpenEMR software on Google is governed by the terms of the 
+   Google Cloud Platform Terms of Service (https://cloud.google.com/terms/) or
+   other agreement with Google governing your use of Google services.
+
+2. OpenEMR software comes with no guarantees or warranties of any sort,
+   either written or implied.
+
+3. OpenEMR software is released pursuant to General GNU Public Licence
+   (GNU GPL3) (https://www.gnu.org/licenses/gpl-3.0.en.html).
+
+4. OpenEMR software is provided by the author and contributors “AS IS” and any
+   express or implied warranties including but not limited to the implied
+   warranties of merchantability and fitness for a particular purpose are
+   disclaimed.  In no event shall the author or contributors be liable for any
+   direct, indirect, incidental, special, exemplary or consequential damages
+   (including but not limited to procurement of substitute goods or services;
+   loss of use, data, or profits; or business interruption) however caused
+   and on any theory of liability, whether in contract, strict liability, or
+   tort (including negligence or otherwise) arising in any way out of the use
+   of this software, even if advised of the possibility of such damage.
+
+5. THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE
+LAW. EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR OTHER
+PARTIES PROVIDE THE PROGRAM “AS IS” WITHOUT WARRANTY OF ANY KIND, EITHER
+EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE. THE ENTIRE RISK AS TO THE
+QUALITY AND PERFORMANCE OF THE PROGRAM IS WITH YOU. SHOULD THE PROGRAM PROVE
+DEFECTIVE, YOU ASSUME THE COST OF ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
+
+6. IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING WILL
+ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS THE PROGRAM
+AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY GENERAL,
+SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY
+TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A FAILURE OF
+THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS), EVEN IF SUCH HOLDER OR OTHER
+PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+7. If the disclaimer of warranty and limitation of liability provided above
+cannot be given local legal effect according to their terms, reviewing courts
+shall apply local law that most closely approximates an absolute waiver of all
+civil liability in connection with the Program, unless a warranty or assumption
+of liability accompanies a copy of the Program in return for a fee.

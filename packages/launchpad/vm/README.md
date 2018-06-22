@@ -29,22 +29,26 @@ during the cleaning pass
 ```
 mkdir /mnt/openemr
 mount -o defaults /dev/sdb1 /mnt/openemr
-cd /mnt/openemr
-# rm -rf /home/<anything that isn't ubuntu>
-sync
-shutdown -h now
+find /mnt/openemr/home/* -prune | grep -v home/ubuntu | xargs echo rm -rf
+sync ; shutdown -h now
 ```
 
 to create the image from Google Cloud Shell
 ```
-LOCALPROJECT=[REDACTED]
+LOCALPROJECT=[ACCOUNT REDACTED]
+LOCALDISK=[cleaned project disk]
 gcloud config set project $LOCALPROJECT
 gcloud config set compute/zone us-east1-b
 curl -O https://storage.googleapis.com/c2d-install-scripts/partner-utils.tar.gz
 tar -xzvf partner-utils.tar.gz
 python setup.py install
 # change created disk name and target image name to suit
-python image_creator.py --project $LOCALPROJECT --disk openemr-launchpad-2 --name oemr-ubuntu-launchpad-20180524 --license oemr-public/openemr-launchpad
+# test
+python image_creator.py --project $LOCALPROJECT --disk $LOCALDISK --name oemr-ubuntu-launchpad-20180524 --license 
+oemr-public/openemr-launchpad
+# production
+# python image_creator.py --project $LOCALPROJECT --disk $LOCALDISK --name oemr-ubuntu-launchpad-20180524 --destination-project [ACCOUNT REDACTED] --license 
+oemr-public/openemr-launchpad
 ```
 
 now incorporate it into deployment package
