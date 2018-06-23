@@ -7,7 +7,8 @@ RUN apk add --no-cache \
     php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-openssl php7-iconv \
     php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring php7-zlib \
     php7-mysqli php7-sockets php7-xmlreader perl mysql-client tar curl imagemagick-dev \
-    python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron shadow
+    python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
+    shadow
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
 RUN usermod -u 1000 apache
 #clone openemr
