@@ -7,7 +7,10 @@ RUN apk add --no-cache \
     php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-openssl php7-iconv \
     php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring php7-zlib \
     php7-mysqli php7-sockets php7-xmlreader perl mysql-client tar curl imagemagick-dev \
-    python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron
+    python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
+    shadow
+# Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
+RUN usermod -u 1000 apache
 #clone openemr
 RUN git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
@@ -20,7 +23,7 @@ RUN git clone https://github.com/openemr/openemr.git --depth 1 \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
     && apk del --no-cache git build-base libffi-dev python-dev
 WORKDIR /var/www/localhost/htdocs/openemr
-VOLUME [ "/var/www/localhost/htdocs/openemr/sites", "/etc/letsencrypt/", "/etc/ssl" ]
+VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
 ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php7/php.ini
