@@ -1,22 +1,16 @@
 # OpenEMR Cloud Launchpad
 
-[We regret the beta nature of this guide, but smooth deployment requires this branch be live for building before the installation process can be properly documented.]
-
 OpenEMR Cloud Launchpad on the Google Cloud Platform provides OpenEMR 5.0.1-3, an embedded MySQL server, and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Installation
 
 ### Requirements
 
-[???]
+A Google Cloud account in good standing.
 
 ### Directions
 
-[???]
-
-### Usage
-
-[???]
+Follow our [Getting Started Guide](https://www.open-emr.org/wiki/index.php/Google_Launchpad) to provision and log in to [OpenEMR Launchpad](https://console.cloud.google.com/launcher/details/oemr-public/openemr-launchpad).
 
 ## Administration
 
@@ -36,7 +30,7 @@ OpenEMR Cloud Launchpad on the Google Cloud Platform provides OpenEMR 5.0.1-3, a
 
 ### HIPAA Compliance
 
-[???]
+Todo...
 
 ### Backups
 
