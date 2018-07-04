@@ -136,7 +136,9 @@ if [ "$CONFIG" == "0" ] &&
     echo "Setup Complete!"
 fi
 
-if [ "$CONFIG" == "1" ]; then
+if [ "$CONFIG" == "1" ] &&
+   [ "$MANUAL_SETUP" != "yes" ] &&
+   [ "$EMPTY" != "yes" ]; then
     # OpenEMR has been configured
     if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
         cd /var/www/localhost/htdocs/openemr/
@@ -172,13 +174,10 @@ if [ "$CONFIG" == "1" ]; then
     fi
 fi
 
-if [ -f auto_configure.php ]; then
-    # This section only runs once since auto_configure.php gets removed at the end of this script
-    if [ "$REDIS_SERVER" != "" ]; then
-        # Variable for $REDIS_SERVER is usually going to be something like 'redis'
-        sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php7/php.ini
-        sed -i "s@;session.save_path = \"/var/lib/php/sessions\"@session.save_path = \"tcp://$REDIS_SERVER:6379\"@" /etc/php7/php.ini
-    fi
+if [ "$REDIS_SERVER" != "" ]; then
+    # Variable for $REDIS_SERVER is usually going to be something like 'redis'
+    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php7/php.ini
+    sed -i "s@;session.save_path = \"/var/lib/php/sessions\"@session.save_path = \"tcp://$REDIS_SERVER:6379\"@" /etc/php7/php.ini
 fi
 
 # ensure the auto_configure.php script has been removed
