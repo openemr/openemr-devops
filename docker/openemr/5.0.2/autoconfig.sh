@@ -139,6 +139,9 @@ if [ -f /etc/docker-leader ]; then
             echo "Setup scripts removed, we should be ready to go now!"
         fi
     fi
+
+    # ensure the auto_configure.php script has been removed
+    rm -f auto_configure.php
 fi
 
 if [ "$REDIS_SERVER" != "" ] &&
@@ -149,6 +152,3 @@ if [ "$REDIS_SERVER" != "" ] &&
     # Ensure only configure this one time
     touch /etc/php-redis-configured
 fi
-
-# ensure the auto_configure.php script has been removed
-rm -f auto_configure.php
