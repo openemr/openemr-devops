@@ -112,7 +112,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     cd /var/www/localhost/htdocs/
 fi
 
-if [ -f /var/www/localhost/htdocs/auto_configure.php ] ; then
+if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
     chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     chmod 666 /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/config/application.config.php
     chown -R apache /var/www/localhost/htdocs/openemr/
@@ -136,7 +136,9 @@ if [ "$CONFIG" == "0" ] &&
     echo "Setup Complete!"
 fi
 
-if [ "$CONFIG" == "1" ]; then
+if [ "$CONFIG" == "1" ] &&
+   [ "$MANUAL_SETUP" != "yes" ] &&
+   [ "$EMPTY" != "yes" ]; then
     # OpenEMR has been configured
     if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
         cd /var/www/localhost/htdocs/openemr/
@@ -170,6 +172,15 @@ if [ "$CONFIG" == "1" ]; then
         echo "Setup scripts removed, we should be ready to go now!"
         cd /var/www/localhost/htdocs/
     fi
+fi
+
+if [ "$REDIS_SERVER" != "" ] &&
+   [ ! -f /etc/php-redis-configured ]; then
+    # Variable for $REDIS_SERVER is usually going to be something like 'redis'
+    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php7/php.ini
+    sed -i "s@;session.save_path = \"/var/lib/php/sessions\"@session.save_path = \"tcp://$REDIS_SERVER:6379\"@" /etc/php7/php.ini
+    # Ensure only configure this one time
+    touch /etc/php-redis-configured
 fi
 
 # ensure the auto_configure.php script has been removed
