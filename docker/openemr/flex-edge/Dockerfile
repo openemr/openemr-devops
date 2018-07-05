@@ -19,7 +19,7 @@ RUN npm install -g bower
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 #some other stuff (note not deleting build-base, libffi-dev, and python-dev since this
 # is predominantly a developer/tester docker)
-RUN mkdir -p /var/www/localhost/htdocs/openemr \
+RUN mkdir -p /var/www/localhost/htdocs/openemr/sites \
     && chown -R apache /var/www/localhost/htdocs/openemr \
     && git clone https://github.com/letsencrypt/letsencrypt /opt/certbot \
     && pip install -e /opt/certbot/acme -e /opt/certbot \
