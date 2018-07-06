@@ -8,15 +8,69 @@
 #    - Setting openemr parameters OE_USER, OE_PASS
 set -e
 
-# Need to support replication for docker orchestration
-if [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-initiated ]; then
-    # This docker instance will be the leader and perform configuration
-    touch /var/www/localhost/htdocs/openemr/sites/default/docker-initiated;
-    touch /etc/docker-leader
+swarm_wait() {
+    if [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-completed ]; then
+        # true
+        return 0
+    else
+        # false
+        return 1
+    fi
+}
+
+auto_setup() {
+
+    CONFIGURATION="server=${MYSQL_HOST} rootpass=${MYSQL_ROOT_PASS} loginhost=%"
+    if [ "$MYSQL_ROOT_USER" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} root=${MYSQL_ROOT_USER}"
+    fi
+    if [ "$MYSQL_USER" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} login=${MYSQL_USER}"
+    fi
+    if [ "$MYSQL_PASS" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} pass=${MYSQL_PASS}"
+    fi
+    if [ "$MYSQL_DATABASE" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} dbname=${MYSQL_DATABASE}"
+    fi
+    if [ "$OE_USER" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} iuser=${OE_USER}"
+    fi
+    if [ "$OE_PASS" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
+    fi
+
+    chmod -R 600 .
+    php auto_configure.php -f ${CONFIGURATION} || return 1
+
+    echo "OpenEMR configured."
+    CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
+    if [ "$CONFIG" == "0" ]; then
+        echo "Error in auto-config. Configuration failed."
+        exit 2
+    fi
+}
+
+if [ "$SWARM_MODE" == "yes" ]; then
+    # Need to support replication for docker orchestration
+    if [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-initiated ]; then
+        # This docker instance will be the leader and perform configuration
+        touch /var/www/localhost/htdocs/openemr/sites/default/docker-initiated
+        touch /etc/docker-leader
+    fi
+
+    if [ ! -f /etc/docker-leader ] &&
+       [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-completed ]; then
+        while swarm_wait; do
+            echo "Waiting for the docker-leader to finish configuration before proceeding."
+            sleep 10;
+        done
+    fi
 fi
 
-# ensure a self-signed cert has been generated and is referenced
-if [ -f /etc/docker-leader ]; then
+if [ -f /etc/docker-leader ] ||
+   [ "$SWARM_MODE" != "yes" ]; then
+    # ensure a self-signed cert has been generated and is referenced
     if ! [ -f /etc/ssl/private/selfsigned.key.pem ]; then
         openssl req -x509 -newkey rsa:4096 \
         -keyout /etc/ssl/private/selfsigned.key.pem \
@@ -54,40 +108,8 @@ if [ -f /etc/docker-leader ]; then
     fi
 fi
 
-auto_setup() {
-
-    CONFIGURATION="server=${MYSQL_HOST} rootpass=${MYSQL_ROOT_PASS} loginhost=%"
-    if [ "$MYSQL_ROOT_USER" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} root=${MYSQL_ROOT_USER}"
-    fi
-    if [ "$MYSQL_USER" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} login=${MYSQL_USER}"
-    fi
-    if [ "$MYSQL_PASS" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} pass=${MYSQL_PASS}"
-    fi
-    if [ "$MYSQL_DATABASE" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} dbname=${MYSQL_DATABASE}"
-    fi
-    if [ "$OE_USER" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} iuser=${OE_USER}"
-    fi
-    if [ "$OE_PASS" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
-    fi
-
-    chmod -R 600 .
-    php auto_configure.php -f ${CONFIGURATION} || return 1
-
-    echo "OpenEMR configured."
-    CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-    if [ "$CONFIG" == "0" ]; then
-        echo "Error in auto-config. Configuration failed."
-        exit 2
-    fi
-}
-
-if [ -f /etc/docker-leader ]; then
+if [ -f /etc/docker-leader ] ||
+   [ "$SWARM_MODE" != "yes" ]; then
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
     if [ "$CONFIG" == "0" ] &&
        [ "$MYSQL_HOST" != "" ] &&
@@ -142,6 +164,12 @@ if [ -f /etc/docker-leader ]; then
 
     # ensure the auto_configure.php script has been removed
     rm -f auto_configure.php
+fi
+
+if [ -f /etc/docker-leader ] &&
+   [ "$SWARM_MODE" == "yes" ]; then
+    # Set flag that the docker-leader configuration is complete
+    touch /var/www/localhost/htdocs/openemr/sites/default/docker-completed
 fi
 
 if [ "$REDIS_SERVER" != "" ] &&
