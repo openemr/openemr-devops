@@ -58,6 +58,7 @@ auto_setup() {
 
 if [ "$SWARM_MODE" == "yes" ]; then
     # Need to support replication for docker orchestration
+    mkdir -p /var/www/localhost/htdocs/openemr/sites/default
     if [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-initiated ]; then
         # This docker instance will be the leader and perform configuration
         touch /var/www/localhost/htdocs/openemr/sites/default/docker-initiated
@@ -138,6 +139,10 @@ if [ -f /etc/docker-leader ] ||
             cd openemr
             git checkout "$FLEX_REPOSITORY_TAG"
             cd ../
+        fi
+        if [ -f /etc/docker-leader ] &&
+           [ "$SWARM_MODE" == "yes" ]; then
+            touch openemr/sites/default/docker-initiated
         fi
         rsync --recursive --links --exclude .git openemr /var/www/localhost/htdocs/
         rm -fr openemr
