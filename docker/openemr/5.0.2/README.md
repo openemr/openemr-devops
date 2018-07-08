@@ -5,12 +5,7 @@ The docker image is maintained at https://hub.docker.com/r/openemr/openemr/
 
 ## Tags
 
-Tags and their current aliases are shown below:
-
- - `5.0.2`: dev
- - `5.0.1`: next
- - `5.0.0`: latest
- - `flex`
+See the https://hub.docker.com/r/openemr/openemr/ page for documentation of tags and their current aliases.
 
 It is recommended to specify a version number in production, to ensure your build process pulls what you expect it to.
 
@@ -59,13 +54,7 @@ volumes:
 
 ## Environment Variables
 
-Required environment settings for auto installation are `MYSQL_HOST` and `MYSQL_ROOT_PASS` (Note that can force `MYSQL_ROOT_PASS` to be empty by passing as 'BLANK' variable).
-
-Optional settings for the auto installation include database parameters `MYSQL_ROOT_USER`, `MYSQL_USER`, `MYSQL_PASS`, `MYSQL_DATABASE`, and openemr parameters `OE_USER`, `OE_PASS`.
-
-Can override auto installation and force manual installation by setting `MANUAL_SETUP` environment setting to 'yes'.
-
-Can use both port 80 and 443. Port 80 is standard http. Port 443 is https/ssl and uses a self-signed certificate by default; if assign the `DOMAIN` and `EMAIL`(optional) environment settings, then it will set up and maintain certificates via letsencrypt.
+See the https://hub.docker.com/r/openemr/openemr/ page for documentation of environment variables.
 
 ## Where to get help?
 
