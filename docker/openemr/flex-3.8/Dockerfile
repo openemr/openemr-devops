@@ -8,28 +8,30 @@ RUN apk add --no-cache \
     php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring php7-zlib \
     php7-mysqli php7-sockets php7-xmlreader php7-redis perl mysql-client tar curl imagemagick-dev \
     python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
-    shadow
+    rsync shadow
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
-RUN usermod -u 1000 apache
-#clone openemr
-RUN git clone https://github.com/openemr/openemr.git --depth 1 \
-    && rm -rf openemr/.git \
-    && chmod 666 openemr/sites/default/sqlconf.php \
-    && chmod 666 openemr/interface/modules/zend_modules/config/application.config.php \
-    && chown -R apache openemr/ \
-    && mv openemr /var/www/localhost/htdocs/ \
+    RUN usermod -u 1000 apache
+#Stuff for developers since this predominantly a developer/tester docker
+#Note that Edge/3.8 (and not 3.7) needs to have nodejs-npm for npm to work
+RUN apk add --no-cache \
+    php7-phar nodejs unzip vim nano bash bash-doc bash-completion tree nodejs-npm
+RUN npm install -g bower
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
+#some other stuff (note not deleting build-base, libffi-dev, and python-dev since this
+# is predominantly a developer/tester docker)
+RUN mkdir -p /var/www/localhost/htdocs/openemr/sites \
+    && chown -R apache /var/www/localhost/htdocs/openemr \
     && git clone https://github.com/letsencrypt/letsencrypt /opt/certbot \
     && pip install -e /opt/certbot/acme -e /opt/certbot \
-    && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache git build-base libffi-dev python-dev
-WORKDIR /var/www/localhost/htdocs/openemr
+    && mkdir -p /etc/ssl/certs /etc/ssl/private
+WORKDIR /var/www/localhost/htdocs
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
 ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php7/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
 #add runner and auto_configure and prevent auto_configure from being run w/o being enabled
-COPY run_openemr.sh autoconfig.sh auto_configure.php /var/www/localhost/htdocs/openemr/
+COPY run_openemr.sh autoconfig.sh auto_configure.php /var/www/localhost/htdocs/
 COPY utilities/unlock_admin.php utilities/unlock_admin.sh /root/
 RUN chmod 500 run_openemr.sh autoconfig.sh /root/unlock_admin.sh \
     && chmod 000 auto_configure.php /root/unlock_admin.php
