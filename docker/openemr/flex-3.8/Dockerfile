@@ -6,16 +6,15 @@ RUN apk add --no-cache \
     apache2 apache2-ssl git php7 php7-tokenizer php7-ctype php7-session php7-apache2 \
     php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-openssl php7-iconv \
     php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring php7-zlib \
-    php7-mysqli php7-sockets php7-xmlreader php7-redis perl mysql-client tar curl imagemagick-dev \
+    php7-mysqli php7-sockets php7-xmlreader php7-redis php7-simplexml php7-xmlwriter \
+    perl mysql-client tar curl imagemagick-dev \
     python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
     rsync shadow
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
     RUN usermod -u 1000 apache
 #Stuff for developers since this predominantly a developer/tester docker
-#Note that Edge/3.8 (and not 3.7) needs to have nodejs-npm for npm to work
 RUN apk add --no-cache \
-    php7-phar nodejs unzip vim nano bash bash-doc bash-completion tree nodejs-npm
-RUN npm install -g bower
+    php7-phar unzip vim nano bash bash-doc bash-completion tree
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 #some other stuff (note not deleting build-base, libffi-dev, and python-dev since this
 # is predominantly a developer/tester docker)

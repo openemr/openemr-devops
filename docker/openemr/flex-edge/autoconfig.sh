@@ -149,6 +149,19 @@ if [ -f /etc/docker-leader ] ||
         cd /var/www/localhost/htdocs/
     fi
 
+    if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
+       [ ! -d /var/www/localhost/htdocs/openemr/vendor ] &&
+       [ "$FORCE_NO_BUILD_MODE" != "yes" ]; then
+        cd /var/www/localhost/htdocs/openemr
+        composer install
+        composer global require phing/phing
+        /root/.composer/vendor/bin/phing vendor-clean
+        /root/.composer/vendor/bin/phing assets-clean
+        composer global remove phing/phing
+        composer dump-autoload -o
+        cd /var/www/localhost/htdocs
+    fi
+
     if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
         chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
         chmod 666 /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/config/application.config.php
