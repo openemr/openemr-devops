@@ -1030,7 +1030,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString = 'OpenEMR Cloud Standard v5.0.1-3 cloud deployment'
+descString = 'OpenEMR Cloud Standard v5.0.1-4 cloud deployment'
 if (args.dev):
     descString += ' [developer]'
 if (args.recovery):

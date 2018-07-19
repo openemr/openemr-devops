@@ -1,6 +1,6 @@
 # OpenEMR Cloud: Do-It-Yourself Lightsail Edition
 
-This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.1-3 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information. While AWS is the main target, there is documentation around deploying to other webhosts or an on-premise server as well.
+This process will install a fully-functional, secured, preconfigured OpenEMR 5.0.1-4 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information. While AWS is the main target, there is documentation around deploying to other webhosts or an on-premise server as well.
 
 ## Installation
 
@@ -97,12 +97,12 @@ As of September 2017, AWS Lightsail is not a [HIPAA Eligible Service](https://aw
 
 ### Applying Upgrades and Security Patches
 
-If you're seeking to install a feature release (to upgrade from `5.0.0` to `5.0.1`, for example), see [our upgrade guide](upgrade.md) for the step-by-step process of replacing your OpenEMR container and updating your database. If instead you're applying a sub-version patch for bug-fixes or security updates (like `5.0.1-2` to `5.0.1-3`), walk through the following steps as root.
+If you're seeking to install a feature release (to upgrade from `5.0.0` to `5.0.1`, for example), see [our upgrade guide](upgrade.md) for the step-by-step process of replacing your OpenEMR container and updating your database. If instead you're applying a sub-version patch for bug-fixes or security updates (like `5.0.1-3` to `5.0.1-4`), walk through the following steps as root.
 
 ```
 #!/bin/sh
 
-PATCHFILE=5-0-1-Patch-3.zip
+PATCHFILE=5-0-1-Patch-4.zip
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " "
 
 /etc/cron.daily/duplicity-backups
