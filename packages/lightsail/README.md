@@ -103,7 +103,7 @@ If you're seeking to install a feature release (to upgrade from `5.0.0` to `5.0.
 #!/bin/sh
 
 PATCHFILE=5-0-1-Patch-4.zip
-OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " "
+OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
 
 /etc/cron.daily/duplicity-backups
 # running OpenEMR Standard? don't forget to make an RDS snapshot
