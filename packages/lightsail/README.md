@@ -111,6 +111,7 @@ docker exec -it $OE_INSTANCE wget https://www.open-emr.org/patch/$PATCHFILE
 docker exec -it $OE_INSTANCE unzip -o $PATCHFILE
 docker exec -it $OE_INSTANCE rm $PATCHFILE
 # visit http://<your-instance>/sql_patch.php in your browser and proceed
+docker exec -it $OE_INSTANCE rm sql_patch.php
 ```
 
 ### Backups

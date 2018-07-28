@@ -155,6 +155,7 @@ if [ -f /etc/docker-leader ] ||
             rm -f acl_setup.php
             rm -f acl_upgrade.php
             rm -f setup.php
+            rm -f sql_patch.php
             rm -f sql_upgrade.php
             rm -f ippf_upgrade.php
             rm -f gacl/setup.php
