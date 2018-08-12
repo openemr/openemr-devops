@@ -120,6 +120,7 @@ if [ "$CONFIG" == "1" ]; then
 
         echo "Removing remaining setup scripts"
         #remove all setup scripts
+        rm -f admin.php
         rm -f acl_setup.php
         rm -f acl_upgrade.php
         rm -f setup.php
