@@ -144,7 +144,7 @@ if [ -f /etc/docker-leader ] ||
            [ "$SWARM_MODE" == "yes" ]; then
             touch openemr/sites/default/docker-initiated
         fi
-        rsync --recursive --links --exclude .git openemr /var/www/localhost/htdocs/
+        rsync --ignore-existing --recursive --links --exclude .git openemr /var/www/localhost/htdocs/ || true
         rm -fr openemr
         cd /var/www/localhost/htdocs/
     fi
@@ -186,7 +186,7 @@ if [ -f /etc/docker-leader ] ||
     if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
         chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
         chmod 666 /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/config/application.config.php
-        chown -R apache /var/www/localhost/htdocs/openemr/
+        chown -R apache /var/www/localhost/htdocs/openemr/ || true
     fi
 
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
