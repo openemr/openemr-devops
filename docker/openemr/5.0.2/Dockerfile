@@ -17,6 +17,19 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin -
 #clone openemr
 RUN git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
+    && cd openemr \
+    && composer install \
+    && npm install --unsafe-perm \
+    && npm run build \
+    && composer global require phing/phing \
+    && /root/.composer/vendor/bin/phing vendor-clean \
+    && /root/.composer/vendor/bin/phing assets-clean \
+    && composer global remove phing/phing \
+    && composer dump-autoload -o \
+    && composer clearcache \
+    && npm cache clear --force \
+    && rm -fr node_modules \
+    && cd ../ \
     && chmod 666 openemr/sites/default/sqlconf.php \
     && chmod 666 openemr/interface/modules/zend_modules/config/application.config.php \
     && chown -R apache openemr/ \
