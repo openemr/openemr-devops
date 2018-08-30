@@ -8,14 +8,15 @@ RUN apk add --no-cache \
     php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring php7-zlib \
     php7-mysqli php7-sockets php7-xmlreader php7-redis php7-simplexml php7-xmlwriter php7-phar \
     perl mysql-client tar curl imagemagick-dev nodejs nodejs-npm \
-    python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
+    python openssl py-pip openssl-dev dcron \
     shadow
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
 RUN usermod -u 1000 apache
 # Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 #clone openemr
-RUN git clone https://github.com/openemr/openemr.git --depth 1 \
+RUN apk add --no-cache git build-base libffi-dev python-dev \
+    && git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
     && cd openemr \
     && composer install \
