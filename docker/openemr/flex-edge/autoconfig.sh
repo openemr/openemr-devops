@@ -164,6 +164,13 @@ if [ -f /etc/docker-leader ] ||
             npm run build
         fi
 
+        if [ -f /var/www/localhost/htdocs/openemr/ccdaservice/package.json ]; then
+            # install ccdaservice
+            cd /var/www/localhost/htdocs/openemr/ccdaservice
+            npm install --unsafe-perm
+            cd /var/www/localhost/htdocs/openemr
+        fi
+
         # clean up
         composer global require phing/phing
         /root/.composer/vendor/bin/phing vendor-clean
