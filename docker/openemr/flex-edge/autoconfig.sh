@@ -11,6 +11,7 @@
 #  - Optional settings for auto installation are:
 #    - Setting db parameters MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE
 #    - Setting openemr parameters OE_USER, OE_PASS
+#    - EASY_DEV_MODE with value of 'yes' prevents issues with permissions when mounting volumes
 set -e
 
 swarm_wait() {
@@ -45,7 +46,7 @@ auto_setup() {
         CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
     fi
 
-    if [ "$NO_CHMOD" != "yes" ]; then
+    if [ "$EASY_DEV_MODE" != "yes" ]; then
         chmod -R 600 /var/www/localhost/htdocs/openemr
     fi
     php /var/www/localhost/htdocs/auto_configure.php -f ${CONFIGURATION} || return 1
@@ -152,8 +153,7 @@ if [ -f /etc/docker-leader ] ||
     fi
 
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
-       [ -d /var/www/localhost/htdocs/openemr/vendor ] &&
-       [ -z "$(ls -A /var/www/localhost/htdocs/openemr/vendor)" ]  &&
+       [[ ! -d /var/www/localhost/htdocs/openemr/vendor || \( -d /var/www/localhost/htdocs/openemr/vendor &&  -z "$(ls -A /var/www/localhost/htdocs/openemr/vendor)" \) ]]  &&
        [ "$FORCE_NO_BUILD_MODE" != "yes" ]; then
         cd /var/www/localhost/htdocs/openemr
 
@@ -187,7 +187,7 @@ if [ -f /etc/docker-leader ] ||
     fi
 
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
-       [ "$NO_CHMOD" != "yes" ]; then
+       [ "$EASY_DEV_MODE" != "yes" ]; then
         chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
         chmod 666 /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/config/application.config.php
     fi
@@ -214,7 +214,7 @@ if [ -f /etc/docker-leader ] ||
 
     if [ "$CONFIG" == "1" ] &&
        [ "$MANUAL_SETUP" != "yes" ] &&
-       [ "$NO_CHMOD" != "yes" ] &&
+       [ "$EASY_DEV_MODE" != "yes" ] &&
        [ "$EMPTY" != "yes" ]; then
         # OpenEMR has been configured
         if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
