@@ -192,7 +192,9 @@ if [ -f /etc/docker-leader ] ||
         chmod 666 /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/config/application.config.php
     fi
 
-    chown -R apache /var/www/localhost/htdocs/openemr/
+    if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
+        chown -R apache /var/www/localhost/htdocs/openemr/
+    fi
 
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
     if [ "$CONFIG" == "0" ] &&
