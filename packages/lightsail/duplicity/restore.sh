@@ -2,7 +2,7 @@
 
 # TODO: add getopts support, passthrough options for things like duplicity --time
 
-if [ "$1" -ne "--confirm" ]; then
+if [[ "$1" != "--confirm" ]]; then
   echo
   echo *** WARNING ***
   echo

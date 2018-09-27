@@ -7,9 +7,12 @@ if service mysql status; then
   exit 1
 fi
 
-rm -f /root/pending-restore
 chown -R mysql:mysql $WORKDIR
 rm -rf /mnt/backups/prerecovery-mysql-datadir
-mv /var/lib/mysql /mnt/backups/prerecovery-mysql-datadir
-mv $WORKDIR /var/lib/mysql
+echo Copying prerecovery state...
+mv -T /var/lib/mysql /mnt/backups/prerecovery-mysql-datadir
+echo Moving restored database into position...
+mv -T $WORKDIR /var/lib/mysql
+echo Done, continuing...
+rm -f /root/pending-restore
 exit 0

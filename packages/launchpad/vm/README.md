@@ -8,6 +8,7 @@ LOCALPROJECT=[REDACTED]
 gcloud config set project $LOCALPROJECT
 gcloud config set compute/zone us-east1-b
 # just did it manually through console instead of this -- Ubuntu 16.04 LTS
+# TODO: following doesn't work, needs OS specification
 gcloud compute instances create ${INSTANCE} --scopes https://www.googleapis.com/auth/cloud-platform 
 ```
 
@@ -26,10 +27,11 @@ chmod +x *.sh
 ```
 
 during the cleaning pass
+TODO: insufficent? do find traces in /etc/passwd and home directory permissions
 ```
 mkdir /mnt/openemr
 mount -o defaults /dev/sdb1 /mnt/openemr
-find /mnt/openemr/home/* -prune | grep -v home/ubuntu | xargs echo rm -rf
+find /mnt/openemr/home/* -prune | grep -v home/ubuntu | xargs rm -rf
 sync ; shutdown -h now
 ```
 
