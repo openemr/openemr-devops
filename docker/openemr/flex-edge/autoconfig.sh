@@ -11,6 +11,7 @@
 #  - Optional settings for auto installation are:
 #    - Setting db parameters MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE
 #    - Setting openemr parameters OE_USER, OE_PASS
+#    - EASY_DEV_MODE with value of 'yes' prevents issues with permissions when mounting volumes
 set -e
 
 swarm_wait() {
@@ -45,7 +46,9 @@ auto_setup() {
         CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
     fi
 
-    chmod -R 600 /var/www/localhost/htdocs/openemr
+    if [ "$EASY_DEV_MODE" != "yes" ]; then
+        chmod -R 600 /var/www/localhost/htdocs/openemr
+    fi
     php /var/www/localhost/htdocs/auto_configure.php -f ${CONFIGURATION} || return 1
 
     echo "OpenEMR configured."
@@ -144,13 +147,13 @@ if [ -f /etc/docker-leader ] ||
            [ "$SWARM_MODE" == "yes" ]; then
             touch openemr/sites/default/docker-initiated
         fi
-        rsync --recursive --links --exclude .git openemr /var/www/localhost/htdocs/
+        rsync --ignore-existing --recursive --links --exclude .git openemr /var/www/localhost/htdocs/
         rm -fr openemr
         cd /var/www/localhost/htdocs/
     fi
 
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
-       [ ! -d /var/www/localhost/htdocs/openemr/vendor ] &&
+       [[ ! -d /var/www/localhost/htdocs/openemr/vendor || \( -d /var/www/localhost/htdocs/openemr/vendor &&  -z "$(ls -A /var/www/localhost/htdocs/openemr/vendor)" \) ]]  &&
        [ "$FORCE_NO_BUILD_MODE" != "yes" ]; then
         cd /var/www/localhost/htdocs/openemr
 
@@ -183,9 +186,13 @@ if [ -f /etc/docker-leader ] ||
         cd /var/www/localhost/htdocs
     fi
 
-    if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
+    if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
+       [ "$EASY_DEV_MODE" != "yes" ]; then
         chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
         chmod 666 /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/config/application.config.php
+    fi
+
+    if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
         chown -R apache /var/www/localhost/htdocs/openemr/
     fi
 
@@ -209,6 +216,7 @@ if [ -f /etc/docker-leader ] ||
 
     if [ "$CONFIG" == "1" ] &&
        [ "$MANUAL_SETUP" != "yes" ] &&
+       [ "$EASY_DEV_MODE" != "yes" ] &&
        [ "$EMPTY" != "yes" ]; then
         # OpenEMR has been configured
         if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
