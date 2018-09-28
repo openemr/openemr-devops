@@ -4,7 +4,7 @@
 
 if [[ "$1" != "--confirm" ]]; then
   echo
-  echo *** WARNING ***
+  echo \*\*\* WARNING \*\*\*
   echo
   echo This tool will destructively restore your database and webroot.
   echo Regardless of the success or failure of the restoration attempt,
