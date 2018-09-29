@@ -9,7 +9,7 @@ if [ ! -f allsetup.ok ]; then
   exit 1
 fi
 
-[ if -f force-full-backup ]; then
+if [ -f force-full-backup ]; then
   rm force-full-backup
   ./xbackup.sh -t full
   exit $?
