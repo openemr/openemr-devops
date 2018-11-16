@@ -1,0 +1,35 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.17.0 (a74acad)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: modsecurity
+  name: modsecurity
+spec:
+  replicas: 1
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        io.kompose.service: modsecurity
+    spec:
+      containers:
+      - env:
+        - name: PARANOIA
+          value: "1"
+        - name: PROXY
+          value: "1"
+        - name: UPSTREAM
+          value: openemr:80
+        image: owasp/modsecurity-crs:latest
+        name: modsecurity
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        resources: {}
+      restartPolicy: Always
+status: {}

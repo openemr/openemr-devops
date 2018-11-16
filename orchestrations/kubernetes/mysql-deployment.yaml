@@ -1,0 +1,39 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.17.0 (a74acad)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: mysql
+  name: mysql
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        io.kompose.service: mysql
+    spec:
+      containers:
+      - args:
+        - mysqld
+        - --character-set-server=utf8
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: root
+        image: mariadb:10.2
+        name: mysql
+        resources: {}
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: databasevolume
+      restartPolicy: Always
+      volumes:
+      - name: databasevolume
+        persistentVolumeClaim:
+          claimName: databasevolume
+status: {}

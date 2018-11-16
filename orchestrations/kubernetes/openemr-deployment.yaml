@@ -1,0 +1,55 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.17.0 (a74acad)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: openemr
+  name: openemr
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        io.kompose.service: openemr
+    spec:
+      containers:
+      - env:
+        - name: FLEX_REPOSITORY
+          value: https://github.com/openemr/openemr.git
+        - name: FLEX_REPOSITORY_BRANCH
+          value: master
+        - name: MYSQL_HOST
+          value: mysql
+        - name: MYSQL_PASS
+          value: openemr
+        - name: MYSQL_ROOT_PASS
+          value: root
+        - name: MYSQL_USER
+          value: openemr
+        - name: OE_PASS
+          value: pass
+        - name: OE_USER
+          value: admin
+        image: openemr/openemr:flex-3.8
+        name: openemr
+        resources: {}
+        volumeMounts:
+        - mountPath: /var/log
+          name: logvolume01
+        - mountPath: /var/www/localhost/htdocs/openemr/sites
+          name: sitevolume
+      restartPolicy: Always
+      volumes:
+      - name: logvolume01
+        persistentVolumeClaim:
+          claimName: logvolume01
+      - name: sitevolume
+        persistentVolumeClaim:
+          claimName: sitevolume
+status: {}

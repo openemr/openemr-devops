@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.17.0 (a74acad)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: modsecurity
+  name: modsecurity
+spec:
+  ports:
+  - name: "880"
+    port: 880
+    targetPort: 80
+  - name: "4443"
+    port: 4443
+    targetPort: 443
+  selector:
+    io.kompose.service: modsecurity
+status:
+  loadBalancer: {}
