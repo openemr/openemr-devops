@@ -16,6 +16,7 @@ RUN git clone https://github.com/openemr/openemr.git --branch rel-501 --depth 1 
     && chown -R apache openemr/ \
     && mv openemr /var/www/localhost/htdocs/ \
     && git clone https://github.com/letsencrypt/letsencrypt /opt/certbot \
+    && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
     && apk del --no-cache git build-base libffi-dev python-dev
