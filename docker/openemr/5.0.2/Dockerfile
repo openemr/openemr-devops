@@ -40,6 +40,8 @@ RUN apk add --no-cache git build-base libffi-dev python-dev \
     && pip install -e /opt/certbot/acme -e /opt/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
     && apk del --no-cache git build-base libffi-dev python-dev
+
+RUN openssl req -x509 -newkey rsa:4096 -keyout /etc/ssl/private/selfsigned.key.pem -out /etc/ssl/certs/selfsigned.cert.pem -days 1065 -nodes -subj "/C=xx/ST=x/L=x/O=x/OU=x/CN=localhost"
 WORKDIR /var/www/localhost/htdocs/openemr
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
