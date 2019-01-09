@@ -45,7 +45,7 @@ else
   # seed the target volumes with the stack backups
   ./scripts/restore.sh -r import
   # the old OpenEMR instance points to the old database, so repoint
-  sed -i "s/^\\\$host\t=.*\;$/\$host\t= '$RECOVERY_NEWRDS'\;/" /mnt/docker/volumes/standard_sitevolume/_data/sqlconf.php
+  sed -i "s/^\\\$host\t=.*\;$/\$host\t= '$RECOVERY_NEWRDS'\;/" /mnt/docker/volumes/standard_sitevolume/_data/default/sqlconf.php
   # okay, now go
   ./docker-compose up -d
 fi
