@@ -63,11 +63,7 @@ This guide uses services that are _only_ available in certain AWS regions. As of
 2. A dialog box will appear, click on Continue to **Security Credentials**.
 3. Under My Security Credentials, click on **Multi-factor Authentication(MFA)** then the **Activate MFA** button.
 4. A dialogue box will appear that asks you to choose the type of MFA device to assign, choose **Virtual MFA device** and then click on the continue button.
-5. A dialog box will appear asking you to setup a virtual MFA device. You can install the application which is specific to your smartphone. Use the table below as a guide. 
-
-        Android        [Google Authenticator](https://support.google.com/accounts/answer/1066447?hl=en)  or .[Authy 2-Factor Authentication].(https://play.google.com/store/apps/details?id=com.authy.authy&amp;hl=en)
-        Iphone                  .[Google authenticator].(https://itunes.apple.com/us/app/google-authenticator/id388497605?mt=8)  or  .[Authy 2-Factor authentication].(https://itunes.apple.com/us/app/authy/id494168017?mt=8)
-        Windows          .[Authenticator].(https://www.microsoft.com/en-us/p/authenticator/9wzdncrfj3rj?rtc=1&activetab=pivot:overviewtab)  
+5. A dialog box will appear asking you to setup a virtual MFA device. You can install the application which is specific to your smartphone. Use the table [here](https://aws.amazon.com/iam/details/mfa/) as a guide.     
 6. After installing  the application on your smartphone, click on **show QR** code then use the MFA application and your smartphone camera to scan the QR code.
 7. It will be registered on the MFA application in your phone and you should see six digit alternating codes.
 8. Enter any two consecutive codes that will appear on your phone and click on the **Assign MFA** button.
