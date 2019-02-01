@@ -49,8 +49,7 @@ python setup.py install
 python image_creator.py --project $LOCALPROJECT --disk $LOCALDISK --name oemr-ubuntu-launchpad-20180524 --license 
 oemr-public/openemr-launchpad
 # production
-# python image_creator.py --project $LOCALPROJECT --disk $LOCALDISK --name oemr-ubuntu-launchpad-20180524 --destination-project [ACCOUNT REDACTED] --license 
-oemr-public/openemr-launchpad
+# python image_creator.py --project $LOCALPROJECT --disk $LOCALDISK --name oemr-ubuntu-launchpad-20180524 --destination-project [ACCOUNT REDACTED] --license oemr-public/openemr-launchpad
 ```
 
 now incorporate it into deployment package
