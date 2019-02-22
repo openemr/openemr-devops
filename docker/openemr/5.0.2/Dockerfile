@@ -50,7 +50,10 @@ COPY openemr.conf /etc/apache2/conf.d/
 COPY run_openemr.sh autoconfig.sh auto_configure.php /var/www/localhost/htdocs/openemr/
 COPY utilities/unlock_admin.php utilities/unlock_admin.sh /root/
 RUN chmod 500 run_openemr.sh autoconfig.sh /root/unlock_admin.sh \
-    && chmod 000 auto_configure.php /root/unlock_admin.php
+    && chmod 000 auto_configure.php /root/unlock_admin.php \
+    && rm -rf /var/www/localhost/cgi-bin \
+    && rm -f /var/www/localhost/htdocs/index.html \
+    && chown -R /var/www/localhost apache:apache
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
 #go
