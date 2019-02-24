@@ -7,7 +7,7 @@ RUN apk add --no-cache \
     php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-openssl php7-iconv \
     php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring php7-zlib \
     php7-mysqli php7-sockets php7-xmlreader php7-redis php7-simplexml php7-xmlwriter php7-phar \
-    perl mysql-client tar curl imagemagick-dev nodejs nodejs-npm \
+    perl mysql-client tar curl imagemagick nodejs nodejs-npm \
     python openssl py-pip openssl-dev dcron \
     shadow
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
