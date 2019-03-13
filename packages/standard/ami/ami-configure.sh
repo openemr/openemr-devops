@@ -5,7 +5,7 @@ exec > /var/log/openemr-configure.log 2>&1
 cd /root/openemr-devops/packages/standard
 
 # prepare the encrypted volume CFN just added
-mkfs -t ext4 /dev/xvdd
+until mkfs -t ext4 /dev/xvdd; do echo 'mkfs on /dev/xvdd failed, trying again in 5 seconds.'; sleep 5; done
 mkdir /mnt/docker
 chown 711 /mnt/docker
 cat snippets/fstab.append >> /etc/fstab
