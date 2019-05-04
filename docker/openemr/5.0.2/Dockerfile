@@ -32,7 +32,6 @@ RUN apk add --no-cache git build-base libffi-dev python-dev \
     && rm -fr node_modules \
     && cd ../ \
     && chmod 666 openemr/sites/default/sqlconf.php \
-    && chmod 666 openemr/interface/modules/zend_modules/config/application.config.php \
     && chown -R apache openemr/ \
     && mv openemr /var/www/localhost/htdocs/ \
     && git clone https://github.com/letsencrypt/letsencrypt /opt/certbot \
