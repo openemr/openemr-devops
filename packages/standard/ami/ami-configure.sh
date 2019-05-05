@@ -5,8 +5,16 @@ exec > /var/log/openemr-configure.log 2>&1
 cd /root/openemr-devops/packages/standard
 
 # prepare the encrypted volume CFN just added
-COUNTER=0
-until mkfs -t ext4 /dev/xvdd || [ $COUNTER -gt 5 ]; do echo 'mkfs on /dev/xvdd failed, trying again in 5 seconds.'; sleep 5; let COUNTER=COUNTER+1; done
+MKFSCOUNTER=0
+until mkfs -t ext4 /dev/xvdd; do 
+  if [ $MKFSCOUNTER == 6 ]; then
+  echo 'mkfs on /dev/xvdd failure, aborting.'
+  exit 1
+  fi
+  echo 'mkfs on /dev/xvdd failed, trying again in 5 seconds...'
+  sleep 5
+  let MKFSCOUNTER=MKFSCOUNTER+1
+done
 mkdir /mnt/docker
 chown 711 /mnt/docker
 cat snippets/fstab.append >> /etc/fstab
