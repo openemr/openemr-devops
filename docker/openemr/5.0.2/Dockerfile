@@ -1,4 +1,4 @@
-FROM
+FROM gcr.io/b-openemr-group-env-01/openemr-base:latest
 
 USER apache
 #clone openemr
