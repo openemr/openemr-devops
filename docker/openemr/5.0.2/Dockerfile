@@ -1,6 +1,6 @@
 FROM gcr.io/b-openemr-group-env-01/openemr-base:latest
 
-USER apache
+RUN usermod -u 1000 apache
 #clone openemr
 RUN git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \

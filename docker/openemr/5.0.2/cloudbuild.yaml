@@ -1,0 +1,10 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [ 'build', '-t', "gcr.io/b-openemr-group-env-01/openemr-deploy", '.' ]
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/b-openemr-group-env-01/openemr-deploy']
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args: ['beta', 'container', 'images', 'add-tag', 'gcr.io/b-openemr-group-env-01/openemr-deploy', 'gcr.io/b-openemr-group-env-01/openemr-deploy:latest']
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args: ['beta', 'run', 'deploy', 'openemr01', '--image', 'gcr.io/b-openemr-group-env-01/openemr-deploy:latest', '--region', 'us-central1']
+images: ['gcr.io/b-openemr-group-env-01/openemr-deploy']
