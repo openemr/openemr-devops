@@ -34,7 +34,7 @@ RUN apk add --no-cache git build-base libffi-dev python-dev \
     && chmod 666 openemr/sites/default/sqlconf.php \
     && chown -R apache openemr/ \
     && mv openemr /var/www/localhost/htdocs/ \
-    && git clone https://github.com/letsencrypt/letsencrypt /opt/certbot \
+    && git clone https://github.com/letsencrypt/letsencrypt --branch 0.35.x --depth 1 /opt/certbot \
     && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \

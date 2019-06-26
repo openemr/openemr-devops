@@ -20,7 +20,7 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin -
 # is predominantly a developer/tester docker)
 RUN mkdir -p /var/www/localhost/htdocs/openemr/sites \
     && chown -R apache /var/www/localhost/htdocs/openemr \
-    && git clone https://github.com/letsencrypt/letsencrypt /opt/certbot \
+    && git clone https://github.com/letsencrypt/letsencrypt --branch 0.35.x --depth 1 /opt/certbot \
     && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private
