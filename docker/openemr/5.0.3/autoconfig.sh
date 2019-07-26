@@ -142,6 +142,7 @@ if [ -f /etc/docker-leader ] ||
             chmod 700 run_openemr.sh
             # Set file and directory permissions
             find sites/default/documents -type d -print0 | xargs -0 chmod 700
+            find sites/default/documents -type f -print0 | xargs -0 chmod 700
 
             echo "Removing remaining setup scripts"
             #remove all setup scripts

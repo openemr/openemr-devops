@@ -233,6 +233,7 @@ if [ -f /etc/docker-leader ] ||
             # Set file and directory permissions
             chmod 600 interface/modules/zend_modules/config/application.config.php
             find sites/default/documents -type d -print0 | xargs -0 chmod 700
+            find sites/default/documents -type f -print0 | xargs -0 chmod 700
             find sites/default/edi -type d -print0 | xargs -0 chmod 700
             find sites/default/era -type d -print0 | xargs -0 chmod 700
             find sites/default/letter_templates -type d -print0 | xargs -0 chmod 700
