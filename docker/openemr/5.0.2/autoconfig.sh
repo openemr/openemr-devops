@@ -108,6 +108,34 @@ if [ -f /etc/docker-leader ] ||
     fi
 fi
 
+UPGRADE_YES=false;
+if [ -f /etc/docker-leader ] ||
+   [ "$SWARM_MODE" != "yes" ]; then
+    # Figure out if need to do upgrade
+    if [ -f /root/docker-version ]; then
+        DOCKER_VERSION_ROOT=$(cat /root/docker-version)
+    else
+        DOCKER_VERSION_ROOT=0
+    fi
+    if [ -f /var/www/localhost/htdocs/openemr/docker-version ]; then
+        DOCKER_VERSION_CODE=$(cat /var/www/localhost/htdocs/openemr/docker-version)
+    else
+        DOCKER_VERSION_CODE=0
+    fi
+    if [ -f /var/www/localhost/htdocs/openemr/sites/default/docker-version ]; then
+        DOCKER_VERSION_SITES=$(cat /var/www/localhost/htdocs/openemr/sites/default/docker-version)
+    else
+        DOCKER_VERSION_SITES=0
+    fi
+
+    # Only perform upgrade if the sites dir is shared and not entire openemr directory
+    if [ "$DOCKER_VERSION_ROOT" == "$DOCKER_VERSION_CODE" ] &&
+       [ "$DOCKER_VERSION_ROOT" -gt "$DOCKER_VERSION_SITES" ]; then
+        echo "Plan to try an upgrade from $DOCKER_VERSION_SITES to $DOCKER_VERSION_ROOT"
+        UPGRADE_YES=true;
+    fi
+fi
+
 if [ -f /etc/docker-leader ] ||
    [ "$SWARM_MODE" != "yes" ]; then
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
@@ -130,6 +158,19 @@ if [ -f /etc/docker-leader ] ||
     if [ "$CONFIG" == "1" ] &&
        [ "$MANUAL_SETUP" != "yes" ]; then
         # OpenEMR has been configured
+
+        if $UPGRADE_YES; then
+            # Need to do the upgrade(s)
+            echo "Attempting upgrade"
+            for (( c=$DOCKER_VERSION_SITES; c<=$DOCKER_VERSION_ROOT; c++ )); do
+                if [ "$c" -gt 0 ]; then
+                    echo "Processing fsupgrade-$c.sh upgrade script"
+                    sh /root/fsupgrade-$c.sh
+                fi
+            done
+            echo "Completed upgrade"
+        fi
+
         if [ -f auto_configure.php ]; then
             # This section only runs once after above configuration since auto_configure.php gets removed after this script
             echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
