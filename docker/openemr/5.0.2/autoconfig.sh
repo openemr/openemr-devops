@@ -160,13 +160,16 @@ if [ -f /etc/docker-leader ] ||
         # OpenEMR has been configured
 
         if $UPGRADE_YES; then
-            # Need to do the upgrade(s)
+            # Need to do the upgrade
             echo "Attempting upgrade"
-            for (( c=$DOCKER_VERSION_SITES; c<=$DOCKER_VERSION_ROOT; c++ )); do
+            c=$DOCKER_VERSION_SITES
+            while [ "$c" -le "$DOCKER_VERSION_ROOT" ]; do
                 if [ "$c" -gt 0 ]; then
-                    echo "Processing fsupgrade-$c.sh upgrade script"
+                    echo "Start: Processing fsupgrade-$c.sh upgrade script"
                     sh /root/fsupgrade-$c.sh
+                    echo "Completed: Processing fsupgrade-$c.sh upgrade script"
                 fi
+                c=$(( c + 1 ))
             done
             echo "Completed upgrade"
         fi

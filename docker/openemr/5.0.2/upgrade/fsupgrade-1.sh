@@ -101,13 +101,13 @@ for dirdata in $(find /var/www/localhost/htdocs/openemr/sites/* -maxdepth 0 -typ
 
     # Upgrade database
     echo "Start: Upgrade database for $sitename from $priorOpenemrVersion"
-    echo "<?php \$_GET['site'] = '$sitename'; ?>" > /root/TEMPsql_upgrade.php
-    cat /var/www/localhost/htdocs/openemr/sql_upgrade.php >> /root/TEMPsql_upgrade.php
-    sed -i "/input type='submit'/d" /root/TEMPsql_upgrade.php
-    sed -i "s/!empty(\$_POST\['form_submit'\])/empty(\$_POST\['form_submit'\])/" /root/TEMPsql_upgrade.php
-    sed -i "s/^[   ]*\$form_old_version[   =].*$/\$form_old_version = \"$priorOpenemrVersion\";/" /root/TEMPsql_upgrade.php
-    php -f /root/TEMPsql_upgrade.php
-    rm -f /root/TEMPsql_upgrade.php
+    echo "<?php \$_GET['site'] = '$sitename'; ?>" > /var/www/localhost/htdocs/openemr/TEMPsql_upgrade.php
+    cat /var/www/localhost/htdocs/openemr/sql_upgrade.php >> /var/www/localhost/htdocs/openemr/TEMPsql_upgrade.php
+    sed -i "/input type='submit'/d" /var/www/localhost/htdocs/openemr/TEMPsql_upgrade.php
+    sed -i "s/!empty(\$_POST\['form_submit'\])/empty(\$_POST\['form_submit'\])/" /var/www/localhost/htdocs/openemr/TEMPsql_upgrade.php
+    sed -i "s/^[   ]*\$form_old_version[   =].*$/\$form_old_version = \"$priorOpenemrVersion\";/" /var/www/localhost/htdocs/openemr/TEMPsql_upgrade.php
+    php -f /var/www/localhost/htdocs/openemr/TEMPsql_upgrade.php
+    rm -f /var/www/localhost/htdocs/openemr/TEMPsql_upgrade.php
     echo "Completed: Upgrade database for $sitename from $priorOpenemrVersion"
 done
 

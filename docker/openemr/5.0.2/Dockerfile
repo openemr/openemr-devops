@@ -56,7 +56,7 @@ COPY upgrade/docker-version \
      upgrade/fsupgrade-1.sh \
      /root/
 RUN chmod 500 \
-    upgrade/fsupgrade-1.sh
+    /root/fsupgrade-1.sh
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
 #go
