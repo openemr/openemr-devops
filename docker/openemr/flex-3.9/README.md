@@ -16,7 +16,7 @@ version: '3.1'
 services:
   mysql:
     restart: always
-    image: mariadb:10.2
+    image: mariadb:10.4
     command: ['mysqld','--character-set-server=utf8']
     volumes:
     - databasevolume:/var/lib/mysql
@@ -47,7 +47,7 @@ volumes:
   sitevolume: {}
   databasevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/8eea5a844d3168afdb69f89d70114a6e/raw/e699f75508f8926c6427834f1f362d9e1efb7c7b/openemr-flex-39-docker-example-docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/8eea5a844d3168afdb69f89d70114a6e/raw/33765ff2b86a35c68fcac92a3a211bda1026657d/openemr-flex-39-docker-example-docker-compose.yml)
 
 ## Environment Variables
 
