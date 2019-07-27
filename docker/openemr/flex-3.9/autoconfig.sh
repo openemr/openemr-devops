@@ -189,7 +189,6 @@ if [ -f /etc/docker-leader ] ||
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
        [ "$EASY_DEV_MODE" != "yes" ]; then
         chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
-        chmod 666 /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/config/application.config.php
     fi
 
     if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
