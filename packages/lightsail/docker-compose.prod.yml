@@ -21,8 +21,8 @@ services:
     environment:
       MYSQL_HOST: mysql
       MYSQL_ROOT_PASS: root
-      MYSQL_USER: root
-      MYSQL_PASS: root
+      MYSQL_USER: openemr
+      MYSQL_PASS: openemr
       OE_USER: admin
       OE_PASS: pass
     links:
