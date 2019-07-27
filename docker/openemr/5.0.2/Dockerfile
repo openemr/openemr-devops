@@ -51,6 +51,12 @@ COPY run_openemr.sh autoconfig.sh auto_configure.php /var/www/localhost/htdocs/o
 COPY utilities/unlock_admin.php utilities/unlock_admin.sh /root/
 RUN chmod 500 run_openemr.sh autoconfig.sh /root/unlock_admin.sh \
     && chmod 000 auto_configure.php /root/unlock_admin.php
+#bring in pieces used for automatic upgrade process
+COPY upgrade/docker-version \
+     upgrade/fsupgrade-1.sh \
+     /root/
+RUN chmod 500 \
+    /root/fsupgrade-1.sh
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
 #go
