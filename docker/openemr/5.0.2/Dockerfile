@@ -10,7 +10,7 @@ RUN apk add --no-cache \
     php7-sodium php7-calendar \
     perl mysql-client tar curl imagemagick nodejs nodejs-npm \
     python openssl py-pip openssl-dev dcron \
-    shadow
+    shadow logrotate openrc
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
 RUN usermod -u 1000 apache
 # Install composer for openemr package building
