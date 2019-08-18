@@ -3,7 +3,7 @@
 exec > /var/log/openemr-launch.log 2>&1
 
 REPOBRANCH=master
-DOCKERLABEL=:5.0.1
+DOCKERLABEL=:5.0.2
 
 while getopts "b:d:" opt; do
   case $opt in

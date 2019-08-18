@@ -1970,7 +1970,7 @@ def buildApplication(t, args):
             'EBEnvironment',
             DependsOn=ebDeps,
             ApplicationName=Ref('EBApplication'),
-            Description='OpenEMR v5.0.1 cloud deployment',
+            Description='OpenEMR v5.0.2 cloud deployment',
             SolutionStackName=args.beanstalk_version,
             VersionLabel=Ref('EBApplicationVersion'),
             OptionSettings=options
@@ -2020,7 +2020,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString = 'OpenEMR v5.0.1-4 cloud deployment'
+descString = 'OpenEMR v5.0.2 cloud deployment'
 if (args.dev):
     descString += ' [developer]'
 if (args.force_bastion):

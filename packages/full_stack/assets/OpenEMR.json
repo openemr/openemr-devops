@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR v5.0.1-4 cloud deployment",
+    "Description": "OpenEMR v5.0.2 cloud deployment",
     "Mappings": {
         "RegionData": {
             "ap-southeast-2": {
@@ -1322,7 +1322,7 @@
                 "ApplicationName": {
                     "Ref": "EBApplication"
                 },
-                "Description": "OpenEMR v5.0.1 cloud deployment",
+                "Description": "OpenEMR v5.0.2 cloud deployment",
                 "OptionSettings": [
                     {
                         "Namespace": "aws:autoscaling:launchconfiguration",

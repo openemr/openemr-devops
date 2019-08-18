@@ -32,7 +32,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     restart: always
-    image: openemr/openemr:5.0.1
+    image: openemr/openemr:5.0.2
     ports:
     - 80:80
     - 443:443

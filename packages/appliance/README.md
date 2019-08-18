@@ -1,4 +1,4 @@
-# OpenEMR 5.0.1 Appliance
+# OpenEMR 5.0.2 Appliance
 
 A self-contained, pre-configured OpenEMR virtual appliance, compatible with VirtualBox and VMWare.
 
