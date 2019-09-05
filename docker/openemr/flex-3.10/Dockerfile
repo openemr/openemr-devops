@@ -41,4 +41,4 @@ RUN mkdir -p /run/apache2
 #go
 CMD [ "./run_openemr.sh" ]
 
-EXPOSE 80 443
+EXPOSE 80 443 9000
