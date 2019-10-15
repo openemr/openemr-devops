@@ -135,10 +135,10 @@ if [ -f /etc/docker-leader ] ||
 
         if [ "$FLEX_REPOSITORY_BRANCH" != "" ]; then
             echo "Collecting $FLEX_REPOSITORY_BRANCH branch from $FLEX_REPOSITORY repository"
-            git clone "$FLEX_REPOSITORY" --branch "$FLEX_REPOSITORY_BRANCH" --depth 1
+            git clone "$FLEX_REPOSITORY" --branch "$FLEX_REPOSITORY_BRANCH" --depth 1 openemr
         else
             echo "Collecting $FLEX_REPOSITORY_TAG tag from $FLEX_REPOSITORY repository"
-            git clone "$FLEX_REPOSITORY"
+            git clone "$FLEX_REPOSITORY" openemr
             cd openemr
             git checkout "$FLEX_REPOSITORY_TAG"
             cd ../
