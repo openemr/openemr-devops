@@ -45,14 +45,14 @@ Script to be run:
 # For multi-site also uncomment the 3 commented docker exec lines below. 
  
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
-#docker exec -it $OE_INSTANCE sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v5_0_2/admin.php > /var/www/localhost/htdocs/openemr/admin.php'
-docker exec -it $OE_INSTANCE sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v5_0_2/sql_patch.php > /var/www/localhost/htdocs/openemr/sql_patch.php'
-docker exec -it $OE_INSTANCE sh -c 'curl -L https://www.open-emr.org/patch/5-0-2-Patch-1.zip > /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip'
-#docker exec $OE_INSTANCE chown apache:root /var/www/localhost/htdocs/openemr/admin.php 
-docker exec $OE_INSTANCE chown apache:root /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip /var/www/localhost/htdocs/openemr/sql_patch.php
-#docker exec $OE_INSTANCE chmod 400 /var/www/localhost/htdocs/openemr/admin.php 
-docker exec $OE_INSTANCE chmod 400 /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip /var/www/localhost/htdocs/openemr/sql_patch.php
-docker exec $OE_INSTANCE unzip -o /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip
+#docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v5_0_2/admin.php > /var/www/localhost/htdocs/openemr/admin.php'
+docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v5_0_2/sql_patch.php > /var/www/localhost/htdocs/openemr/sql_patch.php'
+docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://www.open-emr.org/patch/5-0-2-Patch-1.zip > /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip'
+#docker exec "$OE_INSTANCE" chown apache:root /var/www/localhost/htdocs/openemr/admin.php 
+docker exec "$OE_INSTANCE" chown apache:root /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip /var/www/localhost/htdocs/openemr/sql_patch.php
+#docker exec "$OE_INSTANCE" chmod 400 /var/www/localhost/htdocs/openemr/admin.php 
+docker exec "$OE_INSTANCE" chmod 400 /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip /var/www/localhost/htdocs/openemr/sql_patch.php
+docker exec "$OE_INSTANCE" unzip -o /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip
 ```
 
 You can copy and paste the below script and make it executable for ease like patch.sh for example.
@@ -78,10 +78,16 @@ For multisite go to `http://<server_name>/openemr/admin.php` and select `Patch d
 
 #delete upgrade files that have served their purpose
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
-docker exec $OE_INSTANCE rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip
+docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/5-0-2-Patch-1.zip
 
 # uncomment to delete the patch script if created
 # rm ./patch.sh 
+
+# want permissions to be minimal and will avoid sites/<sitename>/documents directory
+
+docker exec "$OE_INSTANCE" find . -type f -not -path './sites/*/documents*' -exec chmod 400 {} \;
+docker exec "$OE_INSTANCE" find . -type d -not -path './sites/*/documents*' -exec chmod 500 {} \;
+docker exec "$OE_INSTANCE" find . -not -path './sites/*/documents*' -exec chown apache:root {} \;
 ```
 
 That's it. You've patched OpenEMR! If there are any issues please contact https://community.open-emr.org/  
