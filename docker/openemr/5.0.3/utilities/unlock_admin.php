@@ -13,7 +13,6 @@ use OpenEMR\Common\Auth\AuthUtils;
 sqlStatement("UPDATE `users` SET `active` = 1 WHERE `id` = 1");
 
 $currentPassword = "pass";
-$catchErrorMessage = "";
 $unlockUpdatePassword = new AuthUtils();
 $unlockUpdatePassword->updatePassword(1, 1, $currentPassword, $newPassword);
 if (!empty($unlockUpdatePassword->getErrorMessage())) {
