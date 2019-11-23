@@ -85,7 +85,7 @@ docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /va
 
 # want permissions to be minimal and will avoid sites/<sitename>/documents directory
 
-docker exec "$OE_INSTANCE" find . -type f -not -path './sites/*/documents*' -exec chmod 400 {} \;
+docker exec "$OE_INSTANCE" find . -type f -not -path './run_openemr.sh' -not -path './sites/*/documents*' -exec chmod 400 {} \;
 docker exec "$OE_INSTANCE" find . -type d -not -path './sites/*/documents*' -exec chmod 500 {} \;
 docker exec "$OE_INSTANCE" find . -not -path './sites/*/documents*' -exec chown apache:root {} \;
 ```
