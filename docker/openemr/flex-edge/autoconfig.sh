@@ -12,6 +12,7 @@
 #    - Setting db parameters MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE
 #    - Setting openemr parameters OE_USER, OE_PASS
 #    - EASY_DEV_MODE with value of 'yes' prevents issues with permissions when mounting volumes
+#       and does not download code from github (uses local repo).
 set -e
 
 swarm_wait() {
@@ -119,7 +120,8 @@ fi
 if [ -f /etc/docker-leader ] ||
    [ "$SWARM_MODE" != "yes" ]; then
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
-       [ "$EMPTY" != "yes" ] ; then
+       [ "$EMPTY" != "yes" ] &&
+       [ "$EASY_DEV_MODE" != "yes" ] ; then
         echo "Configuring a new flex openemr docker"
         if [ "$FLEX_REPOSITORY" == "" ]; then
             echo "Exiting from OpenEMR flex docker since missing required FLEX_REPOSITORY environment setting."
