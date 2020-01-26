@@ -12,7 +12,6 @@
 #    - Setting db parameters MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE
 #    - Setting openemr parameters OE_USER, OE_PASS
 #    - EASY_DEV_MODE with value of 'yes' prevents issues with permissions when mounting volumes
-#       and does not download code from github (uses local repo).
 #    - EAST_DEV_MODE_NEW with value of 'yes' expands EASY_DEV_MODE by not requiring downloading
 #      code from github (uses local repo).
 set -e
