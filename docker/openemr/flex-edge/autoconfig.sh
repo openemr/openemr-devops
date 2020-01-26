@@ -13,6 +13,8 @@
 #    - Setting openemr parameters OE_USER, OE_PASS
 #    - EASY_DEV_MODE with value of 'yes' prevents issues with permissions when mounting volumes
 #       and does not download code from github (uses local repo).
+#    - EAST_DEV_MODE_NEW with value of 'yes' expands EASY_DEV_MODE by not requiring downloading
+#      code from github (uses local repo).
 set -e
 
 swarm_wait() {
@@ -121,7 +123,7 @@ if [ -f /etc/docker-leader ] ||
    [ "$SWARM_MODE" != "yes" ]; then
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
        [ "$EMPTY" != "yes" ] &&
-       [ "$EASY_DEV_MODE" != "yes" ] ; then
+       [ "$EAST_DEV_MODE_NEW" != "yes" ] ; then
         echo "Configuring a new flex openemr docker"
         if [ "$FLEX_REPOSITORY" == "" ]; then
             echo "Exiting from OpenEMR flex docker since missing required FLEX_REPOSITORY environment setting."
@@ -152,6 +154,11 @@ if [ -f /etc/docker-leader ] ||
         rsync --ignore-existing --recursive --links --exclude .git openemr /var/www/localhost/htdocs/
         rm -fr openemr
         cd /var/www/localhost/htdocs/
+    fi
+
+    if [ "$EASY_DEV_MODE_NEW" == "yes" ]; then
+        # trickery for the easy dev environment
+        rsync --ignore-existing --recursive --links --exclude .git /openemr /var/www/localhost/htdocs/
     fi
 
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
