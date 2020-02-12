@@ -62,16 +62,19 @@ For general knowledge, our [wiki](http://www.open-emr.org/wiki) is a repository 
 
 The OpenEMR community is a vibrant and active group, and people from any background can contribute meaningfully, whether they are optimizing our DB calls, or they're doing translations to their native tongue. Feel free to reach out to us at via [chat](https://chat.open-emr.org/)!
 
-#PHPStorm XDebug settings
+# PHPStorm XDebug settings
 Docker needs to be set up inside PHPStorm.
 [Docker setup for PHPSTorm](https://www.jetbrains.com/help/phpstorm/docker.html) You also need to install a browser plugin. 
 See examples in images folder
+
 [Docker setup example](/images/Docker.PNG) - How docker should be set up. You will need to trun on remote tcp on in docker self. Also not that you can use a remote docker however it is setup differently
+
 [PHP Docker example](/images/PHP-Docker.PNG) - Once docker is setup you can run docker-compose up make sure you have XDEBUG_CONFIG: remote_host=host.docker.internal inside of your docker-compose file. You can then add you container as your PHP CLI see [PHP CLI example](/images/Docker-CLI.PNG). 
 Make sure to set the Xdebug settings to remote port 9000 along with checking the two boxes underneath. Once that is all setup you can validate it in setting -> Languages & Frameworks -> PHP -> Xdebug and click the link validate at the top. see example [Xdebug validate](/images/Xdebug-Validate.PNG)
+ 
  The last thing you need to do to get xdebug working is set up the Run debug Configurations. Add a PHP Remote Debug server with the IDE key of PHPSTORM see [Example](/images/Run-Debug-Conf.PNG)
  
- #Troubleshooting 
+ # Troubleshooting 
  If you run into any problems with getting phpstorm to connect try setting the sever to the default networking address. [default ip](/images/default-switch.PNG)
  
 
