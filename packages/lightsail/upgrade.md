@@ -11,7 +11,7 @@
 
 ### Overview
 
-To upgrade OpenEMR, you'll want to follow one steps:
+To upgrade OpenEMR, you'll want to follow one step:
  * Backup your system and upgrade your local container.
 
 ### Procedure
