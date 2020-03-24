@@ -168,9 +168,20 @@ if [ -f /etc/docker-leader ] ||
         # install php dependencies
         composer install
         if [ "$DEVELOPER_TOOLS" == "yes" ]; then
-            composer global require "squizlabs/php_codesniffer=3.*" 
-            composer require "phpunit/phpunit=8.*"
-            composer require "symfony/panther=^0.6" 
+            composer global require "squizlabs/php_codesniffer=3.*"
+            # The composer require (not the global one) forces a token check to use the github api to check on the
+            # vcs repository for wkhtmltopdf-openemr (note openemr does not even install this by default but the
+            # github api still forces a check; if the developer has not used up the anonymous limit, then ok, but
+            # it's not uncommon to hit that limit and then it basically breaks). Travis setup had this same issue,
+            # which we solved by creating a github token for that purpose. But we can't do that here. Two options are:
+            # 1. Migrate wkhtmltopdf-openemr to packagist
+            # 2. Support 'composer install --no-dev' at places in infrastructure where production use happens and then
+            #    can add the "phpunit/phpunit=8.*" and "symfony/panther=^0.6" to the dev part of composer.json.
+            # Either option will fix this issue. And we should actually do both.
+            # After address above, can then uncomment below 2 lines.
+            #
+            #composer require "phpunit/phpunit=8.*"
+            #composer require "symfony/panther=^0.6"
         fi
 
         if [ -f /var/www/localhost/htdocs/openemr/package.json ]; then
