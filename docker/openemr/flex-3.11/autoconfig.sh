@@ -167,6 +167,11 @@ if [ -f /etc/docker-leader ] ||
 
         # install php dependencies
         composer install
+        if [ "$DEVELOPER_TOOLS" == "yes" ]; then
+            composer global require "squizlabs/php_codesniffer=3.*" 
+            composer require "phpunit/phpunit=8.*"
+            composer require "symfony/panther=^0.6" 
+        fi
 
         if [ -f /var/www/localhost/htdocs/openemr/package.json ]; then
             # install frontend dependencies (need unsafe-perm to run as root)
