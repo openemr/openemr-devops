@@ -10,7 +10,7 @@ RUN apk add --no-cache \
     php7-sodium php7-calendar \
     mysql-client tar curl imagemagick npm \
     python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
-    rsync shadow
+    rsync shadow jq
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
     RUN usermod -u 1000 apache
 #Stuff for developers since this predominantly a developer/tester docker

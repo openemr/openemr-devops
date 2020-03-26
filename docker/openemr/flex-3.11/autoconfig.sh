@@ -166,6 +166,29 @@ if [ -f /etc/docker-leader ] ||
         cd /var/www/localhost/htdocs/openemr
 
         # install php dependencies
+        githubComposerToken=false;
+        # if there is a github token, then use it if it is valid
+        if [ "$GITHUB_COMPOSER_TOKEN" != "" ]; then
+            githubTokenRateLimitRequest=`curl -H "Authorization: token $GITHUB_COMPOSER_TOKEN" https://api.github.com/rate_limit`
+            githubTokenRateLimit=`echo $githubTokenRateLimitRequest | jq '.rate.remaining'`
+            githubTokenRateLimitMessage=`echo $githubTokenRateLimitRequest | jq '.message'`
+            echo "Number of github api requests remaining is $githubTokenRateLimit";
+            echo "Message received from api request is \"$githubTokenRateLimitMessage\"";
+            if [ "$githubTokenRateLimit" -gt 100 ]; then
+                if `composer config --global --auth github-oauth.github.com "$GITHUB_COMPOSER_TOKEN"`; then
+                    githubComposerToken=true;
+                    echo "github composer token worked"
+                else
+                    echo "github composer token did not work"
+                fi
+            else
+                if [ "$githubTokenRateLimitMessage" == "\"Bad credentials\"" ]; then
+                    echo "github composer token is bad, so did not work"
+                else
+                    echo "github composer token rate limit is now < 100, so did not work"
+                fi
+            fi
+        fi
         composer install
         if [ "$DEVELOPER_TOOLS" == "yes" ]; then
             composer global require "squizlabs/php_codesniffer=3.*"
@@ -173,15 +196,18 @@ if [ -f /etc/docker-leader ] ||
             # vcs repository for wkhtmltopdf-openemr (note openemr does not even install this by default but the
             # github api still forces a check; if the developer has not used up the anonymous limit, then ok, but
             # it's not uncommon to hit that limit and then it basically breaks). Travis setup had this same issue,
-            # which we solved by creating a github token for that purpose. But we can't do that here. Two options are:
+            # which we solved by creating a github token for that purpose. Three options are:
             # 1. Migrate wkhtmltopdf-openemr to packagist
             # 2. Support 'composer install --no-dev' at places in infrastructure where production use happens and then
             #    can add the "phpunit/phpunit=8.*" and "symfony/panther=^0.6" to the dev part of composer.json.
-            # Either option will fix this issue. And we should actually do both.
-            # After address above, can then uncomment below 2 lines.
+            # 3. Set a github auth token
+            # Either option will fix this issue. And we should actually do all 3.
+            # At this time, only doing option 3 (requires a GITHUB_COMPOSER_TOKEN), which will suffice for now.
             #
-            #composer require "phpunit/phpunit=8.*"
-            #composer require "symfony/panther=^0.6"
+            if $githubComposerToken; then
+                composer require "phpunit/phpunit=8.*"
+                composer require "symfony/panther=^0.6"
+            fi
         fi
 
         if [ -f /var/www/localhost/htdocs/openemr/package.json ]; then
