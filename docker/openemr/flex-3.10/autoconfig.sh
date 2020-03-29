@@ -166,9 +166,8 @@ if [ -f /etc/docker-leader ] ||
         cd /var/www/localhost/htdocs/openemr
 
         # install php dependencies
-        githubComposerToken=false;
-        # if there is a github token, then use it if it is valid
         if [ "$GITHUB_COMPOSER_TOKEN" != "" ]; then
+            # if there is a github token, then use it if it is valid
             githubTokenRateLimitRequest=`curl -H "Authorization: token $GITHUB_COMPOSER_TOKEN" https://api.github.com/rate_limit`
             githubTokenRateLimit=`echo $githubTokenRateLimitRequest | jq '.rate.remaining'`
             githubTokenRateLimitMessage=`echo $githubTokenRateLimitRequest | jq '.message'`
@@ -176,7 +175,6 @@ if [ -f /etc/docker-leader ] ||
             echo "Message received from api request is \"$githubTokenRateLimitMessage\"";
             if [ "$githubTokenRateLimit" -gt 100 ]; then
                 if `composer config --global --auth github-oauth.github.com "$GITHUB_COMPOSER_TOKEN"`; then
-                    githubComposerToken=true;
                     echo "github composer token worked"
                 else
                     echo "github composer token did not work"
@@ -189,25 +187,14 @@ if [ -f /etc/docker-leader ] ||
                 fi
             fi
         fi
-        composer install
         if [ "$DEVELOPER_TOOLS" == "yes" ]; then
+            composer install
             composer global require "squizlabs/php_codesniffer=3.*"
-            # The composer require (not the global one) forces a token check to use the github api to check on the
-            # vcs repository for wkhtmltopdf-openemr (note openemr does not even install this by default but the
-            # github api still forces a check; if the developer has not used up the anonymous limit, then ok, but
-            # it's not uncommon to hit that limit and then it basically breaks). Travis setup had this same issue,
-            # which we solved by creating a github token for that purpose. Three options are:
-            # 1. Migrate wkhtmltopdf-openemr to packagist
-            # 2. Support 'composer install --no-dev' at places in infrastructure where production use happens and then
-            #    can add the "phpunit/phpunit=8.*" and "symfony/panther=^0.6" to the dev part of composer.json.
-            # 3. Set a github auth token
-            # Either option will fix this issue. And we should actually do all 3.
-            # At this time, only doing option 3 (requires a GITHUB_COMPOSER_TOKEN), which will suffice for now.
-            #
-            if $githubComposerToken; then
-                composer require "phpunit/phpunit=8.*"
-                composer require "symfony/panther=^0.6"
-            fi
+            # install support for the e2e testing
+            apk update
+            apk add --no-cache chromium chromium-chromedriver
+        else
+            composer install --no-dev
         fi
 
         if [ -f /var/www/localhost/htdocs/openemr/package.json ]; then
