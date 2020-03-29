@@ -122,7 +122,7 @@ if [ -f /etc/docker-leader ] ||
    [ "$SWARM_MODE" != "yes" ]; then
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
        [ "$EMPTY" != "yes" ] &&
-       [ "$EAST_DEV_MODE_NEW" != "yes" ]; then
+       [ "$EASY_DEV_MODE_NEW" != "yes" ]; then
         echo "Configuring a new flex openemr docker"
         if [ "$FLEX_REPOSITORY" == "" ]; then
             echo "Exiting from OpenEMR flex docker since missing required FLEX_REPOSITORY environment setting."
