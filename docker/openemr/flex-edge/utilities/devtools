@@ -1,0 +1,49 @@
+#! /bin/sh
+
+
+if [ "$1" == "build-themes" ]; then
+    echo "Building OpenEMR Themes"
+    cd /var/www/localhost/htdocs/openemr
+    npm run build
+fi
+
+if [ "$1" == "psr2-report"  ]; then
+    echo "Generating PSR2 code styling error report "
+    cd /var/www/localhost/htdocs/openemr
+    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -n --extensions=php,inc --standard=ci/phpcs.xml --report=full .
+fi
+
+if [ "$1" == "psr2-fix"  ] || [ "$1" == "clean-sweep" ]; then
+    echo "Fixing PSR2 code styling errors "
+    cd /var/www/localhost/htdocs/openemr
+    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcbf -n --extensions=php,inc --standard=ci/phpcs.xml .
+fi
+
+if [ "$1" == "php-parserror"  ] || [ "$1" == "clean-sweep" ]; then
+    echo "Generating PHP parse errors"
+    cd /var/www/localhost/htdocs/openemr
+    find . -type f \( -name "*.php" -or -name "*.inc" \) \( -not -path "./vendor/*" -and -not -path "./node_modules/*" -and -not -path "./ccdaservice/node_modules}/*" \) -exec php -d error_reporting=32767 -l {} \; 2>&1 >&- | grep "^"
+fi
+
+if [ "$1" == "unit-test"  ] || [ "$1" == "clean-sweep" ]; then
+    echo "Running OpenEMR unit tests"
+    cd /var/www/localhost/htdocs/openemr
+    vendor/bin/phpunit --testsuite unit --testdox
+fi
+
+if [ "$1" == "api-test"  ] || [ "$1" == "clean-sweep" ]; then
+    echo "Running OpenEMR API tests"
+    cd /var/www/localhost/htdocs/openemr
+    vendor/bin/phpunit --testsuite api --testdox
+fi
+
+if [ "$1" == "e2e-test"  ] || [ "$1" == "clean-sweep" ]; then
+    echo "Running OpenEMR e2e tests"
+    cd /var/www/localhost/htdocs/openemr
+    export PANTHER_NO_SANDBOX=1
+    export PANTHER_CHROME_DRIVER_BINARY=/usr/lib/chromium/chromedriver
+    vendor/bin/phpunit --testsuite e2e --testdox
+fi
+
+
+
