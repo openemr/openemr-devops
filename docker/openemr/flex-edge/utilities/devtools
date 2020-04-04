@@ -1,6 +1,11 @@
 #! /bin/sh
 
 
+if [ "$1" == "php-log" ]; then
+    echo "Generating PHP error log"
+    cat /var/log/apache2/error.log
+fi
+
 if [ "$1" == "build-themes" ]; then
     echo "Building OpenEMR Themes"
     cd /var/www/localhost/htdocs/openemr
