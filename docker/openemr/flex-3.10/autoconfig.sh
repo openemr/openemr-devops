@@ -34,12 +34,21 @@ auto_setup() {
     fi
     if [ "$MYSQL_USER" != "" ]; then
         CONFIGURATION="${CONFIGURATION} login=${MYSQL_USER}"
+        CUSTOM_USER="$MYSQL_USER"
+    else
+        CUSTOM_USER="openemr"
     fi
     if [ "$MYSQL_PASS" != "" ]; then
         CONFIGURATION="${CONFIGURATION} pass=${MYSQL_PASS}"
+        CUSTOM_PASSWORD="$MYSQL_PASS"
+    else 
+        CUSTOM_PASSWORD="openemr"
     fi
     if [ "$MYSQL_DATABASE" != "" ]; then
         CONFIGURATION="${CONFIGURATION} dbname=${MYSQL_DATABASE}"
+        CUSTOM_DATABASE="$MYSQL_DATABASE"
+    else 
+        CUSTOM_DATABASE="openemr"
     fi
     if [ "$OE_USER" != "" ]; then
         CONFIGURATION="${CONFIGURATION} iuser=${OE_USER}"
@@ -51,6 +60,7 @@ auto_setup() {
     if [ "$EASY_DEV_MODE" != "yes" ]; then
         chmod -R 600 /var/www/localhost/htdocs/openemr
     fi
+    
     php /var/www/localhost/htdocs/auto_configure.php -f ${CONFIGURATION} || return 1
 
     echo "OpenEMR configured."
@@ -58,6 +68,11 @@ auto_setup() {
     if [ "$CONFIG" == "0" ]; then
         echo "Error in auto-config. Configuration failed."
         exit 2
+    fi
+
+    #Turn on API from docker
+    if [ "$ACTIVATE_API" == "yes" ]; then
+        mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_api\"" "$CUSTOM_DATABASE"
     fi
 }
 
@@ -303,3 +318,4 @@ if [ "$REDIS_SERVER" != "" ] &&
     # Ensure only configure this one time
     touch /etc/php-redis-configured
 fi
+
