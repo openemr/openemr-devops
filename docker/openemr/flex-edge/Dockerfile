@@ -9,7 +9,7 @@ RUN apk add --no-cache \
     php7-mysqli php7-sockets php7-xmlreader php7-redis perl php7-simplexml php7-xmlwriter php7-phar php7-fileinfo \
     php7-sodium php7-calendar \
     mysql-client tar curl imagemagick npm \
-    python openssl git libffi-dev py-pip python-dev build-base openssl-dev dcron \
+    python3 openssl git libffi-dev py-pip python3-dev build-base openssl-dev dcron \
     rsync shadow jq
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
     RUN usermod -u 1000 apache
@@ -21,9 +21,9 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin -
 # is predominantly a developer/tester docker)
 RUN mkdir -p /var/www/localhost/htdocs/openemr/sites \
     && chown -R apache /var/www/localhost/htdocs/openemr \
-    && git clone https://github.com/letsencrypt/letsencrypt --branch 0.35.x --depth 1 /opt/certbot \
+    && git clone https://github.com/letsencrypt/letsencrypt --depth 1 /opt/certbot \
     && pip install --upgrade pip \
-    && pip install -e /opt/certbot/acme -e /opt/certbot \
+    && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private
 WORKDIR /var/www/localhost/htdocs
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
