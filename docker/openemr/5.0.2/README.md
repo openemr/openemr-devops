@@ -50,7 +50,7 @@ volumes:
   sitevolume: {}
   databasevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?https://gist.githubusercontent.com/bradymiller/8f8dc5215b07d287f7dc0fed80bf2b9d/raw/9b2a762849bbf8ce0a0d4dff30c4a359cfa88a44/openemr-502-docker-example-docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](https://play-with-docker.com/?https://gist.githubusercontent.com/bradymiller/8f8dc5215b07d287f7dc0fed80bf2b9d/raw/9b2a762849bbf8ce0a0d4dff30c4a359cfa88a44/openemr-502-docker-example-docker-compose.yml)
 
 ## Environment Variables
 
@@ -58,8 +58,8 @@ See the https://hub.docker.com/r/openemr/openemr/ page for documentation of envi
 
 ## Where to get help?
 
-For general knowledge, our [wiki](http://www.open-emr.org/wiki) is a repository of helpful information. The [forums](https://community.open-emr.org/) are a great source for assistance and news about emerging features. We also have a [chat](https://chat.open-emr.org/) system for real-time advice and to coordinate our development efforts.
+For general knowledge, our [wiki](https://www.open-emr.org/wiki) is a repository of helpful information. The [Forum](https://community.open-emr.org/) are a great source for assistance and news about emerging features. We also have a [Chat](https://www.open-emr.org/chat/) system for real-time advice and to coordinate our development efforts.
 
 ## How can I contribute?
 
-The OpenEMR community is a vibrant and active group, and people from any background can contribute meaningfully, whether they are optimizing our DB calls, or they're doing translations to their native tongue. Feel free to reach out to us at via [chat](https://chat.open-emr.org/)!
+The OpenEMR community is a vibrant and active group, and people from any background can contribute meaningfully, whether they are optimizing our DB calls, or they're doing translations to their native tongue. Feel free to reach out to us at via [Chat](https://www.open-emr.org/chat/)!
