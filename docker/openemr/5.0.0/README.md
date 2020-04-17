@@ -52,7 +52,7 @@ volumes:
   sitevolume: {}
   databasevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](https://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/988d5105e38ffd8f6fb3cf49bbfae9f0/raw/1811364f169261286dbaf72d78f5d51b37914d90/openemr-500-docker-example-docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/988d5105e38ffd8f6fb3cf49bbfae9f0/raw/1811364f169261286dbaf72d78f5d51b37914d90/openemr-500-docker-example-docker-compose.yml)
 
 ## Environment Variables
 
