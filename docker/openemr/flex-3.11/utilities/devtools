@@ -18,16 +18,16 @@ if [ "$1" == "psr2-report"  ] || [ "$1" == "psr12-report"  ]; then
     php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -n --extensions=php,inc --standard=ci/phpcs.xml --report=full .
 fi
 
+if [ "$1" == "psr12-src-report"  ]; then
+    echo "Generating strict PSR12 code styling error report for src directory "
+    cd /var/www/localhost/htdocs/openemr
+    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -n --extensions=php,inc --standard=ci/phpcs_src.xml --report=full src/
+fi
+
 if [ "$1" == "psr2-fix"  ] ||  [ "$1" == "psr12-fix"  ] || [ "$1" == "clean-sweep" ]; then
     echo "Fixing PSR12 code styling errors "
     cd /var/www/localhost/htdocs/openemr
     php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcbf -n --extensions=php,inc --standard=ci/phpcs.xml .
-fi
-
-if [ "$1" == "psr12-src-report"  ]; then
-    echo "Generating PSR12 code styling error report for src directory "
-    cd /var/www/localhost/htdocs/openemr
-    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -n --extensions=php,inc --standard=ci/phpcs_src.xml --report=full src/
 fi
 
 if [ "$1" == "php-parserror"  ] || [ "$1" == "clean-sweep" ]; then
@@ -36,19 +36,19 @@ if [ "$1" == "php-parserror"  ] || [ "$1" == "clean-sweep" ]; then
     find . -type f \( -name "*.php" -or -name "*.inc" \) \( -not -path "./vendor/*" -and -not -path "./node_modules/*" -and -not -path "./ccdaservice/node_modules}/*" \) -exec php -d error_reporting=32767 -l {} \; 2>&1 >&- | grep "^"
 fi
 
-if [ "$1" == "unit-test"  ] || [ "$1" == "clean-sweep" ]; then
-    echo "Running OpenEMR unit tests"
+if [ "$1" == "unit-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+    echo "Running OpenEMR Unit tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite unit --testdox
 fi
 
-if [ "$1" == "api-test"  ] || [ "$1" == "clean-sweep" ]; then
+if [ "$1" == "api-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR API tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite api --testdox
 fi
 
-if [ "$1" == "e2e-test"  ] || [ "$1" == "clean-sweep" ]; then
+if [ "$1" == "e2e-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR e2e tests"
     cd /var/www/localhost/htdocs/openemr
     export PANTHER_NO_SANDBOX=1
@@ -56,5 +56,14 @@ if [ "$1" == "e2e-test"  ] || [ "$1" == "clean-sweep" ]; then
     vendor/bin/phpunit --testsuite e2e --testdox
 fi
 
+if [ "$1" == "fixture-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+    echo "Running OpenEMR Fixture tests"
+    cd /var/www/localhost/htdocs/openemr
+    vendor/bin/phpunit --testsuite fixture --testdox
+fi
 
-
+if [ "$1" == "service-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+    echo "Running OpenEMR Service tests"
+    cd /var/www/localhost/htdocs/openemr
+    vendor/bin/phpunit --testsuite service --testdox
+fi
