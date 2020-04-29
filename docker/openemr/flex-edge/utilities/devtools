@@ -56,14 +56,20 @@ if [ "$1" == "e2e-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-swee
     vendor/bin/phpunit --testsuite e2e --testdox
 fi
 
-if [ "$1" == "fixture-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "fixtures-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR Fixture tests"
     cd /var/www/localhost/htdocs/openemr
-    vendor/bin/phpunit --testsuite fixture --testdox
+    vendor/bin/phpunit --testsuite fixtures --testdox
 fi
 
-if [ "$1" == "service-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "services-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR Service tests"
     cd /var/www/localhost/htdocs/openemr
-    vendor/bin/phpunit --testsuite service --testdox
+    vendor/bin/phpunit --testsuite services --testdox
+fi
+
+if [ "$1" == "validators-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+    echo "Running OpenEMR Validator tests"
+    cd /var/www/localhost/htdocs/openemr
+    vendor/bin/phpunit --testsuite validators --testdox
 fi
