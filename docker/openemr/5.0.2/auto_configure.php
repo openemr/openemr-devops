@@ -1,5 +1,7 @@
 <?php
-require_once('/var/www/localhost/htdocs/openemr/library/classes/Installer.class.php');
+// Include standard libraries/classes
+require_once('/var/www/localhost/htdocs/openemr/vendor/autoload.php');
+// Include password hashing library
 require_once('/var/www/localhost/htdocs/openemr/library/authentication/password_hashing.php');
 // Set up default configuration settings
 $installSettings = array();
