@@ -24,10 +24,26 @@ if [ "$1" == "psr12-src-report"  ]; then
     php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -n --extensions=php,inc --standard=ci/phpcs_src.xml --report=full src/
 fi
 
+if [ "$1" == "lint-themes-report"  ]; then
+    echo "Generating lint themes error report "
+    cd /var/www/localhost/htdocs/openemr
+    npx stylelint "**/*.css"
+    npx stylelint "**/*.scss"
+fi
+
 if [ "$1" == "psr2-fix"  ] ||  [ "$1" == "psr12-fix"  ] || [ "$1" == "clean-sweep" ]; then
     echo "Fixing PSR12 code styling errors "
     cd /var/www/localhost/htdocs/openemr
     php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcbf -n --extensions=php,inc --standard=ci/phpcs.xml .
+fi
+
+if [ "$1" == "lint-themes-fix"  ] || [ "$1" == "clean-sweep"  ]; then
+    echo "Fixing lint themes errors "
+    cd /var/www/localhost/htdocs/openemr
+    npx stylelint "**/*.css"
+    npx stylelint --fix "**/*.css"
+    npx stylelint "**/*.scss"
+    npx stylelint --fix "**/*.scss"
 fi
 
 if [ "$1" == "php-parserror"  ] || [ "$1" == "clean-sweep" ]; then
@@ -72,4 +88,10 @@ if [ "$1" == "validators-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "cle
     echo "Running OpenEMR Validator tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite validators --testdox
+fi
+
+if [ "$1" == "controllers-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+    echo "Running OpenEMR Controller tests"
+    cd /var/www/localhost/htdocs/openemr
+    vendor/bin/phpunit --testsuite controllers --testdox
 fi
