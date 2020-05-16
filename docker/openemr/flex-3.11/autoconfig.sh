@@ -41,13 +41,13 @@ auto_setup() {
     if [ "$MYSQL_PASS" != "" ]; then
         CONFIGURATION="${CONFIGURATION} pass=${MYSQL_PASS}"
         CUSTOM_PASSWORD="$MYSQL_PASS"
-    else 
+    else
         CUSTOM_PASSWORD="openemr"
     fi
     if [ "$MYSQL_DATABASE" != "" ]; then
         CONFIGURATION="${CONFIGURATION} dbname=${MYSQL_DATABASE}"
         CUSTOM_DATABASE="$MYSQL_DATABASE"
-    else 
+    else
         CUSTOM_DATABASE="openemr"
     fi
     if [ "$OE_USER" != "" ]; then
@@ -60,7 +60,7 @@ auto_setup() {
     if [ "$EASY_DEV_MODE" != "yes" ]; then
         chmod -R 600 /var/www/localhost/htdocs/openemr
     fi
-    
+
     php /var/www/localhost/htdocs/auto_configure.php -f ${CONFIGURATION} || return 1
 
     echo "OpenEMR configured."
@@ -70,9 +70,18 @@ auto_setup() {
         exit 2
     fi
 
-    #Turn on API from docker
-    if [ "$ACTIVATE_API" == "yes" ]; then
-        mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_api\"" "$CUSTOM_DATABASE"
+    # Set requested openemr settings
+    OPENEMR_SETTINGS=`printenv | grep '^OPENEMR_SETTING_'`
+    if [ -n "$OPENEMR_SETTINGS" ]; then
+        echo "$OPENEMR_SETTINGS" |
+        while IFS= read -r line; do
+            SETTING_TEMP=`echo "$line" | cut -d "=" -f 1`
+            # note am omitting the letter O on purpose
+            CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
+            VALUE_TEMP=`echo "$line" | cut -d "=" -f 2`
+            echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
+            mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
+        done
     fi
 }
 
