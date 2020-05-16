@@ -60,15 +60,18 @@ auto_setup() {
     fi
 
     # Set requested openemr settings
-    echo "`printenv | grep '^OPENEMR_SETTING_'`" |
-    while IFS= read -r line; do
-        SETTING_TEMP=`echo "$line" | cut -d "=" -f 1`
-        # note am omitting the letter O on purpose
-        CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
-        VALUE_TEMP=`echo "$line" | cut -d "=" -f 2`
-        echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
-        mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
-    done
+    OPENEMR_SETTINGS=`printenv | grep '^OPENEMR_SETTING_'`
+    if [ -n "$OPENEMR_SETTINGS" ]; then
+        echo "$OPENEMR_SETTINGS" |
+        while IFS= read -r line; do
+            SETTING_TEMP=`echo "$line" | cut -d "=" -f 1`
+            # note am omitting the letter O on purpose
+            CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
+            VALUE_TEMP=`echo "$line" | cut -d "=" -f 2`
+            echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
+            mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
+        done
+    fi
 }
 
 if [ "$SWARM_MODE" == "yes" ]; then
