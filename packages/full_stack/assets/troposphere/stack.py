@@ -1670,7 +1670,7 @@ def buildDocumentBackups(t):
         "  volume = boto3.session.Session(region_name = os.environ['AWS_DEFAULT_REGION']).resource('ec2').Volume(os.environ['VOLUME_ID'])",
         "  volume.create_snapshot(os.environ['DESCRIPTION'])",
         "  snapshots = sorted(volume.snapshots.all(), key=lambda x: x.start_time)",
-        "  if len(snapshots) > os.environ['COUNTRETAINED']:",
+        "  if len(snapshots) > int(os.environ['COUNTRETAINED']):",
         "    for i in range(0,len(snapshots)-os.environ['COUNTRETAINED']):",
         "      snapshots[i].delete()",
         "  return 'all OK'"
