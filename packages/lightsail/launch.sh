@@ -57,12 +57,13 @@ else
 fi
 
 apt-get update
-apt-get install -y apt-transport-https ca-certificates git jq duplicity
-apt-key adv --keyserver hkp://ha.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
-echo "deb https://apt.dockerproject.org/repo ubuntu-xenial main" > /etc/apt/sources.list.d/docker.list
+apt-get install jq git duplicity -y
+apt-get install apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+# apt-key fingerprint 0EBFCD88
+add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
 apt-get update
-apt-get install -y docker-engine
-service docker start
+apt-get install docker-ce docker-ce-cli containerd.io docker-compose -y
 
 mkdir backups
 
@@ -87,7 +88,7 @@ else
     sed -i "s^../../docker/openemr/$CURRENTBUILD^../../docker/openemr/$OVERRIDEBUILD^" docker-compose.yml
   fi
 fi
-./docker-compose up -d --build
+docker-compose up -d --build
 
 chmod a+x duplicity/*.sh
 
