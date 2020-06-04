@@ -328,3 +328,31 @@ if [ "$REDIS_SERVER" != "" ] &&
     touch /etc/php-redis-configured
 fi
 
+if [ "$XDEBUG_IDE_KEY" != "" ] &&
+   [ ! -f /etc/php-xdebug-configured ]; then
+    # install xdebug library
+    apk update
+    apk add --no-cache php7-pecl-xdebug
+
+    # set up xdebug in php.ini
+    echo "; start xdebug configuration" >> /etc/php7/php.ini
+    echo "zend_extension=/usr/lib/php7/modules/xdebug.so" >> /etc/php7/php.ini
+    echo "xdebug.remote_enable=1" >> /etc/php7/php.ini
+    echo "xdebug.remote_handler=dbgp" >> /etc/php7/php.ini
+    echo "xdebug.remote_port=9000" >> /etc/php7/php.ini
+    echo "xdebug.remote_autostart=1" >> /etc/php7/php.ini
+    echo "xdebug.remote_connect_back=1" >> /etc/php7/php.ini
+    echo "xdebug.idekey=${XDEBUG_IDE_KEY}" >> /etc/php7/php.ini
+    echo "xdebug.remote_log=/tmp/xdebug.log" >> /etc/php7/php.ini
+    if [ "$XDEBUG_PROFILER_ON" == 1 ]; then
+        # set up xdebug profiler
+        echo "xdebug.profiler_enable=0" >> /etc/php7/php.ini
+        echo "xdebug.profiler_enable_trigger=1" >> /etc/php7/php.ini
+        echo "xdebug.profiler_output_dir=/tmp" >> /etc/php7/php.ini
+        echo "xdebug.profiler_output_name=cachegrind.out.%p" >> /etc/php7/php.ini
+    fi
+    echo "; end xdebug configuration" >> /etc/php7/php.ini
+
+    # Ensure only configure this one time
+    touch /etc/php-xdebug-configured
+fi
