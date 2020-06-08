@@ -340,7 +340,6 @@ if [ "$XDEBUG_IDE_KEY" != "" ] &&
     echo "xdebug.remote_enable=1" >> /etc/php7/php.ini
     echo "xdebug.remote_handler=dbgp" >> /etc/php7/php.ini
     echo "xdebug.remote_port=9000" >> /etc/php7/php.ini
-    echo "xdebug.remote_autostart=1" >> /etc/php7/php.ini
     echo "xdebug.remote_connect_back=1" >> /etc/php7/php.ini
     echo "xdebug.idekey=${XDEBUG_IDE_KEY}" >> /etc/php7/php.ini
     echo "xdebug.remote_log=/tmp/xdebug.log" >> /etc/php7/php.ini
