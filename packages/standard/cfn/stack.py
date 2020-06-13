@@ -405,7 +405,7 @@ def setMappings(t, args):
         },
         "us-east-1": {
             "MySQLVersion": "5.6.39",
-            "OpenEMRMktPlaceAMI": "ami-a650d4d9"
+            "OpenEMRMktPlaceAMI": "ami-0dfabb22610673720"
         },
         "us-east-2": {
             "MySQLVersion": "5.6.39",
