@@ -29,7 +29,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     restart: always
-    image: openemr/openemr:5.0.3
+    image: openemr/openemr:6.0.0
     ports:
     - 80:80
     - 443:443
@@ -50,7 +50,7 @@ volumes:
   sitevolume: {}
   databasevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/0fcd186130c4ba8ebeb2a7f9a2fc7c81/raw/4208f6f6deb7ed4c59f3279760cf069d070cbb88/openemr-503-docker-example-docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/227f65eab3c5b5f83304778489a684c7/raw/ede867d9490cb5d7ca2a181324013befcb6aa10a/openemr-600-docker-example-docker-compose.yml)
 
 ## Environment Variables
 
