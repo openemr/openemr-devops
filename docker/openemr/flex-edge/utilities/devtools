@@ -1,5 +1,6 @@
 #! /bin/sh
 
+source /root/devtoolsLibrary.source
 
 if [ "$1" == "php-log" ]; then
     echo "Generating PHP error log"
@@ -100,4 +101,37 @@ if [ "$1" == "common-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-s
     echo "Running OpenEMR Common tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite common --testdox
+fi
+
+if [ "$1" == "dev-reset"  ]; then
+    echo "Resetting OpenEMR"
+    prepareVariables
+    resetOpenemr
+fi
+
+if [ "$1" == "dev-reset-install"  ]; then
+    echo "Reinstalling OpenEMR"
+    prepareVariables
+    resetOpenemr
+    installOpenemr
+fi
+
+if [ "$1" == "dev-reset-install-demodata"  ]; then
+    echo "Reinstalling OpenEMR"
+    prepareVariables
+    resetOpenemr
+    installOpenemr
+    demoData
+fi
+
+if [ "$1" == "enable-multisite"  ]; then
+    echo "Enabling multisite"
+    sed -i "s@\$allow_multisite_setup = false;@\$allow_multisite_setup = true;@" /var/www/localhost/htdocs/openemr/setup.php
+    sed -i "s@\$allow_cloning_setup = false;@\$allow_cloning_setup = true;@" /var/www/localhost/htdocs/openemr/setup.php
+fi
+
+if [ "$1" == "disable-multisite"  ]; then
+    echo "Disabling multisite"
+    sed -i "s@\$allow_multisite_setup = true;@\$allow_multisite_setup = false;@" /var/www/localhost/htdocs/openemr/setup.php
+    sed -i "s@\$allow_cloning_setup = true;@\$allow_cloning_setup = false;@" /var/www/localhost/htdocs/openemr/setup.php
 fi

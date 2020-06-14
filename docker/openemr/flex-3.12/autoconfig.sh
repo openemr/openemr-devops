@@ -309,6 +309,11 @@ if [ -f /etc/docker-leader ] ||
         fi
     fi
 
+    # need to copy this script somewhere so the easy dev environment can use it
+    if [ "$EASY_DEV_MODE_NEW" == "yes" ]; then
+        cp /var/www/localhost/htdocs/auto_configure.php /root/
+    fi
+
     # ensure the auto_configure.php script has been removed
     rm -f /var/www/localhost/htdocs/auto_configure.php
 fi
