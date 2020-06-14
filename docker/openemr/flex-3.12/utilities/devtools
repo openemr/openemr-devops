@@ -114,6 +114,7 @@ if [ "$1" == "dev-reset-install"  ]; then
     prepareVariables
     resetOpenemr
     installOpenemr
+    setGlobalSettings
 fi
 
 if [ "$1" == "dev-reset-install-demodata"  ]; then
@@ -122,6 +123,7 @@ if [ "$1" == "dev-reset-install-demodata"  ]; then
     resetOpenemr
     installOpenemr
     demoData
+    setGlobalSettings
 fi
 
 if [ "$1" == "enable-multisite"  ]; then

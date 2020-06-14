@@ -48,7 +48,6 @@ installOpenemr() {
     cp /root/auto_configure.php /var/www/localhost/htdocs/
     php /var/www/localhost/htdocs/auto_configure.php -f ${CONFIGURATION}
     rm -f /var/www/localhost/htdocs/auto_configure.php
-    setGlobalSettings
 }
 
 demoData() {
@@ -60,7 +59,6 @@ demoData() {
     sed -i "1s@^@<?php \$_GET['site'] = 'default'; ?>@" /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
     php -f /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
     rm -f /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
-    setGlobalSettings
 }
 
 setGlobalSettings() {
