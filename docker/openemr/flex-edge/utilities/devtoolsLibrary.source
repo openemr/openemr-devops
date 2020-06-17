@@ -1,0 +1,78 @@
+#!/bin/bash
+
+prepareVariables() {
+    CONFIGURATION="server=${MYSQL_HOST} rootpass=${MYSQL_ROOT_PASS} loginhost=%"
+    if [ "$MYSQL_ROOT_USER" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} root=${MYSQL_ROOT_USER}"
+    fi
+    if [ "$MYSQL_USER" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} login=${MYSQL_USER}"
+        CUSTOM_USER="$MYSQL_USER"
+    else
+        CUSTOM_USER="openemr"
+    fi
+    if [ "$MYSQL_PASS" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} pass=${MYSQL_PASS}"
+        CUSTOM_PASSWORD="$MYSQL_PASS"
+    else
+        CUSTOM_PASSWORD="openemr"
+    fi
+    if [ "$MYSQL_DATABASE" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} dbname=${MYSQL_DATABASE}"
+        CUSTOM_DATABASE="$MYSQL_DATABASE"
+    else
+        CUSTOM_DATABASE="openemr"
+    fi
+    if [ "$OE_USER" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} iuser=${OE_USER}"
+    fi
+    if [ "$OE_PASS" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
+    fi
+}
+
+resetOpenemr() {
+    echo "Remove database"
+    mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP DATABASE ${CUSTOM_DATABASE}"
+    echo "Remove database user"
+    mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "Drop user '${CUSTOM_USER}'@'%';FLUSH PRIVILEGES;"
+    echo "Remove files"
+    rm -fr /var/www/localhost/htdocs/openemr/sites/*
+    rsync --ignore-existing --recursive --links --exclude .git /openemr/sites /var/www/localhost/htdocs/openemr/
+    chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
+    chown -R apache /var/www/localhost/htdocs/openemr/
+}
+
+installOpenemr() {
+    echo "Re-installing OpenEMR (the PHP warning below is normal, just be patient and wait)"
+    cp /root/auto_configure.php /var/www/localhost/htdocs/
+    php /var/www/localhost/htdocs/auto_configure.php -f ${CONFIGURATION}
+    rm -f /var/www/localhost/htdocs/auto_configure.php
+}
+
+demoData() {
+    echo "Install demo data"
+    mysqldump -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" --add-drop-table --no-data "$CUSTOM_DATABASE" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE"
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < /root/demo_5_0_0_5.sql
+    sed -e "s@!empty(\$_POST\['form_submit'\])@true@" < /var/www/localhost/htdocs/openemr/sql_upgrade.php > /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
+    sed -i "s@\$form_old_version = \$_POST\['form_old_version'\];@\$form_old_version = '5.0.0';@" /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
+    sed -i "1s@^@<?php \$_GET['site'] = 'default'; ?>@" /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
+    php -f /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
+    rm -f /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
+}
+
+setGlobalSettings() {
+    # Set requested openemr settings
+    OPENEMR_SETTINGS=`printenv | grep '^OPENEMR_SETTING_'`
+    if [ -n "$OPENEMR_SETTINGS" ]; then
+        echo "$OPENEMR_SETTINGS" |
+        while IFS= read -r line; do
+            SETTING_TEMP=`echo "$line" | cut -d "=" -f 1`
+            # note am omitting the letter O on purpose
+            CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
+            VALUE_TEMP=`echo "$line" | cut -d "=" -f 2`
+            echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
+            mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
+        done
+    fi
+}

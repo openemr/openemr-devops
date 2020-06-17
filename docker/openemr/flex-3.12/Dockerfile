@@ -39,7 +39,10 @@ RUN chmod 500 run_openemr.sh autoconfig.sh /root/unlock_admin.sh \
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
 #Copy dev tools alias to root
-COPY  utilities/devtools /root/
+COPY utilities/devtools /root/
+COPY utilities/devtoolsLibrary.source /root/
+#Copy demo data to root
+COPY utilities/demo_5_0_0_5.sql /root/
 RUN chmod 500 /root/devtools
 
 #go
