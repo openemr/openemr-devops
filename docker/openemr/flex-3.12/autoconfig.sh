@@ -353,7 +353,7 @@ if [ "$XDEBUG_IDE_KEY" != "" ] &&
         echo "xdebug.profiler_enable=0" >> /etc/php7/php.ini
         echo "xdebug.profiler_enable_trigger=1" >> /etc/php7/php.ini
         echo "xdebug.profiler_output_dir=/tmp" >> /etc/php7/php.ini
-        echo "xdebug.profiler_output_name=cachegrind.out.%p" >> /etc/php7/php.ini
+        echo "xdebug.profiler_output_name=cachegrind.out.%s" >> /etc/php7/php.ini
     fi
     echo "; end xdebug configuration" >> /etc/php7/php.ini
 
