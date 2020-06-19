@@ -40,6 +40,7 @@ services:
       OE_PASS: pass
       FLEX_REPOSITORY: https://github.com/openemr/openemr.git
       FLEX_REPOSITORY_BRANCH: master
+      Load_SQL_DATA: 1
     depends_on:
     - mysql
 volumes:

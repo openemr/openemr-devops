@@ -333,6 +333,17 @@ if [ "$REDIS_SERVER" != "" ] &&
     touch /etc/php-redis-configured
 fi
 
+if [ "$LOAD_SQL_DATA" == 1 ]; then
+    echo "Loading SQL DATA from";
+    echo $pwd;
+    cd  /var/www/localhost/htdocs/openemr/sql/add_to
+    for f in *.sql ; do
+      echo ${f};
+     mysql -u openemr  --password=openemr -h "$MYSQL_HOST" openemr < $f
+      done
+
+fi
+
 if [ "$XDEBUG_IDE_KEY" != "" ] &&
    [ ! -f /etc/php-xdebug-configured ]; then
     # install xdebug library
