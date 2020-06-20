@@ -336,12 +336,11 @@ fi
 if [ "$LOAD_SQL_DATA" == 1 ]; then
     echo "Loading SQL DATA from";
     echo $pwd;
-    cd  /var/www/localhost/htdocs/openemr/sql/add_to
+    cd  /var/www/localhost/htdocs/openemr/sql/loadin
     for f in *.sql ; do
       echo ${f};
-     mysql -u openemr  --password=openemr -h "$MYSQL_HOST" openemr < $f
+     mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < $f
       done
-
 fi
 
 if [ "$XDEBUG_IDE_KEY" != "" ] &&

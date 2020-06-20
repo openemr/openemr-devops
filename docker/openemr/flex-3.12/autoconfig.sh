@@ -334,14 +334,21 @@ if [ "$REDIS_SERVER" != "" ] &&
 fi
 
 if [ "$LOAD_SQL_DATA" == 1 ]; then
-    echo "Loading SQL DATA from";
-    echo $pwd;
-    cd  /var/www/localhost/htdocs/openemr/sql/add_to
+      echo "Loading SQL from";
+      #If a folder is set then use that... else use the default
+   if [ $LOAD_SQL_DATA_FROM != '' ]; then
+       cd $LOAD_SQL_DATA_FROM
+       echo $pwd;
+       else
+       cd  /var/www/localhost/htdocs/openemr/sql/loadin
+       echo $pwd;
+   fi
+   #Loop over all sql files inside of the current directory
     for f in *.sql ; do
       echo ${f};
-     mysql -u openemr  --password=openemr -h "$MYSQL_HOST" openemr < $f
+      #Using varriables that are passed into docker-compose
+      mysql -u "$MYSQL_USER"  --password="$MYSQL_PASS" -h "$MYSQL_HOST" openemr < $f
       done
-
 fi
 
 if [ "$XDEBUG_IDE_KEY" != "" ] &&
