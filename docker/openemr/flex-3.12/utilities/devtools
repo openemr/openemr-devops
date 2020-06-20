@@ -118,12 +118,37 @@ if [ "$1" == "dev-reset-install"  ]; then
 fi
 
 if [ "$1" == "dev-reset-install-demodata"  ]; then
-    echo "Reinstalling OpenEMR"
+    echo "Reinstalling OpenEMR with standard demo data"
     prepareVariables
     resetOpenemr
     installOpenemr
     demoData
     setGlobalSettings
+fi
+
+if [ "$1" == "dev-reset-install-demodata-sqldrive"  ]; then
+    echo "Reinstalling OpenEMR with standard demo data and sql data from drive"
+    prepareVariables
+    resetOpenemr
+    installOpenemr
+    demoData
+    sqlDataDrive
+    setGlobalSettings
+fi
+
+if [ "$1" == "dev-reset-install-sqldrive"  ]; then
+    echo "Reinstalling OpenEMR with sql data from drive"
+    prepareVariables
+    resetOpenemr
+    installOpenemr
+    sqlDataDrive
+    setGlobalSettings
+fi
+
+if [ "$1" == "dev-sqldrive"  ]; then
+    echo "Importing sql data from drive"
+    prepareVariables
+    sqlDataDrive
 fi
 
 if [ "$1" == "enable-multisite"  ]; then
