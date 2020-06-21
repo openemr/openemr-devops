@@ -54,7 +54,7 @@ resetOpenemr() {
     mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "Drop user '${CUSTOM_USER}'@'%';FLUSH PRIVILEGES;"
     echo "Remove files"
     rm -fr /var/www/localhost/htdocs/openemr/sites/*
-    rsync --ignore-existing --recursive --links --exclude .git /openemr/sites /var/www/localhost/htdocs/openemr/
+    rsync --delete --recursive --links --exclude .git /openemr/sites /var/www/localhost/htdocs/openemr/
     chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     chown -R apache /var/www/localhost/htdocs/openemr/
 }
@@ -87,4 +87,18 @@ sqlDataDrive() {
             mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "$f"
         done
     fi
+}
+
+# parameter 1 is identifier
+backupOpenemr() {
+    mkdir -p "/root/backup/${1}"
+    mysqldump --hex-blob -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" > "/root/backup/${1}/backup.sql"
+    rsync --delete --recursive --links /var/www/localhost/htdocs/openemr/sites "/root/backup/${1}/"
+}
+
+# parameter 1 is identifier
+restoreOpenemr() {
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "/root/backup/${1}/backup.sql"
+    rsync --delete --recursive --links "/root/backup/${1}/sites" /var/www/localhost/htdocs/openemr/
+    chown -R apache /var/www/localhost/htdocs/openemr/
 }

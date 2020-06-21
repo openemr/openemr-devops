@@ -13,32 +13,32 @@ if [ "$1" == "build-themes" ]; then
     npm run build
 fi
 
-if [ "$1" == "psr2-report"  ] || [ "$1" == "psr12-report"  ]; then
+if [ "$1" == "psr2-report" ] || [ "$1" == "psr12-report" ]; then
     echo "Generating PSR12 code styling error report "
     cd /var/www/localhost/htdocs/openemr
     php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -n --extensions=php,inc --standard=ci/phpcs.xml --report=full .
 fi
 
-if [ "$1" == "psr12-src-report"  ]; then
+if [ "$1" == "psr12-src-report" ]; then
     echo "Generating strict PSR12 code styling error report for src directory "
     cd /var/www/localhost/htdocs/openemr
     php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -n --extensions=php,inc --standard=ci/phpcs_src.xml --report=full src/
 fi
 
-if [ "$1" == "lint-themes-report"  ]; then
+if [ "$1" == "lint-themes-report" ]; then
     echo "Generating lint themes error report "
     cd /var/www/localhost/htdocs/openemr
     npx stylelint "**/*.css"
     npx stylelint "**/*.scss"
 fi
 
-if [ "$1" == "psr2-fix"  ] ||  [ "$1" == "psr12-fix"  ] || [ "$1" == "clean-sweep" ]; then
+if [ "$1" == "psr2-fix" ] ||  [ "$1" == "psr12-fix" ] || [ "$1" == "clean-sweep" ]; then
     echo "Fixing PSR12 code styling errors "
     cd /var/www/localhost/htdocs/openemr
     php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcbf -n --extensions=php,inc --standard=ci/phpcs.xml .
 fi
 
-if [ "$1" == "lint-themes-fix"  ] || [ "$1" == "clean-sweep"  ]; then
+if [ "$1" == "lint-themes-fix" ] || [ "$1" == "clean-sweep" ]; then
     echo "Fixing lint themes errors "
     cd /var/www/localhost/htdocs/openemr
     npx stylelint "**/*.css"
@@ -47,25 +47,25 @@ if [ "$1" == "lint-themes-fix"  ] || [ "$1" == "clean-sweep"  ]; then
     npx stylelint --fix "**/*.scss"
 fi
 
-if [ "$1" == "php-parserror"  ] || [ "$1" == "clean-sweep" ]; then
+if [ "$1" == "php-parserror" ] || [ "$1" == "clean-sweep" ]; then
     echo "Generating PHP parse errors"
     cd /var/www/localhost/htdocs/openemr
     find . -type f \( -name "*.php" -or -name "*.inc" \) \( -not -path "./vendor/*" -and -not -path "./node_modules/*" -and -not -path "./ccdaservice/node_modules}/*" \) -exec php -d error_reporting=32767 -l {} \; 2>&1 >&- | grep "^"
 fi
 
-if [ "$1" == "unit-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "unit-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR Unit tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite unit --testdox
 fi
 
-if [ "$1" == "api-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "api-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR API tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite api --testdox
 fi
 
-if [ "$1" == "e2e-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "e2e-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR e2e tests"
     cd /var/www/localhost/htdocs/openemr
     export PANTHER_NO_SANDBOX=1
@@ -73,43 +73,43 @@ if [ "$1" == "e2e-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-swee
     vendor/bin/phpunit --testsuite e2e --testdox
 fi
 
-if [ "$1" == "fixtures-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "fixtures-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR Fixture tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite fixtures --testdox
 fi
 
-if [ "$1" == "services-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "services-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR Service tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite services --testdox
 fi
 
-if [ "$1" == "validators-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "validators-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR Validator tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite validators --testdox
 fi
 
-if [ "$1" == "controllers-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "controllers-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR Controller tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite controllers --testdox
 fi
 
-if [ "$1" == "common-test"  ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+if [ "$1" == "common-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
     echo "Running OpenEMR Common tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite common --testdox
 fi
 
-if [ "$1" == "dev-reset"  ]; then
+if [ "$1" == "dev-reset" ]; then
     echo "Resetting OpenEMR"
     prepareVariables
     resetOpenemr
 fi
 
-if [ "$1" == "dev-reset-install"  ]; then
+if [ "$1" == "dev-reset-install" ]; then
     echo "Reinstalling OpenEMR"
     prepareVariables
     resetOpenemr
@@ -117,7 +117,7 @@ if [ "$1" == "dev-reset-install"  ]; then
     setGlobalSettings
 fi
 
-if [ "$1" == "dev-reset-install-demodata"  ]; then
+if [ "$1" == "dev-reset-install-demodata" ]; then
     echo "Reinstalling OpenEMR with standard demo data"
     prepareVariables
     resetOpenemr
@@ -126,7 +126,22 @@ if [ "$1" == "dev-reset-install-demodata"  ]; then
     setGlobalSettings
 fi
 
-if [ "$1" == "dev-reset-install-demodata-sqldrive"  ]; then
+if [ "$1" == "dev-sqldrive" ]; then
+    echo "Importing sql data from drive"
+    prepareVariables
+    sqlDataDrive
+fi
+
+if [ "$1" == "dev-reset-install-sqldrive" ]; then
+    echo "Reinstalling OpenEMR with sql data from drive"
+    prepareVariables
+    resetOpenemr
+    installOpenemr
+    sqlDataDrive
+    setGlobalSettings
+fi
+
+if [ "$1" == "dev-reset-install-demodata-sqldrive" ]; then
     echo "Reinstalling OpenEMR with standard demo data and sql data from drive"
     prepareVariables
     resetOpenemr
@@ -136,29 +151,52 @@ if [ "$1" == "dev-reset-install-demodata-sqldrive"  ]; then
     setGlobalSettings
 fi
 
-if [ "$1" == "dev-reset-install-sqldrive"  ]; then
-    echo "Reinstalling OpenEMR with sql data from drive"
-    prepareVariables
-    resetOpenemr
-    installOpenemr
-    sqlDataDrive
-    setGlobalSettings
-fi
-
-if [ "$1" == "dev-sqldrive"  ]; then
-    echo "Importing sql data from drive"
-    prepareVariables
-    sqlDataDrive
-fi
-
-if [ "$1" == "enable-multisite"  ]; then
+if [ "$1" == "enable-multisite" ]; then
     echo "Enabling multisite"
     sed -i "s@\$allow_multisite_setup = false;@\$allow_multisite_setup = true;@" /var/www/localhost/htdocs/openemr/setup.php
     sed -i "s@\$allow_cloning_setup = false;@\$allow_cloning_setup = true;@" /var/www/localhost/htdocs/openemr/setup.php
 fi
 
-if [ "$1" == "disable-multisite"  ]; then
+if [ "$1" == "disable-multisite" ]; then
     echo "Disabling multisite"
     sed -i "s@\$allow_multisite_setup = true;@\$allow_multisite_setup = false;@" /var/www/localhost/htdocs/openemr/setup.php
     sed -i "s@\$allow_cloning_setup = true;@\$allow_cloning_setup = false;@" /var/www/localhost/htdocs/openemr/setup.php
+fi
+
+if [ "$1" == "backup" ]; then
+    echo "Performing backup to ${2}"
+        if [ "$2" == "" ]; then
+        echo "Missing a backup identifier"
+        exit
+    fi
+    if echo "$2" | grep -Eq '[^a-zA-Z0-9]'; then
+        echo "Invalid identifier (can only contain numbers and letters)"
+        exit
+    fi
+    if [ -d "/root/backup/${2}" ]; then
+        echo "Identifier has already been used. Try with another identifier."
+        exit
+    fi
+    prepareVariables
+    backupOpenemr "$2"
+fi
+
+if [ "$1" == "restore" ]; then
+    echo "Performing restore from ${2}"
+    if [ "$2" == "" ]; then
+        echo "Missing a backup identifier"
+        exit
+    fi
+    if echo "$2" | grep -Eq '[^a-zA-Z0-9]'; then
+        echo "Invalid identifier (can only contain numbers and letters)"
+        exit
+    fi
+    if [ ! -d "/root/backup/${2}" ]; then
+        echo "A backup with the identifier does not exist"
+        exit
+    fi
+    prepareVariables
+    resetOpenemr
+    installOpenemr
+    restoreOpenemr "$2"
 fi
