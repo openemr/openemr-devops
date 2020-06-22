@@ -31,6 +31,22 @@ prepareVariables() {
     fi
 }
 
+setGlobalSettings() {
+    # Set requested openemr settings
+    OPENEMR_SETTINGS=`printenv | grep '^OPENEMR_SETTING_'`
+    if [ -n "$OPENEMR_SETTINGS" ]; then
+        echo "$OPENEMR_SETTINGS" |
+        while IFS= read -r line; do
+            SETTING_TEMP=`echo "$line" | cut -d "=" -f 1`
+            # note am omitting the letter O on purpose
+            CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
+            VALUE_TEMP=`echo "$line" | cut -d "=" -f 2`
+            echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
+            mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
+        done
+    fi
+}
+
 resetOpenemr() {
     echo "Remove database"
     mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP DATABASE ${CUSTOM_DATABASE}"
@@ -38,7 +54,7 @@ resetOpenemr() {
     mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "Drop user '${CUSTOM_USER}'@'%';FLUSH PRIVILEGES;"
     echo "Remove files"
     rm -fr /var/www/localhost/htdocs/openemr/sites/*
-    rsync --ignore-existing --recursive --links --exclude .git /openemr/sites /var/www/localhost/htdocs/openemr/
+    rsync --delete --recursive --links --exclude .git /openemr/sites /var/www/localhost/htdocs/openemr/
     chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     chown -R apache /var/www/localhost/htdocs/openemr/
 }
@@ -61,18 +77,28 @@ demoData() {
     rm -f /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
 }
 
-setGlobalSettings() {
-    # Set requested openemr settings
-    OPENEMR_SETTINGS=`printenv | grep '^OPENEMR_SETTING_'`
-    if [ -n "$OPENEMR_SETTINGS" ]; then
-        echo "$OPENEMR_SETTINGS" |
-        while IFS= read -r line; do
-            SETTING_TEMP=`echo "$line" | cut -d "=" -f 1`
-            # note am omitting the letter O on purpose
-            CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
-            VALUE_TEMP=`echo "$line" | cut -d "=" -f 2`
-            echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
-            mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
+sqlDataDrive() {
+    echo "Installing sql data from drive"
+    if [ "$SQL_DATA_DRIVE" != "" ]; then
+        cd "$SQL_DATA_DRIVE"
+        #Loop over all sql files inside of the current directory
+        for f in *.sql ; do
+            echo "Loading sql data from ${f}"
+            mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "$f"
         done
     fi
+}
+
+# parameter 1 is identifier
+backupOpenemr() {
+    mkdir -p "/root/backup/${1}"
+    mysqldump --hex-blob -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" > "/root/backup/${1}/backup.sql"
+    rsync --delete --recursive --links /var/www/localhost/htdocs/openemr/sites "/root/backup/${1}/"
+}
+
+# parameter 1 is identifier
+restoreOpenemr() {
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "/root/backup/${1}/backup.sql"
+    rsync --delete --recursive --links "/root/backup/${1}/sites" /var/www/localhost/htdocs/openemr/
+    chown -R apache /var/www/localhost/htdocs/openemr/
 }

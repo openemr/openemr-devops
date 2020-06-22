@@ -8,6 +8,8 @@
 #    - Setting openemr parameters OE_USER, OE_PASS
 set -e
 
+source /root/devtoolsLibrary.source
+
 swarm_wait() {
     if [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-completed ]; then
         # true
@@ -19,35 +21,7 @@ swarm_wait() {
 }
 
 auto_setup() {
-
-    CONFIGURATION="server=${MYSQL_HOST} rootpass=${MYSQL_ROOT_PASS} loginhost=%"
-    if [ "$MYSQL_ROOT_USER" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} root=${MYSQL_ROOT_USER}"
-    fi
-    if [ "$MYSQL_USER" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} login=${MYSQL_USER}"
-        CUSTOM_USER="$MYSQL_USER"
-    else
-        CUSTOM_USER="openemr"
-    fi
-    if [ "$MYSQL_PASS" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} pass=${MYSQL_PASS}"
-        CUSTOM_PASSWORD="$MYSQL_PASS"
-    else
-        CUSTOM_PASSWORD="openemr"
-    fi
-    if [ "$MYSQL_DATABASE" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} dbname=${MYSQL_DATABASE}"
-        CUSTOM_DATABASE="$MYSQL_DATABASE"
-    else
-        CUSTOM_DATABASE="openemr"
-    fi
-    if [ "$OE_USER" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} iuser=${OE_USER}"
-    fi
-    if [ "$OE_PASS" != "" ]; then
-        CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
-    fi
+    prepareVariables
 
     chmod -R 600 .
     php auto_configure.php -f ${CONFIGURATION} || return 1
@@ -59,19 +33,7 @@ auto_setup() {
         exit 2
     fi
 
-    # Set requested openemr settings
-    OPENEMR_SETTINGS=`printenv | grep '^OPENEMR_SETTING_'`
-    if [ -n "$OPENEMR_SETTINGS" ]; then
-        echo "$OPENEMR_SETTINGS" |
-        while IFS= read -r line; do
-            SETTING_TEMP=`echo "$line" | cut -d "=" -f 1`
-            # note am omitting the letter O on purpose
-            CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
-            VALUE_TEMP=`echo "$line" | cut -d "=" -f 2`
-            echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
-            mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
-        done
-    fi
+    setGlobalSettings
 }
 
 if [ "$SWARM_MODE" == "yes" ]; then

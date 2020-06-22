@@ -59,6 +59,8 @@ RUN chmod 500 \
     /root/fsupgrade-1.sh
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
+#Copy dev tools library to root
+COPY utilities/devtoolsLibrary.source /root/
 #go
 CMD [ "./run_openemr.sh" ]
 
