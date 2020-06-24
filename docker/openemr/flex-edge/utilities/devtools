@@ -164,7 +164,7 @@ if [ "$1" == "disable-multisite" ]; then
 fi
 
 if [ "$1" == "backup" ]; then
-    echo "Performing backup to ${2}"
+    echo "Performing backup to ${2} snapshot"
         if [ "$2" == "" ]; then
         echo "Missing a backup identifier"
         exit
@@ -182,9 +182,9 @@ if [ "$1" == "backup" ]; then
 fi
 
 if [ "$1" == "restore" ]; then
-    echo "Performing restore from ${2}"
+    echo "Performing restore from ${2} snapshot"
     if [ "$2" == "" ]; then
-        echo "Missing a backup identifier"
+        echo "Missing a restore identifier"
         exit
     fi
     if echo "$2" | grep -Eq '[^a-zA-Z0-9]'; then
@@ -199,4 +199,17 @@ if [ "$1" == "restore" ]; then
     resetOpenemr
     installOpenemr
     restoreOpenemr "$2"
+fi
+
+if [ "$1" == "list-snapshots" ]; then
+    echo "Listing snapshots:"
+    if [ ! -d "/root/backup" ]; then
+        exit
+    fi
+    cd /root/backup/
+    for f in *; do
+        if [ -d "$f" ]; then
+            echo "  $f"
+        fi
+    done
 fi
