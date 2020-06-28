@@ -173,7 +173,7 @@ if [ "$1" == "backup" ]; then
         echo "Invalid identifier (can only contain numbers and letters)"
         exit
     fi
-    if [ -d "/root/backup/${2}" ]; then
+    if [ -f "/snapshots/${2}.tgz" ]; then
         echo "Identifier has already been used. Try with another identifier."
         exit
     fi
@@ -191,7 +191,7 @@ if [ "$1" == "restore" ]; then
         echo "Invalid identifier (can only contain numbers and letters)"
         exit
     fi
-    if [ ! -d "/root/backup/${2}" ]; then
+    if [ ! -f "/snapshots/${2}.tgz" ]; then
         echo "A backup with the identifier does not exist"
         exit
     fi
@@ -203,13 +203,25 @@ fi
 
 if [ "$1" == "list-snapshots" ]; then
     echo "Listing snapshots:"
-    if [ ! -d "/root/backup" ]; then
-        exit
-    fi
-    cd /root/backup/
+    cd /snapshots
     for f in *; do
-        if [ -d "$f" ]; then
+        if [ -f "$f" ]; then
+            echo "  ${f%.*}"
+        fi
+    done
+fi
+
+if [ "$1" == "list-capsules" ]; then
+    echo "Listing capsules:"
+    cd /snapshots
+    for f in *; do
+        if [ -f "$f" ]; then
             echo "  $f"
         fi
     done
+fi
+
+if [ "$1" == "upgrade" ]; then
+    echo "Performing upgrade from version ${2}"
+    upgradeOpenEMR "$2"
 fi
