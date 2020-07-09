@@ -71,6 +71,7 @@ demoData() {
     mysqldump -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" --add-drop-table --no-data "$CUSTOM_DATABASE" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE"
     mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < /root/demo_5_0_0_5.sql
     upgradeOpenEMR 5.0.0
+    changeEncodingCollation utf8mb4 utf8mb4_general_ci
 }
 
 # parameter 1 is original version
@@ -112,4 +113,11 @@ restoreOpenemr() {
     rsync --delete --recursive --links "/snapshots/${1}/sites" /var/www/localhost/htdocs/openemr/
     chown -R apache /var/www/localhost/htdocs/openemr/
     rm -fr "/snapshots/${1}"
+}
+
+# parameter 1 is character set
+# parameter 2 is collation
+changeEncodingCollation() {
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST"
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST"
 }
