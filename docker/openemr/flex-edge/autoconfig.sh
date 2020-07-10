@@ -267,13 +267,11 @@ if [ -f /etc/docker-leader ] ||
             echo "Removing remaining setup scripts"
             #remove all setup scripts
             rm -f admin.php
-            rm -f acl_setup.php
             rm -f acl_upgrade.php
             rm -f setup.php
             rm -f sql_patch.php
             rm -f sql_upgrade.php
             rm -f ippf_upgrade.php
-            rm -f gacl/setup.php
             echo "Setup scripts removed, we should be ready to go now!"
             cd /var/www/localhost/htdocs/
         fi

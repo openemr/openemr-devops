@@ -164,7 +164,7 @@ if [ "$1" == "disable-multisite" ]; then
 fi
 
 if [ "$1" == "backup" ]; then
-    echo "Performing backup to ${2}"
+    echo "Performing backup to ${2} snapshot"
         if [ "$2" == "" ]; then
         echo "Missing a backup identifier"
         exit
@@ -173,7 +173,7 @@ if [ "$1" == "backup" ]; then
         echo "Invalid identifier (can only contain numbers and letters)"
         exit
     fi
-    if [ -d "/root/backup/${2}" ]; then
+    if [ -f "/snapshots/${2}.tgz" ]; then
         echo "Identifier has already been used. Try with another identifier."
         exit
     fi
@@ -182,16 +182,16 @@ if [ "$1" == "backup" ]; then
 fi
 
 if [ "$1" == "restore" ]; then
-    echo "Performing restore from ${2}"
+    echo "Performing restore from ${2} snapshot"
     if [ "$2" == "" ]; then
-        echo "Missing a backup identifier"
+        echo "Missing a restore identifier"
         exit
     fi
     if echo "$2" | grep -Eq '[^a-zA-Z0-9]'; then
         echo "Invalid identifier (can only contain numbers and letters)"
         exit
     fi
-    if [ ! -d "/root/backup/${2}" ]; then
+    if [ ! -f "/snapshots/${2}.tgz" ]; then
         echo "A backup with the identifier does not exist"
         exit
     fi
@@ -199,4 +199,29 @@ if [ "$1" == "restore" ]; then
     resetOpenemr
     installOpenemr
     restoreOpenemr "$2"
+fi
+
+if [ "$1" == "list-snapshots" ]; then
+    echo "Listing snapshots:"
+    cd /snapshots
+    for f in *; do
+        if [ -f "$f" ]; then
+            echo "  ${f%.*}"
+        fi
+    done
+fi
+
+if [ "$1" == "list-capsules" ]; then
+    echo "Listing capsules:"
+    cd /snapshots
+    for f in *; do
+        if [ -f "$f" ]; then
+            echo "  $f"
+        fi
+    done
+fi
+
+if [ "$1" == "upgrade" ]; then
+    echo "Performing upgrade from version ${2}"
+    upgradeOpenEMR "$2"
 fi
