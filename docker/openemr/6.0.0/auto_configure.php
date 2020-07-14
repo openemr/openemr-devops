@@ -1,5 +1,4 @@
 <?php
-// Include standard libraries/classes
 require_once('/var/www/localhost/htdocs/openemr/vendor/autoload.php');
 // Set up default configuration settings
 $installSettings = array();
@@ -15,7 +14,7 @@ $installSettings['rootpass']                 = 'BLANK';
 $installSettings['login']                    = 'openemr';
 $installSettings['pass']                     = 'openemr';
 $installSettings['dbname']                   = 'openemr';
-$installSettings['collate']                  = 'utf8_general_ci';
+$installSettings['collate']                  = 'utf8mb4_general_ci';
 $installSettings['site']                     = 'default';
 $installSettings['source_site_id']           = 'BLANK';
 $installSettings['clone_database']           = 'BLANK';
