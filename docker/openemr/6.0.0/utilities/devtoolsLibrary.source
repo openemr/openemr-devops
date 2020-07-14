@@ -60,7 +60,7 @@ resetOpenemr() {
 }
 
 installOpenemr() {
-    echo "Re-installing OpenEMR (the PHP warning below is normal, just be patient and wait)"
+    echo "Re-installing OpenEMR"
     cp /root/auto_configure.php /var/www/localhost/htdocs/
     php /var/www/localhost/htdocs/auto_configure.php -f ${CONFIGURATION}
     rm -f /var/www/localhost/htdocs/auto_configure.php
@@ -70,8 +70,14 @@ demoData() {
     echo "Install demo data"
     mysqldump -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" --add-drop-table --no-data "$CUSTOM_DATABASE" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE"
     mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < /root/demo_5_0_0_5.sql
+    upgradeOpenEMR 5.0.0
+    changeEncodingCollation utf8mb4 utf8mb4_general_ci
+}
+
+# parameter 1 is original version
+upgradeOpenEMR() {
     sed -e "s@!empty(\$_POST\['form_submit'\])@true@" < /var/www/localhost/htdocs/openemr/sql_upgrade.php > /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
-    sed -i "s@\$form_old_version = \$_POST\['form_old_version'\];@\$form_old_version = '5.0.0';@" /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
+    sed -i "s@\$form_old_version = \$_POST\['form_old_version'\];@\$form_old_version = '${1}';@" /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
     sed -i "1s@^@<?php \$_GET['site'] = 'default'; ?>@" /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
     php -f /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
     rm -f /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
@@ -91,14 +97,27 @@ sqlDataDrive() {
 
 # parameter 1 is identifier
 backupOpenemr() {
-    mkdir -p "/root/backup/${1}"
-    mysqldump --hex-blob -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" > "/root/backup/${1}/backup.sql"
-    rsync --delete --recursive --links /var/www/localhost/htdocs/openemr/sites "/root/backup/${1}/"
+    mkdir -p "/snapshots/${1}"
+    mysqldump --hex-blob -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" > "/snapshots/${1}/backup.sql"
+    rsync --delete --recursive --links /var/www/localhost/htdocs/openemr/sites "/snapshots/${1}/"
+    cd /snapshots
+    tar -czf "${1}.tgz" "${1}"
+    rm -fr "/snapshots/${1}"
 }
 
 # parameter 1 is identifier
 restoreOpenemr() {
-    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "/root/backup/${1}/backup.sql"
-    rsync --delete --recursive --links "/root/backup/${1}/sites" /var/www/localhost/htdocs/openemr/
+    cd /snapshots
+    tar -xzf "${1}.tgz"
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "/snapshots/${1}/backup.sql"
+    rsync --delete --recursive --links "/snapshots/${1}/sites" /var/www/localhost/htdocs/openemr/
     chown -R apache /var/www/localhost/htdocs/openemr/
+    rm -fr "/snapshots/${1}"
+}
+
+# parameter 1 is character set
+# parameter 2 is collation
+changeEncodingCollation() {
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST"
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST"
 }
