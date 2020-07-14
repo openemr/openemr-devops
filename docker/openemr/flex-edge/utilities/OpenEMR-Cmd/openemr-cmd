@@ -16,45 +16,32 @@ start_docker_compose(){
 		cd /*/openemr
 		if [ "$PWD" == `dirname /*/openemr/docker-compose.yml` ]
 		then
-			echo "Starting docker-compose ... [in progress]"
-			docker-compose up  &>/dev/null  &
+			docker-compose up -d
 			touch /var/lock/subsys/openemrd
-			# Confirm the process is getting up.
-			while true
-			do
-				sleep 2
-				COMPOSE_PROCESS_NUM=`ps axu|grep 'docker-compose up'|grep -v 'color=auto'| grep -v 'grep docker-compose up'|wc -l`
-				if [ "$COMPOSE_PROCESS_NUM" -eq 2 ]
-				then
-					echo "Starting docker-compose ... [done]"
-					break
-				fi
-			done
 		else
-			echo "Please check the openemr exit or not."
+			echo "Not in the openemr source code dir."
 		fi
 	else
-		echo "Not in the openemr source code dir."
-		echo "Or docker-compose is already started."
-		ps axu|grep 'docker-compose up'
+		echo "docker-compose is already started."
+		ps axu|grep 'docker'
 		exit $COMPOSE_START_CODE
 	fi
 }
 
 stop_docker_compose(){
-	echo "Stoping docker-compose ... [in progress]"
-	ps axu|grep 'docker-compose up'|grep -v 'color=auto'|awk '{print $2}'| xargs kill &>/dev/null
-	rm -f /var/lock/subsys/openemrd
-	while true
-	do
-		sleep 2
-		COMPOSE_PROCESS_NUM=`ps axu|grep 'docker-compose up'|grep -v 'color=auto'| grep -v 'grep docker-compose up'|wc -l`
-		if [ "$COMPOSE_PROCESS_NUM" -eq 0 ]
+	if [ ! -f /var/lock/subsys/openemrd ]
+	then
+		echo "docker-compose is already stopped."
+	else
+		cd /*/openemr
+		if [ "$PWD" == `dirname /*/openemr/docker-compose.yml` ]
 		then
-			echo "Stoping docker-compose ... [done]"
-			break
+			docker-compose down
+			rm -f /var/lock/subsys/openemrd
+		else
+			echo "Not in the openemr source code dir."
 		fi
-	done
+	fi
 }
 
 refresh_page_or_iframe() {
