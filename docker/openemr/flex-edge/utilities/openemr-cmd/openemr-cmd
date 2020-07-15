@@ -7,43 +7,6 @@ DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec c
 CONTAINER_ID=$(docker ps | grep _openemr | cut -f 1 -d " ")      # get the container id
 SHELL_TYPE='sh -c'                                               # specify shell type
 
-start_docker_compose(){
-	# Check the source dir exist or not.
-	COMPOSE_START_CODE=11
-	ls /*/openemr/docker-compose.yml &>/dev/null
-	if [ $? -eq 0 ] && [ ! -f /var/lock/subsys/openemrd ]
-	then
-		cd /*/openemr
-		if [ "$PWD" == `dirname /*/openemr/docker-compose.yml` ]
-		then
-			docker-compose up -d
-			touch /var/lock/subsys/openemrd
-		else
-			echo "Not in the openemr source code dir."
-		fi
-	else
-		echo "docker-compose is already started."
-		ps axu|grep 'docker'
-		exit $COMPOSE_START_CODE
-	fi
-}
-
-stop_docker_compose(){
-	if [ ! -f /var/lock/subsys/openemrd ]
-	then
-		echo "docker-compose is already stopped."
-	else
-		cd /*/openemr
-		if [ "$PWD" == `dirname /*/openemr/docker-compose.yml` ]
-		then
-			docker-compose down
-			rm -f /var/lock/subsys/openemrd
-		else
-			echo "Not in the openemr source code dir."
-		fi
-	fi
-}
-
 refresh_page_or_iframe() {
 	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools build-themes'
 }
@@ -185,8 +148,6 @@ if [ $# -eq 0 ]
 then
     echo "Usage: `basename $0` COMMAND [ARGS]"
     echo 'Commands:'
-    echo "  start-compose                Start docker-compose"               
-    echo "  stop-compose                 Stop docker-compose"               
     echo "  build-themes                 Make changes to any files on your local file system"               
 	echo "  php-log                      To check PHP error logs"
 	echo "  psr12-report                 To create a report of PSR12 code styling issues"
@@ -221,12 +182,6 @@ fi
 
 # See how we were called.
 case "$1" in
-	start-compose)
-		start_docker_compose
-	    ;;
-	stop-compose)
-		stop_docker_compose
-		;;
 	build-themes)
 		refresh_page_or_iframe
 		;;
