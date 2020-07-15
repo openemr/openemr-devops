@@ -132,6 +132,22 @@ turn_off_support_for_multisite(){
 	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools disable-multisite'
 }
 
+set_utf8mb4_and_collation_to_utf8mb4_general_ci(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools change-encoding-collation utf8mb4 utf8mb4_general_ci'
+}
+
+set_utf8mb4_and_collation_to_utf8mb4_unicode_ci(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools change-encoding-collation utf8mb4 utf8mb4_unicode_ci'
+}
+
+set_utf8mb4_and_collation_to_utf8mb4_vietnamese_ci(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools change-encoding-collation utf8mb4 utf8mb4_vietnamese_ci'
+}
+
+set_utf8_and_collation_to_utf8_general_ci(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools change-encoding-collation utf8 utf8_general_ci'
+} 
+
 USAGE_EXIT_CODE=13
 FINAL_EXIT_CODE=0
 
@@ -177,6 +193,10 @@ then
 	echo "  ensure-version               Ensure run upgrade to ensure will work with current version OpenEMR"
 	echo "  enable-multisite             Turn on support for multisite"
 	echo "  disable-multisite            Turn off support for multisite"
+	echo "  utf8mb4-general-ci			 Set character set to utf8mb4 and collation to utf8mb4_general_ci"
+	echo "  utf8mb4-unicode-ci           Set character set to utf8mb4 and collation to utf8mb4_unicode_ci"
+	echo "  utf8mb4-vietnamese-ci		 Set character set to utf8mb4 and collation to utf8mb4_vietnamese_ci"
+	echo "  utf8-general-ci              Set character set to utf8 and collation to utf8_general_ci"
 	exit $USAGE_EXIT_CODE
 fi
 
@@ -268,6 +288,18 @@ case "$1" in
 		;;
 	disable-multisite)
 		turn_off_support_for_multisite
+		;;
+	utf8mb4-general-ci)
+		set_utf8mb4_and_collation_to_utf8mb4_general_ci
+		;;
+	utf8mb4-unicode-ci)
+		set_utf8mb4_and_collation_to_utf8mb4_unicode_ci
+		;;
+	utf8mb4-vietnamese-ci)
+		set_utf8mb4_and_collation_to_utf8mb4_vietnamese_ci
+		;;
+	utf8-general-ci)	
+		set_utf8_and_collation_to_utf8_general_ci
 		;;
 esac
 exit $FINAL_EXIT_CODE
