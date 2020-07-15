@@ -9,27 +9,22 @@ OpenEMR-Cmd is similar to devtools, it helps deveployers to manage and troublesh
 1. Copy the script to local linux environment.
 
 ```
-sudo vim /usr/local/bin/openemr-cmd
+mkdir /home/<username>/bin
+sudo vim /home/<username>/openemr-cmd
 ```
 
 2. Apply executable permissions to the script.
 
 ```
-sudo chmod +x /usr/local/bin/openemr-cmd
+sudo chmod +x /home/<username>/openemr-cmd
 ```
 
-3. If the command openemr-cmd fails after installation, check your path. You can also create a symbolic link to /usr/bin or any other directory in your path:
-
-```
-sudo ln -s /usr/local/bin/openemr-cmd /usr/bin/openemr-cmd
-```
-
-4. Test the installation.
+3. Test the installation.
 
 ```
 # openemr-cmd
 Usage: openemr-cmd COMMAND [ARGS]
 Commands:
-  start-compose                Start docker-compose
-  stop-compose                 Stop docker-compose
+  build-themes                 Make changes to any files on your local file system
+  php-log                      To check PHP error logs
 ```
