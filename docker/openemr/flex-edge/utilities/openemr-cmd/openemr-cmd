@@ -151,13 +151,10 @@ set_utf8_and_collation_to_utf8_general_ci(){
 USAGE_EXIT_CODE=13
 FINAL_EXIT_CODE=0
 
-# Confirm the docker and docker-compose install or not.
+# Confirm the docker install or not.
 DOCKER_CODE=16
-DOCKER_COMPOSE_CODE=17
 which docker &>/dev/null
-[ $? -ne 0 ] && echo "Please check docker and dock-compose install or not." && exit $DOCKER_CODE
-which docker-compose &>/dev/null
-[ $? -ne 0 ] && echo "Please check docker-compose install or not." && exit $DOCKER_COMPOSE_CODE
+[ $? -ne 0 ] && echo "Please check docker install or not." && exit $DOCKER_CODE
 
 # Script usage.
 if [ $# -eq 0 ]
