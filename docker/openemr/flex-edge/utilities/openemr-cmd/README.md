@@ -6,17 +6,17 @@ OpenEMR-Cmd is similar to devtools, it helps deveployers to manage and troublesh
 
 ## Implementation
 
-1. Copy the script to local linux environment.
+1. Copy the script to local linux environment, create the bin directory if not exist.
 
 ```
 mkdir /home/<username>/bin
-sudo vim /home/<username>/openemr-cmd
+sudo vim /home/<username>/bin/openemr-cmd
 ```
 
 2. Apply executable permissions to the script.
 
 ```
-sudo chmod +x /home/<username>/openemr-cmd
+sudo chmod +x /home/<username>/bin/openemr-cmd
 ```
 
 3. Test the installation.
