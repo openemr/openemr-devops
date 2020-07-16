@@ -104,19 +104,37 @@ list_the_capsules(){
 }
 
 copy_capsule_from_docker_to_current_dir(){
-	docker cp $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/example.tgz .
+	BACKUP_FILE=$1
+	BACKUP_FILE_CODE=19
+	if [ $# != 1 ]
+	then
+		echo 'Please provide the file.'
+		echo 'e.g. openemr-cmd cp-cap-docker2dir example.tgz'
+		exit $BACKUP_FILE_CODE
+	else
+		docker cp $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/$BACKUP_FILE .
+	fi
 }
 
 copy_capsule_from_current_dir_to_docker(){
 	# Need a capsule parameter
+	BACKUP_FILE=$1
 	CP_CAP_DIR_DKR_CODE=15	
-	ls example.tgz &>/dev/null
-	if [ $? -ne 0 ]
+	BACKUP_FILE_CODE=18
+	if [ $# != 1 ]
 	then
-		echo 'Please check example.tgz whether in current dir or not'
-		exit $CP_CAP_DIR_DKR_CODE
+		echo 'Please provide the file.'
+		echo 'e.g. openemr-cmd cp-cap-docker2dir example.tgz'
+		exit $BACKUP_FILE_CODE
 	else
-		docker cp example.tgz $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/
+		ls $BACKUP_FILE  &>/dev/null
+		if [ $? -ne 0 ]
+		then
+			echo 'Please check the file whether in current dir or not'
+			exit $CP_CAP_DIR_DKR_CODE
+		else
+			docker cp $BACKUP_FILE  $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/
+		fi
 	fi
 }
 
@@ -268,10 +286,10 @@ case "$1" in
 		list_the_capsules
 		;;
 	cp-cap-docker2dir)
-		copy_capsule_from_docker_to_current_dir
+		copy_capsule_from_docker_to_current_dir $2
 		;;
 	cp-cap-dir2docker)
-		copy_capsule_from_current_dir_to_docker
+		copy_capsule_from_current_dir_to_docker $2
 		;;
 	ensure-version)
 		ensure_current_ver_with_upgrade_ver
@@ -284,18 +302,6 @@ case "$1" in
 		;;
 	encoding-collation)
 		change_db_character_set_and_collation $2 $3
-		;;
-	utf8mb4-general-ci)
-		set_utf8mb4_and_collation_to_utf8mb4_general_ci
-		;;
-	utf8mb4-unicode-ci)
-		set_utf8mb4_and_collation_to_utf8mb4_unicode_ci
-		;;
-	utf8mb4-vietnamese-ci)
-		set_utf8mb4_and_collation_to_utf8mb4_vietnamese_ci
-		;;
-	utf8-general-ci)	
-		set_utf8_and_collation_to_utf8_general_ci
 		;;
 esac
 exit $FINAL_EXIT_CODE
