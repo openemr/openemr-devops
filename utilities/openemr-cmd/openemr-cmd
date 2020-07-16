@@ -1,6 +1,6 @@
 #!/bin/bash
 #########################################################
-# Function :Manage the docker and docker-compose cmd    #
+# Function :Manage the docker command line              #
 # Version  :v1                                          #
 #########################################################
 DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec command
@@ -88,11 +88,29 @@ reset_and_reinstall_openemr_with_demodata(){
 }
 
 creat_a_backup_snapshot(){
-	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools backup example'
+    BACKUP_FILE=$1
+    BACKUP_FILE_CODE=20
+    if [ $# != 1 ]
+    then
+		echo 'Please provide a backup file name.'
+		echo 'e.g. openemr-cmd backup-snapshot example'
+		exit $BACKUP_FILE_CODE
+	else
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "/root/devtools backup $BACKUP_FILE"
+	fi
 }
 
 restore_from_a_snapshot(){
-	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools restore example'
+    BACKUP_FILE=$1
+    BACKUP_FILE_CODE=21
+    if [ $# != 1 ]
+    then
+        echo 'Please provide a restore file name.'
+        echo 'e.g. openemr-cmd restore-snapshot example'
+        exit $BACKUP_FILE_CODE
+    else
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "/root/devtools restore $BACKUP_FILE"
+	fi
 }
 
 list_the_snapshot(){
@@ -108,7 +126,7 @@ copy_capsule_from_docker_to_current_dir(){
 	BACKUP_FILE_CODE=19
 	if [ $# != 1 ]
 	then
-		echo 'Please provide the file.'
+		echo 'Please provide the copy file name.'
 		echo 'e.g. openemr-cmd cp-cap-docker2dir example.tgz'
 		exit $BACKUP_FILE_CODE
 	else
@@ -123,7 +141,7 @@ copy_capsule_from_current_dir_to_docker(){
 	BACKUP_FILE_CODE=18
 	if [ $# != 1 ]
 	then
-		echo 'Please provide the file.'
+		echo 'Please provide the copy file name.'
 		echo 'e.g. openemr-cmd cp-cap-docker2dir example.tgz'
 		exit $BACKUP_FILE_CODE
 	else
@@ -274,10 +292,10 @@ case "$1" in
 		reset_and_reinstall_openemr_with_demodata
 		;;
 	backup-snapshot)
-		creat_a_backup_snapshot
+		creat_a_backup_snapshot $2
 		;;
 	restore-snapshot)
-		restore_from_a_snapshot
+		restore_from_a_snapshot $2
 		;;
 	list-snapshots)
 		list_the_snapshot
