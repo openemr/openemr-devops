@@ -1,0 +1,302 @@
+#!/bin/bash
+#########################################################
+# Function :Manage the docker and docker-compose cmd    #
+# Version  :v1                                          #
+#########################################################
+DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec command
+CONTAINER_ID=$(docker ps | grep _openemr | cut -f 1 -d " ")      # get the container id
+SHELL_TYPE='sh -c'                                               # specify shell type
+
+refresh_page_or_iframe() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools build-themes'
+}
+
+check_php_error_logs() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools php-log'
+}
+
+create_psr12_code_styling_issues_report() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools psr12-report'
+}
+
+fix_psr12_code_styling_issues() {
+	 $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools psr12-fix'
+}
+
+create_theme_styling_issues_report() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools lint-themes-report'
+}
+
+fix_theme_styling_issues() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools lint-themes-fix'
+}
+
+check_php_parsing_errors() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools php-parserror'	
+}
+
+run_unit_testing() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools unit-test'
+}
+
+run_api_testing() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools api-test'
+}
+
+run_e2e_testing() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools e2e-test'
+}
+
+run_services_testing() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools services-test'
+}
+
+run_fixtures_testing() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools fixtures-test'
+}
+
+run_validators_testing() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools validators-test'
+}
+
+run_controllers_testing() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools controllers-test'
+}
+
+run_common_testing() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools common-test'
+}
+
+run_the_entire_dev_tool_suite() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools clean-sweep'
+}
+
+run_only_all_the_autmated_tests() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools clean-sweep-tests'
+}
+
+reset_openemr_only() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools dev-reset'
+}
+
+reset_and_reinstall_openemr() {
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools dev-reset-install'
+}
+
+reset_and_reinstall_openemr_with_demodata(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools dev-reset-install-demodata'
+}
+
+creat_a_backup_snapshot(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools backup example'
+}
+
+restore_from_a_snapshot(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools restore example'
+}
+
+list_the_snapshot(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools list-snapshots'
+}
+
+list_the_capsules(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools list-capsules'
+}
+
+copy_capsule_from_docker_to_current_dir(){
+	docker cp $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/example.tgz .
+}
+
+copy_capsule_from_current_dir_to_docker(){
+	# Need a capsule parameter
+	CP_CAP_DIR_DKR_CODE=15	
+	ls example.tgz &>/dev/null
+	if [ $? -ne 0 ]
+	then
+		echo 'Please check example.tgz whether in current dir or not'
+		exit $CP_CAP_DIR_DKR_CODE
+	else
+		docker cp example.tgz $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/
+	fi
+}
+
+ensure_current_ver_with_upgrade_ver(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools upgrade 5.0.2'
+}
+
+turn_on_support_for_multisite(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools enable-multisite'
+}
+
+turn_off_support_for_multisite(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools disable-multisite'
+}
+
+set_utf8mb4_and_collation_to_utf8mb4_general_ci(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools change-encoding-collation utf8mb4 utf8mb4_general_ci'
+}
+
+set_utf8mb4_and_collation_to_utf8mb4_unicode_ci(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools change-encoding-collation utf8mb4 utf8mb4_unicode_ci'
+}
+
+set_utf8mb4_and_collation_to_utf8mb4_vietnamese_ci(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools change-encoding-collation utf8mb4 utf8mb4_vietnamese_ci'
+}
+
+set_utf8_and_collation_to_utf8_general_ci(){
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools change-encoding-collation utf8 utf8_general_ci'
+} 
+
+USAGE_EXIT_CODE=13
+FINAL_EXIT_CODE=0
+
+# Confirm the docker install or not.
+DOCKER_CODE=16
+which docker &>/dev/null
+[ $? -ne 0 ] && echo "Please check docker install or not." && exit $DOCKER_CODE
+
+# Script usage.
+if [ $# -eq 0 ]
+then
+    echo "Usage: `basename $0` COMMAND [ARGS]"
+    echo 'Commands:'
+    echo "  build-themes                 Make changes to any files on your local file system"               
+	echo "  php-log                      To check PHP error logs"
+	echo "  psr12-report                 To create a report of PSR12 code styling issues"
+	echo "  psr12-fix                    To fix PSR12 code styling issues"
+	echo "  lint-themes-report           To create a report of theme styling issues"
+	echo "  lint-themes-fix              To fix theme styling issues" 
+	echo "  php-parserror                To check PHP parsing errors" 
+	echo "  unit-test                    To run unit testing"
+	echo "  api-test                     To run api testing"
+	echo "  e2e-test                     To run e2e testing"
+	echo "  services-test                To run services testing"
+	echo "  fixtures-test                To run fixtures testing"
+	echo "  validators-test              To run validators testing"
+	echo "  controllers-test             To run controllers testing"
+	echo "  common-test                  To run common testing"
+	echo "  clean-sweep                  To run the entire dev tool suite"
+	echo "  clean-sweep-tests            To run only all the automated tests" 
+	echo "  dev-reset                    To reset OpenEMR only"
+	echo "  dev-reset-install            To reset and reinstall OpenEMR"
+	echo "  dev-reset-install-demodata   To reset and reinstall OpenEMR with demo data"
+	echo "  backup-snapshot              Create a backup snapshot"
+	echo "  restore-snapshot             Restore from a snapshot"
+	echo "  list-snapshots               To list the snapshots"
+	echo "  list-capsules                List the capsules"
+	echo "  cp-cap-docker2dir            Copy the capsule from the docker to your current directory" 
+	echo "  cp-cap-dir2docker            Copy the capsule from current directory into the docker" 
+	echo "  ensure-version               Ensure run upgrade to ensure will work with current version OpenEMR"
+	echo "  enable-multisite             Turn on support for multisite"
+	echo "  disable-multisite            Turn off support for multisite"
+	echo "  utf8mb4-general-ci			 Set character set to utf8mb4 and collation to utf8mb4_general_ci"
+	echo "  utf8mb4-unicode-ci           Set character set to utf8mb4 and collation to utf8mb4_unicode_ci"
+	echo "  utf8mb4-vietnamese-ci		 Set character set to utf8mb4 and collation to utf8mb4_vietnamese_ci"
+	echo "  utf8-general-ci              Set character set to utf8 and collation to utf8_general_ci"
+	exit $USAGE_EXIT_CODE
+fi
+
+# See how we were called.
+case "$1" in
+	build-themes)
+		refresh_page_or_iframe
+		;;
+	php-log)
+		check_php_error_logs
+		;;
+	psr12-report)
+		create_psr12_code_styling_issues_report
+		;;
+	psr12-fix)
+		fix_psr12_code_styling_issues
+		;;
+	lint-themes-report)
+		create_theme_styling_issues_report
+		;;
+	lint-themes-fix)
+		fix_theme_styling_issues
+		;;
+	php-parserror)
+		check_php_parsing_errors
+		;;
+	unit-test)
+		run_unit_testing
+		;;
+	api-test)
+		run_api_testing
+		;;
+	e2e-test)
+		run_e2e_testing
+		;;
+	services-test)
+		run_services_testing
+		;;
+	fixtures-test)
+		run_fixtures_testing
+		;;
+	validators-test)
+		run_validators_testing
+		;;
+	controllers-test)
+		run_controllers_testing
+		;;
+	common-test)
+		run_common_testing
+		;;
+	clean-sweep)
+		run_the_entire_dev_tool_suite
+		;;
+	clean-sweep-tests)
+		run_only_all_the_autmated_tests
+		;;
+	dev-reset)
+		reset_openemr_only
+		;;
+	dev-reset-install)
+		reset_and_reinstall_openemr
+		;;
+	dev-reset-install-demodata)
+		reset_and_reinstall_openemr_with_demodata
+		;;
+	backup-snapshot)
+		creat_a_backup_snapshot
+		;;
+	restore-snapshot)
+		restore_from_a_snapshot
+		;;
+	list-snapshots)
+		list_the_snapshot
+		;;
+	list-capsules)
+		list_the_capsules
+		;;
+	cp-cap-docker2dir)
+		copy_capsule_from_docker_to_current_dir
+		;;
+	cp-cap-dir2docker)
+		copy_capsule_from_current_dir_to_docker
+		;;
+	ensure-version)
+		ensure_current_ver_with_upgrade_ver
+		;;
+	enable-multisite)
+		turn_on_support_for_multisite
+		;;
+	disable-multisite)
+		turn_off_support_for_multisite
+		;;
+	utf8mb4-general-ci)
+		set_utf8mb4_and_collation_to_utf8mb4_general_ci
+		;;
+	utf8mb4-unicode-ci)
+		set_utf8mb4_and_collation_to_utf8mb4_unicode_ci
+		;;
+	utf8mb4-vietnamese-ci)
+		set_utf8mb4_and_collation_to_utf8mb4_vietnamese_ci
+		;;
+	utf8-general-ci)	
+		set_utf8_and_collation_to_utf8_general_ci
+		;;
+esac
+exit $FINAL_EXIT_CODE
