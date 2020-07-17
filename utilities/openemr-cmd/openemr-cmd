@@ -262,7 +262,7 @@ then
 	echo "  list-capsules                List the capsules"
 	echo "  get-capsule                  Copy the capsule from the docker to your host directory"
 	echo "  put-capsule                  Copy the capsule into the docker"
-	echo "  ensure-version               Ensure run upgrade to ensure will work with current version OpenEMR"
+	echo "  ensure-version               Upgrade OpenEMR from specified old version to current version"
 	echo "  enable-multisite             Turn on support for multisite"
 	echo "  disable-multisite            Turn off support for multisite"
 	echo "  encoding-collation           Change the database character set and collation"
