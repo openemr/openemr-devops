@@ -30,6 +30,10 @@ check_php_error_logs() {
 	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools php-log'
 }
 
+check_docker_log() {
+  docker logs $CONTAINER_ID
+}
+
 create_psr12_code_styling_issues_report() {
 	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools psr12-report'
 }
@@ -238,6 +242,7 @@ then
   echo "  shell                        Open a docker shell quickly"
   echo "  build-themes                 Make changes to any files on your local file system"
 	echo "  php-log                      To check PHP error logs"
+	echo "  docker-log                   To check docker log"
 	echo "  psr12-report                 To create a report of PSR12 code styling issues"
 	echo "  psr12-fix                    To fix PSR12 code styling issues"
 	echo "  lint-themes-report           To create a report of theme styling issues"
@@ -298,6 +303,9 @@ case "$FIRST_ARG" in
 		;;
 	php-log)
 		check_php_error_logs
+		;;
+	docker-log)
+		check_docker_log
 		;;
 	psr12-report)
 		create_psr12_code_styling_issues_report
