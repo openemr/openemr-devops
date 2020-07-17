@@ -144,12 +144,12 @@ copy_capsule_from_docker_to_host(){
 	BACKUP_FILE=$1
 	BACKUP_HOST_DIR=$2 #optional parameter
 	BACKUP_FILE_CODE=19
-	if [ $# != 1 ]
+	if [ $# != 1 ] && [ $# != 2 ]
 	then
 		echo 'Please provide the capsule name.'
-		echo 'e.g. openemr-cmd cp-cap-docker2dir example.tgz'
+		echo 'e.g. openemr-cmd get-capsule example.tgz'
 		echo 'An optional setting is the path to save to. If nothing provided, then will save in current directory.'
-		echo 'e.g. openemr-cmd cp-cap-docker2dir example.tgz /path/to/save'
+		echo 'e.g. openemr-cmd get-capsule example.tgz /path/to/save'
 		exit $BACKUP_FILE_CODE
 	else
 	  if [ -z "$BACKUP_HOST_DIR" ]
@@ -169,7 +169,7 @@ copy_capsule_from_host_to_docker(){
 	if [ $# != 1 ]
 	then
 		echo 'Please provide the capsule file name (including path if applicable).'
-		echo 'e.g. openemr-cmd cp-cap-docker2dir example.tgz'
+		echo 'e.g. openemr-cmd put-capsule example.tgz'
 		exit $BACKUP_FILE_CODE
 	else
 		ls $BACKUP_FILE  &>/dev/null
