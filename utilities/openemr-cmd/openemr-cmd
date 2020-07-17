@@ -10,7 +10,7 @@ FIRST_ARG=$1											         # define the first parameter
 
 check_docker_compose_install_or_not(){
 	DOCKER_COMPOSE_CODE=22
-	which docker-composer &>/dev/null
+	which docker-compose &>/dev/null
 	[ $? -ne 0 ] && echo "Please check docker-compose install or not." && exit $DOCKER_COMPOSE_CODE
 }
 
@@ -43,7 +43,7 @@ fix_theme_styling_issues() {
 }
 
 check_php_parsing_errors() {
-	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools php-parserror'	
+	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools php-parserror'
 }
 
 run_unit_testing() {
@@ -148,7 +148,7 @@ copy_capsule_from_docker_to_current_dir(){
 copy_capsule_from_current_dir_to_docker(){
 	# Need a capsule parameter
 	BACKUP_FILE=$1
-	CP_CAP_DIR_DKR_CODE=15	
+	CP_CAP_DIR_DKR_CODE=15
 	BACKUP_FILE_CODE=18
 	if [ $# != 1 ]
 	then
@@ -207,20 +207,20 @@ if [ $# -eq 0 ] || [ "$FIRST_ARG" == '--help' ]
 then
     echo "Usage: `basename $0` COMMAND [ARGS]"
     echo 'Commands:'
-    echo "  --help                       Show the commands usage"               
-    echo "  --version                    Show the openemr-cmd command version"               
-    echo "  up                           Execute: docker-compose up -d"               
-    echo "  down                         Execute: docker-compose down -v"               
-    echo "  start                        Execute: docker-compose start"               
-    echo "  stop                         Execute: docker-compose stop"               
-    echo "  shell                        Open a docker shell quickly"               
-    echo "  build-themes                 Make changes to any files on your local file system"               
+    echo "  --help                       Show the commands usage"
+    echo "  --version                    Show the openemr-cmd command version"
+    echo "  up                           Execute: docker-compose up -d"
+    echo "  down                         Execute: docker-compose down -v"
+    echo "  start                        Execute: docker-compose start"
+    echo "  stop                         Execute: docker-compose stop"
+    echo "  shell                        Open a docker shell quickly"
+    echo "  build-themes                 Make changes to any files on your local file system"
 	echo "  php-log                      To check PHP error logs"
 	echo "  psr12-report                 To create a report of PSR12 code styling issues"
 	echo "  psr12-fix                    To fix PSR12 code styling issues"
 	echo "  lint-themes-report           To create a report of theme styling issues"
-	echo "  lint-themes-fix              To fix theme styling issues" 
-	echo "  php-parserror                To check PHP parsing errors" 
+	echo "  lint-themes-fix              To fix theme styling issues"
+	echo "  php-parserror                To check PHP parsing errors"
 	echo "  unit-test                    To run unit testing"
 	echo "  api-test                     To run api testing"
 	echo "  e2e-test                     To run e2e testing"
@@ -230,7 +230,7 @@ then
 	echo "  controllers-test             To run controllers testing"
 	echo "  common-test                  To run common testing"
 	echo "  clean-sweep                  To run the entire dev tool suite"
-	echo "  clean-sweep-tests            To run only all the automated tests" 
+	echo "  clean-sweep-tests            To run only all the automated tests"
 	echo "  dev-reset                    To reset OpenEMR only"
 	echo "  dev-reset-install            To reset and reinstall OpenEMR"
 	echo "  dev-reset-install-demodata   To reset and reinstall OpenEMR with demo data"
@@ -238,8 +238,8 @@ then
 	echo "  restore-snapshot             Restore from a snapshot"
 	echo "  list-snapshots               To list the snapshots"
 	echo "  list-capsules                List the capsules"
-	echo "  cp-cap-docker2dir            Copy the capsule from the docker to your current directory" 
-	echo "  cp-cap-dir2docker            Copy the capsule from current directory into the docker" 
+	echo "  cp-cap-docker2dir            Copy the capsule from the docker to your current directory"
+	echo "  cp-cap-dir2docker            Copy the capsule from current directory into the docker"
 	echo "  ensure-version               Ensure run upgrade to ensure will work with current version OpenEMR"
 	echo "  enable-multisite             Turn on support for multisite"
 	echo "  disable-multisite            Turn off support for multisite"
