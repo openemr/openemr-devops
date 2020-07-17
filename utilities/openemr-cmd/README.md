@@ -10,13 +10,14 @@ OpenEMR-Cmd is similar to devtools, it helps deveployers to manage and troublesh
 
 ```
 mkdir /home/<username>/bin
-sudo vim /home/<username>/bin/openemr-cmd
+cd /home/<username>/bin
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd > ./openemr-cmd
 ```
 
 2. Apply executable permissions to the script.
 
 ```
-sudo chmod +x /home/<username>/bin/openemr-cmd
+sudo chmod +x ./openemr-cmd
 ```
 
 3. Test the installation.
@@ -25,6 +26,6 @@ sudo chmod +x /home/<username>/bin/openemr-cmd
 # openemr-cmd
 Usage: openemr-cmd COMMAND [ARGS]
 Commands:
-  build-themes                 Make changes to any files on your local file system
-  php-log                      To check PHP error logs
+  --help                       Show the commands usage
+  --version                    Show the openemr-cmd command version
 ```

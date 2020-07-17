@@ -8,6 +8,16 @@ CONTAINER_ID=$(docker ps | grep _openemr | cut -f 1 -d " ")      # get the conta
 SHELL_TYPE='sh -c'                                               # specify shell type
 FIRST_ARG=$1											         # define the first parameter
 
+check_docker_compose_install_or_not(){
+	DOCKER_COMPOSE_CODE=22
+	which docker-composer &>/dev/null
+	[ $? -ne 0 ] && echo "Please check docker-compose install or not." && exit $DOCKER_COMPOSE_CODE
+}
+
+quick_open_a_docker_shell(){
+	docker exec -it $CONTAINER_ID sh
+}
+
 refresh_page_or_iframe() {
 	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools build-themes'
 }
@@ -197,6 +207,13 @@ if [ $# -eq 0 ] || [ "$FIRST_ARG" == '--help' ]
 then
     echo "Usage: `basename $0` COMMAND [ARGS]"
     echo 'Commands:'
+    echo "  --help                       Show the commands usage"               
+    echo "  --version                    Show the openemr-cmd command version"               
+    echo "  up                           Execute: docker-compose up -d"               
+    echo "  down                         Execute: docker-compose down -v"               
+    echo "  start                        Execute: docker-compose start"               
+    echo "  stop                         Execute: docker-compose stop"               
+    echo "  shell                        Open a docker shell quickly"               
     echo "  build-themes                 Make changes to any files on your local file system"               
 	echo "  php-log                      To check PHP error logs"
 	echo "  psr12-report                 To create a report of PSR12 code styling issues"
@@ -228,10 +245,32 @@ then
 	echo "  disable-multisite            Turn off support for multisite"
 	echo "  encoding-collation           Change the database character set and collation"
 	exit $USAGE_EXIT_CODE
+elif [ "$FIRST_ARG" == '--version' ]
+then
+	echo "openemer-cmd version v1, build 2020-07-16"
 fi
 
 # See how we were called.
 case "$FIRST_ARG" in
+	up)
+		check_docker_compose_install_or_not
+		docker-compose up -d
+		;;
+	down)
+		check_docker_compose_install_or_not
+		docker-compose down -v
+		;;
+	stop)
+		check_docker_compose_install_or_not
+		docker-compose stop
+		;;
+	start)
+		check_docker_compose_install_or_not
+		docker-compose start
+		;;
+	shell)
+		quick_open_a_docker_shell
+		;;
 	build-themes)
 		refresh_page_or_iframe
 		;;
