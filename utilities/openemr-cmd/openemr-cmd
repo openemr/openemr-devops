@@ -1,8 +1,12 @@
 #!/bin/bash
-#########################################################
-# Function :Manage the docker command line              #
-# Version  :v1                                          #
-#########################################################
+################################################################################################
+# Function  : Manage the docker command line
+# Version   : See below --version section
+# Copyright : Copyright (c) 2020 Reid Liu <guliu@redhat.com>
+# Author    : Reid Liu <guliu@redhat.com>
+# License   : https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
+#################################################################################################
+
 DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec command
 CONTAINER_ID=$(docker ps | grep _openemr | cut -f 1 -d " ")      # get the container id
 SHELL_TYPE='sh -c'                                               # specify shell type
@@ -24,6 +28,10 @@ refresh_page_or_iframe() {
 
 check_php_error_logs() {
 	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools php-log'
+}
+
+check_docker_log() {
+  docker logs $CONTAINER_ID
 }
 
 create_psr12_code_styling_issues_report() {
@@ -103,7 +111,7 @@ creat_a_backup_snapshot(){
     BACKUP_FILE_CODE=20
     if [ $# != 1 ]
     then
-		echo 'Please provide a backup file name.'
+		echo 'Please provide a snapshot name.'
 		echo 'e.g. openemr-cmd backup-snapshot example'
 		exit $BACKUP_FILE_CODE
 	else
@@ -116,7 +124,7 @@ restore_from_a_snapshot(){
     BACKUP_FILE_CODE=21
     if [ $# != 1 ]
     then
-        echo 'Please provide a restore file name.'
+        echo 'Please provide a restore snapshot name.'
         echo 'e.g. openemr-cmd restore-snapshot example'
         exit $BACKUP_FILE_CODE
     else
@@ -132,34 +140,42 @@ list_the_capsules(){
 	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools list-capsules'
 }
 
-copy_capsule_from_docker_to_current_dir(){
+copy_capsule_from_docker_to_host(){
 	BACKUP_FILE=$1
+	BACKUP_HOST_DIR=$2 #optional parameter
 	BACKUP_FILE_CODE=19
-	if [ $# != 1 ]
+	if [ $# != 1 ] && [ $# != 2 ]
 	then
-		echo 'Please provide the copy file name.'
-		echo 'e.g. openemr-cmd cp-cap-docker2dir example.tgz'
+		echo 'Please provide the capsule name.'
+		echo 'e.g. openemr-cmd get-capsule example.tgz'
+		echo 'An optional setting is the path to save to. If nothing provided, then will save in current directory.'
+		echo 'e.g. openemr-cmd get-capsule example.tgz /path/to/save'
 		exit $BACKUP_FILE_CODE
 	else
-		docker cp $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/$BACKUP_FILE .
+	  if [ -z "$BACKUP_HOST_DIR" ]
+	  then
+		  docker cp $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/$BACKUP_FILE .
+    else
+      docker cp $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/$BACKUP_FILE "${BACKUP_HOST_DIR}/"
+    fi
 	fi
 }
 
-copy_capsule_from_current_dir_to_docker(){
+copy_capsule_from_host_to_docker(){
 	# Need a capsule parameter
 	BACKUP_FILE=$1
 	CP_CAP_DIR_DKR_CODE=15
 	BACKUP_FILE_CODE=18
 	if [ $# != 1 ]
 	then
-		echo 'Please provide the copy file name.'
-		echo 'e.g. openemr-cmd cp-cap-docker2dir example.tgz'
+		echo 'Please provide the capsule file name (including path if applicable).'
+		echo 'e.g. openemr-cmd put-capsule example.tgz'
 		exit $BACKUP_FILE_CODE
 	else
 		ls $BACKUP_FILE  &>/dev/null
 		if [ $? -ne 0 ]
 		then
-			echo 'Please check the file whether in current dir or not'
+			echo 'Please check whether the capsule file exists or not'
 			exit $CP_CAP_DIR_DKR_CODE
 		else
 			docker cp $BACKUP_FILE  $(docker ps | grep _openemr | cut -f 1 -d " "):/snapshots/
@@ -168,7 +184,17 @@ copy_capsule_from_current_dir_to_docker(){
 }
 
 ensure_current_ver_with_upgrade_ver(){
-	$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE '/root/devtools upgrade 5.0.2'
+  # Need a version parameter
+  UPGRADE_FROM_VERSION=$1
+  BACKUP_FILE_CODE=22
+	if [ $# != 1 ]
+	then
+		echo 'Please provide the OpenEMR version to upgrade database from.'
+		echo 'e.g. openemr-cmd ensure-version 5.0.2'
+		exit $BACKUP_FILE_CODE
+	else
+    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "/root/devtools upgrade ${UPGRADE_FROM_VERSION}"
+	fi
 }
 
 turn_on_support_for_multisite(){
@@ -205,17 +231,18 @@ which docker &>/dev/null
 # Script usage.
 if [ $# -eq 0 ] || [ "$FIRST_ARG" == '--help' ]
 then
-    echo "Usage: `basename $0` COMMAND [ARGS]"
-    echo 'Commands:'
-    echo "  --help                       Show the commands usage"
-    echo "  --version                    Show the openemr-cmd command version"
-    echo "  up                           Execute: docker-compose up -d"
-    echo "  down                         Execute: docker-compose down -v"
-    echo "  start                        Execute: docker-compose start"
-    echo "  stop                         Execute: docker-compose stop"
-    echo "  shell                        Open a docker shell quickly"
-    echo "  build-themes                 Make changes to any files on your local file system"
+  echo "Usage: `basename $0` COMMAND [ARGS]"
+  echo 'Commands:'
+  echo "  --help                       Show the commands usage"
+  echo "  --version                    Show the openemr-cmd command version"
+  echo "  up                           Execute: docker-compose up -d"
+  echo "  down                         Execute: docker-compose down -v"
+  echo "  start                        Execute: docker-compose start"
+  echo "  stop                         Execute: docker-compose stop"
+  echo "  shell                        Open a docker shell quickly"
+  echo "  build-themes                 Make changes to any files on your local file system"
 	echo "  php-log                      To check PHP error logs"
+	echo "  docker-log                   To check docker log"
 	echo "  psr12-report                 To create a report of PSR12 code styling issues"
 	echo "  psr12-fix                    To fix PSR12 code styling issues"
 	echo "  lint-themes-report           To create a report of theme styling issues"
@@ -238,16 +265,16 @@ then
 	echo "  restore-snapshot             Restore from a snapshot"
 	echo "  list-snapshots               To list the snapshots"
 	echo "  list-capsules                List the capsules"
-	echo "  cp-cap-docker2dir            Copy the capsule from the docker to your current directory"
-	echo "  cp-cap-dir2docker            Copy the capsule from current directory into the docker"
-	echo "  ensure-version               Ensure run upgrade to ensure will work with current version OpenEMR"
+	echo "  get-capsule                  Copy the capsule from the docker to your host directory"
+	echo "  put-capsule                  Copy the capsule into the docker"
+	echo "  ensure-version               Upgrade OpenEMR from specified old version to current version"
 	echo "  enable-multisite             Turn on support for multisite"
 	echo "  disable-multisite            Turn off support for multisite"
 	echo "  encoding-collation           Change the database character set and collation"
 	exit $USAGE_EXIT_CODE
 elif [ "$FIRST_ARG" == '--version' ]
 then
-	echo "openemer-cmd version v1, build 2020-07-16"
+	echo "openemer-cmd version 1.0.1, build 2020-07-17"
 fi
 
 # See how we were called.
@@ -276,6 +303,9 @@ case "$FIRST_ARG" in
 		;;
 	php-log)
 		check_php_error_logs
+		;;
+	docker-log)
+		check_docker_log
 		;;
 	psr12-report)
 		create_psr12_code_styling_issues_report
@@ -343,14 +373,14 @@ case "$FIRST_ARG" in
 	list-capsules)
 		list_the_capsules
 		;;
-	cp-cap-docker2dir)
-		copy_capsule_from_docker_to_current_dir $2
+	get-capsule)
+		copy_capsule_from_docker_to_host $2 $3
 		;;
-	cp-cap-dir2docker)
-		copy_capsule_from_current_dir_to_docker $2
+	put-capsule)
+		copy_capsule_from_host_to_docker $2
 		;;
 	ensure-version)
-		ensure_current_ver_with_upgrade_ver
+		ensure_current_ver_with_upgrade_ver $2
 		;;
 	enable-multisite)
 		turn_on_support_for_multisite
