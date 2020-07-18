@@ -1,0 +1,29 @@
+#!/bin/bash
+# This is a scipt to check the running docker names.
+# 1. mkdir ~/bin  
+# 2. copy the script to ~/bin/chkdocker-names
+# 3. chmod +x ~/bin/chkdocker-names
+
+CHECK_NAME=$1     # specify the checking name
+
+# Script usage
+EXIT_CODE=11
+FINAL_CODE=0
+if [ $# -eq 0 ]
+then
+	echo "Check the docker names."
+	echo "Usage: `basename $0` {all|couchdb|php|fhir|mariadb|mysql|nginx|openemr|openldap|orthanc|redis}"
+	exit $EXIT_CODE
+fi
+
+# Show all docker names.
+if [ "$CHECK_NAME" == 'all' ]
+then
+ 	echo '=======Running Docker Names======='
+	docker ps | awk '{print $NF}'|grep -v NAMES|sort -n
+else
+	# ARGS: couchdb php fhir mariadb mysql nginx openemr openldap orthanc redis.
+ 	echo '=======Running Docker Names======='
+	docker ps | awk '{print $NF}'|grep -v NAMES|sort -n | grep $CHECK_NAME
+fi
+exit $FINAL_CODE
