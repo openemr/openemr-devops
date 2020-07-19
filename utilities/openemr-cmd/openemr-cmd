@@ -11,7 +11,7 @@ DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec c
 CONTAINER_ID=$(docker ps | grep _openemr | cut -f 1 -d " ")      # get the container id
 SHELL_TYPE='sh -c'                                               # specify shell type
 FIRST_ARG=$1											         # define the first parameter
-DEV_TOOLS=/root/devtools                                         # define the devtools parameter
+DEV_TOOLS=/root/devtools
 
 check_docker_compose_install_or_not(){
 	DOCKER_COMPOSE_CODE=22
@@ -20,11 +20,43 @@ check_docker_compose_install_or_not(){
 }
 
 quick_open_a_docker_shell(){
-	docker exec -it $CONTAINER_ID sh
+	CONTAINER_NAME=$1
+	CONTAINER_NAME_CODE=24	
+	if [ $# -eq 1 ]
+	then	
+		docker exec -it $CONTAINER_NAME sh
+	else
+		echo '********************************************************'
+		echo 'Access the docker openemr_openemr_1 by default.' 
+		echo 'Please provide docker names/id if access other dockers.'
+		echo "e.g `basename $0` shell <docker names>"
+		echo '********************************************************'
+		docker exec -it $CONTAINER_ID sh
+	fi
 }
 
 check_docker_log() {
   docker logs $CONTAINER_ID
+}
+
+check_docker_names() {
+	CHECK_NAME=$1     # specify the checking name
+	if [ $# -eq 1 ]
+	then
+		# ARGS: couchdb php fhir mariadb mysql nginx openemr openldap orthanc redis.
+		echo '=======Running Docker Names======='
+		docker ps | awk '{print $NF}'|grep -v NAMES|sort -n | grep $CHECK_NAME		
+
+	else
+		# Show all the docker names.
+		echo '***************************************************************'
+		echo 'Show all the docker names by default.' 
+		echo 'Please provide the keyword if you want to check the single one.'
+		echo "e.g `basename $0` docker-names php"
+		echo '***************************************************************'
+		echo '=======Running Docker Names======='
+		docker ps | awk '{print $NF}'|grep -v NAMES|sort -n
+	fi
 }
 
 creat_a_backup_snapshot(){
@@ -148,6 +180,7 @@ then
   echo "  build-themes                 Make changes to any files on your local file system"
 	echo "  php-log                      To check PHP error logs"
 	echo "  docker-log                   To check docker log"
+	echo "  docker-names                 To check docker the running docker names"
 	echo "  psr12-report                 To create a report of PSR12 code styling issues"
 	echo "  psr12-fix                    To fix PSR12 code styling issues"
 	echo "  lint-themes-report           To create a report of theme styling issues"
@@ -201,10 +234,13 @@ case "$FIRST_ARG" in
 		docker-compose start
 		;;
 	shell)
-		quick_open_a_docker_shell
+		quick_open_a_docker_shell $2
 		;;
 	docker-log)
 		check_docker_log
+		;;
+	docker-names)
+		check_docker_names $2
 		;;
 	backup-snapshot)
 		creat_a_backup_snapshot $2
