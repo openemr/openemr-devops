@@ -27,7 +27,7 @@ quick_open_a_docker_shell(){
 		docker exec -it $CONTAINER_NAME sh
 	else
 		echo '********************************************************'
-		echo 'Access the docker openemr_openemr_1 by default.' 
+		echo 'Access the docker *_openemr_1 by default.' 
 		echo 'Please provide docker names/id if access other dockers.'
 		echo "e.g `basename $0` shell <docker names>"
 		echo '********************************************************'
@@ -224,7 +224,7 @@ then
 	exit $USAGE_EXIT_CODE
 elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
 then
-	echo "openemer-cmd version 1.0.1, build 2020-07-17"
+	echo "openemer-cmd version 1.0.2, build 2020-07-19"
 fi
 
 # See how we were called.
