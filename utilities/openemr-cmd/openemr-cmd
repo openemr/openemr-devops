@@ -52,7 +52,7 @@ check_docker_names() {
 		echo '***************************************************************'
 		echo 'Show all the docker names by default.' 
 		echo 'Please provide the keyword if you want to check the single one.'
-		echo "e.g `basename $0` docker-names php"
+		echo "e.g `basename $0` [docker-names|dn] php"
 		echo '***************************************************************'
 		echo '=======Running Docker Names======='
 		docker ps | awk '{print $NF}'|grep -v NAMES|sort -n
@@ -65,7 +65,7 @@ creat_a_backup_snapshot(){
     if [ $# != 1 ]
     then
 		echo 'Please provide a snapshot name.'
-		echo 'e.g. openemr-cmd backup-snapshot example'
+		echo 'e.g. openemr-cmd [backup-snapshot|bs] example'
 		exit $BACKUP_FILE_CODE
 	else
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS backup $BACKUP_FILE"
@@ -78,7 +78,7 @@ restore_from_a_snapshot(){
     if [ $# != 1 ]
     then
         echo 'Please provide a restore snapshot name.'
-        echo 'e.g. openemr-cmd restore-snapshot example'
+        echo 'e.g. openemr-cmd [restore-snapshot|rs] example'
         exit $BACKUP_FILE_CODE
     else
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS restore $BACKUP_FILE"
@@ -92,9 +92,9 @@ copy_capsule_from_docker_to_host(){
 	if [ $# != 1 ] && [ $# != 2 ]
 	then
 		echo 'Please provide the capsule name.'
-		echo 'e.g. openemr-cmd get-capsule example.tgz'
+		echo 'e.g. openemr-cmd [get-capsule|gc] example.tgz'
 		echo 'An optional setting is the path to save to. If nothing provided, then will save in current directory.'
-		echo 'e.g. openemr-cmd get-capsule example.tgz /path/to/save'
+		echo 'e.g. openemr-cmd [get-capsule|gc] example.tgz /path/to/save'
 		exit $BACKUP_FILE_CODE
 	else
 	  if [ -z "$BACKUP_HOST_DIR" ]
@@ -114,7 +114,7 @@ copy_capsule_from_host_to_docker(){
 	if [ $# != 1 ]
 	then
 		echo 'Please provide the capsule file name (including path if applicable).'
-		echo 'e.g. openemr-cmd put-capsule example.tgz'
+		echo 'e.g. openemr-cmd [put-capsule|pc] example.tgz'
 		exit $BACKUP_FILE_CODE
 	else
 		ls $BACKUP_FILE  &>/dev/null
@@ -135,7 +135,7 @@ ensure_current_ver_with_upgrade_ver(){
 	if [ $# != 1 ]
 	then
 		echo 'Please provide the OpenEMR version to upgrade database from.'
-		echo 'e.g. openemr-cmd ensure-version 5.0.2'
+		echo 'e.g. openemr-cmd [ensure-version|ev] 5.0.2'
 		exit $BACKUP_FILE_CODE
 	else
     $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS upgrade ${UPGRADE_FROM_VERSION}"
@@ -166,51 +166,51 @@ which docker &>/dev/null
 [ $? -ne 0 ] && echo "Please check docker install or not." && exit $DOCKER_CODE
 
 # Script usage.
-if [ $# -eq 0 ] || [ "$FIRST_ARG" == '--help' ]
+if [ $# -eq 0 ] || [ "$FIRST_ARG" == '--help' ] || [ "$FIRST_ARG" == '-h' ]
 then
   echo "Usage: `basename $0` COMMAND [ARGS]"
   echo 'Commands:'
-  echo "  --help                       Show the commands usage"
-  echo "  --version                    Show the openemr-cmd command version"
-  echo "  up                           Execute: docker-compose up -d"
-  echo "  down                         Execute: docker-compose down -v"
-  echo "  start                        Execute: docker-compose start"
-  echo "  stop                         Execute: docker-compose stop"
-  echo "  shell                        Open a docker shell quickly"
-  echo "  build-themes                 Make changes to any files on your local file system"
-	echo "  php-log                      To check PHP error logs"
-	echo "  docker-log                   To check docker log"
-	echo "  docker-names                 To check docker the running docker names"
-	echo "  psr12-report                 To create a report of PSR12 code styling issues"
-	echo "  psr12-fix                    To fix PSR12 code styling issues"
-	echo "  lint-themes-report           To create a report of theme styling issues"
-	echo "  lint-themes-fix              To fix theme styling issues"
-	echo "  php-parserror                To check PHP parsing errors"
-	echo "  unit-test                    To run unit testing"
-	echo "  api-test                     To run api testing"
-	echo "  e2e-test                     To run e2e testing"
-	echo "  services-test                To run services testing"
-	echo "  fixtures-test                To run fixtures testing"
-	echo "  validators-test              To run validators testing"
-	echo "  controllers-test             To run controllers testing"
-	echo "  common-test                  To run common testing"
-	echo "  clean-sweep                  To run the entire dev tool suite"
-	echo "  clean-sweep-tests            To run only all the automated tests"
-	echo "  dev-reset                    To reset OpenEMR only"
-	echo "  dev-reset-install            To reset and reinstall OpenEMR"
-	echo "  dev-reset-install-demodata   To reset and reinstall OpenEMR with demo data"
-	echo "  backup-snapshot              Create a backup snapshot"
-	echo "  restore-snapshot             Restore from a snapshot"
-	echo "  list-snapshots               To list the snapshots"
-	echo "  list-capsules                List the capsules"
-	echo "  get-capsule                  Copy the capsule from the docker to your host directory"
-	echo "  put-capsule                  Copy the capsule into the docker"
-	echo "  ensure-version               Upgrade OpenEMR from specified old version to current version"
-	echo "  enable-multisite             Turn on support for multisite"
-	echo "  disable-multisite            Turn off support for multisite"
-	echo "  encoding-collation           Change the database character set and collation"
+  echo "  -h, --help                         Show the commands usage"
+  echo "  -v, --version                      Show the openemr-cmd command version"
+  echo "  -s, shell                          Open a docker shell quickly"
+  echo "  up                                 Execute: docker-compose up -d"
+  echo "  down                               Execute: docker-compose down -v"
+  echo "  start                              Execute: docker-compose start"
+  echo "  stop                               Execute: docker-compose stop"
+  echo "  bt, build-themes                   Make changes to any files on your local file system"
+	echo "  pl, php-log                        To check PHP error logs"
+	echo "  dl, docker-log                     To check docker log"
+	echo "  dn, docker-names                   To check docker the running docker names"
+	echo "  pr, psr12-report                   To create a report of PSR12 code styling issues"
+	echo "  pf, psr12-fix                      To fix PSR12 code styling issues"
+	echo "  ltr, lint-themes-report            To create a report of theme styling issues"
+	echo "  ltf, lint-themes-fix               To fix theme styling issues"
+	echo "  pp, php-parserror                  To check PHP parsing errors"
+	echo "  ut, unit-test                      To run unit testing"
+	echo "  at, api-test                       To run api testing"
+	echo "  et, e2e-test                       To run e2e testing"
+	echo "  st, services-test                  To run services testing"
+	echo "  ft, fixtures-test                  To run fixtures testing"
+	echo "  vt, validators-test                To run validators testing"
+	echo "  ct, controllers-test               To run controllers testing"
+	echo "  ctt, common-test                   To run common testing"
+	echo "  cs, clean-sweep                    To run the entire dev tool suite"
+	echo "  cst, clean-sweep-tests             To run only all the automated tests"
+	echo "  dr, dev-reset                      To reset OpenEMR only"
+	echo "  dri, dev-reset-install             To reset and reinstall OpenEMR"
+	echo "  drid, dev-reset-install-demodata   To reset and reinstall OpenEMR with demo data"
+	echo "  bs, backup-snapshot                Create a backup snapshot"
+	echo "  rs, restore-snapshot               Restore from a snapshot"
+	echo "  ls, list-snapshots                 To list the snapshots"
+	echo "  lc, list-capsules                  List the capsules"
+	echo "  gc, get-capsule                    Copy the capsule from the docker to your host directory"
+	echo "  pc, put-capsule                    Copy the capsule into the docker"
+	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
+	echo "  em, enable-multisite               Turn on support for multisite"
+	echo "  dm, disable-multisite              Turn off support for multisite"
+	echo "  ec, encoding-collation             Change the database character set and collation"
 	exit $USAGE_EXIT_CODE
-elif [ "$FIRST_ARG" == '--version' ]
+elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
 then
 	echo "openemer-cmd version 1.0.1, build 2020-07-17"
 fi
@@ -233,32 +233,104 @@ case "$FIRST_ARG" in
 		check_docker_compose_install_or_not
 		docker-compose start
 		;;
-	shell)
+	-s|shell)
 		quick_open_a_docker_shell $2
 		;;
-	docker-log)
+	dl|docker-log)
 		check_docker_log
 		;;
-	docker-names)
+	dn|docker-names)
 		check_docker_names $2
 		;;
-	backup-snapshot)
+	bs|backup-snapshot)
 		creat_a_backup_snapshot $2
 		;;
-	restore-snapshot)
+	rs|restore-snapshot)
 		restore_from_a_snapshot $2
 		;;
-	get-capsule)
+	gc|get-capsule)
 		copy_capsule_from_docker_to_host $2 $3
 		;;
-	put-capsule)
+	pc|put-capsule)
 		copy_capsule_from_host_to_docker $2
 		;;
-	ensure-version)
+	ev|ensure-version)
 		ensure_current_ver_with_upgrade_ver $2
 		;;
-	encoding-collation)
+	ec|encoding-collation)
 		change_db_character_set_and_collation $2 $3
+		;;
+	bt)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-themes"
+		;;
+	pl)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS php-log"
+		;;
+	pr)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS psr12-report"
+		;;
+	pf)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS psr12-fix"
+		;;
+	ltr)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS lint-themes-report"
+		;;
+	ltf)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS lint-themes-fix"
+		;;
+	pp)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS php-parserror"
+		;;
+	ut)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS unit-test"
+		;;
+	at)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS api-test"
+		;;
+	et)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS e2e-test"
+		;;
+	st)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS services-test"
+		;;
+	ft)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS fixtures-test"
+		;;
+	vt)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS validators-test"
+		;;
+	ct)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS controllers-test"
+		;;
+	ctt)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS common-test"
+		;;
+	cs)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS clean-sweep"
+		;;
+	cst)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS clean-sweep-tests"
+		;;
+	dr)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-reset"
+		;;
+	dri)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-reset-install"
+		;;
+	drid)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-reset-install-demodata"
+		;;
+	ls)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-snapshots"
+		;;
+	lc)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-capsules"
+		;;
+	em)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS enable-multisite"
+		;;
+	dm)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS disable-multisite"
 		;;
 	*)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS $FIRST_ARG"
