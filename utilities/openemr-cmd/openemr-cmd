@@ -35,6 +35,17 @@ quick_open_a_docker_shell(){
 	fi
 }
 
+execute_command_flexible(){
+	if [ $# -lt 3 ]
+	then
+		echo "Please provide the container name and the command."	
+		echo "e.g. `basename $0` [exec|-e] openemr_openemr_1 tail -f /var/log/apache2/error.log"
+	else
+		shift
+		docker exec -it "$@"
+	fi
+}
+
 check_docker_log() {
   docker logs $CONTAINER_ID
 }
@@ -173,6 +184,7 @@ then
   echo "  -h, --help                         Show the commands usage"
   echo "  -v, --version                      Show the openemr-cmd command version"
   echo "  -s, shell                          Open a docker shell quickly"
+  echo "  -e, exec                           Execute commands outside docker"
   echo "  up                                 Execute: docker-compose up -d"
   echo "  down                               Execute: docker-compose down -v"
   echo "  start                              Execute: docker-compose start"
@@ -235,6 +247,9 @@ case "$FIRST_ARG" in
 		;;
 	-s|shell)
 		quick_open_a_docker_shell $2
+		;;
+	-e|exec)
+		execute_command_flexible "$@"
 		;;
 	dl|docker-log)
 		check_docker_log
