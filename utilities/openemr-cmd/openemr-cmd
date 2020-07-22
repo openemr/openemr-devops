@@ -7,19 +7,15 @@
 # License   : https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
 #################################################################################################
 
-DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec command
-SHELL_TYPE='sh -c'                                               # specify shell type
-FIRST_ARG=$1											         # define the first parameter
-DEV_TOOLS=/root/devtools
-
-# Judge container id from easy env or insane env.
+# Set the default container name/id to look for
 INSANE_DEV_DOCKER="_openemr-7-3-312_1"
 EASY_DEV_DOCKER="_openemr_1"
-CONTAINER_ID=$(docker ps | grep $INSANE_DEV_DOCKER | cut -f 1 -d " ")
-if [ -z $CONTAINER_ID ]
-then
-  CONTAINER_ID=$(docker ps | grep $EASY_DEV_DOCKER | cut -f 1 -d " ")
-fi
+
+# Set some constants
+DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec command
+SHELL_TYPE='sh -c'                                               # specify shell type
+FIRST_ARG=$1											                               # define the first parameter
+DEV_TOOLS=/root/devtools
 
 check_docker_compose_install_or_not(){
 	DOCKER_COMPOSE_CODE=22
@@ -28,29 +24,17 @@ check_docker_compose_install_or_not(){
 }
 
 quick_open_a_docker_shell(){
-	CONTAINER_NAME=$1
-	CONTAINER_NAME_CODE=24	
-	if [ $# -eq 1 ]
-	then	
-		docker exec -it $CONTAINER_NAME sh
-	else
-		echo '********************************************************'
-		echo 'Access the docker openemr_openemr_1 by default.' 
-		echo 'Please provide docker names/id if access other dockers.'
-		echo "e.g `basename $0` [shell|-s] <docker names>"
-		echo '********************************************************'
-		docker exec -it $CONTAINER_ID sh
-	fi
+  docker exec -it $CONTAINER_ID sh
 }
 
 execute_command_flexible(){
-	if [ $# -lt 3 ]
+	if [ $# -lt 1 ]
 	then
-		echo "Please provide the container name and the command."	
-		echo "e.g. `basename $0` [exec|-e] openemr_openemr_1 tail -f /var/log/apache2/error.log"
+		echo "Please provide the command."
+		echo "e.g. `basename $0` [exec|e] \"tail -f /var/log/apache2/error.log\""
+		echo "e.g. `basename $0` -d docker_openemr-7-3-redis-312_1 [exec|e] \"tail -f /var/log/apache2/error.log\""
 	else
-		shift
-		docker exec -it "$@"
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$@"
 	fi
 }
 
@@ -64,12 +48,12 @@ check_docker_names() {
 	then
 		# ARGS: couchdb php fhir mariadb mysql nginx openemr openldap orthanc redis.
 		echo '=======Running Docker Names======='
-		docker ps | awk '{print $NF}'|grep -v NAMES|sort -n | grep $CHECK_NAME		
+		docker ps | awk '{print $NF}'|grep -v NAMES|sort -n | grep $CHECK_NAME
 
 	else
 		# Show all the docker names.
 		echo '***************************************************************'
-		echo 'Show all the docker names by default.' 
+		echo 'Show all the docker names by default.'
 		echo 'Please provide the keyword if you want to check the single one.'
 		echo "e.g `basename $0` [docker-names|dn] php"
 		echo '***************************************************************'
@@ -166,10 +150,10 @@ change_db_character_set_and_collation(){
 	if [ $# != 2 ]
 	then
 		echo 'Please provide two parameters.'
-		echo 'e.g. openemr-cmd encoding-collation utf8mb4 utf8mb4_general_ci'
-		echo '     openemr-cmd encoding-collation utf8mb4 utf8mb4_unicode_ci'
-		echo '     openemr-cmd encoding-collation utf8mb4 utf8mb4_vietnamese_ci'
-		echo '     openemr-cmd encoding-collation utf8 utf8_general_ci'
+		echo 'e.g. openemr-cmd [encoding-collation|ec] utf8mb4 utf8mb4_general_ci'
+		echo '     openemr-cmd [encoding-collation|ec] utf8mb4 utf8mb4_unicode_ci'
+		echo '     openemr-cmd [encoding-collation|ec] utf8mb4 utf8mb4_vietnamese_ci'
+		echo '     openemr-cmd [encoding-collation|ec] utf8 utf8_general_ci'
 		exit $CHARACTER_SET_COLLATION_CODE
 	else
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS change-encoding-collation $1 $2"
@@ -187,17 +171,19 @@ which docker &>/dev/null
 # Script usage.
 if [ $# -eq 0 ] || [ "$FIRST_ARG" == '--help' ] || [ "$FIRST_ARG" == '-h' ]
 then
+  echo ""
   echo "Usage: `basename $0` COMMAND [ARGS]"
+  echo "Usage: `basename $0` -d <docker name> COMMAND [ARGS]"
   echo 'Commands:'
   echo "  -h, --help                         Show the commands usage"
   echo "  -v, --version                      Show the openemr-cmd command version"
-  echo "  -s, shell                          Open a docker shell quickly"
-  echo "  -e, exec                           Execute commands outside docker"
   echo "  -d                                 Specify the docker id or name to execute commands"
   echo "  up                                 Execute: docker-compose up -d"
   echo "  down                               Execute: docker-compose down -v"
   echo "  start                              Execute: docker-compose start"
   echo "  stop                               Execute: docker-compose stop"
+  echo "  s, shell                           Open a docker shell quickly"
+  echo "  e, exec                            Execute commands outside docker"
   echo "  bt, build-themes                   Make changes to any files on your local file system"
 	echo "  pl, php-log                        To check PHP error logs"
 	echo "  dl, docker-log                     To check docker log"
@@ -237,16 +223,28 @@ then
 fi
 
 # Specify the docker id/name to execute the commands.
-CHNAGE_CONAINER_CODE=25
-if [ "$FIRST_ARG" == '-d' ] && [ $# -ge 3 ] 
+#  default to insane dev docker, if exists
+CONTAINER_ID=$(docker ps | grep $INSANE_DEV_DOCKER | cut -f 1 -d " ")
+if [ -z $CONTAINER_ID ]
+then
+  # else, default to easy dev docker, if exists
+  CONTAINER_ID=$(docker ps | grep $EASY_DEV_DOCKER | cut -f 1 -d " ")
+fi
+# override the default container setting if supplied via the -d parameter
+#  (also removing no longer needed parameters via shift)
+CHANGE_CONTAINER_CODE=25
+if [ "$FIRST_ARG" == '-d' ] && [ $# -ge 3 ]
 then
 	CONTAINER_ID=$2
 	FIRST_ARG=$3
+	shift 3
 elif [ "$FIRST_ARG" == '-d' ] && [ $# -lt 3 ]
 then
-	echo 'Please provide a docker id/name.'
+	echo 'Please provide a docker id/name when using -d parameter.'
 	echo 'e.g. openemr-cmd -d docker_openemr-7-3-redis-312_1 dl'
-	exit $CHNAGE_CONAINER_CODE
+	exit $CHANGE_CONTAINER_CODE
+else
+  shift
 fi
 
 # See how we were called.
@@ -268,64 +266,34 @@ case "$FIRST_ARG" in
 		check_docker_compose_install_or_not
 		docker-compose start
 		;;
-	-s|shell)
-		[ $# -eq 1 ] && shift
-		[ $# -eq 2 ] && shift
-		quick_open_a_docker_shell "$@"
+	s|shell)
+		quick_open_a_docker_shell
 		;;
-	-e|exec)
+	e|exec)
 		execute_command_flexible "$@"
 		;;
 	dl|docker-log)
 		check_docker_log
 		;;
 	dn|docker-names)
-		[ $# -eq 1 ] && shift
-		[ $# -eq 2 ] && shift
 		check_docker_names "$@"
 		;;
 	bs|backup-snapshot)
-		[ $# -eq 1 ] && shift
-		[ $# -eq 2 ] && shift
-		[ $# -eq 4 ] && shift && shift && shift
 		creat_a_backup_snapshot "$@"
 		;;
 	rs|restore-snapshot)
-		[ $# -eq 2 ] && shift
-		[ $# -eq 4 ] && shift && shift && shift
 		restore_from_a_snapshot "$@"
 		;;
 	gc|get-capsule)
-		TEMP_ARG_1=$1
-		[ $# -eq 1 ] && shift
-		[ $# -eq 2 ] && shift
-		[ $# -eq 3 ] && [ "$TEMP_ARG_1" == 'gc' ] && shift
-		[ $# -eq 3 ] && shift && shift && shift
-		[ $# -eq 4 ] && shift && shift && shift
-		[ $# -eq 5 ] && shift && shift && shift
 		copy_capsule_from_docker_to_host "$@"
 		;;
 	pc|put-capsule)
-		[ $# -eq 1 ] && shift
-		[ $# -eq 2 ] && shift
-		[ $# -eq 3 ] && shift && shift && shift
-		[ $# -eq 4 ] && shift && shift && shift
 		copy_capsule_from_host_to_docker "$@"
 		;;
 	ev|ensure-version)
-		[ $# -eq 1 ] && shift
-		[ $# -eq 2 ] && shift
-		[ $# -eq 3 ] && shift && shift && shift
-		[ $# -eq 4 ] && shift && shift && shift
 		ensure_current_ver_with_upgrade_ver "$@"
 		;;
 	ec|encoding-collation)
-		TEMP_ARG_1=$1
-		TEMP_ARG_3=$3
-		[ $# -eq 2 ] && shift
-		[ $# -eq 3 ] && [ "$TEMP_ARG_1" == 'ec' ] && shift
-		[ $# -eq 3 ] && [ "$TEMP_ARG_3" == 'ec' ] && shift && shift && shift
-		[ $# -eq 5 ] && shift && shift && shift
 		change_db_character_set_and_collation "$@"
 		;;
 	bt)
