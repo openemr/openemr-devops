@@ -16,13 +16,13 @@ fi
 if [ "$1" == "psr2-report" ] || [ "$1" == "psr12-report" ]; then
     echo "Generating PSR12 code styling error report "
     cd /var/www/localhost/htdocs/openemr
-    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -n --extensions=php,inc --standard=ci/phpcs.xml --report=full .
+    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -p -n --extensions=php,inc --report-width=120 --standard=ci/phpcs.xml --report=full .
 fi
 
 if [ "$1" == "psr12-src-report" ]; then
     echo "Generating strict PSR12 code styling error report for src directory "
     cd /var/www/localhost/htdocs/openemr
-    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -n --extensions=php,inc --standard=ci/phpcs_src.xml --report=full src/
+    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -p -n --extensions=php,inc --report-width=120 --standard=ci/phpcs_src.xml --report=full src/
 fi
 
 if [ "$1" == "lint-themes-report" ]; then
@@ -35,7 +35,7 @@ fi
 if [ "$1" == "psr2-fix" ] ||  [ "$1" == "psr12-fix" ] || [ "$1" == "clean-sweep" ]; then
     echo "Fixing PSR12 code styling errors "
     cd /var/www/localhost/htdocs/openemr
-    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcbf -n --extensions=php,inc --standard=ci/phpcs.xml .
+    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcbf -p -n --extensions=php,inc --report-width=120 --standard=ci/phpcs.xml --report=full .
 fi
 
 if [ "$1" == "lint-themes-fix" ] || [ "$1" == "clean-sweep" ]; then

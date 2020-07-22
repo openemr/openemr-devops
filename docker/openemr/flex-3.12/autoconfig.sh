@@ -14,6 +14,7 @@
 #    - EASY_DEV_MODE with value of 'yes' prevents issues with permissions when mounting volumes
 #    - EAST_DEV_MODE_NEW with value of 'yes' expands EASY_DEV_MODE by not requiring downloading
 #      code from github (uses local repo).
+#    - INSANE_DEV_MODE with value of 'yes' is to support devtools in insane dev environment
 set -e
 
 source /root/devtoolsLibrary.source
@@ -277,9 +278,16 @@ if [ -f /etc/docker-leader ] ||
         fi
     fi
 
-    # need to copy this script somewhere so the easy dev environment can use it
-    if [ "$EASY_DEV_MODE_NEW" == "yes" ]; then
-        cp /var/www/localhost/htdocs/auto_configure.php /root/
+    if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
+        # need to copy this script somewhere so the easy/insane dev environment can use it
+        if [ "$EASY_DEV_MODE_NEW" == "yes" ] || [ "$INSANE_DEV_MODE" == "yes" ]; then
+            cp /var/www/localhost/htdocs/auto_configure.php /root/
+        fi
+        # trickery to support devtools in insane dev environment (note the easy dev does this with a shared volume)
+        if [ "$INSANE_DEV_MODE" == "yes" ]; then
+            mkdir /openemr
+            rsync --recursive --links /var/www/localhost/htdocs/openemr/sites /openemr/
+        fi
     fi
 
     # ensure the auto_configure.php script has been removed
