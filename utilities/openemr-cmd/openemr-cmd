@@ -3,7 +3,9 @@
 # Function  : Manage the docker command line
 # Version   : See below --version section
 # Copyright : Copyright (c) 2020 Reid Liu <guliu@redhat.com>
+# Copyright : Copyright (c) 2020 Brady Miller <brady.g.miller@gmail.com>
 # Author    : Reid Liu <guliu@redhat.com>
+# Author    : Brady Miller <brady.g.miller@gmail.com>
 # License   : https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
 #################################################################################################
 
@@ -160,6 +162,41 @@ change_db_character_set_and_collation(){
 	fi
 }
 
+setup-client-cert(){
+    CERT_PACKAGE=$1
+    CERT_PACKAGE_CODE=30
+    if [ $# != 1 ]
+    then
+        echo 'Please provide a certificate package name.'
+        echo 'e.g. openemr-cmd [scc|setup-client-cert] sll'
+        exit $CERT_PACKAGE_CODE
+    else
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS setup-client-cert $CERT_PACKAGE"
+	fi
+}
+
+put-client-cert(){
+	# Need a capsule parameter
+	CERT_PACKAGE_FILE=$1
+	PUT_CLIENT_CERT_CODE=32
+	CERT_PACKAGE_FILE_CODE=31
+	if [ $# != 1 ]
+	then
+		echo 'Please provide the certificate package file name (including path if applicable).'
+		echo 'e.g. openemr-cmd [pcc|put-client-cert] sll.zip'
+		exit $CERT_PACKAGE_FILE_CODE
+	else
+		ls $CERT_PACKAGE_FILE &>/dev/null
+		if [ $? -ne 0 ]
+		then
+			echo 'Please check whether the certificate package file exists or not'
+			exit $PUT_CLIENT_CERT_CODE
+		else
+			docker cp $CERT_PACKAGE_FILE ${CONTAINER_ID}:/certs/
+		fi
+	fi
+}
+
 USAGE_EXIT_CODE=13
 FINAL_EXIT_CODE=0
 
@@ -216,6 +253,12 @@ then
 	echo "  em, enable-multisite               Turn on support for multisite"
 	echo "  dm, disable-multisite              Turn off support for multisite"
 	echo "  ec, encoding-collation             Change the database character set and collation"
+	echo "  fh, force-https                    Force https"
+	echo "  ufh, un-force-https                Removing forcing of https"
+	echo "  ossc, on-self-signed-cert          Toggle on self signed certificates (on by default)"
+	echo "  scc, setup-client-cert             Turn on client based cert with designated package"
+	echo "  lcc, list-client-certs             To list the certificate packages"
+	echo "  pcc, put-client-cert               To copy certificate package into the docker"
 	exit $USAGE_EXIT_CODE
 elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
 then
@@ -296,6 +339,12 @@ case "$FIRST_ARG" in
 	ec|encoding-collation)
 		change_db_character_set_and_collation "$@"
 		;;
+	scc|setup-client-cert)
+		setup-client-cert "$@"
+		;;
+	pcc|put-client-cert)
+		put-client-cert "$@"
+		;;
 	bt)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-themes"
 		;;
@@ -367,6 +416,18 @@ case "$FIRST_ARG" in
 		;;
 	dm)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS disable-multisite"
+		;;
+	fh)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS force-https"
+		;;
+	ufh)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS un-force-https"
+		;;
+	ossc)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS on-self-signed-cert"
+		;;
+	lcc)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-client-certs"
 		;;
 	*)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS $FIRST_ARG"

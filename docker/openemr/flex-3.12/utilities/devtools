@@ -231,3 +231,39 @@ if [ "$1" == "change-encoding-collation" ] && [ ! -z "$2" ] && [ ! -z "$3" ]; th
     prepareVariables
     changeEncodingCollation "$2" "$3"
 fi
+
+if [ "$1" == "force-https" ]; then
+    echo "Force https"
+    forceHttps
+    echo "Completed. Need to stop/start docker for changes to take effect"
+fi
+
+if [ "$1" == "un-force-https" ]; then
+    echo "Removing forcing of https"
+    unForceHttps
+    echo "Completed. Need to stop/start docker for changes to take effect"
+fi
+
+if [ "$1" == "list-client-certs" ]; then
+    echo "Listing client certs packages:"
+    cd /certs
+    for f in *; do
+        if [ -f "$f" ]; then
+            echo "  ${f%.*}"
+        fi
+    done
+fi
+
+if [ "$1" == "setup-client-cert" ] && [ ! -z "$2" ] ; then
+    echo "Setting up client based cert with following cert package: ${2}"
+    prepareVariables
+    setupClientCert "$2"
+    echo "Completed. Need to stop/start docker for changes to take effect"
+fi
+
+if [ "$1" == "on-self-signed-cert" ]; then
+    echo "Toggling on self signed key and certificate (includes disabling client based cert)"
+    prepareVariables
+    toggleOnSelfSignedCert
+    echo "Completed. Need to stop/start docker for changes to take effect"
+fi
