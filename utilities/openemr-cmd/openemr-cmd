@@ -259,6 +259,11 @@ then
 	echo "  scc, setup-client-cert             Turn on client based cert with designated package"
 	echo "  lcc, list-client-certs             To list the certificate packages"
 	echo "  pcc, put-client-cert               To copy certificate package into the docker"
+	echo "  ss, sql-ssl                        Use testing sql ssl CA cert"
+  echo "  sso, sql-ssl-off                   Remove testing sql ssl CA cert"
+  echo "  ssc, sql-ssl-client                Use testing sql ssl client certs"
+  echo "  ssco, sql-ssl-client-off           Remove testing sql ssl client certs"
+
 	exit $USAGE_EXIT_CODE
 elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
 then
@@ -429,6 +434,19 @@ case "$FIRST_ARG" in
 	lcc)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-client-certs"
 		;;
+	ss)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS sql-ssl"
+		;;
+	sso)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS sql-ssl-off"
+		;;
+	ssc)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS sql-ssl-client"
+		;;
+	ssco)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS sql-ssl-client-off"
+		;;
+
 	*)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS $FIRST_ARG"
 		;;
