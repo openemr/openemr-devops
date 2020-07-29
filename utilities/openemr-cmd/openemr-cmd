@@ -267,7 +267,7 @@ then
 	exit $USAGE_EXIT_CODE
 elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
 then
-	echo "openemer-cmd version 1.0.1, build 2020-07-17"
+	echo "openemer-cmd version 1.0.2, build 2020-07-28"
 fi
 
 # Specify the docker id/name to execute the commands.
