@@ -10,7 +10,7 @@
 #################################################################################################
 
 # Increment the version and build date when modify script
-VERSION="1.0.2, build 2020-07-28"
+VERSION="1.0.3, build 2020-07-29"
 
 # Set the default container name/id to look for
 INSANE_DEV_DOCKER="_openemr-7-3-312_1"
@@ -201,6 +201,7 @@ put-client-cert(){
 }
 
 USAGE_EXIT_CODE=13
+VERSION_EXIT_CODE=14
 FINAL_EXIT_CODE=0
 
 # Confirm the docker install or not.
@@ -271,6 +272,7 @@ then
 elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
 then
 	echo "openemer-cmd $VERSION"
+	exit $VERSION_EXIT_CODE
 fi
 
 # Specify the docker id/name to execute the commands.
