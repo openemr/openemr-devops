@@ -215,16 +215,19 @@ then
   echo ""
   echo "Usage: `basename $0` COMMAND [ARGS]"
   echo "Usage: `basename $0` -d <docker name> COMMAND [ARGS]"
-  echo 'Commands:'
+  echo "Options:"
   echo "  -h, --help                         Show the commands usage"
   echo "  -v, --version                      Show the openemr-cmd command version"
   echo "  -d                                 Specify the docker id or name to execute commands"
+  echo 'Commands:'
+  echo 'docker-management:'
   echo "  up                                 Execute: docker-compose up -d"
   echo "  down                               Execute: docker-compose down -v"
   echo "  start                              Execute: docker-compose start"
   echo "  stop                               Execute: docker-compose stop"
   echo "  s, shell                           Open a docker shell quickly"
   echo "  e, exec                            Execute commands outside docker"
+  echo 'php-management:'
   echo "  bt, build-themes                   Make changes to any files on your local file system"
 	echo "  pl, php-log                        To check PHP error logs"
 	echo "  dl, docker-log                     To check docker log"
@@ -234,6 +237,7 @@ then
 	echo "  ltr, lint-themes-report            To create a report of theme styling issues"
 	echo "  ltf, lint-themes-fix               To fix theme styling issues"
 	echo "  pp, php-parserror                  To check PHP parsing errors"
+    echo 'test-management:'
 	echo "  ut, unit-test                      To run unit testing"
 	echo "  at, api-test                       To run api testing"
 	echo "  et, e2e-test                       To run e2e testing"
@@ -242,21 +246,21 @@ then
 	echo "  vt, validators-test                To run validators testing"
 	echo "  ct, controllers-test               To run controllers testing"
 	echo "  ctt, common-test                   To run common testing"
+    echo 'sweep-management:'
 	echo "  cs, clean-sweep                    To run the entire dev tool suite"
 	echo "  cst, clean-sweep-tests             To run only all the automated tests"
+    echo 'reset-mamagement:'
 	echo "  dr, dev-reset                      To reset OpenEMR only"
 	echo "  dri, dev-reset-install             To reset and reinstall OpenEMR"
 	echo "  drid, dev-reset-install-demodata   To reset and reinstall OpenEMR with demo data"
+    echo 'backup-management:'
 	echo "  bs, backup-snapshot                Create a backup snapshot"
 	echo "  rs, restore-snapshot               Restore from a snapshot"
 	echo "  ls, list-snapshots                 To list the snapshots"
 	echo "  lc, list-capsules                  List the capsules"
 	echo "  gc, get-capsule                    Copy the capsule from the docker to your host directory"
 	echo "  pc, put-capsule                    Copy the capsule into the docker"
-	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
-	echo "  em, enable-multisite               Turn on support for multisite"
-	echo "  dm, disable-multisite              Turn off support for multisite"
-	echo "  ec, encoding-collation             Change the database character set and collation"
+    echo 'ssl-management:'
 	echo "  fh, force-https                    Force https"
 	echo "  ufh, un-force-https                Removing forcing of https"
 	echo "  ossc, on-self-signed-cert          Toggle on self signed certificates (on by default)"
@@ -267,6 +271,11 @@ then
   echo "  sso, sql-ssl-off                   Remove testing sql ssl CA cert"
   echo "  ssc, sql-ssl-client                Use testing sql ssl client certs"
   echo "  ssco, sql-ssl-client-off           Remove testing sql ssl client certs"
+    echo 'others:'
+	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
+	echo "  em, enable-multisite               Turn on support for multisite"
+	echo "  dm, disable-multisite              Turn off support for multisite"
+	echo "  ec, encoding-collation             Change the database character set and collation"
 
 	exit $USAGE_EXIT_CODE
 elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
