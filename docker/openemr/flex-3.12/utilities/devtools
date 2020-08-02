@@ -109,6 +109,13 @@ if [ "$1" == "dev-reset" ]; then
     resetOpenemr
 fi
 
+if [ "$1" == "dev-install" ]; then
+    echo "Installing OpenEMR (assuming reset has already been completed)"
+    prepareVariables
+    installOpenemr
+    setGlobalSettings
+fi
+
 if [ "$1" == "dev-reset-install" ]; then
     echo "Reinstalling OpenEMR"
     prepareVariables
@@ -304,4 +311,42 @@ if [ "$1" == "sql-ssl-client-off" ]; then
     rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
     rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
     rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
+fi
+
+if [ "$1" == "couchdb-ssl" ]; then
+    echo "Copying the testing couchdb SSL CA cert"
+    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+        #using insane dev docker env
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/couchdb-config-ssl-cert-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
+    else
+        #using easy dev docker env
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/couchdb-config-ssl-cert-keys/easy/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
+    fi
+fi
+
+if [ "$1" == "couchdb-ssl-off" ]; then
+    echo "Removing the testing couchdb SSL CA cert"
+    rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
+fi
+
+if [ "$1" == "couchdb-ssl-client" ]; then
+    echo "Copying the testing couchdb SSL CA cert and testing client certs"
+    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+        #using insane dev docker env
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/couchdb-config-ssl-cert-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/couchdb-config-ssl-cert-keys/insane/client-cert.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/couchdb-config-ssl-cert-keys/insane/client-key.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key
+    else
+        #using easy dev docker env
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/couchdb-config-ssl-cert-keys/easy/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/couchdb-config-ssl-cert-keys/easy/client-cert.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/couchdb-config-ssl-cert-keys/easy/client-key.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key
+    fi
+fi
+
+if [ "$1" == "couchdb-ssl-client-off" ]; then
+    echo "Removing testing couchdb SSL CA cert and testing client certs"
+    rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
+    rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert
+    rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key
 fi

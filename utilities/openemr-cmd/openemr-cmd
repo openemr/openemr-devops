@@ -9,12 +9,13 @@
 # License   : https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
 #################################################################################################
 
-# Increment the version and build date when modify script
-VERSION="1.0.3, build 2020-07-29"
+# Increment the version when modify script
+VERSION="1.0.4"
 
 # Set the default container name/id to look for
 INSANE_DEV_DOCKER="_openemr-7-3-312_1"
 EASY_DEV_DOCKER="_openemr_1"
+COUCHDB_DOCKER="_couchdb_1"
 
 # Set some constants
 DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec command
@@ -65,6 +66,16 @@ check_docker_names() {
 		echo '=======Running Docker Names======='
 		docker ps | awk '{print $NF}'|grep -v NAMES|sort -n
 	fi
+}
+
+restart_couchdb_docker(){
+  if [ -z $COUCHDB_CONTAINER ]
+  then
+    echo "Unable to find the couchdb docker, so could not restart it"
+  else
+    echo "Restarting couchdb docker"
+    docker restart "$COUCHDB_CONTAINER"
+  fi
 }
 
 creat_a_backup_snapshot(){
@@ -251,6 +262,7 @@ then
 	echo "  cst, clean-sweep-tests             To run only all the automated tests"
     echo 'reset-mamagement:'
 	echo "  dr, dev-reset                      To reset OpenEMR only"
+	echo "  di, dev-install                    To install OpenEMR (reset needs to be run prior)"
 	echo "  dri, dev-reset-install             To reset and reinstall OpenEMR"
 	echo "  drid, dev-reset-install-demodata   To reset and reinstall OpenEMR with demo data"
     echo 'backup-management:'
@@ -271,11 +283,15 @@ then
   echo "  sso, sql-ssl-off                   Remove testing sql ssl CA cert"
   echo "  ssc, sql-ssl-client                Use testing sql ssl client certs"
   echo "  ssco, sql-ssl-client-off           Remove testing sql ssl client certs"
+	echo "  css, couchdb-ssl                   Use testing couchdb ssl CA cert"
+  echo "  cso, couchdb-ssl-off               Remove testing couchdb ssl CA cert"
+  echo "  csc, couchdb-ssl-client            Use testing couchdb ssl client certs"
+  echo "  csco, couchdb-ssl-client-off       Remove testing couchdb ssl client certs"
     echo 'others:'
 	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
 	echo "  em, enable-multisite               Turn on support for multisite"
 	echo "  dm, disable-multisite              Turn off support for multisite"
-	echo "  ec, encoding-collation             Change the database character set and collation"
+	echo "  ec, encoding-collation            Change the database character set and collation"
 
 	exit $USAGE_EXIT_CODE
 elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
@@ -308,6 +324,9 @@ then
 else
   shift
 fi
+
+#collect the couchdb docker name
+COUCHDB_CONTAINER=$(docker ps | grep $COUCHDB_DOCKER | cut -f 1 -d " ")
 
 # See how we were called.
 # For the shift usage, it used to cover the insane env.
@@ -345,6 +364,7 @@ case "$FIRST_ARG" in
 		;;
 	rs|restore-snapshot)
 		restore_from_a_snapshot "$@"
+		restart_couchdb_docker
 		;;
 	gc|get-capsule)
 		copy_capsule_from_docker_to_host "$@"
@@ -417,12 +437,19 @@ case "$FIRST_ARG" in
 		;;
 	dr)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-reset"
+		restart_couchdb_docker
+		;;
+	di)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-install"
+		restart_couchdb_docker
 		;;
 	dri)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-reset-install"
+		restart_couchdb_docker
 		;;
 	drid)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-reset-install-demodata"
+		restart_couchdb_docker
 		;;
 	ls)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-snapshots"
@@ -459,6 +486,18 @@ case "$FIRST_ARG" in
 		;;
 	ssco)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS sql-ssl-client-off"
+		;;
+	css)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl"
+		;;
+	cso)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl-off"
+		;;
+	csc)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl-client"
+		;;
+	csco)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl-client-off"
 		;;
 
 	*)

@@ -285,9 +285,11 @@ if [ -f /etc/docker-leader ] ||
     fi
 
     if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
-        # need to copy this script somewhere so the easy/insane dev environment can use it
         if [ "$EASY_DEV_MODE_NEW" == "yes" ] || [ "$INSANE_DEV_MODE" == "yes" ]; then
+            # need to copy this script somewhere so the easy/insane dev environment can use it
             cp /var/www/localhost/htdocs/auto_configure.php /root/
+            # save couchdb initial data folder to support devtools snapshots
+            rsync --recursive --links /couchdb/data /couchdb/original/
         fi
         # trickery to support devtools in insane dev environment (note the easy dev does this with a shared volume)
         if [ "$INSANE_DEV_MODE" == "yes" ]; then
