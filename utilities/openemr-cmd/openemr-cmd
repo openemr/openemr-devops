@@ -53,8 +53,9 @@ check_docker_names() {
 	if [ $# -eq 1 ]
 	then
 		# ARGS: couchdb php fhir mariadb mysql nginx openemr openldap orthanc redis.
-		echo '=======Running Docker Names======='
-		docker ps | awk '{print $NF}'|grep -v NAMES|sort -n | grep $CHECK_NAME
+		echo '===Check the single Docker Name==='
+		echo '  STATUS        NAME'
+		docker ps -a --format "{{.Status}}\t{{.Names}}"| grep $CHECK_NAME
 
 	else
 		# Show all the docker names.
@@ -65,6 +66,8 @@ check_docker_names() {
 		echo '***************************************************************'
 		echo '=======Running Docker Names======='
 		docker ps | awk '{print $NF}'|grep -v NAMES|sort -n
+		echo '====Other Docker Status Names====='
+		docker ps -a --format "table{{.Status}}\t{{.Names}}"| grep -v Up
 	fi
 }
 
@@ -238,11 +241,11 @@ then
   echo "  stop                               Execute: docker-compose stop"
   echo "  s, shell                           Open a docker shell quickly"
   echo "  e, exec                            Execute commands outside docker"
+	echo "  dl, docker-log                     To check docker log"
+	echo "  dn, docker-names                   To check docker the running docker names"
   echo 'php-management:'
   echo "  bt, build-themes                   Make changes to any files on your local file system"
 	echo "  pl, php-log                        To check PHP error logs"
-	echo "  dl, docker-log                     To check docker log"
-	echo "  dn, docker-names                   To check docker the running docker names"
 	echo "  pr, psr12-report                   To create a report of PSR12 code styling issues"
 	echo "  pf, psr12-fix                      To fix PSR12 code styling issues"
 	echo "  ltr, lint-themes-report            To create a report of theme styling issues"
