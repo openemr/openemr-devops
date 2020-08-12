@@ -63,13 +63,10 @@ if [ -f /etc/docker-leader ] ||
         -days 365 -nodes \
         -subj "/C=xx/ST=x/L=x/O=x/OU=x/CN=localhost"
     fi
-    if [ ! -f /etc/ssl/docker-selfsigned-configured ]; then
-        rm -f /etc/ssl/certs/webserver.cert.pem
-        rm -f /etc/ssl/private/webserver.key.pem
-        ln -s /etc/ssl/certs/selfsigned.cert.pem /etc/ssl/certs/webserver.cert.pem
-        ln -s /etc/ssl/private/selfsigned.key.pem /etc/ssl/private/webserver.key.pem
-        touch /etc/ssl/docker-selfsigned-configured
-    fi
+    rm -f /etc/ssl/certs/webserver.cert.pem
+    rm -f /etc/ssl/private/webserver.key.pem
+    ln -s /etc/ssl/certs/selfsigned.cert.pem /etc/ssl/certs/webserver.cert.pem
+    ln -s /etc/ssl/private/selfsigned.key.pem /etc/ssl/private/webserver.key.pem
 
     if [ "$DOMAIN" != "" ]; then
             if [ "$EMAIL" != "" ]; then
@@ -89,13 +86,10 @@ if [ -f /etc/docker-leader ] ||
         fi
 
         # run letsencrypt as a daemon and reference the correct cert
-        if [ ! -f /etc/ssl/docker-letsencrypt-configured ]; then
-            rm -f /etc/ssl/certs/webserver.cert.pem
-            rm -f /etc/ssl/private/webserver.key.pem
-            ln -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/ssl/certs/webserver.cert.pem
-            ln -s /etc/letsencrypt/live/$DOMAIN/privkey.pem /etc/ssl/private/webserver.key.pem
-            touch /etc/ssl/docker-letsencrypt-configured
-        fi
+        rm -f /etc/ssl/certs/webserver.cert.pem
+        rm -f /etc/ssl/private/webserver.key.pem
+        ln -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/ssl/certs/webserver.cert.pem
+        ln -s /etc/letsencrypt/live/$DOMAIN/privkey.pem /etc/ssl/private/webserver.key.pem
     fi
 fi
 

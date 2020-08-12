@@ -42,7 +42,7 @@ setGlobalSettings() {
             CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
             VALUE_TEMP=`echo "$line" | cut -d "=" -f 2`
             echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
-            mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
+            mysql -u "$CUSTOM_USER"  --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
         done
     fi
 }
@@ -52,8 +52,6 @@ resetOpenemr() {
     mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP DATABASE ${CUSTOM_DATABASE}"
     echo "Remove database user"
     mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "Drop user '${CUSTOM_USER}'@'%';FLUSH PRIVILEGES;"
-    echo "Reset couchdb"
-    rsync --delete --recursive --links /couchdb/original/data /couchdb/
     echo "Remove files"
     rm -fr /var/www/localhost/htdocs/openemr/sites/*
     rsync --delete --recursive --links --exclude .git /openemr/sites /var/www/localhost/htdocs/openemr/
@@ -102,7 +100,6 @@ backupOpenemr() {
     mkdir -p "/snapshots/${1}"
     mysqldump --hex-blob -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" > "/snapshots/${1}/backup.sql"
     rsync --delete --recursive --links /var/www/localhost/htdocs/openemr/sites "/snapshots/${1}/"
-    rsync --delete --recursive --links /couchdb/data "/snapshots/${1}/"
     cd /snapshots
     tar -czf "${1}.tgz" "${1}"
     rm -fr "/snapshots/${1}"
@@ -115,7 +112,6 @@ restoreOpenemr() {
     mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "/snapshots/${1}/backup.sql"
     rsync --delete --recursive --links "/snapshots/${1}/sites" /var/www/localhost/htdocs/openemr/
     chown -R apache /var/www/localhost/htdocs/openemr/
-    rsync --delete --recursive --links "/snapshots/${1}/data" /couchdb/
     rm -fr "/snapshots/${1}"
 }
 
@@ -124,71 +120,4 @@ restoreOpenemr() {
 changeEncodingCollation() {
     mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST"
     mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST"
-}
-
-forceHttps() {
-    sed -i 's@#RewriteEngine On@ RewriteEngine On@' /etc/apache2/conf.d/openemr.conf
-    sed -i 's@#RewriteCond %{HTTPS} off@ RewriteCond %{HTTPS} off@' /etc/apache2/conf.d/openemr.conf
-    sed -i 's@#RewriteRule (\.\*) https://%{HTTP_HOST}/\$1 \[R,L\]@ RewriteRule (.*) https://%{HTTP_HOST}/$1 [R,L]@' /etc/apache2/conf.d/openemr.conf
-}
-
-unForceHttps() {
-    sed -i 's@[^#]RewriteEngine On@#RewriteEngine On@' /etc/apache2/conf.d/openemr.conf
-    sed -i 's@[^#]RewriteCond %{HTTPS} off@#RewriteCond %{HTTPS} off@' /etc/apache2/conf.d/openemr.conf
-    sed -i 's@[^#]RewriteRule (\.\*) https://%{HTTP_HOST}/\$1 \[R,L\]@#RewriteRule (.*) https://%{HTTP_HOST}/$1 [R,L]@' /etc/apache2/conf.d/openemr.conf
-}
-
-# parameter 1 is identifier
-setupClientCert() {
-    if [ ! -d "/certs/${1}" ]; then
-        mkdir -p "/certs/${1}"
-    fi
-    cp "/certs/${1}.zip" "/certs/${1}/"
-    cd "/certs/${1}"
-    unzip "${1}.zip"
-    # server certificate
-    cp "/certs/${1}/Server.crt" /etc/ssl/certs/customclientbased.cert.pem
-    rm -f /etc/ssl/certs/webserver.cert.pem
-    ln -s /etc/ssl/certs/customclientbased.cert.pem /etc/ssl/certs/webserver.cert.pem
-    # server key
-    cp "/certs/${1}/Server.key" /etc/ssl/private/customclientbased.key.pem
-    rm -f /etc/ssl/private/webserver.key.pem
-    ln -s /etc/ssl/private/customclientbased.key.pem /etc/ssl/private/webserver.key.pem
-    # ca certificate
-    cp "/certs/${1}/CertificateAuthority.crt" /etc/ssl/certs/CAcustomclientbased.cert.pem
-    rm -f /etc/ssl/certs/CAcustomclientbasedwebserver.cert.pem
-    ln -s /etc/ssl/certs/CAcustomclientbased.cert.pem /etc/ssl/certs/CAcustomclientbasedwebserver.cert.pem
-    # ca key
-    cp "/certs/${1}/CertificateAuthority.key" /etc/ssl/private/CAcustomclientbased.key.pem
-    rm -f /etc/ssl/private/CAcustomclientbasedwebserver.key.pem
-    ln -s /etc/ssl/private/CAcustomclientbased.key.pem /etc/ssl/private/CAcustomclientbasedwebserver.key.pem
-    # cleanup
-    rm -fr "/certs/${1}"
-    # configure apache
-    sed -i "s@#SSLVerifyClient@ SSLVerifyClient@" /etc/apache2/conf.d/openemr.conf
-    sed -i "s@#SSLVerifyDepth@ SSLVerifyDepth@" /etc/apache2/conf.d/openemr.conf
-    sed -i "s@#SSLOptions@ SSLOptions@" /etc/apache2/conf.d/openemr.conf
-    sed -i "s@#SSLCACertificateFile@ SSLCACertificateFile@" /etc/apache2/conf.d/openemr.conf
-    # configure openemr
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 1 WHERE gl_name = 'is_client_ssl_enabled'" "$CUSTOM_DATABASE"
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '/etc/ssl/certs/CAcustomclientbasedwebserver.cert.pem' WHERE gl_name = 'certificate_authority_crt'" "$CUSTOM_DATABASE"
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '/etc/ssl/private/CAcustomclientbasedwebserver.key.pem' WHERE gl_name = 'certificate_authority_key'" "$CUSTOM_DATABASE"
-}
-
-toggleOnSelfSignedCert() {
-    # server certificate
-    rm -f /etc/ssl/certs/webserver.cert.pem
-    ln -s /etc/ssl/certs/selfsigned.cert.pem /etc/ssl/certs/webserver.cert.pem
-    # server key
-    rm -f /etc/ssl/private/webserver.key.pem
-    ln -s /etc/ssl/private/selfsigned.key.pem /etc/ssl/private/webserver.key.pem
-    # configure apache
-    sed -i "s@[^#]SSLVerifyClient@#SSLVerifyClient@" /etc/apache2/conf.d/openemr.conf
-    sed -i "s@[^#]SSLVerifyDepth@#SSLVerifyDepth@" /etc/apache2/conf.d/openemr.conf
-    sed -i "s@[^#]SSLOptions@#SSLOptions@" /etc/apache2/conf.d/openemr.conf
-    sed -i "s@[^#]SSLCACertificateFile@#SSLCACertificateFile@" /etc/apache2/conf.d/openemr.conf
-    # configure openemr
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 0 WHERE gl_name = 'is_client_ssl_enabled'" "$CUSTOM_DATABASE"
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_crt'" "$CUSTOM_DATABASE"
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_key'" "$CUSTOM_DATABASE"
 }
