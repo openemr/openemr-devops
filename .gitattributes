@@ -1,0 +1,3 @@
+#This needed so that when windows user download this they dont get errors from 
+#auto converting to windows line endings when it needs to be in linux line endings for docker
+text eol=crlf
