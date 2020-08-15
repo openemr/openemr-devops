@@ -10,7 +10,7 @@
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.5"
+VERSION="1.0.6"
 
 # Set the default container name/id to look for
 INSANE_DEV_DOCKER="_openemr-7-3-312_1"
@@ -251,7 +251,9 @@ then
 	echo "  ltr, lint-themes-report            To create a report of theme styling issues"
 	echo "  ltf, lint-themes-fix               To fix theme styling issues"
 	echo "  pp, php-parserror                  To check PHP parsing errors"
-    echo 'test-management:'
+	echo "  xl, xdebug-log                     To check xdebug log"
+	echo "  lxp, list-xdebug-profiles          To list xdebug profiles"
+  echo 'test-management:'
 	echo "  ut, unit-test                      To run unit testing"
 	echo "  at, api-test                       To run api testing"
 	echo "  et, e2e-test                       To run e2e testing"
@@ -260,22 +262,22 @@ then
 	echo "  vt, validators-test                To run validators testing"
 	echo "  ct, controllers-test               To run controllers testing"
 	echo "  ctt, common-test                   To run common testing"
-    echo 'sweep-management:'
+  echo 'sweep-management:'
 	echo "  cs, clean-sweep                    To run the entire dev tool suite"
 	echo "  cst, clean-sweep-tests             To run only all the automated tests"
-    echo 'reset-mamagement:'
+  echo 'reset-mamagement:'
 	echo "  dr, dev-reset                      To reset OpenEMR only"
 	echo "  di, dev-install                    To install OpenEMR (reset needs to be run prior)"
 	echo "  dri, dev-reset-install             To reset and reinstall OpenEMR"
 	echo "  drid, dev-reset-install-demodata   To reset and reinstall OpenEMR with demo data"
-    echo 'backup-management:'
+  echo 'backup-management:'
 	echo "  bs, backup-snapshot                Create a backup snapshot"
 	echo "  rs, restore-snapshot               Restore from a snapshot"
 	echo "  ls, list-snapshots                 To list the snapshots"
 	echo "  lc, list-capsules                  List the capsules"
 	echo "  gc, get-capsule                    Copy the capsule from the docker to your host directory"
 	echo "  pc, put-capsule                    Copy the capsule into the docker"
-    echo 'ssl-management:'
+  echo 'ssl-management:'
 	echo "  fh, force-https                    Force https"
 	echo "  ufh, un-force-https                Removing forcing of https"
 	echo "  ossc, on-self-signed-cert          Toggle on self signed certificates (on by default)"
@@ -290,11 +292,13 @@ then
   echo "  cso, couchdb-ssl-off               Remove testing couchdb ssl CA cert"
   echo "  csc, couchdb-ssl-client            Use testing couchdb ssl client certs"
   echo "  csco, couchdb-ssl-client-off       Remove testing couchdb ssl client certs"
-    echo 'others:'
+  echo 'others:'
 	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
+	echo "  el, enable-ldap                    Turn on support for LDAP - login credentials are admin:admin"
+	echo "  dld, disable-ldap                  Turn off support for LDAP - standard login credentials"
 	echo "  em, enable-multisite               Turn on support for multisite"
 	echo "  dm, disable-multisite              Turn off support for multisite"
-	echo "  ec, encoding-collation            Change the database character set and collation"
+	echo "  ec, encoding-collation             Change the database character set and collation"
 
 	exit $USAGE_EXIT_CODE
 elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
@@ -501,6 +505,18 @@ case "$FIRST_ARG" in
 		;;
 	csco)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl-client-off"
+		;;
+	el)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS enable-ldap"
+		;;
+	dld)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS disable-ldap"
+		;;
+	xl)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS xdebug-log"
+		;;
+	lxp)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-xdebug-profiles"
 		;;
 
 	*)

@@ -40,7 +40,7 @@ setGlobalSettings() {
             SETTING_TEMP=`echo "$line" | cut -d "=" -f 1`
             # note am omitting the letter O on purpose
             CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
-            VALUE_TEMP=`echo "$line" | cut -d "=" -f 2`
+            VALUE_TEMP=`echo "$line" | awk -F "${CORRECT_SETTING_TEMP}=" '{print $2}'`
             echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
             mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
         done
