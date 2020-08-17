@@ -62,7 +62,7 @@ do
         echo 'Invaild input.'
     else
         sed -i "s/localhost/$hostIp/g" ${installDir}/prometheus/prometheus.yml
-        sed -i "s/hostIp/${hostIp}/g" ${installDir}/grafana/provisioning/datasources/datasource.yml
+        sed -i "s/localhost/${hostIp}/g" ${installDir}/grafana/provisioning/datasources/datasource.yml
         echo '*******************************************************************************'
         echo "Setting in ${installDir}/prometheus/prometheus.yml file."
     	egrep "9090|8080|9093" ${installDir}/prometheus/prometheus.yml
