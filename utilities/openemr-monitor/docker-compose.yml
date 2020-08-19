@@ -1,0 +1,65 @@
+version: '2'
+
+volumes:
+    prometheus_data: {}
+    grafana_data: {}
+
+services:
+# Prometheus
+  prometheus:
+    image: "prom/prometheus"
+    hostname: prometheus
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.listen-address=:3001'
+    ports:
+      - '3001:3001'
+    volumes:
+      - ./prometheus:/etc/prometheus/
+      - prometheus_data:/prometheus
+    depends_on:
+      - cadvisor
+    restart: always
+
+# cAdvisor
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.36.0
+    hostname: cadvisor
+    container_name: cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    command:
+      - '--port=3002'
+    ports:
+      - '3002:3002'
+    restart: always
+
+# Grafana 
+  grafana:
+    image: grafana/grafana
+    hostname: grafana
+    container_name: grafana
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    restart: always
+
+# alertmanager
+  alermanager:
+    image: prom/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--web.listen-address=:3003'
+    ports:
+      - '3003:3003'
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    restart: always
