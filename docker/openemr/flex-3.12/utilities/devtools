@@ -351,6 +351,44 @@ if [ "$1" == "couchdb-ssl-client-off" ]; then
     rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key
 fi
 
+if [ "$1" == "ldap-ssl" ]; then
+    echo "Copying the testing ldap SSL CA cert"
+    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+        #using insane dev docker env
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/ldap-ssl-certs-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
+    else
+        #using easy dev docker env
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/ldap-ssl-certs-keys/easy/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
+    fi
+fi
+
+if [ "$1" == "ldap-ssl-off" ]; then
+    echo "Removing the testing ldap SSL CA cert"
+    rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
+fi
+
+if [ "$1" == "ldap-ssl-client" ]; then
+    echo "Copying the testing ldap SSL CA cert and testing client certs"
+    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+        #using insane dev docker env
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/ldap-ssl-certs-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/ldap-ssl-certs-keys/insane/client-cert.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/ldap-ssl-certs-keys/insane/client-key.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
+    else
+        #using easy dev docker env
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/ldap-ssl-certs-keys/easy/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/ldap-ssl-certs-keys/easy/client-cert.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert
+        cp /var/www/localhost/htdocs/openemr/contrib/util/docker/ldap-ssl-certs-keys/easy/client-key.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
+    fi
+fi
+
+if [ "$1" == "ldap-ssl-client-off" ]; then
+    echo "Removing testing ldap SSL CA cert and testing client certs"
+    rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
+    rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert
+    rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
+fi
+
 if [ "$1" == "enable-ldap" ]; then
     echo "Enabling LDAP authentication - login credentials are admin:admin"
     prepareVariables

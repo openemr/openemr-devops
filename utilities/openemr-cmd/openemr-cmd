@@ -292,6 +292,10 @@ then
   echo "  cso, couchdb-ssl-off               Remove testing couchdb ssl CA cert"
   echo "  csc, couchdb-ssl-client            Use testing couchdb ssl client certs"
   echo "  csco, couchdb-ssl-client-off       Remove testing couchdb ssl client certs"
+	echo "  lss, ldap-ssl                      Use testing ldap ssl CA cert"
+  echo "  lso, ldap-ssl-off                  Remove testing ldap ssl CA cert"
+  echo "  lsc, ldap-ssl-client               Use testing ldap ssl client certs"
+  echo "  lsco, ldap-ssl-client-off          Remove testing ldap ssl client certs"
   echo 'others:'
 	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
 	echo "  el, enable-ldap                    Turn on support for LDAP - login credentials are admin:admin"
@@ -505,6 +509,18 @@ case "$FIRST_ARG" in
 		;;
 	csco)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl-client-off"
+		;;
+	lss)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl"
+		;;
+	lso)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl-off"
+		;;
+	lsc)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl-client"
+		;;
+	lsco)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl-client-off"
 		;;
 	el)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS enable-ldap"
