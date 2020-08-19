@@ -21,6 +21,7 @@ cd openemr-devops/utilities/openemr-monitor
 
 4. Run `docker-compose up` from your command line until the log stop.
     - If you haven't already, [install Docker](https://docs.docker.com/install/) and [install compose](https://docs.docker.com/compose/install/) for your system.
+	- If the firewall is enabled in your host, please make sure 3000, 9090, 9093, 8080 ports open.
 
 ### Web UI
 
