@@ -10,8 +10,11 @@ services:
     image: "prom/prometheus"
     hostname: prometheus
     container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.listen-address=:3001'
     ports:
-      - '9090:9090'
+      - '3001:3001'
     volumes:
       - ./prometheus:/etc/prometheus/
       - prometheus_data:/prometheus
@@ -29,8 +32,10 @@ services:
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+    command:
+      - '--port=3002'
     ports:
-      - '8080:8080'
+      - '3002:3002'
     restart: always
 
 # Grafana 
@@ -50,8 +55,11 @@ services:
 # alertmanager
   alermanager:
     image: prom/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--web.listen-address=:3003'
     ports:
-      - '9093:9093'
+      - '3003:3003'
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
     restart: always

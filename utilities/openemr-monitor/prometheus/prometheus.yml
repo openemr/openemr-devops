@@ -6,19 +6,19 @@ global:
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
-         - targets: ['localhost:9090']
+         - targets: ['hostIp:3001']
 
 # cAdvisor
   - job_name: 'cadvisor'
     static_configs:
-         - targets: ['localhost:8080']
+         - targets: ['hostIp:3002']
 
 # alertmanager
 alerting:
   alertmanagers:
   - static_configs:
     - targets:
-       - 'localhost:9093'
+       - 'hostIp:3003'
 # rules
 rule_files:
    - "alert-rules.yml"

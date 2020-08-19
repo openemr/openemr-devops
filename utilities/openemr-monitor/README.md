@@ -21,11 +21,11 @@ cd openemr-devops/utilities/openemr-monitor
 
 4. Run `docker-compose up` from your command line until the log stop.
     - If you haven't already, [install Docker](https://docs.docker.com/install/) and [install compose](https://docs.docker.com/compose/install/) for your system.
-	- If the firewall is enabled in your host, please make sure 3000, 9090, 9093, 8080 ports open.
+	- If the firewall is enabled in your host, please make sure 3000, 3001, 3002, 3003 ports open.
 
 ### Web UI
 
  * Grafana: `http//<ip>:3000` and login with user `admin` password `admin`, and it import `ID 193` dashboard in [grafana/provisioning/datasources/dashboards](https://github.com/openemr/openemr-devops/tree/master/utilities//openemr-monitor/grafana/provisioning/dashboards)  by default.
- * Prometheus: `http//<ip>:9090`
- * cAdvisor: `http//<ip>:8080/metrics`
- * AlertManager `http//<ip>:9093` and define the rules in [prometheus/alert-rules.yml](https://github.com/openemr/openemr-devops/tree/master/utilities/openemr-monitor/prometheus/alert-rules.yml)
+ * Prometheus: `http//<ip>:3001`
+ * cAdvisor: `http//<ip>:3002/metrics`
+ * AlertManager `http//<ip>:3003` and define the rules in [prometheus/alert-rules.yml](https://github.com/openemr/openemr-devops/tree/master/utilities/openemr-monitor/prometheus/alert-rules.yml)
