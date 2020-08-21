@@ -25,117 +25,61 @@ then
     exit $DOCKER_START
 fi
 
+# Modify the ip and mail setting for the yml files
+ARG_CODE=13
+if [ $# -ne 6 ]
+then
+	echo "Usage: bash `basename $0` <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>" 
+	echo 'e.g.'
+	echo "bash `basename $0` /home/openemr-monitor 192.168.2.111 smtp.gmail.com:587 monitor@gmail.com pass12 test@gmail.com"
+	exit $ARG_CODE
+fi
+
 # Install location
-read -p "Please provide an installation directory, e.g. monitor-data, [n/N] to quit: " installDir
-[ "$installDir" == "n" ] || [ "$installDir" == "N" ] && exit
-while true
-do
-    if [ -z "$installDir" ]
-	then
-		echo 'Invaild input.'
-	else
-		[ ! -d "$installDir" ] && mkdir $installDir/grafana/provisioning/{dashboards,datasources} -p
-		mkdir $installDir/prometheus -p
-		echo '    '
-		break
-	fi
-done
+[ ! -d "$installDir" ] && mkdir $installDir/grafana/provisioning/{dashboards,datasources} -p
+mkdir $installDir/prometheus -p
+echo '    '
 
 # Download the yml files
 echo 'Downloading the configuration files...'
+echo '    '
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/prometheus.yml  > $installDir/prometheus/prometheus.yml
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/alert-rules.yml > $installDir/prometheus/alert-rules.yml
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/alertmanager.yml           > $installDir/alertmanager.yml
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/docker-compose.yml         > $installDir/docker-compose.yml
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/alert-rules.yml > $installDir/prometheus/alert-rules.yml 
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/alertmanager.yml           > $installDir/alertmanager.yml 
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/docker-compose.yml         > $installDir/docker-compose.yml 
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard-193.json > $installDir/grafana/provisioning/dashboards/dashboard-193.json
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard.yml > $installDir/grafana/provisioning/dashboards/dashboard.yml
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/datasources/datasource.yml > $installDir/grafana/provisioning/datasources/datasource.yml
 echo '    '
 
 # Input Host ip
-while true
-do
-    read -p "Please provide the host ip, [n/N] to quit: " hostIp
-    [ "$hostIp" == "n" ] || [ "$hostIp" == "N" ] && exit
-    if [ -z "$hostIp" ]
-    then
-        echo 'Invaild input.'
-    else
-        sed -i "s/hostIp/${hostIp}/g" ${installDir}/prometheus/prometheus.yml
-        sed -i "s/hostIp/${hostIp}/g" ${installDir}/grafana/provisioning/datasources/datasource.yml
-        echo '*******************************************************************************'
-        echo "Setting in ${installDir}/prometheus/prometheus.yml file."
-    	egrep "3001|3002|3003" ${installDir}/prometheus/prometheus.yml
-        echo "Setting in ${installDir}/grafana/provisioning/datasources/datasource.yml file."
-        grep url ${installDir}/grafana/provisioning/datasources/datasource.yml
-        echo '*******************************************************************************'
-        echo '    '
-        break
-    fi
-done
+sed -i "s/hostIp/${hostIp}/g" ${installDir}/prometheus/prometheus.yml
+sed -i "s/hostIp/${hostIp}/g" ${installDir}/grafana/provisioning/datasources/datasource.yml
 
 # Input Smtp Server
-while true
-do
-    read -p "Please provide the smtp server, e.g. smtp.163.com:25, [n/N] to quit: " smtpServer
-    [ "$smtpServer" == "n" ] || [ "$smtpServer" == "N" ] && exit
-    if [ -z "$smtpServer" ]
-    then
-        echo 'Invaild input.'
-    else
-		sed -i "s/smtpServer/$smtpServer/g" ${installDir}/alertmanager.yml
-        break
-    fi
-done
+sed -i "s/smtpServer/$smtpServer/g" ${installDir}/alertmanager.yml
 
 # Input the sender email
-while true
-do
-    read -p "Please provide the sender email, e.g. xxx@163.com, [n/N] to quit: " senderEmail
-    [ "$enderEmail" == "n" ] || [ "$enderEmail" == "N" ] && exit
-    if [ -z "$senderEmail" ]
-    then
-        echo 'Invaild input.'
-    else
-        sed -i "s/senderEmail/$senderEmail/g" ${installDir}/alertmanager.yml
-        sed -i "s/senderUsername/$senderEmail/g" ${installDir}/alertmanager.yml
-        break
-    fi
-done
+sed -i "s/senderEmail/$senderEmail/g" ${installDir}/alertmanager.yml
+sed -i "s/senderUsername/$senderEmail/g" ${installDir}/alertmanager.yml
 
 # Input the sender email password
-while true
-do
-    read -p "Please provide the sender email password, [n/N] to quit: " emailPassword
-    [ "$emailPassword" == "n" ] || [ "$emailPassword" == "N" ] && exit
-    if [ -z "$emailPassword" ]
-    then
-        echo 'Invaild input.'
-    else
-        sed -i "s/senderLoginPassword/$emailPassword/g" ${installDir}/alertmanager.yml
-        break
-    fi
-done
+sed -i "s/senderLoginPassword/$emailPassword/g" ${installDir}/alertmanager.yml
 
 # Input the receiver email
-while true
-do
-    read -p "Please provide the receiver email, e.g. xxx@163.com, [n/N] to quit: " receiverEmail
-    [ "$receiverEmail" == "n" ] || [ "$receiverEmail" == "N" ] && exit
-    if [ -z "$receiverEmail" ]
-    then
-        echo 'Invaild input.'
-    else
-        sed -i "s/receiverEmail/$receiverEmail/g" ${installDir}/alertmanager.yml
-        echo '************************************************'
-        echo "Setting in ${installDir}/alertmanager.yml file."
-	    egrep 'smtp|to' ${installDir}/alertmanager.yml
-        echo '************************************************'
-	echo ''
-	echo '====================================================='
-	echo 'Please run below commands to startup the monitor env.'
-	echo "cd ${installDir} && docker-compose up"
-	echo '====================================================='
-        break
-	fi
-done
+sed -i "s/receiverEmail/$receiverEmail/g" ${installDir}/alertmanager.yml
+echo '******************************Check the Modification******************************'
+echo "Setting in ${installDir}/prometheus/prometheus.yml file."
+egrep "3001|3002|3003" ${installDir}/prometheus/prometheus.yml
+echo '    '
+echo "Setting in ${installDir}/grafana/provisioning/datasources/datasource.yml file."
+grep url ${installDir}/grafana/provisioning/datasources/datasource.yml
+echo '    '
+echo "Setting in ${installDir}/alertmanager.yml file."
+egrep 'smtp|to' ${installDir}/alertmanager.yml
+echo '**********************************************************************************'
+echo ''
+echo '=======================Startup========================'
+echo 'Please run below commands to startup the monitor env:'
+echo "cd ${installDir} && docker-compose up"
+echo '======================================================'
