@@ -125,19 +125,19 @@ fi
 # Get the value after started docker
 DOCKER_STATUS=$(systemctl is-active docker)
 # Check the installation result
-echo '*********Quick Check*********'
+echo '*****************Quick Check*****************'
 git --version
 docker --version
 docker-compose --version
 openemr-cmd --version
 echo -e "\033[36mThe docker status: \033[0m\033[32m${DOCKER_STATUS} \033[0m"
-echo '*****************************'
+echo '*********************************************'
 echo ''
 
 # Startup env
 echo '*****************************Startup Env*****************************'
 echo -e "\033[34m==>\033[0mRun the below command to startup \033[33measy env\033[0m."
-echo -e "\033[32mcd ${CODE_LOCATION}/openemr && docker-compose up\033[0m"
+echo -e "\033[32mcd ${CODE_LOCATION}/openemr && openemr-cmd up\033[0m"
 echo -e "\033[34m==>\033[0mOr run the below command to startup \033[33minsane env\033[0m."
-echo -e "\033[32mcd ${CODE_LOCATION}/openemr/contrib/util/docker && docker-compose up\033[0m"
+echo -e "\033[32mcd ${CODE_LOCATION}/openemr/contrib/util/docker && openemr-cmd up\033[0m"
 echo '*********************************************************************'
