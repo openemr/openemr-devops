@@ -1,0 +1,146 @@
+#!/bin/bash
+# Function: Install the base services, e.g. git docker docker-compose and openemr-cmd
+# The script support ubuntu 16.04 or later.
+CODE_LOCATION=$1
+GITHUB_ACCOUNT=$2
+MAJOR_RELEASE=$(grep VERSION_ID /etc/os-release | awk -F'[.]' '{print $1}' | awk -F'["]' '{print $2}')
+
+git_clone_function(){
+    CODE_LOCATION=$1
+    GITHUB_ACCOUNT=$2
+    cd ${CODE_LOCATION} && [ `pwd` != "${CODE_LOCATION}" ] && cd ${CODE_LOCATION}
+    echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR repository... \033[0m"
+    echo ''
+    git clone https://github.com/${GITHUB_ACCOUNT}/openemr.git
+    cd ${CODE_LOCATION}/openemr && [ `pwd` != "${CODE_LOCATION}/openemr" ] && cd ${CODE_LOCATION}/openemr
+    git remote add upstream https://github.com/openemr/openemr.git
+    git fetch upstream
+    echo ''
+    echo -e "\033[30m===>\033[0m \033[32mPulling the latest data... \033[0m"
+    echo ''
+    git pull upstream master
+    echo ''
+}
+
+# Check major release
+RELEASE_CODE=12
+USER_CODE=13
+EXIT_CODE=11
+if [ "$MAJOR_RELEASE" -lt  "16" ]
+then
+	echo 'The script only supports ubuntu 16.04 or later.'
+	exit $RELEASE_CODE
+# Script Usage
+elif [ $# -ne 2 ]
+then
+    echo "Usage: bash `basename $0` <code location> <github account>"
+	echo ''
+    echo "  e.g. bash `basename $0` /home/test/code testuser"
+	echo ''
+	echo -e "\033[33mNOTE: Please make sure you have created your own fork of OpenEMR at first.\033[0m"
+    exit $EXIT_CODE
+fi
+
+# Install git
+INSTALL_FAIL_CODE=15
+which git &>/dev/null
+if [ $? -ne 0 ]
+then
+	echo -e "\033[30m===>\033[0m \033[32mInstalling git... \033[0m"
+	echo ''
+    sudo apt-get install git -y
+    [ $? -ne 0 ] && echo '' && echo -e "\e[31mInstalled failed, please check the sources.list and the network.\e[0m" && exit $INSTALL_FAIL_CODE
+	echo ''
+else
+	echo -e "\033[30m===>\033[0m \033[32mGit is already installed. \033[0m"
+	echo ''
+fi
+
+# Clone code to local
+if [ ! -d ${CODE_LOCATION} ]
+then
+    mkdir -p ${CODE_LOCATION}
+    git_clone_function $1 $2
+elif [ ! -d ${CODE_LOCATION}/openemr ]
+then
+    git_clone_function $1 $2
+else
+    echo -e "\033[30m===>\033[0m \033[32mOpenEMR repo is already downloaded. \033[0m"
+    echo ''
+fi
+
+# Install docker
+sudo systemctl start docker &>/dev/null
+if [ $? -ne 0 ]
+then
+ 	echo -e "\033[30m===>\033[0m \033[32mUpdate the apt package index and install packages to allow apt to use a repository over HTTPS... \033[0m"
+	echo ''
+	sudo apt-get update -y
+	sudo apt-get install apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y
+	echo ''
+	echo -e "\033[30m===>\033[0m \033[32mAdding the Docker official GPG key... \033[0m"
+	sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+	echo ''
+	echo -e "\033[30m===>\033[0m \033[32mSetting up the stable repository... \033[0m"
+	sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+	echo ''
+	echo -e "\033[30m===>\033[0m \033[32mInstalling docker engine... \033[0m"
+	echo ''
+	sudo apt-get update -y
+	sudo apt-get install docker-ce docker-ce-cli containerd.io -y
+	sudo systemctl start docker
+	sudo systemctl enable docker
+	echo ''
+else
+	echo -e "\033[30m===>\033[0m \033[32mDocker is already installed. \033[0m"
+	sudo systemctl enable docker
+	echo ''
+fi
+
+# Install docker-compose
+which docker-compose &>/dev/null
+if [ $? -ne 0 ]
+then
+	echo -e "\033[30m===>\033[0m \033[32mInstalling docker-compose... \033[0m"
+	echo ''
+	sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+	sudo chmod +x /usr/local/bin/docker-compose
+	echo ''
+else
+	echo -e "\033[30m===>\033[0m \033[32mDocker-compose is already installed. \033[0m"
+	echo ''
+fi
+
+# Install openemr-cmd
+which openemr-cmd &>/dev/null
+if [ $? -ne 0 ]
+then
+	echo -e "\033[30m===>\033[0m \033[32mInstalling openemr-cmd... \033[0m"
+    echo ''
+	sudo curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
+	sudo chmod +x /usr/local/bin/openemr-cmd
+	echo ''
+else
+	echo -e "\033[30m===>\033[0m \033[32mOpenEMR-cmd is already installed. \033[0m"
+	echo ''
+fi
+
+# Get the value after started docker
+DOCKER_STATUS=$(sudo systemctl is-active docker)
+# Check the installation result
+echo '*********Quick Check*********'
+git --version
+docker --version
+docker-compose --version
+openemr-cmd --version
+echo -e "\033[36mThe docker status: \033[0m\033[32m${DOCKER_STATUS} \033[0m"
+echo '*****************************'
+echo ''
+
+# Startup env
+echo '*****************************Startup Env*****************************'
+echo -e "\033[34m==>\033[0mRun the below command to startup \033[33measy env\033[0m."
+echo -e "\033[32mcd ${CODE_LOCATION}/openemr && sudo docker-compose up\033[0m"
+echo -e "\033[34m==>\033[0mOr run the below command to startup \033[33minsane env\033[0m."
+echo -e "\033[32mcd ${CODE_LOCATION}/openemr/contrib/util/docker && sudo docker-compose up\033[0m"
+echo '*********************************************************************'
