@@ -434,6 +434,15 @@ then
 	esac
 else
 	# For MacOS
+	# Check the macOS version
+	minior_release=$(sw_vers -productVersion| awk -F'.' '{print $2}')
+	if [ "$minior_release" -lt "13" ]
+	then
+		echo 'The script only supports macOS10.13 and later.'
+		exit
+	fi
+
+	# Script usage
 	[ $# -ne 2 ] && installer_script_usage
 
 	# Install brew
