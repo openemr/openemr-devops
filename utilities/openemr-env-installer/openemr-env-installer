@@ -270,9 +270,21 @@ else
 fi
 }
 
+openemr_cmd_curl() {
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
+chmod +x /usr/local/bin/openemr-cmd
+echo ''
+}
+
 # Install openemr-cmd tool
 install_openemr_cmd() {
-os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
+os_type=$(uname)
+if [ "$os_type" == "Linux" ]
+then
+	os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
+else
+	os_distribution=$(uname)
+fi
 #os_distribution=$(hostnamectl|grep Operating | awk '{print $3}')
 which openemr-cmd &>/dev/null
 if [ $? -ne 0 ]
@@ -285,10 +297,11 @@ then
 		sudo chmod +x /usr/local/bin/openemr-cmd
 		echo ''
 		;;
+	Darwin)
+		openemr_cmd_curl
+		;;
 	*)
-		curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
-		chmod +x /usr/local/bin/openemr-cmd
-		echo ''
+		openemr_cmd_curl
 		;;
 	esac
 	echo ''
@@ -486,18 +499,7 @@ else
 	echo ''
 
 	# Install openemr-cmd
-	which openemr-cmd &>/dev/null
-	if [ $? -ne 0 ]
-	then
-		echo -e "\033[30m===>\033[0m \033[32mInstalling openemr-cmd... \033[0m"
-    	echo ''
-		curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd > /usr/local/bin/openemr-cmd
-		chmod +x /usr/local/bin/openemr-cmd
-		echo ''
-	else
-		echo -e "\033[30m===>\033[0m \033[32mOpenEMR-cmd is already installed. \033[0m"
-		echo ''
-	fi
+	install_openemr_cmd
 
 	# Check the installation result
 	echo '****************************Quick Check****************************'
