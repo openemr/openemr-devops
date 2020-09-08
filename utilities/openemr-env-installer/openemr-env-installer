@@ -297,9 +297,6 @@ then
 		sudo chmod +x /usr/local/bin/openemr-cmd
 		echo ''
 		;;
-	Darwin)
-		openemr_cmd_curl
-		;;
 	*)
 		openemr_cmd_curl
 		;;
