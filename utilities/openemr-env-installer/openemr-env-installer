@@ -240,13 +240,6 @@ else
 fi
 }
 
-# Openemr-cmd tool download command
-openemr_cmd_curl() {
-	curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
-	chmod +x /usr/local/bin/openemr-cmd
-	echo ''
-}
-
 # Install openemr-cmd tool
 install_openemr_cmd() {
 os_type=$(uname)
@@ -269,7 +262,10 @@ then
 		echo ''
 		;;
 	*)
-		openemr_cmd_curl
+		# It requests a password if run sudo in macOS, so try without sudo
+		curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
+		chmod +x /usr/local/bin/openemr-cmd
+		echo ''
 		;;
 	esac
 	echo ''
