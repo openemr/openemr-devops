@@ -102,43 +102,45 @@ register_note() {
 	echo '  subscription-manager list --available'
 	echo '  subscription-manager attach --pool=<Pool ID>'
 	# Clean the lock file
-	rm -f /tmp/register-lock
+	rm -f /tmp/openemr-register-lock
 	exit
 }
 
 # Check rhel register or not
 rhel_register_check_and_enable_repo() {
+register_lock=/tmp/openemr-register-lock
+repo_lock=/tmp/openemr-repo-lock
 # Due to subscription-manager check very slow, so add a lock file to check
-if [ ! -f /tmp/register-lock ]
+if [ ! -f $register_lock ]
 then
 	subscription-manager status | grep Current &>/dev/null
 	if [ $? -eq 0 ]
 	then
-		echo 0 > /tmp/register-lock
+		echo 0 > $register_lock
 	else
-		echo 1 > /tmp/register-lock
+		echo 1 > $register_lock
 		register_note
 	fi
-elif [ -f /tmp/register-lock ]
+elif [ -f $register_lock ]
 then
-	if [ "$(cat /tmp/register-lock)" == "1" ]
+	if [ "$(cat /tmp/openemr-register-lock)" == "1" ]
 	then
 		register_note
 	fi
 fi
 
 # Attach the necessary repo
-if [ ! -f /tmp/repo-lock ]
+if [ ! -f $repo_lock ]
 then
 	echo -e "\033[30m===>\033[0m \033[32mEnabling base and extras repo... \033[0m"
 	echo ''
 	subscription-manager repos --enable rhel-7-server-rpms &>/dev/null
-	[ $? -eq 0 ] && echo 1 > /tmp/repo-lock
+	[ $? -eq 0 ] && echo 1 >  $repo_lock
 	subscription-manager repos --enable rhel-7-server-extras-rpms &>/dev/null
-	[ $? -eq 0 ] && echo 2 >> /tmp/repo-lock
-elif [ -f /tmp/repo-lock ]
+	[ $? -eq 0 ] && echo 2 >> $repo_lock
+elif [ -f $repo_lock ]
 then
-	if [ "$(cat /tmp/repo-lock|wc -l)" == "2" ]
+	if [ "$(cat /tmp/openemr-repo-lock|wc -l)" == "2" ]
 	then
 		echo -e "\033[30m===>\033[0m \033[32mBoth of base and extras repo are already enabled. \033[0m"
 		echo ''
