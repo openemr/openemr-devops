@@ -41,7 +41,7 @@ then
 			dnf install git -y
 			;;
 	esac
-    [ $? -ne 0 ] && echo '' && echo -e "\e[31mInstalled failed, please check the sources.list and the network.\e[0m" && exit
+    [ $? -ne 0 ] && echo '' && echo -e "\e[31mInstalled failed, please check the repo list and the network.\e[0m" && exit
 	echo ''
 else
 	echo -e "\033[30m===>\033[0m \033[32mGit is already installed. \033[0m"
