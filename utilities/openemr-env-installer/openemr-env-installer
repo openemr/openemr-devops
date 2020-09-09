@@ -246,9 +246,9 @@ fi
 }
 
 openemr_cmd_curl() {
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
-chmod +x /usr/local/bin/openemr-cmd
-echo ''
+	curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
+	chmod +x /usr/local/bin/openemr-cmd
+	echo ''
 }
 
 # Install openemr-cmd tool
@@ -285,35 +285,35 @@ fi
 
 # The checking command
 quick_check_command() {
-git --version
-docker --version
-docker-compose --version
-openemr-cmd --version
+	git --version
+	docker --version
+	docker-compose --version
+	openemr-cmd --version
 }
 
 # The checking result
 quick_check_result() {
-# Get the value after started docker
-docker_status=$(sudo systemctl is-active docker)
-# Check the installation result
-echo '*****************Quick Check*****************'
-quick_check_command
-echo -e "\033[36mThe docker status: \033[0m\033[32m${docker_status} \033[0m"
-echo '*********************************************'
-echo ''
+	# Get the value after started docker
+	docker_status=$(sudo systemctl is-active docker)
+	# Check the installation result
+	echo '*****************Quick Check*****************'
+	quick_check_command
+	echo -e "\033[36mThe docker status: \033[0m\033[32m${docker_status} \033[0m"
+	echo '*********************************************'
+	echo ''
 }
 
 # Show the startup commands
 startup_the_env() {
-# Startup env
-code_location=$1
-echo '*********************************************Startup Env*********************************************'
-echo -e "\033[33mNOTE: Please log out and back in for using docker as a non-root user to take effect if ubuntu/debian.\033[0m"
-echo -e "\033[34m==>\033[0mRun the below command to startup \033[33measy env\033[0m."
-echo -e "\033[32mcd ${code_location}/openemr && openemr-cmd up\033[0m"
-echo -e "\033[34m==>\033[0mOr run the below command to startup \033[33minsane env\033[0m."
-echo -e "\033[32mcd ${code_location}/openemr/contrib/util/docker && openemr-cmd up\033[0m"
-echo '*****************************************************************************************************'
+	# Startup env
+	code_location=$1
+	echo '*********************************************Startup Env*********************************************'
+	echo -e "\033[33mNOTE: Please log out and back in for using docker as a non-root user to take effect if ubuntu/debian.\033[0m"
+	echo -e "\033[34m==>\033[0mRun the below command to startup \033[33measy env\033[0m."
+	echo -e "\033[32mcd ${code_location}/openemr && openemr-cmd up\033[0m"
+	echo -e "\033[34m==>\033[0mOr run the below command to startup \033[33minsane env\033[0m."
+	echo -e "\033[32mcd ${code_location}/openemr/contrib/util/docker && openemr-cmd up\033[0m"
+	echo '*****************************************************************************************************'
 }
 
 # Judge the os type e.g. Linux or MacOS
