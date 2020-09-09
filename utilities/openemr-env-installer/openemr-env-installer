@@ -225,24 +225,15 @@ fi
 
 # install docker-compose tool
 install_docker_compose() {
-os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
 which docker-compose &>/dev/null
 if [ $? -ne 0 ]
 then
 	echo -e "\033[30m===>\033[0m \033[32mInstalling docker-compose... \033[0m"
 	echo ''
-	case "$os_distribution" in
-	ubuntu|debian)
-		sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-		sudo chmod +x /usr/local/bin/docker-compose
-		echo ''
-		;;
-	*)
-		curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-		chmod +x /usr/local/bin/docker-compose
-		echo ''
-		;;
-	esac
+	# Run sudo under root mode that is also fine e.g. rhel/fedora/centos
+	sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+	sudo chmod +x /usr/local/bin/docker-compose
+	echo ''
 else
 	echo -e "\033[30m===>\033[0m \033[32mDocker-compose is already installed. \033[0m"
 	echo ''
