@@ -9,23 +9,23 @@ OpenEMR Env Installer is used to set up the base and necessary services(e.g. git
 1. Download the env installer to your local dev/test environment, e.g.
 
 ```
-env_installer=debian
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-env-installer/${env_installer}/openemr-${env_installer}-installer > openemr-${env_installer}-installer
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-env-installer/openemr-env-installer > openemr-env-installer
 ```
 
 2. Apply executable permissions to the script. 
 
 ```
-chmod +x openemr-debian-installer
+chmod +x openemr-env-installer
 ```
 
 3. Test the installation.
 
 ```
-./openemr-debian-installer
-Usage: bash openemr-debian-installer <code location> <github account>
+# ./openemr-env-installer
+Usage: bash openemr-env-installer <code location> <github account>
 
-  e.g. bash openemr-debian-installer /home/test/code testuser
+  e.g. bash openemr-env-installer /home/test/code testuser
+    or bash openemr-env-installer /Users/test/code testuser
 
 NOTE: Please make sure you have created your own fork of OpenEMR at first.
 ```
