@@ -157,12 +157,11 @@ start_enable_docker(){
 # Install docker service
 install_docker() {
 os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
-#os_distribution=$(hostnamectl|grep Operating | awk '{print $3}')
+sudo systemctl start docker &>/dev/null
+if [ $? -ne 0 ]
+then
 	case "$os_distribution" in
 		ubuntu|debian)
-			sudo systemctl start docker &>/dev/null
-			if [ $? -ne 0 ]
-			then
  				echo -e "\033[30m===>\033[0m \033[32mUpdate the apt package index and install packages to allow apt to use a repository over HTTPS... \033[0m"
 				echo ''
 				sudo apt-get update -y
@@ -184,31 +183,15 @@ os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}'
 				sudo systemctl start docker
 				sudo systemctl enable docker
 				echo ''
-			else
-				echo -e "\033[30m===>\033[0m \033[32mDocker is already installed. \033[0m"
-				sudo systemctl enable docker
-				echo ''
-fi
-			;;
+				;;
 		redhat)
-			systemctl start docker &>/dev/null
-			if [ $? -ne 0 ]
-			then
 				echo -e "\033[30m===>\033[0m \033[32mInstalling docker device-mapper-libs device-mapper-event-libs... \033[0m"
 				echo ''
 				yum install docker device-mapper-libs device-mapper-event-libs -y
 				start_enable_docker
 				echo ''
-			else
-				echo -e "\033[30m===>\033[0m \033[32mDocker is already installed. \033[0m"
-				start_enable_docker
-				echo ''
-			fi
-			;;
+				;;
 		centos)
-			systemctl start docker &>/dev/null
-			if [ $? -ne 0 ]
-			then
  				echo -e "\033[30m===>\033[0m \033[32mDownloading docker-ce repo... \033[0m"
 				echo ''
     			curl -o /etc/yum.repos.d/docker-ce.repo https://download.docker.com/linux/centos/docker-ce.repo &>/dev/null
@@ -217,16 +200,8 @@ fi
 				yum install docker-ce docker-ce-cli containerd.io -y
 				start_enable_docker
 				echo ''
-			else
-				echo -e "\033[30m===>\033[0m \033[32mDocker is already installed. \033[0m"
-				start_enable_docker
-				echo ''
-			fi
-			;;
+				;;
 		fedoraproject)
-			systemctl start docker &>/dev/null
-			if [ $? -ne 0 ]
-			then
  				echo -e "\033[30m===>\033[0m \033[32mDownloading docker-ce repo... \033[0m"
 				echo ''
     			curl -o /etc/yum.repos.d/docker-ce.repo https://download.docker.com/linux/fedora/docker-ce.repo &>/dev/null
@@ -235,13 +210,13 @@ fi
 				dnf install docker-ce docker-ce-cli containerd.io -y
 				start_enable_docker
 				echo ''
-			else
-				echo -e "\033[30m===>\033[0m \033[32mDocker is already installed. \033[0m"
-				start_enable_docker
-				echo ''
-			fi
-			;;
+				;;
 	esac
+else
+	echo -e "\033[30m===>\033[0m \033[32mDocker is already installed. \033[0m"
+	start_enable_docker
+	echo ''
+fi
 }
 
 # install docker-compose tool
@@ -436,6 +411,10 @@ else
 		echo ''
 	else
 		echo -e "\033[30m===>\033[0m \033[32mGit is already installed. \033[0m"
+		echo -e "\033[33mIf your git is installed by default, and you want to upgrade it, please try:\033[0m"
+		echo -e "\033[32m  brew install git\033[0m"
+		echo -e "\033[32m  echo 'export PATH=/usr/local/bin:\$PATH' >> ~/.bash_profile\033[0m"
+		echo -e "\033[32m  source ~/.bash_profile\033[0m"
 		echo ''
 	fi
 
