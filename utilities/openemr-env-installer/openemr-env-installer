@@ -11,6 +11,7 @@ os_type=$(uname)        # check the os type e.g. Linux, Darwin(macOS)
 code_location=$1        # specify the openemr code location
 github_account=$2       # github account
 
+# Installation: git --> docker --> docker-compose --> openemr-cmd
 # Run as root for centos/rhel/fedora
 script_run_as_root(){
 if [ "$UID" -ne 0 ]
@@ -82,10 +83,12 @@ git_clone_function(){
 code_dir_exist_or_not() {
 code_location=$1
 github_account=$2
+# Create the code location if not exist
 if [ ! -d ${code_location} ]
 then
     mkdir -p ${code_location}
     git_clone_function $1 $2
+# It already downloaded if openemr dir exsit
 elif [ ! -d ${code_location}/openemr ]
 then
     git_clone_function $1 $2
@@ -157,6 +160,7 @@ start_enable_docker(){
 # Install docker service
 install_docker() {
 os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
+# Check docker service status if do not install or not startup
 sudo systemctl start docker &>/dev/null
 if [ $? -ne 0 ]
 then
@@ -245,6 +249,7 @@ else
 fi
 }
 
+# Openemr-cmd tool download command
 openemr_cmd_curl() {
 	curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
 	chmod +x /usr/local/bin/openemr-cmd
@@ -316,6 +321,7 @@ startup_the_env() {
 	echo '*****************************************************************************************************'
 }
 
+# The main logic
 # Judge the os type e.g. Linux or MacOS
 if [ "$os_type" == "Linux" ]
 then
@@ -339,6 +345,7 @@ then
 			[ $# -ne 2 ] && installer_script_usage
 			;;
 		fedoraproject)
+			# Due to the different format, so get the keyword again in fedora 
 		    major_release=$(grep VERSION_ID /etc/os-release| awk -F'=' '{print $2}')
 			if [ "$major_release" -lt "30" ] || [ "$major_release" -gt "31" ]
 			then
