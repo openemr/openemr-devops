@@ -23,7 +23,6 @@ fi
 # Install git
 install_git() {
 # Check the os distribution ubuntu/debian/rhel/fedora/centos
-#os_distribution=$(hostnamectl|grep Operating | awk '{print $3}')
 os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
 which git &>/dev/null
 if [ $? -ne 0 ]
@@ -61,7 +60,7 @@ installer_script_usage() {
     exit $EXIT_CODE
 }
 
-# Clone the code github to local
+# Clone the code from github to local
 git_clone_function(){
     code_location=$1
     github_account=$2
@@ -246,7 +245,6 @@ fi
 # install docker-compose tool
 install_docker_compose() {
 os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
-#os_distribution=$(hostnamectl|grep Operating | awk '{print $3}')
 which docker-compose &>/dev/null
 if [ $? -ne 0 ]
 then
@@ -285,7 +283,7 @@ then
 else
 	os_distribution=$(uname)
 fi
-#os_distribution=$(hostnamectl|grep Operating | awk '{print $3}')
+
 which openemr-cmd &>/dev/null
 if [ $? -ne 0 ]
 then
@@ -346,7 +344,6 @@ if [ "$os_type" == "Linux" ]
 then
 	major_release=$(grep VERSION_ID /etc/os-release | awk -F'[.]' '{print $1}' | awk -F'["]' '{print $2}')
 	os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
-	#os_distribution=$(hostnamectl|grep Operating | awk '{print $3}')
 	case "$os_distribution" in
 		ubuntu)
 			if [ "$major_release" -lt  "16" ]
@@ -355,13 +352,6 @@ then
 				exit
 			fi
 			[ $# -ne 2 ] && installer_script_usage
-			install_git
-			code_dir_exist_or_not $1 $2
-			install_docker
-			install_docker_compose
-			install_openemr_cmd
-			quick_check_result
-			startup_the_env $1
 			;;
 		debian)
 			if [ "$major_release" -lt  "9" ] || [ "$major_release" -gt  "10" ]
@@ -370,13 +360,6 @@ then
 				exit
 			fi
 			[ $# -ne 2 ] && installer_script_usage
-			install_git
-			code_dir_exist_or_not $1 $2
-			install_docker
-			install_docker_compose
-			install_openemr_cmd
-			quick_check_result
-			startup_the_env $1
 			;;
 		fedoraproject)
 		    major_release=$(grep VERSION_ID /etc/os-release| awk -F'=' '{print $2}')
@@ -387,13 +370,6 @@ then
 			fi
 			script_run_as_root
 			[ $# -ne 2 ] && installer_script_usage
-			install_git
-			code_dir_exist_or_not $1 $2
-			install_docker
-			install_docker_compose
-			install_openemr_cmd
-			quick_check_result
-			startup_the_env $1
 			;;
 		redhat)
 			if [ "$major_release" != "7" ]
@@ -404,13 +380,6 @@ then
 			script_run_as_root
 			[ $# -ne 2 ] && installer_script_usage
 			rhel_register_check_and_enable_repo
-			install_git
-			code_dir_exist_or_not $1 $2
-			install_docker
-			install_docker_compose
-			install_openemr_cmd
-			quick_check_result
-			startup_the_env $1
 			;;
 		centos)
 			if [ "$major_release" != "7" ]
@@ -420,6 +389,8 @@ then
 			fi
 			script_run_as_root
 			[ $# -ne 2 ] && installer_script_usage
+			;;
+	esac
 			install_git
 			code_dir_exist_or_not $1 $2
 			install_docker
@@ -427,8 +398,6 @@ then
 			install_openemr_cmd
 			quick_check_result
 			startup_the_env $1
-			;;
-	esac
 else
 	# For MacOS
 	# Check the macOS version
@@ -517,5 +486,5 @@ else
 	echo ''
 
 	# Startup env
-	startup_the_env
+	startup_the_env $1
 fi
