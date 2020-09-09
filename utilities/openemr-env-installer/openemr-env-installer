@@ -436,10 +436,6 @@ else
 		echo ''
 	else
 		echo -e "\033[30m===>\033[0m \033[32mGit is already installed. \033[0m"
-		echo -e "\033[33mIf your git is installed by default, and you want to upgrade it, please try:\033[0m"
-		echo -e "\033[32m  brew install git\033[0m"
-		echo -e "\033[32m  echo 'export PATH=/usr/local/bin:\$PATH' >> ~/.bash_profile\033[0m"
-		echo -e "\033[32m  source ~/.bash_profile\033[0m"
 		echo ''
 	fi
 
