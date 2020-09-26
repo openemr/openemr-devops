@@ -1,0 +1,174 @@
+#!/bin/bash
+# Function: migrate the container environment
+# Define multiple parameters due to different scenarios
+first_arg=$1
+second_arg=$2
+third_arg=$3
+fourth_arg=$4
+fifth_arg=$5
+
+# Create the storage location if not exist
+target_dir_check() {
+	shift
+	if [ $# -eq 1 ]
+	then
+		# For the local env
+		migrate_target_dir=$1
+		echo -e "\033[30m===>\033[0m \033[32mChecking the target dir... \033[0m"
+		[ ! -d "$migrate_target_dir" ] && mkdir $migrate_target_dir -p
+		echo ''
+	else
+		# For the remote host env
+		target_ssh_user=$1
+		target_ip=$2
+		migrate_target_dir=$3
+		echo -e "\033[30m===>\033[0m \033[32mChecking the target dir... \033[0m"
+		echo ''
+		ssh ${target_ssh_user}@${target_ip} "mkdir $migrate_target_dir -p"
+		echo ''
+	fi
+}
+
+# Stop the container at first
+stop_all_containers() {
+	echo -e "\033[30m===>\033[0m \033[32mStopping the running containers... \033[0m"
+	container_name=$(docker ps -a | awk '{print $NF}'|grep -v NAMES)
+	for cn in "$container_name"
+	do
+		docker stop $cn
+	done
+	echo ''
+}
+
+# Sync the data with rsync
+sync_data_dir() {
+	echo -e "\033[30m===>\033[0m \033[32mSyncing data to target dir... \033[0m"
+	echo ''
+	which rsync &>/dev/null
+	[ $? -ne 0 ] && echo "Please install rsync first." && exit
+	if [ $# -eq 2 ]
+	then
+		# For the local env
+		migrate_source_dir=$1
+		migrate_target_dir=$2
+		rsync -avz $migrate_source_dir $migrate_target_dir
+		echo ''
+	else
+		# For the remote host env
+		migrate_source_dir=$1
+		target_ssh_user=$2
+		target_ip=$3
+		migrate_target_dir=$4
+		rsync -avz ${migrate_source_dir} ${target_ssh_user}@${target_ip}:$migrate_target_dir
+		echo ''
+	fi
+}
+
+# Set the daemon.json file for the data location
+set_daemon_json_file() {
+migrate_target_dir=$1
+echo -e "\033[30m===>\033[0m \033[32mSetting daemon.json file... \033[0m"
+echo ''
+if [ ! -f /etc/docker/daemon.json ]
+then
+cat << EOF > /etc/docker/daemon.json
+{
+    "data-root": "$migrate_target_dir"
+}
+EOF
+else
+    grep data-root /etc/docker/daemon.json &>/dev/null
+    if [ $? -ne 0 ]
+    then
+        sed -i '$d' /etc/docker/daemon.json
+        echo '    "data-root": "migrate"' >> /etc/docker/daemon.json
+        sed -i "s#\"data-root\"\:\ \"migrate\"#\"data-root\"\: \"$migrate_target_dir\"#g" /etc/docker/daemon.json
+        echo '}' >> /etc/docker/daemon.json
+    else
+        sed -i "s#\"data-root\"\:\ \".*\"#\"data-root\"\: \"$migrate_target_dir\"#g" /etc/docker/daemon.json
+    fi
+fi
+}
+
+# Start the container after the migration
+start_all_containers() {
+sudo systemctl restart docker
+container_name=$(docker ps -a | awk '{print $NF}'|grep -v NAMES)
+echo -e "\033[30m===>\033[0m \033[32mStarting the container... \033[0m"
+echo ''
+for cn in "$container_name"
+do
+	docker start $cn
+done
+echo ''
+}
+
+# Migrate single container
+commit_and_save_contianer(){
+	migrate_container_name=$1
+	container_name=$2
+	ssh_user=$3
+	target_host=$4
+	echo -e "\033[30m===>\033[0m \033[32mCommit and save the image... \033[0m"
+	docker commit ${migrate_container_name} ${container_name}  &>/dev/null
+	docker save -o /tmp/${container_name}.tar ${container_name}
+	echo ''
+	echo -e "\033[30m===>\033[0m \033[32mMoving to the target host... \033[0m"
+	echo ''
+	which scp &>/dev/null
+	[ $? -ne 0 ] && echo "Please check openssh-clients install or not." && exit
+	scp /tmp/${container_name}.tar ${ssh_user}@${target_host}:/tmp
+	echo ''
+	echo -e "\033[30m===>\033[0m \033[32mLoaing the image... \033[0m"
+	echo ''
+	ssh ${ssh_user}@${target_host} "docker load -i /tmp/${container_name}.tar"
+	echo ''
+	echo "Please try to run the image in target host."
+}
+
+# Script Usage
+if [ $# -lt 1 ]
+then
+	echo -e "\033[0m\033[36mMigrate all the containers: \033[0m"
+	echo -e " \033[0m\033[33m Scenario one: Please provide the <source dir> and <target dir> if migrate in local.\033[0m"
+	echo "   e.g. `basename $0` -l /var/lib/docker/ /data/docker/"
+	echo -e " \033[0m\033[33m Scenario two: Please provide the <source dir>, <target ssh user>, <target ip> and <target dir> if migrate to remote host.\033[0m"
+	echo -e "   \033[0m\033[32mFirst step in local:\033[0m    `basename $0` -m /var/lib/docker/ testuser 192.168.117.117 /data/docker/"
+	echo -e "   \033[0m\033[32mSecond step in remote:\033[0m  `basename $0` -r /data/docker/"
+	echo -e "\033[0m\033[35m  **NOTE-1**: Do not forget the last slash of source dir, e.g. /var/lib/docker/ \033[0m"
+	echo -e "\033[0m\033[35m  **NOTE-2**: Please make sure there is the same source code dir in the remote host for easy or insane env and setup the base container services. \033[0m"
+	echo ''
+	echo -e "\033[0m\033[36mMigrate the single container: \033[0m"
+	echo -e  " \033[0m\033[33m Please provide the <migrate container name>, <new container name>, <target ssh user> and <target ip>.\033[0m"
+	echo "   e.g. `basename $0` -s brave_snyder http testuser 192.168.117.117"
+	exit
+fi
+
+# Main logic
+case "$first_arg" in
+	-l)
+	# Migrate from one data dir to another dir in local
+	shift
+	target_dir_check "$@"
+	stop_all_containers
+	sync_data_dir "$@"
+	shift && set_daemon_json_file "$@"
+	start_all_containers
+	;;
+	-m)
+	# Migrate data dir from one host to remote host
+	shift
+	target_dir_check "$@"
+	stop_all_containers
+	sync_data_dir "$@"
+	;;
+	-r)
+	shift && set_daemon_json_file "$@"
+	start_all_containers
+	;;
+	-s)
+	# Migrate single container from one host to remote host
+	shift
+	commit_and_save_contianer "$@"
+	;;
+esac
