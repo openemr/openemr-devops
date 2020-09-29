@@ -1,24 +1,17 @@
 #!/bin/bash
 # Function: migrate the container environment
-# Define multiple parameters due to different scenarios
-first_arg=$1
-second_arg=$2
-third_arg=$3
-fourth_arg=$4
-fifth_arg=$5
 
 # Create the storage location if not exist
-target_dir_check() {
-	shift
-	if [ $# -eq 1 ]
-	then
-		# For the local env
+# For the local env
+target_dir_local_check() {
 		migrate_target_dir=$1
 		echo -e "\033[30m===>\033[0m \033[32mChecking the target dir... \033[0m"
 		[ ! -d "$migrate_target_dir" ] && mkdir $migrate_target_dir -p
 		echo ''
-	else
-		# For the remote host env
+}
+
+# For the remote host env
+target_dir_remote_check() {
 		target_ssh_user=$1
 		target_ip=$2
 		migrate_target_dir=$3
@@ -26,7 +19,6 @@ target_dir_check() {
 		echo ''
 		ssh ${target_ssh_user}@${target_ip} "mkdir $migrate_target_dir -p"
 		echo ''
-	fi
 }
 
 # Stop the container at first
@@ -40,28 +32,33 @@ stop_all_containers() {
 	echo ''
 }
 
-# Sync the data with rsync
-sync_data_dir() {
+# Confirm rsync whether exist
+rsync_check() {
 	echo -e "\033[30m===>\033[0m \033[32mSyncing data to target dir... \033[0m"
 	echo ''
 	which rsync &>/dev/null
 	[ $? -ne 0 ] && echo "Please install rsync first." && exit
-	if [ $# -eq 2 ]
-	then
-		# For the local env
-		migrate_source_dir=$1
-		migrate_target_dir=$2
-		rsync -avz $migrate_source_dir $migrate_target_dir
-		echo ''
-	else
-		# For the remote host env
-		migrate_source_dir=$1
-		target_ssh_user=$2
-		target_ip=$3
-		migrate_target_dir=$4
-		rsync -avz ${migrate_source_dir} ${target_ssh_user}@${target_ip}:$migrate_target_dir
-		echo ''
-	fi
+}
+
+# Sync the data local
+sync_data_dir_in_local() {
+	rsync_check
+	# For the local env
+	migrate_source_dir=$1
+	migrate_target_dir=$2
+	rsync -avz $migrate_source_dir $migrate_target_dir
+	echo ''
+}
+
+# Sync the data to remote
+sync_data_dir_to_remote() {
+	rsync_check
+	migrate_source_dir=$1
+	target_ssh_user=$2
+	target_ip=$3
+	migrate_target_dir=$4
+	rsync -avz ${migrate_source_dir} ${target_ssh_user}@${target_ip}:$migrate_target_dir
+	echo ''
 }
 
 # Set the daemon.json file for the data location
@@ -131,44 +128,74 @@ if [ $# -lt 1 ]
 then
 	echo -e "\033[0m\033[36mMigrate all the containers: \033[0m"
 	echo -e " \033[0m\033[33m Scenario one: Please provide the <source dir> and <target dir> if migrate in local.\033[0m"
-	echo "   e.g. `basename $0` -l /var/lib/docker/ /data/docker/"
+	echo "   e.g. `basename $0` -t local -s /var/lib/docker/ -d /data/docker/"
 	echo -e " \033[0m\033[33m Scenario two: Please provide the <source dir>, <target ssh user>, <target ip> and <target dir> if migrate to remote host.\033[0m"
-	echo -e "   \033[0m\033[32mFirst step in local:\033[0m    `basename $0` -m /var/lib/docker/ testuser 192.168.117.117 /data/docker/"
-	echo -e "   \033[0m\033[32mSecond step in remote:\033[0m  `basename $0` -r /data/docker/"
+	echo -e "   \033[0m\033[32mFirst step in local:\033[0m    `basename $0` -t remote -s /var/lib/docker/ -u testuser -h 192.168.117.117 -d /data/docker/"
+	echo -e "   \033[0m\033[32mSecond step in remote:\033[0m  `basename $0` -t set -d /data/docker/"
 	echo -e "\033[0m\033[35m  **NOTE-1**: Do not forget the last slash of source dir, e.g. /var/lib/docker/ \033[0m"
 	echo -e "\033[0m\033[35m  **NOTE-2**: Please make sure there is the same source code dir in the remote host for easy or insane env and setup the base container services. \033[0m"
-	echo ''
 	echo -e "\033[0m\033[36mMigrate the single container: \033[0m"
 	echo -e  " \033[0m\033[33m Please provide the <migrate container name>, <new container name>, <target ssh user> and <target ip>.\033[0m"
-	echo "   e.g. `basename $0` -s brave_snyder http testuser 192.168.117.117"
+	echo "   e.g. `basename $0` -t single -m  brave_snyder -n http -u testuser -h 192.168.117.117"
 	exit
 fi
 
+# Define the options
+while getopts "d:u:h:s:m:n:t:" opt
+do
+    case "$opt" in
+        d)
+		# The dir that migrate to
+		migrate_target_dir=$OPTARG
+		;;
+		u)
+		# The ssh user in remote host
+		target_ssh_user=$OPTARG
+		;;
+		h)
+		# The remote host
+		target_ip=$OPTARG
+		;;
+		s)
+		# The dir that migrate from
+		migrate_source_dir=$OPTARG
+		;;
+		m)
+		# The container that migrates from
+		migrate_container_name=$OPTARG
+		;;
+		n)
+		# The new container name
+		container_name=$OPTARG
+		;;
+		t)
+		# The migrate type, e.g. local, remote, set, single
+		migrate_type=$OPTARG
+		;;
+    esac
+done
+
 # Main logic
-case "$first_arg" in
-	-l)
-	# Migrate from one data dir to another dir in local
-	shift
-	target_dir_check "$@"
+# Migrate from one data dir to another dir in local
+if [ "$migrate_type" == 'local' ]
+then
+	target_dir_local_check $migrate_target_dir
 	stop_all_containers
-	sync_data_dir "$@"
-	shift && set_daemon_json_file "$@"
+	sync_data_dir_in_local $migrate_source_dir $migrate_target_dir
+	set_daemon_json_file $migrate_target_dir
 	start_all_containers
-	;;
-	-m)
-	# Migrate data dir from one host to remote host
-	shift
-	target_dir_check "$@"
+# Migrate data dir from one host to remote host(first step)
+elif [ "$migrate_type" == 'remote' ]
+then
+	target_dir_remote_check $target_ssh_user $target_ip $migrate_target_dir
 	stop_all_containers
-	sync_data_dir "$@"
-	;;
-	-r)
-	shift && set_daemon_json_file "$@"
+	sync_data_dir_to_remote $migrate_source_dir $target_ssh_user $target_ip $migrate_target_dir
+# Second step
+elif [ "$migrate_type" == 'set' ]
+then
+	set_daemon_json_file $migrate_target_dir
 	start_all_containers
-	;;
-	-s)
-	# Migrate single container from one host to remote host
-	shift
-	commit_and_save_contianer "$@"
-	;;
-esac
+# Migrate the single container
+else
+	commit_and_save_contianer $migrate_container_name $container_name $target_ssh_user $target_ip
+fi
