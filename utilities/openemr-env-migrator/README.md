@@ -22,15 +22,24 @@ chmod +x openemr-env-migrator
 
 ```
 # ./openemr-env-migrator
+Usage:
+    -t,      Specify the migration type e.g. local, remote, set, single.
+    -s,      Specify the migration container source directory.
+    -d,      Specify the migration container target directory.
+    -u,      Specify the target host ssh user.
+    -h,      Specify the target host ip.
+    -m,      Specify the migration source container.
+    -n,      Specify the migration new container name.
+
 Migrate all the containers:
-  Scenario one: Please provide the <source dir> and <target dir> if migrate in local.
+  Scenario one: Migrate in local.
    e.g. openemr-env-migrator -t local -s /var/lib/docker/ -d /data/docker/
-  Scenario two: Please provide the <source dir>, <target ssh user>, <target ip> and <target dir> if migrate to remote host.
+  Scenario two: Migrate to remote host.
    First step in local:    openemr-env-migrator -t remote -s /var/lib/docker/ -u testuser -h 192.168.117.117 -d /data/docker/
    Second step in remote:  openemr-env-migrator -t set -d /data/docker/
   **NOTE-1**: Do not forget the last slash of source dir, e.g. /var/lib/docker/
   **NOTE-2**: Please make sure there is the same source code dir in the remote host for easy or insane env and setup the base container services.
+
 Migrate the single container:
-  Please provide the <migrate container name>, <new container name>, <target ssh user> and <target ip>.
    e.g. openemr-env-migrator -t single -m  brave_snyder -n http -u testuser -h 192.168.117.117
 ```
