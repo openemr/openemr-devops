@@ -146,6 +146,7 @@ script_usage() {
 	echo ''
 	echo -e "\033[0m\033[36mMigrate the single container: \033[0m"
 	echo "   e.g. `basename $0` -t single -m  brave_snyder -n http -u testuser -h 192.168.117.117"
+	echo ''
 	exit
 }
 
@@ -155,7 +156,7 @@ then
 fi
 
 # Define the options
-while getopts "d:u:h:s:m:n:t:" opt
+while getopts ":d:u:h:s:m:n:t:" opt
 do
     case "$opt" in
         d)
@@ -187,7 +188,9 @@ do
 		migrate_type=$OPTARG
 		;;
 		\?)
-		echo "Invalid option: -$opt" >&2
+		opt=$OPTARG
+		echo -e "\033[0m\033[31mInvalid option: -${opt}.\033[0m"
+		echo ''
 		script_usage
 		exit
 		;;
@@ -220,6 +223,7 @@ then
 	commit_and_save_container $migrate_container_name $container_name $target_ssh_user $target_ip
 else
 	echo -e "\033[0m\033[31mInvalid migrate type, e.g. local, remote, set, single. \033[0m"
+	echo ''
 	script_usage
 	exit
 fi
