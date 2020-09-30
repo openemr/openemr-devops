@@ -101,7 +101,7 @@ echo ''
 }
 
 # Migrate single container
-commit_and_save_contianer(){
+commit_and_save_container(){
 	migrate_container_name=$1
 	container_name=$2
 	ssh_user=$3
@@ -197,5 +197,5 @@ then
 	start_all_containers
 # Migrate the single container
 else
-	commit_and_save_contianer $migrate_container_name $container_name $target_ssh_user $target_ip
+	commit_and_save_container $migrate_container_name $container_name $target_ssh_user $target_ip
 fi
