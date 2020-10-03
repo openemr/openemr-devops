@@ -1,0 +1,53 @@
+# Use admin/pass as user/password credentials to login to openemr (from OE_USER and OE_PASS below)
+# MYSQL_HOST and MYSQL_ROOT_PASS are required for openemr
+# FLEX_REPOSITORY and (FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG) are required for flex openemr
+# MYSQL_USER, MYSQL_PASS, OE_USER, MYSQL_PASS are optional for openemr and
+#   if not provided, then default to openemr, openemr, admin, and pass respectively.
+version: '3.1'
+services:
+  redis:
+    image: redis
+    deploy:
+      replicas: 1
+  mysql:
+    image: mariadb:10.2
+    command: ['mysqld','--character-set-server=utf8mb4']
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    deploy:
+      replicas: 1
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+    - 8081:80
+    environment:
+      PMA_HOSTS: mariadb
+    deploy:
+      replicas: 1
+  openemr:
+    image: openemr/openemr:6.0.0
+    ports:
+    - 8080:80
+    - 8090:443
+    volumes:
+    - websitevolume:/var/www/localhost/htdocs/openemr/sites
+    - sslvolume:/etc/ssl
+    - letsencryptvolume:/etc/letsencrypt
+    environment:
+      SWARM_MODE: "yes"
+      REDIS_SERVER: redis
+      MYSQL_HOST: mysql
+      MYSQL_ROOT_PASS: root
+      MYSQL_USER: openemr
+      MYSQL_PASS: openemr
+      OE_USER: admin
+      OE_PASS: pass
+    depends_on:
+    - mysql
+    deploy:
+      replicas: 5
+volumes:
+  websitevolume: {}
+  sslvolume: {}
+  letsencryptvolume: {}
+

@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.21.0 (992df58d8)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: openemr
+  name: openemr
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      io.kompose.service: openemr
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert
+        kompose.version: 1.21.0 (992df58d8)
+      creationTimestamp: null
+      labels:
+        io.kompose.service: openemr
+    spec:
+      containers:
+      - env:
+        - name: MYSQL_HOST
+          value: "mysql"
+        - name: MYSQL_PASS
+          value: "openemr"
+        - name: MYSQL_ROOT_PASS
+          value: "root"
+        - name: MYSQL_USER
+          value: "openemr"
+        - name: OE_PASS
+          value: "pass"
+        - name: OE_USER
+          value: "admin"
+        - name: REDIS_SERVER
+          value: "redis"
+        - name: SWARM_MODE
+          value: "yes"
+        image: openemr/openemr:6.0.0
+        imagePullPolicy: ""
+        name: openemr
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        resources: {}
+        volumeMounts:
+        - mountPath: /var/www/localhost/htdocs/openemr/sites
+          name: websitevolume
+        - mountPath: /etc/ssl
+          name: sslvolume
+        - mountPath: /etc/letsencrypt
+          name: letsencryptvolume
+      restartPolicy: Always
+      serviceAccountName: ""
+      volumes:
+      - name: websitevolume
+        persistentVolumeClaim:
+          claimName: websitevolume
+      - name: sslvolume
+        persistentVolumeClaim:
+          claimName: sslvolume
+      - name: letsencryptvolume
+        persistentVolumeClaim:
+          claimName: letsencryptvolume
+status: {}
