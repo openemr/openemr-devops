@@ -19,7 +19,7 @@ chmod +x openemr-env-migrator
 ```
 
 3. Test the installation.
-
+    - Please make sure rsync and ssh already setup.
 ```
 # ./openemr-env-migrator
 Usage:
@@ -43,4 +43,3 @@ Migrate all the containers:
 Migrate the single container:
    e.g. openemr-env-migrator -t single -m  brave_snyder -n http -u testuser -h 192.168.117.117
 ```
-    - Please make sure rsync and ssh already setup.
