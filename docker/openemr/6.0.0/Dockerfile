@@ -10,7 +10,8 @@ RUN apk add --no-cache \
     php7-sodium php7-calendar \
     perl mysql-client tar curl imagemagick npm \
     python3 openssl py-pip openssl-dev dcron \
-    shadow
+    shadow \
+    && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
 RUN usermod -u 1000 apache
 # Install composer for openemr package building

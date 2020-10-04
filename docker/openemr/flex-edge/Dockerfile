@@ -10,9 +10,10 @@ RUN apk add --no-cache \
     php7-sodium php7-calendar \
     mysql-client tar curl imagemagick npm \
     python3 openssl git libffi-dev py-pip python3-dev build-base openssl-dev dcron \
-    rsync shadow jq
+    rsync shadow jq \
+    && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
-    RUN usermod -u 1000 apache
+RUN usermod -u 1000 apache
 #Stuff for developers since this predominantly a developer/tester docker
 RUN apk add --no-cache \
     unzip vim nano bash bash-doc bash-completion tree
