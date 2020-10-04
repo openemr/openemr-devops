@@ -5,4 +5,4 @@ script:
       - cd docker/mysql-xtrabackup
       - docker build .
       - cd ../../docker/openemr
-      - for D in *; do [ -d "${D}" ] && docker build "$D"; done
+      - for D in *; do [ -d "${D}" ] && echo docker now building container $D && docker build "$D"; done
