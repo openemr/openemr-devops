@@ -19,7 +19,7 @@ chmod +x openemr-env-migrator
 ```
 
 3. Test the installation.
-    - Please make sure rsync and ssh already setup.
+    - Please make sure rsync already set up in local host if the local migration,  make sure rsync and ssh already set up both hosts if the remote migration.
 ```
 # ./openemr-env-migrator
 Usage:
