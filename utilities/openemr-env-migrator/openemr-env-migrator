@@ -107,21 +107,26 @@ commit_and_save_container(){
 	container_name=$2
 	ssh_user=$3
 	target_host=$4
+	# Commit a container’s file changes or settings into a new image and save to tar file
 	echo -e "\033[30m===>\033[0m \033[32mCommit and save the image... \033[0m"
 	docker commit ${migrate_container_name} ${container_name}  &>/dev/null
 	docker save -o /tmp/${container_name}.tar ${container_name}
 	echo ''
 	echo -e "\033[30m===>\033[0m \033[32mMoving to the target host... \033[0m"
 	echo ''
+    # Move the tar file to remote host
 	which scp &>/dev/null
 	[ $? -ne 0 ] && echo "Please check openssh-clients install or not." && exit
 	scp /tmp/${container_name}.tar ${ssh_user}@${target_host}:/tmp
 	echo ''
+	# Load an image from a tar archive in the remote host
 	echo -e "\033[30m===>\033[0m \033[32mLoaing the image... \033[0m"
 	echo ''
 	ssh ${ssh_user}@${target_host} "docker load -i /tmp/${container_name}.tar"
 	echo ''
 	echo "Please try to run the image in target host."
+	# Clean the tar file after scp
+	rm -f /tmp/${container_name}.tar
 }
 
 # Script Usage
