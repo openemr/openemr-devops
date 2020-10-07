@@ -1,6 +1,6 @@
 FROM alpine:3.12
 
-#Install dependencies
+#Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
 RUN apk add --no-cache \
     apache2 apache2-ssl git php7 php7-tokenizer php7-ctype php7-session php7-apache2 \
