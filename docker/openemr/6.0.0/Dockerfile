@@ -9,7 +9,7 @@ RUN apk add --no-cache \
     php7-mysqli php7-sockets php7-xmlreader php7-redis php7-simplexml php7-xmlwriter php7-phar php7-fileinfo \
     php7-sodium php7-calendar \
     perl mysql-client tar curl imagemagick npm \
-    python3 openssl py-pip openssl-dev dcron \
+    python2 python3 openssl py-pip openssl-dev dcron \
     shadow \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
