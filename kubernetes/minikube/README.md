@@ -46,9 +46,9 @@ OpenEMR Kubernetes orchestration on Minikube. Creates 5 instance of OpenEMR with
           http://192.168.99.100:30613
           ```
 6. Can get the link to go to phpMyAdmin with following command:
-    ````bash
+    ```bash
     minikube service phpmyadmin --url
-    ```   
+    ```
       - It will look something like this:
           ```console
           http://192.168.99.100:30571
