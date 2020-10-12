@@ -30,7 +30,7 @@ spec:
         env:
         - name: MYSQL_ROOT_PASSWORD
           value: root
-        image: mariadb:10.2
+        image: mariadb:10.5
         imagePullPolicy: ""
         name: mysql
         resources: {}

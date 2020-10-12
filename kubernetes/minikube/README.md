@@ -57,6 +57,7 @@ OpenEMR Kubernetes orchestration on Minikube. Creates 5 instance of OpenEMR with
     ```bash
     bash kub-down
     ```
+8. If wish to use the most recent codebase rather than 6.0.0-dev docker, then can change from openemr/openemr:6.0.0 to openemr/openemr:flex in the openemr-deployment.yaml script (note this will take much longer to start up (probably at least 10 minutes and up to 90 minutes) and is more cpu intensive since each instance of OpenEMR will download codebase and build separately).
 
 # Development notes
 How this was built.
@@ -71,6 +72,4 @@ How this was built.
 6. Added mysql service and redis service scripts
 7. Added type NodePort in OpenEMR and phpmyadmin service scripts
 8. Changed PMA_HOSTS from mariadb to mysql in phpmyadmin deployment script
-
-# TODO
-1. Modify the flex series dockers to work with this (will be mostly like the changes make in the 6.0.0 docker that were done to support this) and then update this README.
+9. Changed mariadb:10.2 to mariadb:10.5 in mysql deployment script

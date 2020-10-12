@@ -159,8 +159,8 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     fi
     if [ ! -f /etc/docker-leader ] &&
        [ "$SWARM_MODE" == "yes" ]; then
-        # non-leader is building so keep the docker-completed flag there
-        touch openemr/sites/default/docker-completed
+        # non-leader is building so remove the openemr/sites directory to avoid breaking anything in leader's build
+        rm -fr openemr/sites
     fi
     rsync --ignore-existing --recursive --links --exclude .git openemr /var/www/localhost/htdocs/
     rm -fr openemr
@@ -247,13 +247,6 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
     chown -R apache /var/www/localhost/htdocs/openemr/
 fi
 
-if [ ! -f /etc/docker-leader ] &&
-   [ "$SWARM_MODE" == "yes" ]; then
-        # Restore the /var/www/localhost/htdocs/openemr/sites directory to what was created by the leader
-        echo "Restore /var/www/localhost/htdocs/openemr/sites to original."
-        rsync --owner --group --perms --recursive --links /swarm-pieces/sites /var/www/localhost/htdocs/openemr/
-fi
-
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
 if [ -f /etc/docker-leader ] ||
    [ "$SWARM_MODE" != "yes" ]; then
@@ -325,8 +318,6 @@ fi
 if [ -f /etc/docker-leader ] &&
    [ "$SWARM_MODE" == "yes" ] &&
    [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
-    # Copy the shared volume somewhere so it is not overwritten when other instances build
-    rsync --owner --group --perms --delete --recursive --links /var/www/localhost/htdocs/openemr/sites /swarm-pieces/
     # Set flag that the docker-leader configuration is complete
     touch /var/www/localhost/htdocs/openemr/sites/default/docker-completed
 fi
