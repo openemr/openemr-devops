@@ -10,7 +10,7 @@ RUN apk add --no-cache \
     php7-sodium php7-calendar \
     perl mysql-client tar curl imagemagick npm \
     python2 python3 openssl py-pip openssl-dev dcron \
-    shadow \
+    rsync shadow \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
 RUN usermod -u 1000 apache
@@ -62,6 +62,10 @@ RUN chmod 500 \
 RUN mkdir -p /run/apache2
 #Copy dev tools library to root
 COPY utilities/devtoolsLibrary.source /root/
+#Ensure swarm/orchestration pieces are available if needed
+RUN mkdir /swarm-pieces \
+    && rsync --owner --group --perms --delete --recursive --links /etc/ssl /swarm-pieces/ \
+    && rsync --owner --group --perms --delete --recursive --links /var/www/localhost/htdocs/openemr/sites /swarm-pieces/
 #go
 CMD [ "./run_openemr.sh" ]
 

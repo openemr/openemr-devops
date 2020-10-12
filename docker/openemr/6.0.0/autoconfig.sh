@@ -37,6 +37,19 @@ auto_setup() {
 }
 
 if [ "$SWARM_MODE" == "yes" ]; then
+    # Check if the shared volumes have been emptied out (persistent volumes in
+    # kubernetes seems to do this). If they have been emptied, then restore them.
+    if [ ! -f /etc/ssl/openssl.cnf ]; then
+        # Restore the emptied /etc/ssl directory
+        echo "Restoring empty /etc/ssl directory."
+        rsync --owner --group --perms --recursive --links /swarm-pieces/ssl /etc/
+    fi
+    if [ ! -d /var/www/localhost/htdocs/openemr/sites/default ]; then
+        # Restore the emptied /var/www/localhost/htdocs/openemr/sites directory
+        echo "Restoring empty /var/www/localhost/htdocs/openemr/sites directory."
+        rsync --owner --group --perms --recursive --links /swarm-pieces/sites /var/www/localhost/htdocs/openemr/
+    fi
+
     # Need to support replication for docker orchestration
     if [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-initiated ]; then
         # This docker instance will be the leader and perform configuration
