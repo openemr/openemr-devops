@@ -132,13 +132,13 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
    [ "$EASY_DEV_MODE_NEW" != "yes" ]; then
     echo "Configuring a new flex openemr docker"
     if [ "$FLEX_REPOSITORY" == "" ]; then
-        echo "Exiting from OpenEMR flex docker since missing required FLEX_REPOSITORY environment setting."
-        exit 1
+        echo "Missing FLEX_REPOSITORY environment setting, so using https://github.com/openemr/openemr.git"
+        FLEX_REPOSITORY="https://github.com/openemr/openemr.git"
     fi
     if [ "$FLEX_REPOSITORY_BRANCH" == "" ] &&
        [ "$FLEX_REPOSITORY_TAG" == "" ]; then
-        echo "Exiting from OpenEMR flex docker since missing required FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG environment setting."
-        exit 1
+        echo "Missing FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG environment setting, so using FLEX_REPOSITORY_BRANCH setting of master"
+        FLEX_REPOSITORY_BRANCH="master"
     fi
 
     cd /
