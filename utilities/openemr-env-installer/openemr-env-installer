@@ -334,7 +334,7 @@ fi
 	then
 		echo -e "\033[30m===>\033[0m \033[32mInstalling minikube... \033[0m"
 		echo ''
-		#curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-${minikube_os}-amd64
+		curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-${minikube_os}-amd64
 		echo ''
 		install_cmd_chk
 		sudo install minikube-${minikube_os}-amd64 /usr/local/bin/minikube
