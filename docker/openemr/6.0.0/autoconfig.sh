@@ -140,9 +140,9 @@ if [ -f /etc/docker-leader ] ||
     fi
 fi
 
+CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
 if [ -f /etc/docker-leader ] ||
    [ "$SWARM_MODE" != "yes" ]; then
-    CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
     if [ "$CONFIG" == "0" ] &&
        [ "$MYSQL_HOST" != "" ] &&
        [ "$MYSQL_ROOT_PASS" != "" ] &&
@@ -158,56 +158,56 @@ if [ -f /etc/docker-leader ] ||
         done
         echo "Setup Complete!"
     fi
+fi
 
-    if [ "$CONFIG" == "1" ] &&
-       [ "$MANUAL_SETUP" != "yes" ]; then
-        # OpenEMR has been configured
+if [ "$CONFIG" == "1" ] &&
+   [ "$MANUAL_SETUP" != "yes" ]; then
+    # OpenEMR has been configured
 
-        if $UPGRADE_YES; then
-            # Need to do the upgrade
-            echo "Attempting upgrade"
-            c=$DOCKER_VERSION_SITES
-            while [ "$c" -le "$DOCKER_VERSION_ROOT" ]; do
-                if [ "$c" -gt 0 ]; then
-                    echo "Start: Processing fsupgrade-$c.sh upgrade script"
-                    sh /root/fsupgrade-$c.sh
-                    echo "Completed: Processing fsupgrade-$c.sh upgrade script"
-                fi
-                c=$(( c + 1 ))
-            done
-            echo -n $DOCKER_VERSION_ROOT > /var/www/localhost/htdocs/openemr/sites/default/docker-version
-            echo "Completed upgrade"
-        fi
-
-        if [ -f auto_configure.php ]; then
-            # This section only runs once after above configuration since auto_configure.php gets removed after this script
-            echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
-            #set all directories to 500
-            find . -type d -print0 | xargs -0 chmod 500
-            #set all file access to 400
-            find . -type f -print0 | xargs -0 chmod 400
-
-            echo "Default file permissions and ownership set, allowing writing to specific directories"
-            chmod 700 run_openemr.sh
-            # Set file and directory permissions
-            find sites/default/documents -type d -print0 | xargs -0 chmod 700
-            find sites/default/documents -type f -print0 | xargs -0 chmod 700
-
-            echo "Removing remaining setup scripts"
-            #remove all setup scripts
-            rm -f admin.php
-            rm -f acl_upgrade.php
-            rm -f setup.php
-            rm -f sql_patch.php
-            rm -f sql_upgrade.php
-            rm -f ippf_upgrade.php
-            echo "Setup scripts removed, we should be ready to go now!"
-        fi
+    if $UPGRADE_YES; then
+        # Need to do the upgrade
+        echo "Attempting upgrade"
+        c=$DOCKER_VERSION_SITES
+        while [ "$c" -le "$DOCKER_VERSION_ROOT" ]; do
+            if [ "$c" -gt 0 ]; then
+                echo "Start: Processing fsupgrade-$c.sh upgrade script"
+                sh /root/fsupgrade-$c.sh
+                echo "Completed: Processing fsupgrade-$c.sh upgrade script"
+            fi
+            c=$(( c + 1 ))
+        done
+        echo -n $DOCKER_VERSION_ROOT > /var/www/localhost/htdocs/openemr/sites/default/docker-version
+        echo "Completed upgrade"
     fi
 
-    # ensure the auto_configure.php script has been removed
-    rm -f auto_configure.php
+    if [ -f auto_configure.php ]; then
+        # This section only runs once after above configuration since auto_configure.php gets removed after this script
+        echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
+        #set all directories to 500
+        find . -type d -print0 | xargs -0 chmod 500
+        #set all file access to 400
+        find . -type f -print0 | xargs -0 chmod 400
+
+        echo "Default file permissions and ownership set, allowing writing to specific directories"
+        chmod 700 run_openemr.sh
+        # Set file and directory permissions
+        find sites/default/documents -type d -print0 | xargs -0 chmod 700
+        find sites/default/documents -type f -print0 | xargs -0 chmod 700
+
+        echo "Removing remaining setup scripts"
+        #remove all setup scripts
+        rm -f admin.php
+        rm -f acl_upgrade.php
+        rm -f setup.php
+        rm -f sql_patch.php
+        rm -f sql_upgrade.php
+        rm -f ippf_upgrade.php
+        echo "Setup scripts removed, we should be ready to go now!"
+    fi
 fi
+
+# ensure the auto_configure.php script has been removed
+rm -f auto_configure.php
 
 if [ -f /etc/docker-leader ] &&
    [ "$SWARM_MODE" == "yes" ]; then
