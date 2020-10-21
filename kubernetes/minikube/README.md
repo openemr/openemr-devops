@@ -3,6 +3,7 @@ OpenEMR Kubernetes orchestration on Minikube. Creates 5 instances of OpenEMR wit
 
 # Use
 1. Install (and then start) Kubernetes with Minikube: https://kubernetes.io/docs/setup/learning-environment/minikube/
+    - If you want to set up the base services(e.g. git, docker, docker-compose, openemr-cmd, minikube and kubectl) easily, please try [openemr-env-installer](https://github.com/openemr/openemr-devops/tree/master/utilities/openemr-env-installer)
 2. To start OpenEMR orchestration:
     ```bash
     bash kub-up

@@ -26,10 +26,11 @@ See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_P
 
 ### Management Utilities
 * [OpenEMR Cmd](utilities/openemr-cmd): OpenEMR-Cmd is similar to devtools, it helps developers to manage and troubleshoot openemr outside the docker
-* [OpenEMR Env Installer](utilities/openemr-env-installer): OpenEMR Env Installer is used to set up the base and necessary services(e.g. git, docker, docker-compose, openemr-cmd) easily for the development/testing environment
+* [OpenEMR Env Installer](utilities/openemr-env-installer): OpenEMR Env Installer is used to set up the base and necessary services(e.g. git, docker, docker-compose, openemr-cmd, minikube, and kubectl) easily for the development/testing environment
 * [OpenEMR Monitor](utilities/openemr-monitor): OpenEMR Monitor is based on Prometheus, cAdvisor, Grafana, and alertmanger which helps administrator to monitor the status of containers
 * [Portainer](utilities/portainer): Portainer is a lightweight management UI which allows you to easily manage your different Docker environments (Docker hosts)
 * [OpenEMR Env Migrator](utilities/openemr-env-migrator): OpenEMR Env Migrator is used to migrate your container environment to the new storage directory or the remote host easily
+* [OpenEMR Kubernetes Orchestrations](kubernetes/minikube):  OpenEMR Kubernetes orchestration on Minikube. Creates 5 instances of OpenEMR with 1 instance of MariaDB, Redis, and phpMyAdmin.
 
 ## Contact Us
 
