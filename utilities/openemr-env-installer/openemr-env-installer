@@ -39,6 +39,7 @@ then
 			yum install git -y
 			;;
 		fedoraproject)
+		    dnf update -y
 			dnf install git -y
 			;;
 	esac
@@ -197,10 +198,10 @@ then
 				sudo apt-get install apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y
 				echo ''
 				echo -e "\033[30m===>\033[0m \033[32mAdding the Docker official GPG key... \033[0m"
-				sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+				sudo curl -fsSL https://download.docker.com/linux/${os_distribution}/gpg | sudo apt-key add -
 				echo ''
 				echo -e "\033[30m===>\033[0m \033[32mSetting up the stable repository... \033[0m"
-				sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+				sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/${os_distribution} $(lsb_release -cs) stable"
 				echo ''
 				echo -e "\033[30m===>\033[0m \033[32mInstalling docker engine... \033[0m"
 				echo ''
@@ -236,6 +237,7 @@ then
     			curl -o /etc/yum.repos.d/docker-ce.repo https://download.docker.com/linux/fedora/docker-ce.repo &>/dev/null
 				echo -e "\033[30m===>\033[0m \033[32mInstalling docker-ce docker-ce-cli containerd.io... \033[0m"
 				echo ''
+				dnf update -y
 				dnf install docker-ce docker-ce-cli containerd.io -y
 				start_enable_docker
 				echo ''
@@ -318,8 +320,28 @@ run_cluster_tip() {
 	echo -e "\033[32mfor help setting up a compatible container or virtual-machine manager.\033[0m"
 }
 
-# Install minikube
-install_minikube(){
+# Install conntrack pkg
+install_conntrack() {
+os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
+case "$os_distribution" in
+	ubuntu|debian)
+ 			echo -e "\033[30m===>\033[0m \033[32mInatalling conntrack package... \033[0m"
+			echo ''
+			sudo apt-get update -y
+			sudo apt-get install conntrack -y
+			echo ''
+			;;
+	redhat|centos|fedoraproject)
+			echo -e "\033[30m===>\033[0m \033[32mInatalling conntrack package... \033[0m"
+			echo ''
+			yum install conntrack -y
+			echo ''
+			;;
+esac
+}
+
+# Install minikube and kubectl
+install_minikube_kubectl(){
 # Judge the os type e.g. Linux or MacOS
 if [ "$os_type" == "Linux" ]
 then
@@ -334,7 +356,7 @@ fi
 	then
 		echo -e "\033[30m===>\033[0m \033[32mInstalling minikube... \033[0m"
 		echo ''
-		curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-${minikube_os}-amd64
+		sudo curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-${minikube_os}-amd64
 		echo ''
 		install_cmd_chk
 		sudo install minikube-${minikube_os}-amd64 /usr/local/bin/minikube
@@ -348,6 +370,19 @@ fi
 		run_cluster_tip
 		echo ''
 	fi
+	# Install kubectl
+	which kubectl &>/dev/null
+	if [ $? -ne 0 ]
+	then
+		echo -e "\033[30m===>\033[0m \033[32mInstalling kubectl... \033[0m"
+		echo ''
+		sudo curl -L https://storage.googleapis.com/kubernetes-release/release/v1.19.0/bin/${minikube_os}/amd64/kubectl -o /usr/local/bin/kubectl
+		sudo chmod +x /usr/local/bin/kubectl
+		echo ''
+	else
+		echo -e "\033[30m===>\033[0m \033[32mKubectl is already installed. \033[0m"
+		echo ''
+	fi
 }
 
 # The checking command
@@ -357,6 +392,8 @@ quick_check_command() {
 	docker-compose --version
 	openemr-cmd --version
 	minikube version | grep version
+	echo -e "\033[36mKubectl check:\033[0m"
+	kubectl version --client
 }
 
 # The checking result
@@ -367,6 +404,7 @@ quick_check_result() {
 	echo '*****************Quick Check*****************'
 	quick_check_command
 	echo -e "\033[36mThe docker status: \033[0m\033[32m${docker_status} \033[0m"
+	echo -e "\033[33mNOTE: Please run 'dnf update' for fedora if docker-compose check failed.\033[0m"
 	echo '*********************************************'
 	echo ''
 }
@@ -382,7 +420,8 @@ startup_the_env() {
 	echo -e "\033[34m==>\033[0mOr run the below command to startup \033[33minsane env\033[0m."
 	echo -e "\033[32m   cd ${code_location}/openemr/contrib/util/docker && openemr-cmd up\033[0m"
 	echo -e "\033[34m==>\033[0mOr run the below command to startup \033[33mOpenEMR Orchestration\033[0m."
-	echo -e "\033[32m   minikube start\033[0m"
+	echo -e "\033[33m   Please run with '--driver=none' for minikube if run as root.\033[0m"
+	echo -e "\033[32m   minikube start --driver=docker\033[0m"
 	echo -e "\033[32m   cd ${code_location}/openemr-devops/kubernetes/minikube/ && bash kub-up\033[0m"
 	echo '*****************************************************************************************************'
 }
@@ -446,7 +485,8 @@ then
 			install_docker
 			install_docker_compose
 			install_openemr_cmd
-			install_minikube
+			install_conntrack
+			install_minikube_kubectl
 			quick_check_result
 			startup_the_env $1
 elif [ "$os_type" == "Darwin" ]
@@ -525,7 +565,7 @@ then
 	install_openemr_cmd
 
     # Install minikube
-	install_minikube
+	install_minikube_kubectl
 
 	# Check the installation result
 	echo '****************************Quick Check****************************'
