@@ -2,7 +2,7 @@
 
 ## Overview
 
-OpenEMR Env Installer is used to set up the base and necessary services(e.g. git, docker, docker-compose, openemr-cmd and minikube) easily for the development/testing environment. You can save time to set up the base services especially you need multiple environments in different machines. OpenEMR Env Installer is available on ubuntu, debian, centos, rhel, fedora and macOS.
+OpenEMR Env Installer is used to set up the base and necessary services(e.g. git, docker, docker-compose, openemr-cmd, minikube and kubectl) easily for the development/testing environment. You can save time to set up the base services especially you need multiple environments in different machines. OpenEMR Env Installer is available on ubuntu, debian, centos, rhel, fedora and macOS.
 
 ## Implementation
 
