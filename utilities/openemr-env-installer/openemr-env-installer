@@ -420,8 +420,8 @@ startup_the_env() {
 	echo -e "\033[34m==>\033[0mOr run the below command to startup \033[33minsane env\033[0m."
 	echo -e "\033[32m   cd ${code_location}/openemr/contrib/util/docker && openemr-cmd up\033[0m"
 	echo -e "\033[34m==>\033[0mOr run the below command to startup \033[33mOpenEMR Orchestration\033[0m."
-	echo -e "\033[33m   Please run with '--driver=none' for minikube if run as root.\033[0m"
-	echo -e "\033[32m   minikube start --driver=docker\033[0m"
+	echo -e "\033[33m   Please try to run with '--driver=docker' option if it cannot detect the driver.\033[0m"
+	echo -e "\033[32m   minikube start\033[0m"
 	echo -e "\033[32m   cd ${code_location}/openemr-devops/kubernetes/minikube/ && bash kub-up\033[0m"
 	echo '*****************************************************************************************************'
 }
