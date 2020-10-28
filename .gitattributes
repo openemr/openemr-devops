@@ -1,2 +1,3 @@
 #Git will always convert line endings to LF on checkout. You should use this for files that must keep LF endings, even on Windows.
-text eol=lf 
+* text=auto
+*.sh text eol=lf
