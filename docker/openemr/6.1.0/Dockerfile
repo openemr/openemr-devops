@@ -18,7 +18,7 @@ RUN usermod -u 1000 apache
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 #clone openemr
 RUN apk add --no-cache git build-base libffi-dev python3-dev \
-    && git clone https://github.com/openemr/openemr.git --branch rel-600 --depth 1 \
+    && git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
     && cd openemr \
     && composer install --no-dev \
