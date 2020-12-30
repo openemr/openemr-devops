@@ -55,9 +55,11 @@ RUN chmod 500 run_openemr.sh autoconfig.sh /root/unlock_admin.sh \
 #bring in pieces used for automatic upgrade process
 COPY upgrade/docker-version \
      upgrade/fsupgrade-1.sh \
+     upgrade/fsupgrade-2.sh \
      /root/
 RUN chmod 500 \
-    /root/fsupgrade-1.sh
+    /root/fsupgrade-1.sh \
+    /root/fsupgrade-2.sh
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
 #Copy dev tools library to root
