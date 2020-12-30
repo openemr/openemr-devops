@@ -169,7 +169,7 @@ if [ "$CONFIG" == "1" ] &&
         echo "Attempting upgrade"
         c=$DOCKER_VERSION_SITES
         while [ "$c" -le "$DOCKER_VERSION_ROOT" ]; do
-            if [ "$c" -gt 0 ]; then
+            if [ "$c" -gt "$DOCKER_VERSION_SITES" ] ; then
                 echo "Start: Processing fsupgrade-$c.sh upgrade script"
                 sh /root/fsupgrade-$c.sh
                 echo "Completed: Processing fsupgrade-$c.sh upgrade script"
