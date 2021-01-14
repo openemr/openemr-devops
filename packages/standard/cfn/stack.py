@@ -14,7 +14,7 @@ ref_region = Ref('AWS::Region')
 ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
-docker_version = ':5.0.2'
+docker_version = ':6.0.0'
 
 
 def setInputs(t, args):
@@ -1030,7 +1030,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString = 'OpenEMR Cloud Standard v5.0.2-3 cloud deployment'
+descString = 'OpenEMR Cloud Standard v6.0.0 cloud deployment'
 if (args.dev):
     descString += ' [developer]'
 if (args.recovery):
