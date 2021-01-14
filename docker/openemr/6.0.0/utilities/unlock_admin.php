@@ -10,6 +10,8 @@ require_once("/var/www/localhost/htdocs/openemr/interface/globals.php");
 
 use OpenEMR\Common\Auth\AuthUtils;
 
+$GLOBALS['secure_password'] = 0;
+
 sqlStatement("UPDATE `users` SET `active` = 1 WHERE `id` = 1");
 
 $currentPassword = "pass";
