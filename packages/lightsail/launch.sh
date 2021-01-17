@@ -42,57 +42,64 @@ while getopts "s:b:t:d:" opt; do
   esac
 done
 
-cd /root
+f () {
+  cd /root
 
-# bad news for EC2, *necessary* for Lightsail nano
-if [[ $SWAPAMT != 0 ]]; then
-  echo Allocating ${SWAPAMT}G swap...
-  fallocate -l ${SWAPAMT}G $SWAPPATHNAME
-  mkswap $SWAPPATHNAME
-  chmod 600 $SWAPPATHNAME
-  swapon $SWAPPATHNAME
-  echo "$SWAPPATHNAME  none  swap  sw 0  0" >> /etc/fstab
-else
-  echo Skipping swap allocation...
-fi
-
-apt-get update
-apt-get install jq git duplicity -y
-apt-get install apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-# apt-key fingerprint 0EBFCD88
-add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-apt-get update
-apt-get install docker-ce docker-ce-cli containerd.io docker-compose -y
-
-mkdir backups
-
-if [[ $REPOBRANCH == master ]]; then
-  git clone --single-branch https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
-else
-  git clone --single-branch --branch $REPOBRANCH https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
-fi
-curl -L https://github.com/docker/compose/releases/download/1.15.0/docker-compose-`uname -s`-`uname -m` > docker-compose
-chmod +x docker-compose
-
-if [[ $DEVELOPERMODE == 0 ]]; then
-  ln -s docker-compose.prod.yml docker-compose.yml
-  if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
-    echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
-    sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+  # bad news for EC2, *necessary* for Lightsail nano
+  if [[ $SWAPAMT != 0 ]]; then
+    echo Allocating ${SWAPAMT}G swap...
+    fallocate -l ${SWAPAMT}G $SWAPPATHNAME
+    mkswap $SWAPPATHNAME
+    chmod 600 $SWAPPATHNAME
+    swapon $SWAPPATHNAME
+    echo "$SWAPPATHNAME  none  swap  sw 0  0" >> /etc/fstab
+  else
+    echo Skipping swap allocation...
   fi
-else
-  ln -s docker-compose.dev.yml docker-compose.yml
-  if [[ $CURRENTBUILD != $OVERRIDEBUILD ]]; then
-    echo launch.sh: switching to developer build $OVERRIDEBUILD, from $CURRENTBUILD
-    sed -i "s^../../docker/openemr/$CURRENTBUILD^../../docker/openemr/$OVERRIDEBUILD^" docker-compose.yml
+
+  apt-get update
+  apt-get install jq git duplicity -y
+  apt-get install apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
+  # apt-key fingerprint 0EBFCD88
+  add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+  apt-get update
+  apt-get install docker-ce docker-ce-cli containerd.io docker-compose -y
+
+  mkdir backups
+
+  if [[ $REPOBRANCH == master ]]; then
+    git clone --single-branch https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
+  else
+    git clone --single-branch --branch $REPOBRANCH https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
   fi
-fi
-docker-compose up -d --build
+  curl -L https://github.com/docker/compose/releases/download/1.15.0/docker-compose-`uname -s`-`uname -m` > docker-compose
+  chmod +x docker-compose
 
-chmod a+x duplicity/*.sh
+  if [[ $DEVELOPERMODE == 0 ]]; then
+    ln -s docker-compose.prod.yml docker-compose.yml
+    if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
+      echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
+      sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+    fi
+  else
+    ln -s docker-compose.dev.yml docker-compose.yml
+    if [[ $CURRENTBUILD != $OVERRIDEBUILD ]]; then
+      echo launch.sh: switching to developer build $OVERRIDEBUILD, from $CURRENTBUILD
+      sed -i "s^../../docker/openemr/$CURRENTBUILD^../../docker/openemr/$OVERRIDEBUILD^" docker-compose.yml
+    fi
+  fi
+  docker-compose up -d --build
 
-cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
-cp duplicity/restore.sh /root/restore.sh
+  chmod a+x duplicity/*.sh
 
-echo "launch.sh: done"
+  cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
+  cp duplicity/restore.sh /root/restore.sh
+
+  echo "launch.sh: done"
+  exit 0
+}
+
+f
+echo failure?
+exit 1
