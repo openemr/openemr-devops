@@ -204,7 +204,7 @@
                 "db.r5.2xlarge",
                 "db.r5.4xlarge"
             ],
-            "Default": "db.t2.small",
+            "Default": "db.t3.small",
             "Description": "RDS instance size for the back-end database",
             "Type": "String"
         },

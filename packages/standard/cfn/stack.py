@@ -54,7 +54,7 @@ def setInputs(t, args):
     t.add_parameter(Parameter(
         'WebserverInstanceSize',
         Description='EC2 instance size for the webserver',
-        Default='t2.small',
+        Default='t3.small',
         Type='String',
         AllowedValues=[
             't3.small', 't3.medium', 't3.large', 't3.xlarge', 't3.2xlarge',
@@ -83,7 +83,7 @@ def setInputs(t, args):
     t.add_parameter(Parameter(
         'RDSInstanceSize',
         Description='RDS instance size for the back-end database',
-        Default='db.t2.small',
+        Default='db.t3.small',
         Type='String',
         AllowedValues=[
             'db.t3.small', 'db.t3.medium', 'db.t3.large', 'db.t3.xlarge', 'db.t3.2xlarge',
