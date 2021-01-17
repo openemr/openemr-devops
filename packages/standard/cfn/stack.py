@@ -57,7 +57,7 @@ def setInputs(t, args):
         Default='t2.small',
         Type='String',
         AllowedValues=[
-            't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge',
+            't3.small', 't3.medium', 't3.large', 't3.xlarge', 't3.2xlarge',
             'm5.large', 'm5.xlarge', 'm5.2xlarge', 'm5.4xlarge', 'm5.12xlarge', 'm5.24xlarge',
             'c5.large', 'c5.xlarge', 'c5.2xlarge', 'c5.4xlarge', 'c5.9xlarge', 'c5.18xlarge'
         ]
@@ -86,9 +86,9 @@ def setInputs(t, args):
         Default='db.t2.small',
         Type='String',
         AllowedValues=[
-            'db.t2.small', 'db.t2.medium', 'db.t2.large', 'db.t2.xlarge', 'db.t2.2xlarge',
-            'db.m4.large', 'db.m4.xlarge', 'db.m4.2xlarge', 'db.m4.4xlarge',
-            'db.r4.large', 'db.r4.xlarge', 'db.r4.2xlarge', 'db.r4.4xlarge'
+            'db.t3.small', 'db.t3.medium', 'db.t3.large', 'db.t3.xlarge', 'db.t3.2xlarge',
+            'db.m5.large', 'db.m5.xlarge', 'db.m5.2xlarge', 'db.m5.4xlarge',
+            'db.r5.large', 'db.r5.xlarge', 'db.r5.2xlarge', 'db.r5.4xlarge'
         ]
     ))
 
