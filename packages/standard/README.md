@@ -2,7 +2,7 @@
 
 ## Introduction
 
-[OpenEMR](https://www.open-emr.org/) is a 2014 ONC Complete EHR Certified medical practice management solution. [OpenEMR Standard](https://aws.amazon.com/marketplace/pp/B07BBT4C1H) is a HIPAA-eligible deployment for the Amazon Marketplace &mdash; consult the [datasheet](http://www.open-emr.org/wiki/index.php/OpenEMR_Cloud_Standard_Data_Sheet) for further details.
+[OpenEMR](https://www.open-emr.org/) OpenEMR is the most popular open source electronic health records and medical practice management solution. OpenEMR's goal is a superior alternative to its proprietary counterparts with passionate volunteers and contributors dedicated to guarding OpenEMR's status as a free, open source software solution for medical practices with a commitment to openness, kindness and cooperation.. [OpenEMR Standard](https://aws.amazon.com/marketplace/pp/B07BBT4C1H) is a HIPAA-eligible deployment for the Amazon Marketplace &mdash; consult the [datasheet](http://www.open-emr.org/wiki/index.php/OpenEMR_Cloud_Standard_Data_Sheet) for further details.
 
 ## Administration
 
