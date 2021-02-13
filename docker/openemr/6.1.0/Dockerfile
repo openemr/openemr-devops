@@ -9,7 +9,7 @@ RUN apk add --no-cache \
     php7-mysqli php7-sockets php7-xmlreader php7-redis php7-simplexml php7-xmlwriter php7-phar php7-fileinfo \
     php7-sodium php7-calendar \
     perl mysql-client tar curl imagemagick npm \
-    python2 python3 openssl py-pip openssl-dev dcron \
+    python2 python3 openssl py-pip openssl-dev dcron cargo \
     rsync shadow \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
@@ -17,7 +17,7 @@ RUN usermod -u 1000 apache
 # Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 #clone openemr
-RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
+RUN apk add --no-cache git build-base libffi-dev python3-dev \
     && git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
     && cd openemr \
@@ -40,7 +40,7 @@ RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
     && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache git build-base libffi-dev python3-dev cargo
+    && apk del --no-cache git build-base libffi-dev python3-dev
 WORKDIR /var/www/localhost/htdocs/openemr
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
