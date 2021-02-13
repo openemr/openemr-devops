@@ -9,15 +9,15 @@ RUN apk add --no-cache \
     php8-mysqli php8-sockets php8-xmlreader php8-redis perl php8-simplexml php8-xmlwriter php8-phar php8-fileinfo \
     php8-sodium php8-calendar \
     mysql-client tar curl imagemagick npm \
-    python2 python3 openssl git libffi-dev py-pip python3-dev build-base openssl-dev dcron \
+    python2 python3 openssl git libffi-dev py-pip python3-dev build-base openssl-dev dcron cargo \
     rsync shadow jq \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
     RUN usermod -u 1000 apache
-
 #Stuff for developers since this predominantly a developer/tester docker
 RUN apk add --no-cache \
     unzip vim nano bash bash-doc bash-completion tree
+
 #BELOW LINE NEEDED TO SUPPORT PHP8 ON ALPINE 3.13; SHOULD BE ABLE TO REMOVE THIS IN FUTURE ALPINE VERSIONS
 RUN cp /usr/bin/php8 /usr/bin/php
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
