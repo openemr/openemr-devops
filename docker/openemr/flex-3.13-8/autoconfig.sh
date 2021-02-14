@@ -342,7 +342,7 @@ if [ "$XDEBUG_IDE_KEY" != "" ] &&
 
     # set up xdebug in php.ini
     echo "; start xdebug configuration" >> /etc/php8/php.ini
-    echo "zend_extension=/usr/lib/php7/modules/xdebug.so" >> /etc/php8/php.ini
+    echo "zend_extension=/usr/lib/php8/modules/xdebug.so" >> /etc/php8/php.ini
     echo "xdebug.output_dir=/tmp" >> /etc/php8/php.ini
     echo "xdebug.start_with_request=trigger" >> /etc/php8/php.ini
     if [ "$XDEBUG_PROFILER_ON" == 1 ]; then
