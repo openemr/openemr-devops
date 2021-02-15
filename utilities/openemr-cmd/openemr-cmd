@@ -13,7 +13,7 @@
 VERSION="1.0.6"
 
 # Set the default container name/id to look for
-INSANE_DEV_DOCKER="_openemr-7-3-312_1"
+INSANE_DEV_DOCKER="_openemr-7-4_1"
 EASY_DEV_DOCKER="_openemr_1"
 COUCHDB_DOCKER="_couchdb_1"
 
