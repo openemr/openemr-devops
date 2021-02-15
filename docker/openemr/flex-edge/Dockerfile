@@ -9,7 +9,7 @@ RUN apk add --no-cache \
     php7-mysqli php7-sockets php7-xmlreader php7-redis perl php7-simplexml php7-xmlwriter php7-phar php7-fileinfo \
     php7-sodium php7-calendar \
     mysql-client tar curl imagemagick npm \
-    python2 python3 openssl git libffi-dev py-pip python3-dev build-base openssl-dev dcron \
+    python2 python3 openssl git py-pip openssl-dev dcron \
     rsync shadow jq \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
@@ -18,14 +18,18 @@ RUN usermod -u 1000 apache
 RUN apk add --no-cache \
     unzip vim nano bash bash-doc bash-completion tree
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
-#some other stuff (note not deleting build-base, libffi-dev, and python-dev since this
-# is predominantly a developer/tester docker)
-RUN mkdir -p /var/www/localhost/htdocs/openemr/sites \
+# TODO: Note that flex series 3.13+ needs to keep build-base package in (ie. not apk del it after done) for now
+#  since npm package libxmljs needs to be built during openemr build; this is part of the ccda npm build and
+#  can place build-base in below apk del line when this issue is fixed)
+#  btw, when this is fixed and we apk del build-base, this will decrease size of docker by 190MB :)
+RUN apk add --no-cache build-base libffi-dev python3-dev cargo \
+    && mkdir -p /var/www/localhost/htdocs/openemr/sites \
     && chown -R apache /var/www/localhost/htdocs/openemr \
     && git clone https://github.com/letsencrypt/letsencrypt --depth 1 /opt/certbot \
     && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
-    && mkdir -p /etc/ssl/certs /etc/ssl/private
+    && mkdir -p /etc/ssl/certs /etc/ssl/private \
+    && apk del --no-cache libffi-dev python3-dev cargo
 WORKDIR /var/www/localhost/htdocs
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
