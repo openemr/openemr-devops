@@ -343,19 +343,20 @@ if [ "$XDEBUG_IDE_KEY" != "" ] &&
     # set up xdebug in php.ini
     echo "; start xdebug configuration" >> /etc/php7/php.ini
     echo "zend_extension=/usr/lib/php7/modules/xdebug.so" >> /etc/php7/php.ini
-    echo "xdebug.remote_enable=1" >> /etc/php7/php.ini
-    echo "xdebug.remote_handler=dbgp" >> /etc/php7/php.ini
-    echo "xdebug.remote_port=9000" >> /etc/php7/php.ini
-    echo "xdebug.remote_connect_back=1" >> /etc/php7/php.ini
-    echo "xdebug.idekey=${XDEBUG_IDE_KEY}" >> /etc/php7/php.ini
-    echo "xdebug.remote_log=/tmp/xdebug.log" >> /etc/php7/php.ini
+    echo "xdebug.output_dir=/tmp" >> /etc/php7/php.ini
+    echo "xdebug.start_with_request=trigger" >> /etc/php7/php.ini
     if [ "$XDEBUG_PROFILER_ON" == 1 ]; then
         # set up xdebug profiler
-        echo "xdebug.profiler_enable=0" >> /etc/php7/php.ini
-        echo "xdebug.profiler_enable_trigger=1" >> /etc/php7/php.ini
-        echo "xdebug.profiler_output_dir=/tmp" >> /etc/php7/php.ini
+        echo "xdebug.mode=debug,profile" >> /etc/php7/php.ini
         echo "xdebug.profiler_output_name=cachegrind.out.%s" >> /etc/php7/php.ini
+    else
+        echo "xdebug.mode=debug" >> /etc/php7/php.ini
     fi
+    echo "xdebug.remote_handler=dbgp" >> /etc/php7/php.ini
+    echo "xdebug.client_port=9000" >> /etc/php7/php.ini
+    echo "xdebug.discover_client_host=1" >> /etc/php7/php.ini
+    echo "xdebug.idekey=${XDEBUG_IDE_KEY}" >> /etc/php7/php.ini
+    echo "xdebug.log=/tmp/xdebug.log" >> /etc/php7/php.ini
     echo "; end xdebug configuration" >> /etc/php7/php.ini
 
     # Ensure only configure this one time
