@@ -17,7 +17,7 @@ RUN usermod -u 1000 apache
 # Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 #clone openemr
-RUN apk add --no-cache git build-base libffi-dev python3-dev \
+RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
     && git clone https://github.com/openemr/openemr.git --branch rel-600 --depth 1 \
     && rm -rf openemr/.git \
     && cd openemr \
@@ -40,7 +40,7 @@ RUN apk add --no-cache git build-base libffi-dev python3-dev \
     && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache git build-base libffi-dev python3-dev
+    && apk del --no-cache git build-base libffi-dev python3-dev cargo
 WORKDIR /var/www/localhost/htdocs/openemr
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
