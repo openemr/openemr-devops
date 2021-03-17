@@ -22,6 +22,11 @@ RUN apk add --no-cache \
 RUN cp /usr/bin/php8 /usr/bin/php
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
+# Below line is needed to avoid breaking the raspberry pi builds
+# TODO - intermittently remove this line to see if the error (failed to fetch
+#        https://github.com/rust-lang/crates.io-index... ) has gone away.
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
+
 # TODO: Note that flex series 3.13+ needs to keep build-base package in (ie. not apk del it after done) for now
 #  since npm package libxmljs needs to be built during openemr build; this is part of the ccda npm build and
 #  can place build-base in below apk del line when this issue is fixed)
