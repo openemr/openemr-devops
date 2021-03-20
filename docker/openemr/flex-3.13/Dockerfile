@@ -24,10 +24,6 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin -
 #        https://github.com/rust-lang/crates.io-index... ) has gone away.
 ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
-# TODO: Note that flex series 3.13+ needs to keep build-base package in (ie. not apk del it after done) for now
-#  since npm package libxmljs needs to be built during openemr build; this is part of the ccda npm build and
-#  can place build-base in below apk del line when this issue is fixed)
-#  btw, when this is fixed and we apk del build-base, this will decrease size of docker by 190MB :)
 RUN apk add --no-cache build-base libffi-dev python3-dev cargo \
     && mkdir -p /var/www/localhost/htdocs/openemr/sites \
     && chown -R apache /var/www/localhost/htdocs/openemr \
@@ -35,7 +31,7 @@ RUN apk add --no-cache build-base libffi-dev python3-dev cargo \
     && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache libffi-dev python3-dev cargo
+    && apk del --no-cache build-base libffi-dev python3-dev cargo
 WORKDIR /var/www/localhost/htdocs
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
