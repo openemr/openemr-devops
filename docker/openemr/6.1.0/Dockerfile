@@ -29,6 +29,9 @@ RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
     && composer install --no-dev \
     && npm install --unsafe-perm \
     && npm run build \
+    && cd ccdaservice \
+    && npm install --unsafe-perm \
+    && cd ../ \
     && composer global require phing/phing \
     && /root/.composer/vendor/bin/phing vendor-clean \
     && /root/.composer/vendor/bin/phing assets-clean \
