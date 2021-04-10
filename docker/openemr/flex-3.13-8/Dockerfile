@@ -7,7 +7,7 @@ RUN apk add --no-cache \
     php8-json php8-pdo php8-pdo_mysql php8-curl php8-ldap php8-openssl php8-iconv \
     php8-xml php8-xsl php8-gd php8-zip php8-soap php8-mbstring php8-zlib \
     php8-mysqli php8-sockets php8-xmlreader php8-redis perl php8-simplexml php8-xmlwriter php8-phar php8-fileinfo \
-    php8-sodium php8-calendar \
+    php8-sodium php8-calendar php8-intl \
     mysql-client tar curl imagemagick npm \
     python2 python3 openssl git py-pip openssl-dev dcron \
     rsync shadow jq \
