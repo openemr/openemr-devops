@@ -192,3 +192,28 @@ toggleOnSelfSignedCert() {
     mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_crt'" "$CUSTOM_DATABASE"
     mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_key'" "$CUSTOM_DATABASE"
 }
+
+configureCareCoordinationModule() {
+    if [ "$CARE_COORDINATION_MODULE_ON" == "1" ]; then
+        # register modules
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Immunization
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Syndromicsurveillance
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Documents
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Ccr
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Carecoordination
+        # install modules
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Immunization
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Syndromicsurveillance
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Documents
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Ccr
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Carecoordination
+        # enable modules
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Immunization
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Syndromicsurveillance
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Documents
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Ccr
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Carecoordination
+        # give acl admin group access to use care coordination module
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php acl-modify --site=default --modname=Carecoordination --aclgroup=admin --aclaction=enable
+    fi
+}
