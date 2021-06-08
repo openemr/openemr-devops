@@ -404,4 +404,11 @@ if [ "$XDEBUG_IDE_KEY" != "" ] ||
         # Ensure only configure this one time
         touch /etc/php-xdebug-configured
     fi
+
+    # to prevent the 'Xdebug: [Log Files] File '/tmp/xdebug.log' could not be opened.' messages
+    #  (need to keep doing this since /tmp may be cleared)
+    if [ ! -f /tmp/xdebug.log ]; then
+        touch /tmp/xdebug.log;
+    fi
+    chmod 666 /tmp/xdebug.log;
 fi
