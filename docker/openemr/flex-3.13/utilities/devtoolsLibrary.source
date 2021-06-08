@@ -246,12 +246,18 @@ generateMultisiteBank() {
     while [ $a -le "$1" ]
     do
         run="run${a}"
-        echo "dropping ${run} sql database and sql user if they already exist"
+        echo "dropping ${run} sql database, sql user, and directory if they already exist (just ignore any errors that are displayed)"
         mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP DATABASE ${run}"
         mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP USER '${run}'"
+        rm -fr /var/www/localhost/htdocs/openemr/sites/${run}
         rm /tmp/setup_dump.sql
         echo "adding ${run} multisite"
         php /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php rootpass=root server="$MYSQL_HOST" loginhost=% login=${run} pass=${run} dbname=${run} site=${run} source_site_id=default clone_database=yes
+        chown -R apache /var/www/localhost/htdocs/openemr/sites/${run}
+        find /var/www/localhost/htdocs/openemr/sites/${run} -type d -print0 | xargs -0 chmod 500
+        find /var/www/localhost/htdocs/openemr/sites/${run} -type f -print0 | xargs -0 chmod 400
+        find /var/www/localhost/htdocs/openemr/sites/${run}/documents -type d -print0 | xargs -0 chmod 700
+        find /var/www/localhost/htdocs/openemr/sites/${run}/documents -type f -print0 | xargs -0 chmod 700
         echo "completed adding ${run} multisite"
         a=`expr $a + 1`
     done
