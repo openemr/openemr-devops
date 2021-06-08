@@ -3,14 +3,14 @@
 # Function  : Manage the docker command line
 # Version   : See below --version section
 # Copyright : Copyright (c) 2020 Reid Liu <guliu@redhat.com>
-# Copyright : Copyright (c) 2020 Brady Miller <brady.g.miller@gmail.com>
+# Copyright : Copyright (c) 2020-2021 Brady Miller <brady.g.miller@gmail.com>
 # Author    : Reid Liu <guliu@redhat.com>
 # Author    : Brady Miller <brady.g.miller@gmail.com>
 # License   : https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.6"
+VERSION="1.0.7"
 
 # Set the default container name/id to look for
 INSANE_DEV_DOCKER="_openemr-7-4_1"
@@ -296,6 +296,9 @@ then
   echo "  lso, ldap-ssl-off                  Remove testing ldap ssl CA cert"
   echo "  lsc, ldap-ssl-client               Use testing ldap ssl client certs"
   echo "  lsco, ldap-ssl-client-off          Remove testing ldap ssl client certs"
+  echo 'computational-health-informatics:'
+	echo "  irp, import-random-patients        Create and import random patients <number patients>"
+	echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
   echo 'others:'
 	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
 	echo "  el, enable-ldap                    Turn on support for LDAP - login credentials are admin:admin"
@@ -521,6 +524,12 @@ case "$FIRST_ARG" in
 		;;
 	lsco)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl-client-off"
+		;;
+	irp|import-random-patients)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS import-random-patients $@"
+		;;
+	gmb|generate-multisite-bank)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS generate-multisite-bank $@"
 		;;
 	el)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS enable-ldap"

@@ -417,40 +417,9 @@ if [ "$1" == "list-xdebug-profiles" ]; then
 fi
 
 if [ "$1" == "import-random-patients" ] && [ ! -z "$2" ]; then
-    echo "Setting up for following number of random patients (each patient will take several seconds): ${2}"
-    if [ ! -d /root/synthea ]; then
-        echo "Setting up synthea first"
-        apk update
-        apk add openjdk8-jre
-        mkdir /root/synthea
-        cd /root/synthea
-        wget https://github.com/synthetichealth/synthea/releases/download/master-branch-latest/synthea-with-dependencies.jar
-    fi
-    rm -fr /root/synthea/output
-    cd /root/synthea
-    java -jar synthea-with-dependencies.jar --exporter.fhir.export false --exporter.ccda.export true --generate.only_alive_patients true -p "$2"
-    sed -i "s@exit;@//exit;@" /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php
-    php /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php /root/synthea/output/ccda default /var/www/localhost/htdocs/openemr true
-    sed -i "s@//exit;@exit;@" /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php
-    echo "Starting run for following number of random patients (each patient will take several seconds): ${2}"
+    importRandomPatients "$2"
 fi
 
-if [ "$1" == "generate-multsite-bank" ] && [ ! -z "$2" ]; then
-    echo "Setting up a multisite bank with following number of multisites (labeled run1, run2, run3, ...): run1...run${2}"
-    sed -i "s@exit;@//exit;@" /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php
-    a=1
-    while [ $a -le "$2" ]
-    do
-        run="run${a}"
-        echo "dropping ${run} sql database and sql user if they already exist"
-        mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP DATABASE ${run}"
-        mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP USER '${run}'"
-        rm /tmp/setup_dump.sql
-        echo "adding ${run} multisite"
-        php /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php rootpass=root server="$MYSQL_HOST" loginhost=% login=${run} pass=${run} dbname=${run} site=${run} source_site_id=default clone_database=yes
-        echo "completed adding ${run} multisite"
-        a=`expr $a + 1`
-    done
-    sed -i "s@//exit;@exit;@" /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php
-    echo "Completed setting up a multisite bank with following number of multisites (labeled run1, run2, run3, ...): run1...run${2}"
+if [ "$1" == "generate-multisite-bank" ] && [ ! -z "$2" ]; then
+    generateMultisiteBank "$2"
 fi
