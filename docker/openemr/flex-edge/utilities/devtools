@@ -114,6 +114,7 @@ if [ "$1" == "dev-install" ]; then
     prepareVariables
     installOpenemr
     setGlobalSettings
+    configureCareCoordinationModule
 fi
 
 if [ "$1" == "dev-reset-install" ]; then
@@ -122,6 +123,7 @@ if [ "$1" == "dev-reset-install" ]; then
     resetOpenemr
     installOpenemr
     setGlobalSettings
+    configureCareCoordinationModule
 fi
 
 if [ "$1" == "dev-reset-install-demodata" ]; then
@@ -131,6 +133,7 @@ if [ "$1" == "dev-reset-install-demodata" ]; then
     installOpenemr
     demoData
     setGlobalSettings
+    configureCareCoordinationModule
 fi
 
 if [ "$1" == "dev-sqldrive" ]; then
@@ -146,6 +149,7 @@ if [ "$1" == "dev-reset-install-sqldrive" ]; then
     installOpenemr
     sqlDataDrive
     setGlobalSettings
+    configureCareCoordinationModule
 fi
 
 if [ "$1" == "dev-reset-install-demodata-sqldrive" ]; then
@@ -156,6 +160,7 @@ if [ "$1" == "dev-reset-install-demodata-sqldrive" ]; then
     demoData
     sqlDataDrive
     setGlobalSettings
+    configureCareCoordinationModule
 fi
 
 if [ "$1" == "enable-multisite" ]; then
@@ -409,4 +414,12 @@ fi
 if [ "$1" == "list-xdebug-profiles" ]; then
     echo "Listing xdebug profiles"
     ls -al /tmp/cachegrind.out.* | awk '{print $6, $7, $8, $9}'
+fi
+
+if [ "$1" == "import-random-patients" ] && [ ! -z "$2" ]; then
+    importRandomPatients "$2"
+fi
+
+if [ "$1" == "generate-multisite-bank" ] && [ ! -z "$2" ]; then
+    generateMultisiteBank "$2"
 fi
