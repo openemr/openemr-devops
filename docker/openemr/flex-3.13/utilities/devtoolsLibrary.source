@@ -192,3 +192,75 @@ toggleOnSelfSignedCert() {
     mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_crt'" "$CUSTOM_DATABASE"
     mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_key'" "$CUSTOM_DATABASE"
 }
+
+configureCareCoordinationModule() {
+    if [ "$CARE_COORDINATION_MODULE_ON" == "1" ]; then
+        # register modules
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Immunization
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Syndromicsurveillance
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Documents
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Ccr
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php register --mtype=zend --modname=Carecoordination
+        # install modules
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Immunization
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Syndromicsurveillance
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Documents
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Ccr
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=install --modname=Carecoordination
+        # enable modules
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Immunization
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Syndromicsurveillance
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Documents
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Ccr
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php zfc-module --site=default --modaction=enable --modname=Carecoordination
+        # give acl admin group access to use care coordination module
+        php /var/www/localhost/htdocs/openemr/interface/modules/zend_modules/public/index.php acl-modify --site=default --modname=Carecoordination --aclgroup=admin --aclaction=enable
+    fi
+}
+
+# parameter 1 is number of random patients to create and import
+importRandomPatients() {
+    echo "Setting up for following number of random patients (each patient will take several seconds): ${1}"
+    if [ ! -d /root/synthea ]; then
+        echo "Setting up synthea first"
+        apk update
+        apk add openjdk8-jre
+        mkdir /root/synthea
+        cd /root/synthea
+        wget https://github.com/synthetichealth/synthea/releases/download/master-branch-latest/synthea-with-dependencies.jar
+    fi
+    rm -fr /root/synthea/output
+    cd /root/synthea
+    java -jar synthea-with-dependencies.jar --exporter.fhir.export false --exporter.ccda.export true --generate.only_alive_patients true -p "$1"
+    sed -i "s@exit;@//exit;@" /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php
+    php /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php /root/synthea/output/ccda default /var/www/localhost/htdocs/openemr true
+    sed -i "s@//exit;@exit;@" /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php
+    echo "Completed run for following number of random patients: ${1}"
+}
+
+# parameter 1 is number of multisites to create
+generateMultisiteBank() {
+    echo "Setting up a multisite bank with following number of multisites (labeled run1, run2, run3, ...): run1...run${1}"
+    sed -i "s@exit;@//exit;@" /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php
+    a=1
+    while [ $a -le "$1" ]
+    do
+        run="run${a}"
+        echo "dropping ${run} sql database, sql user, and directory if they already exist (just ignore any errors that are displayed)"
+        mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP DATABASE ${run}"
+        mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP USER '${run}'"
+        rm -fr /var/www/localhost/htdocs/openemr/sites/${run}
+        rm /tmp/setup_dump.sql
+        echo "adding ${run} multisite"
+        php /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php rootpass=root server="$MYSQL_HOST" loginhost=% login=${run} pass=${run} dbname=${run} site=${run} source_site_id=default clone_database=yes
+        chown -R apache /var/www/localhost/htdocs/openemr/sites/${run}
+        find /var/www/localhost/htdocs/openemr/sites/${run} -type d -print0 | xargs -0 chmod 500
+        find /var/www/localhost/htdocs/openemr/sites/${run} -type f -print0 | xargs -0 chmod 400
+        find /var/www/localhost/htdocs/openemr/sites/${run}/documents -type d -print0 | xargs -0 chmod 700
+        find /var/www/localhost/htdocs/openemr/sites/${run}/documents -type f -print0 | xargs -0 chmod 700
+        echo "completed adding ${run} multisite"
+        a=`expr $a + 1`
+    done
+    sed -i "s@//exit;@exit;@" /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php
+    echo "Completed setting up a multisite bank with following number of multisites (labeled run1, run2, run3, ...): run1...run${1}"
+}
