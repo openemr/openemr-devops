@@ -1,4 +1,4 @@
-FROM alpine:3.13
+FROM alpine:3.14
 
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
@@ -16,11 +16,6 @@ RUN apk add --no-cache \
 RUN usermod -u 1000 apache
 # Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
-
-# Below line is needed to avoid breaking the raspberry pi builds
-# TODO - intermittently remove this line to see if the error (failed to fetch
-#        https://github.com/rust-lang/crates.io-index... ) has gone away.
-ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
     && git clone https://github.com/openemr/openemr.git --depth 1 \

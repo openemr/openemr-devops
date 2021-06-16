@@ -19,11 +19,6 @@ RUN apk add --no-cache \
     unzip vim nano bash bash-doc bash-completion tree
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
-# Below line is needed to avoid breaking the raspberry pi builds
-# TODO - intermittently remove this line to see if the error (failed to fetch
-#        https://github.com/rust-lang/crates.io-index... ) has gone away.
-ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
-
 RUN apk add --no-cache build-base libffi-dev python3-dev cargo \
     && mkdir -p /var/www/localhost/htdocs/openemr/sites \
     && chown -R apache /var/www/localhost/htdocs/openemr \
