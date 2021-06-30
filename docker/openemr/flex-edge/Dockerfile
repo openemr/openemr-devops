@@ -10,7 +10,7 @@ RUN apk add --no-cache \
     php7-sodium php7-calendar php7-intl \
     mysql-client tar curl imagemagick npm \
     python2 python3 openssl git py-pip openssl-dev dcron \
-    rsync shadow jq \
+    rsync shadow jq ncurses \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
 RUN usermod -u 1000 apache
