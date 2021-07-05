@@ -3,17 +3,20 @@ FROM alpine:3.13
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
 RUN apk add --no-cache \
-    apache2 apache2-ssl git php7 php7-tokenizer php7-ctype php7-session php7-apache2 \
-    php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-openssl php7-iconv \
-    php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring php7-zlib \
-    php7-mysqli php7-sockets php7-xmlreader php7-redis php7-simplexml php7-xmlwriter php7-phar php7-fileinfo \
-    php7-sodium php7-calendar php7-intl \
+    apache2 apache2-ssl git php8 php8-tokenizer php8-ctype php8-session php8-apache2 \
+    php8-json php8-pdo php8-pdo_mysql php8-curl php8-ldap php8-openssl php8-iconv \
+    php8-xml php8-xsl php8-gd php8-zip php8-soap php8-mbstring php8-zlib \
+    php8-mysqli php8-sockets php8-xmlreader php8-redis php8-simplexml php8-xmlwriter php8-phar php8-fileinfo \
+    php8-sodium php8-calendar php8-intl \
     perl mysql-client tar curl imagemagick npm \
     python2 python3 openssl py-pip openssl-dev dcron \
     rsync shadow ncurses \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
 RUN usermod -u 1000 apache
+
+#BELOW LINE NEEDED TO SUPPORT PHP8 ON ALPINE 3.13; SHOULD BE ABLE TO REMOVE THIS IN FUTURE ALPINE VERSIONS
+RUN cp /usr/bin/php8 /usr/bin/php
 # Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
@@ -53,7 +56,7 @@ WORKDIR /var/www/localhost/htdocs/openemr
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
 ENV APACHE_LOG_DIR=/var/log/apache2
-COPY php.ini /etc/php7/php.ini
+COPY php.ini /etc/php8/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
 #add runner and auto_configure and prevent auto_configure from being run w/o being enabled
 COPY run_openemr.sh autoconfig.sh auto_configure.php /var/www/localhost/htdocs/openemr/

@@ -24,7 +24,7 @@ $installSettings['development_translations'] = 'BLANK';
 for ($i=1; $i < count($argv); $i++) {
     $indexandvalue = explode("=", $argv[$i]);
     $index = $indexandvalue[0];
-    $value = $indexandvalue[1];
+    $value = $indexandvalue[1] ?? '';
     $installSettings[$index] = $value;
 }
 // Convert BLANK settings to empty
