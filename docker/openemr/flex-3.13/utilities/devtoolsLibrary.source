@@ -219,8 +219,10 @@ configureCareCoordinationModule() {
 }
 
 # parameter 1 is number of random patients to create and import
+# parameter 2 has to be either "true" or "false" and is for the development setting in the import_ccda.php script call
 importRandomPatients() {
     echo "Setting up for following number of random patients (each patient will take several seconds): ${1}"
+    echo "Development mode: ${2}"
     if [ ! -d /root/synthea ]; then
         echo "Setting up synthea first"
         apk update
@@ -233,7 +235,7 @@ importRandomPatients() {
     cd /root/synthea
     java -jar synthea-with-dependencies.jar --exporter.fhir.export false --exporter.ccda.export true --generate.only_alive_patients true -p "$1"
     sed -i "s@exit;@//exit;@" /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php
-    php /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php /root/synthea/output/ccda default /var/www/localhost/htdocs/openemr true
+    php /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php /root/synthea/output/ccda default /var/www/localhost/htdocs/openemr "$2"
     sed -i "s@//exit;@exit;@" /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php
     echo "Completed run for following number of random patients: ${1}"
 }

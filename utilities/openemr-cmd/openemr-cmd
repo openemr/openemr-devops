@@ -10,7 +10,7 @@
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.8"
+VERSION="1.0.9"
 
 # Set the default container name/id to look for
 INSANE_DEV_DOCKER="_openemr-8-0_1"
@@ -214,6 +214,15 @@ put-client-cert(){
 	fi
 }
 
+import-random-patients(){
+  if [ $# == 2 ]
+  then
+    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS import-random-patients $1 $2"
+  else
+    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS import-random-patients $1"
+  fi
+}
+
 USAGE_EXIT_CODE=13
 VERSION_EXIT_CODE=14
 FINAL_EXIT_CODE=0
@@ -398,6 +407,9 @@ case "$FIRST_ARG" in
 	pcc|put-client-cert)
 		put-client-cert "$@"
 		;;
+  irp|import-random-patients)
+    import-random-patients "$@"
+		;;
 	bt)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-themes"
 		;;
@@ -524,9 +536,6 @@ case "$FIRST_ARG" in
 		;;
 	lsco)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl-client-off"
-		;;
-	irp|import-random-patients)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS import-random-patients $@"
 		;;
 	gmb|generate-multisite-bank)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS generate-multisite-bank $@"
