@@ -417,7 +417,11 @@ if [ "$1" == "list-xdebug-profiles" ]; then
 fi
 
 if [ "$1" == "import-random-patients" ] && [ ! -z "$2" ]; then
-    importRandomPatients "$2"
+    if [ ! -z "$3" ] && [ "$3" == "false" ]; then
+        importRandomPatients "$2" false
+    else
+        importRandomPatients "$2" true
+    fi
 fi
 
 if [ "$1" == "generate-multisite-bank" ] && [ ! -z "$2" ]; then
