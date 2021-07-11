@@ -711,6 +711,7 @@
                                             "    - sitevolume:/var/www/localhost/htdocs/openemr/sites\n",
                                             "    environment:\n",
                                             "      MANUAL_SETUP: 1\n",
+                                            "      OPENEMR_DOCKER_ENV_TAG: aws-standard",
                                             "volumes:\n",
                                             "  logvolume01: {}\n",
                                             "  sitevolume: {}\n"

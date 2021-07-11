@@ -896,6 +896,7 @@ def buildInstance(t, args):
             "    - sitevolume:/var/www/localhost/htdocs/openemr/sites\n",
             "    environment:\n",
             "      MANUAL_SETUP: 1\n",
+            "      OPENEMR_DOCKER_ENV_TAG: aws-standard\n",
             "volumes:\n",
             "  logvolume01: {}\n",
             "  sitevolume: {}\n"
@@ -914,14 +915,14 @@ def buildInstance(t, args):
             "    - logvolume01:/var/log\n",
             "    - sitevolume:/var/www/localhost/htdocs/openemr/sites\n",
             "    environment:\n",
-            "      MYSQL_HOST: '", GetAtt(
-                'RDSInstance', 'Endpoint.Address'), "'\n",
+            "      MYSQL_HOST: '", GetAtt('RDSInstance', 'Endpoint.Address'), "'\n",
             "      MYSQL_ROOT_USER: openemr\n",
             "      MYSQL_ROOT_PASS: '", Ref('RDSPassword'), "'\n",
             "      MYSQL_USER: openemr\n",
             "      MYSQL_PASS: '", Ref('RDSPassword'), "'\n",
             "      OE_USER: admin\n",
             "      OE_PASS: '", Ref('AdminPassword'), "'\n",
+            "      OPENEMR_DOCKER_ENV_TAG: aws-standard\n",
             "volumes:\n",
             "  logvolume01: {}\n",
             "  sitevolume: {}\n"

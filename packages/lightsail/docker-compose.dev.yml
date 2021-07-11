@@ -28,6 +28,7 @@ services:
       MYSQL_PASS: openemr
       OE_USER: admin
       OE_PASS: pass
+      OPENEMR_DOCKER_ENV_TAG: lightsail
     links:
     - mysql
 volumes:

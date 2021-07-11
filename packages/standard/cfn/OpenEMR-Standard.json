@@ -780,6 +780,7 @@
                                                 "Ref": "AdminPassword"
                                             },
                                             "'\n",
+                                            "      OPENEMR_DOCKER_ENV_TAG: aws-standard\n",
                                             "volumes:\n",
                                             "  logvolume01: {}\n",
                                             "  sitevolume: {}\n"
