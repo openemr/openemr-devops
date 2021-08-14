@@ -114,7 +114,6 @@ if [ "$1" == "dev-install" ]; then
     prepareVariables
     installOpenemr
     setGlobalSettings
-    configureCareCoordinationModule
 fi
 
 if [ "$1" == "dev-reset-install" ]; then
@@ -123,7 +122,6 @@ if [ "$1" == "dev-reset-install" ]; then
     resetOpenemr
     installOpenemr
     setGlobalSettings
-    configureCareCoordinationModule
 fi
 
 if [ "$1" == "dev-reset-install-demodata" ]; then
@@ -133,7 +131,6 @@ if [ "$1" == "dev-reset-install-demodata" ]; then
     installOpenemr
     demoData
     setGlobalSettings
-    configureCareCoordinationModule
 fi
 
 if [ "$1" == "dev-sqldrive" ]; then
@@ -149,7 +146,6 @@ if [ "$1" == "dev-reset-install-sqldrive" ]; then
     installOpenemr
     sqlDataDrive
     setGlobalSettings
-    configureCareCoordinationModule
 fi
 
 if [ "$1" == "dev-reset-install-demodata-sqldrive" ]; then
@@ -160,7 +156,6 @@ if [ "$1" == "dev-reset-install-demodata-sqldrive" ]; then
     demoData
     sqlDataDrive
     setGlobalSettings
-    configureCareCoordinationModule
 fi
 
 if [ "$1" == "enable-multisite" ]; then

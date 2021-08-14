@@ -54,8 +54,6 @@ auto_setup() {
     fi
 
     setGlobalSettings
-
-    configureCareCoordinationModule
 }
 
 if [ "$SWARM_MODE" == "yes" ]; then
