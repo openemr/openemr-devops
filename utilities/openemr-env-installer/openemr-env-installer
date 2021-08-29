@@ -493,12 +493,22 @@ elif [ "$os_type" == "Darwin" ]
 then
 	# For MacOS
 	# Check the macOS version
-	minior_release=$(sw_vers -productVersion| awk -F'.' '{print $2}')
-	if [ "$minior_release" -lt "13" ]
+	major_release=$(sw_vers -productVersion| awk -F'.' '{print $1}')
+
+	if [ "$major_release" -lt "10" ]
 	then
 		echo 'The script only supports macOS10.13 and later.'
 		exit
+	elif [ "$major_release" -eq "10" ] 
+	then
+		minor_release=$(sw_vers -productVersion| awk -F'.' '{print $2}')
+		if [ "$minor_release" -lt "13" ]
+		then
+			echo 'The script only supports macOS10.13 and later.'
+			exit
+		fi
 	fi
+
 
 	# Script usage
 	[ $# -ne 2 ] && installer_script_usage
