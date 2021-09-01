@@ -223,6 +223,10 @@ import-random-patients(){
   fi
 }
 
+register-oauth2-client-demo(){
+  $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS register-oauth2-client-demo $1"
+}
+
 USAGE_EXIT_CODE=13
 VERSION_EXIT_CODE=14
 FINAL_EXIT_CODE=0
@@ -308,6 +312,10 @@ then
   echo 'computational-health-informatics:'
 	echo "  irp, import-random-patients        Create and import random patients <number patients>"
 	echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
+  echo 'api-management:'
+  echo "  bad, build-api-docs                Build and place api documentation/configuration for swagger"
+  echo "  roc, register-oauth2-client        Register oauth2 client (returns client id/secret)"
+  echo "  rocd, register-oauth2-client-demo  Register oauth2 client (returns client id/secret) on online demo"
   echo 'others:'
 	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
 	echo "  el, enable-ldap                    Turn on support for LDAP - login credentials are admin:admin"
@@ -409,6 +417,9 @@ case "$FIRST_ARG" in
 		;;
   irp|import-random-patients)
     import-random-patients "$@"
+		;;
+  rocd|register-oauth2-client-demo)
+    register-oauth2-client-demo "$@"
 		;;
 	bt)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-themes"
@@ -551,6 +562,12 @@ case "$FIRST_ARG" in
 		;;
 	lxp)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-xdebug-profiles"
+		;;
+	bad)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-api-docs"
+		;;
+	roc)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS register-oauth2-client"
 		;;
 
 	*)
