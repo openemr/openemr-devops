@@ -238,6 +238,23 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
 
     if [ -f /var/www/localhost/htdocs/openemr/package.json ]; then
         # install frontend dependencies (need unsafe-perm to run as root)
+        # IN ALPINE 3.14, there is an odd permission thing happening where need to give non-root ownership
+        #  to several places ('node_modules' and 'public') in flex environment that npm is accessing via:
+        #    'chown -R apache:1000 node_modules'
+        #    'chown -R apache:1000 ccdaservice/node_modules'
+        #    'chown -R apache:1000 public'
+        # WILL KEEP TRYING TO REMOVE THESE LINES IN THE FUTURE SINCE APPEARS TO LIKELY BE A FLEETING NPM BUG WITH --unsafe-perm SETTING
+        #  should be ready to remove then the following npm error no long shows up on the build:
+        #    "ERR! warning: unable to access '/root/.config/git/attributes': Permission denied"
+        if [ -d node_modules ]; then
+            chown -R apache:1000 node_modules
+        fi
+        if [ -d ccdaservice/node_modules ]; then
+            chown -R apache:1000 ccdaservice/node_modules
+        fi
+        if [ -d public ]; then
+            chown -R apache:1000 public
+        fi
         npm install --unsafe-perm
         # build css
         npm run build
