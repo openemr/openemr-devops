@@ -174,9 +174,9 @@ if [ "$1" == "set-swagger-to-multisite" ]; then
     php /var/www/localhost/htdocs/openemr/bin/command-runner -c CreateAPIDocumentation
     # now make the needed changes if site is not default (since already set to default in above line)
     if [ "$site" != "default" ]; then
-        sed -i "s@/apis/default/@$/apis/${site}/@" /var/www/localhost/htdocs/openemr/swagger/openemr-api.yaml
-        sed -i "s@/oauth2/default/authorize@$/oauth2/${site}/authorize@" /var/www/localhost/htdocs/openemr/swagger/openemr-api.yaml
-        sed -i "s@/oauth2/default/token@$/oauth2/${site}/token@" /var/www/localhost/htdocs/openemr/swagger/openemr-api.yaml
+        sed -i "s@/apis/default/@/apis/${site}/@" /var/www/localhost/htdocs/openemr/swagger/openemr-api.yaml
+        sed -i "s@/oauth2/default/authorize@/oauth2/${site}/authorize@" /var/www/localhost/htdocs/openemr/swagger/openemr-api.yaml
+        sed -i "s@/oauth2/default/token@/oauth2/${site}/token@" /var/www/localhost/htdocs/openemr/swagger/openemr-api.yaml
         # when done testing recommend reverting back to default to avoid these getting changed in repo
         echo "When done testing recommend reverting back to default via devtools 'set-swagger-to-multisite default' command to avoid making permanent changes in repo"
     fi
