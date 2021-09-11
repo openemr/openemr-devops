@@ -10,7 +10,7 @@
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.9"
+VERSION="1.0.10"
 
 # Set the default container name/id to look for
 INSANE_DEV_DOCKER="_openemr-8-0_1"
@@ -227,6 +227,24 @@ register-oauth2-client-demo(){
   $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS register-oauth2-client-demo $1"
 }
 
+register-oauth2-client(){
+  if [ $# == 1 ]
+  then
+    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS register-oauth2-client $1"
+  else
+    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS register-oauth2-client"
+  fi
+}
+
+set-swagger-to-multisite(){
+    if [ $# == 1 ]
+    then
+      $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS set-swagger-to-multisite $1"
+    else
+      $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS set-swagger-to-multisite"
+    fi
+}
+
 USAGE_EXIT_CODE=13
 VERSION_EXIT_CODE=14
 FINAL_EXIT_CODE=0
@@ -309,19 +327,24 @@ then
   echo "  lso, ldap-ssl-off                  Remove testing ldap ssl CA cert"
   echo "  lsc, ldap-ssl-client               Use testing ldap ssl client certs"
   echo "  lsco, ldap-ssl-client-off          Remove testing ldap ssl client certs"
-  echo 'computational-health-informatics:'
-	echo "  irp, import-random-patients        Create and import random patients <number patients>"
+  echo 'multisite-management:'
+  echo "  lm, list-multisites                List multisites"
+  echo "  swtm, set-swagger-to-multisite     Direct swagger api testing suite to use a multisite <multisite>"
 	echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
+	echo "  em, enable-multisite               Turn on support for multisite in setup.php"
+	echo "  dm, disable-multisite              Turn off support for multisite in setup.php"
   echo 'api-management:'
   echo "  bad, build-api-docs                Build and place api documentation/configuration for swagger"
   echo "  roc, register-oauth2-client        Register oauth2 client (returns client id/secret)"
   echo "  rocd, register-oauth2-client-demo  Register oauth2 client (returns client id/secret) on online demo"
+  echo "  swtm, set-swagger-to-multisite     Direct swagger api testing suite to use a multisite <multisite>"
+  echo 'computational-health-informatics:'
+	echo "  irp, import-random-patients        Create and import random patients <number patients>"
+	echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
   echo 'others:'
 	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
 	echo "  el, enable-ldap                    Turn on support for LDAP - login credentials are admin:admin"
 	echo "  dld, disable-ldap                  Turn off support for LDAP - standard login credentials"
-	echo "  em, enable-multisite               Turn on support for multisite"
-	echo "  dm, disable-multisite              Turn off support for multisite"
 	echo "  ec, encoding-collation             Change the database character set and collation"
 
 	exit $USAGE_EXIT_CODE
@@ -420,6 +443,12 @@ case "$FIRST_ARG" in
 		;;
   rocd|register-oauth2-client-demo)
     register-oauth2-client-demo "$@"
+		;;
+  roc|register-oauth2-client)
+    register-oauth2-client "$@"
+		;;
+  swtm|set-swagger-to-multisite)
+    set-swagger-to-multisite "$@"
 		;;
 	bt)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-themes"
@@ -566,8 +595,8 @@ case "$FIRST_ARG" in
 	bad)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-api-docs"
 		;;
-	roc)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS register-oauth2-client"
+	lm)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-multisites"
 		;;
 
 	*)

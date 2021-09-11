@@ -1,4 +1,4 @@
-FROM alpine:3.13
+FROM alpine:3.14
 
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
@@ -15,15 +15,10 @@ RUN apk add --no-cache \
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
 RUN usermod -u 1000 apache
 
-#BELOW LINE NEEDED TO SUPPORT PHP8 ON ALPINE 3.13; SHOULD BE ABLE TO REMOVE THIS IN FUTURE ALPINE VERSIONS
+#BELOW LINE NEEDED TO SUPPORT PHP8 ON ALPINE 3.13+; SHOULD BE ABLE TO REMOVE THIS IN FUTURE ALPINE VERSIONS
 RUN cp /usr/bin/php8 /usr/bin/php
 # Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
-
-# Below line is needed to avoid breaking the raspberry pi builds
-# TODO - intermittently remove this line to see if the error (failed to fetch
-#        https://github.com/rust-lang/crates.io-index... ) has gone away.
-ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
 RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
     && git clone https://github.com/openemr/openemr.git --depth 1 \
