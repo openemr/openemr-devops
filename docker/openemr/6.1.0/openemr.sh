@@ -44,9 +44,9 @@ auto_setup() {
 # - false for the Kubernetes startup job and manual image runs
 AUTHORITY=yes
 OPERATOR=yes
-if ["$K8S" == "admin"]; then
+if [ "$K8S" == "admin" ]; then
     OPERATOR=no
-elif ["$K8S" == "worker"]; then
+elif [ "$K8S" == "worker" ]; then
     AUTHORITY=no
 fi
 if [ "$SWARM_MODE" == "yes" ]; then
@@ -74,7 +74,7 @@ if [ "$SWARM_MODE" == "yes" ]; then
         rsync --owner --group --perms --recursive --links /swarm-pieces/sites /var/www/localhost/htdocs/openemr/
     fi
 
-    if ["$AUTHORITY" == "no"] &&
+    if [ "$AUTHORITY" == "no" ] &&
        [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-completed ]; then
         while swarm_wait; do
             echo "Waiting for the docker-leader to finish configuration before proceeding."
@@ -83,12 +83,12 @@ if [ "$SWARM_MODE" == "yes" ]; then
     fi
 fi
 
-if ["$AUTHORITY" == "yes"]; then
+if [ "$AUTHORITY" == "yes" ]; then
     sh ssl.sh
 fi
 
 UPGRADE_YES=false;
-if ["$AUTHORITY" == "yes"]; then
+if [ "$AUTHORITY" == "yes" ]; then
     # Figure out if need to do upgrade
     if [ -f /root/docker-version ]; then
         DOCKER_VERSION_ROOT=$(cat /root/docker-version)
@@ -115,7 +115,7 @@ if ["$AUTHORITY" == "yes"]; then
 fi
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-if ["$AUTHORITY" == "no"] &&
+if [ "$AUTHORITY" == "no" ] &&
     [ "$CONFIG" == "0" ]; then
     echo "Critical failure! An OpenEMR worker is trying to run on a missing configuration."
     echo " - Is this due to a Kubernetes grant hiccup?"
@@ -123,7 +123,7 @@ if ["$AUTHORITY" == "no"] &&
     exit 1
 fi
 
-if ["$AUTHORITY" == "yes"]; then
+if [ "$AUTHORITY" == "yes" ]; then
     if [ "$CONFIG" == "0" ] &&
        [ "$MYSQL_HOST" != "" ] &&
        [ "$MYSQL_ROOT_PASS" != "" ] &&
@@ -142,7 +142,7 @@ if ["$AUTHORITY" == "yes"]; then
 fi
 
 if 
-   [ "$AUTHORITY" == "yes"] &&
+   [ "$AUTHORITY" == "yes" ] &&
    [ "$CONFIG" == "1" ] &&
    [ "$MANUAL_SETUP" != "yes" ]; then
     # OpenEMR has been configured
@@ -172,7 +172,7 @@ if
         find . -type f -print0 | xargs -0 chmod 400
 
         echo "Default file permissions and ownership set, allowing writing to specific directories"
-        chmod 700 run_openemr.sh
+        chmod 700 openemr.sh
         # Set file and directory permissions
         find sites/default/documents -type d -print0 | xargs -0 chmod 700
         find sites/default/documents -type f -print0 | xargs -0 chmod 700
@@ -190,7 +190,7 @@ if
     fi
 fi
 
-if [ "$AUTHORITY" == "yes"] &&
+if [ "$AUTHORITY" == "yes" ] &&
    [ "$SWARM_MODE" == "yes" ]; then
     # Set flag that the docker-leader configuration is complete
     touch /var/www/localhost/htdocs/openemr/sites/default/docker-completed
@@ -210,7 +210,7 @@ echo "Love OpenEMR? You can now support the project via the open collective:"
 echo " > https://opencollective.com/openemr/donate"
 echo ""
 
-if [ "$OPERATOR" == "yes"]; then
+if [ "$OPERATOR" == "yes" ]; then
     echo "Starting apache!"
     /usr/sbin/httpd -D FOREGROUND
 else
