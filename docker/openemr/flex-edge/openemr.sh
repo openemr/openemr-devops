@@ -315,7 +315,7 @@ if
         find . -type f -print0 | xargs -0 chmod 400
 
         echo "Default file permissions and ownership set, allowing writing to specific directories"
-        chmod 700 /var/www/localhost/htdocs/penemr.sh
+        chmod 700 /var/www/localhost/htdocs/openemr.sh
         # Set file and directory permissions
         find sites/default/documents -type d -print0 | xargs -0 chmod 700
         find sites/default/documents -type f -print0 | xargs -0 chmod 700
