@@ -54,4 +54,3 @@ if [ ! -f /tmp/xdebug.log ]; then
     touch /tmp/xdebug.log;
 fi
 chmod 666 /tmp/xdebug.log;
-fi
