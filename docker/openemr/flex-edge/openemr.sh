@@ -327,8 +327,7 @@ if
         rm -f setup.php
         rm -f sql_patch.php
         rm -f sql_upgrade.php
-        rm -f ippf_upgrade.php
-        rm -f auto_configure.php
+        rm -f ippf_upgrade.php        
         echo "Setup scripts removed, we should be ready to go now!"
         cd /var/www/localhost/htdocs/
     fi
