@@ -6,6 +6,7 @@
 #  - Optional settings for auto installation are:
 #    - Setting db parameters MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE
 #    - Setting openemr parameters OE_USER, OE_PASS
+# TODO: xdebug options should be given here
 set -e
 
 source /root/devtoolsLibrary.source
@@ -203,6 +204,11 @@ if [ "$REDIS_SERVER" != "" ] &&
     sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"tcp://$REDIS_SERVER:6379\"@" /etc/php8/php.ini
     # Ensure only configure this one time
     touch /etc/php-redis-configured
+fi
+
+if [ "$XDEBUG_IDE_KEY" != "" ] ||
+   [ "$XDEBUG_ON" == 1 ]; then
+   sh xdebug.sh
 fi
 
 echo ""
