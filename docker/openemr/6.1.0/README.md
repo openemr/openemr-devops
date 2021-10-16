@@ -59,7 +59,7 @@ See the https://hub.docker.com/r/openemr/openemr/ page for documentation of envi
 
 ## Support on Raspberry Pi
 
-Both 32 bit and 64 bit architectures are supported on Raspberry Pi. If you are using Raspberry Pi, then need to change the `mariadb:10.5` to `jsurf/rpi-mariadb` in the above docker-compose.yml example.
+Both 32 bit and 64 bit architectures are supported on Raspberry Pi. If you are using Raspberry Pi, then you need to change the `mariadb:10.5` to `jsurf/rpi-mariadb` in the above docker-compose.yml example.
 
 ## Where to get help?
 
