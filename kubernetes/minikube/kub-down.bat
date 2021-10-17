@@ -1,4 +1,5 @@
-#!/bin/bash
+@echo off
+
 kubectl delete -f websitevolume-persistentvolumeclaim.yaml ^
                -f sslvolume-persistentvolumeclaim.yaml ^
                -f letsencryptvolume-persistentvolumeclaim.yaml ^
