@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:  
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: mysql  
+  template:
+    metadata:      
+      labels:
+        service: mysql
+    spec:
+      containers:
+      - args:
+        - mysqld
+        - --character-set-server=utf8mb4
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
+        image: mariadb:10.5        
+        name: mysql
+        resources:
+          requests:  
+            cpu: 100m       
+            memory: 100Mi
+          limits:
+            cpu: 500m
+            memory: 2G

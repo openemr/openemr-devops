@@ -1,54 +1,61 @@
 apiVersion: apps/v1
 kind: Deployment
-metadata:
-  annotations:
-    kompose.cmd: kompose convert
-    kompose.version: 1.21.0 (992df58d8)
-  creationTimestamp: null
+metadata:  
   labels:
-    io.kompose.service: openemr
+    name: openemr
   name: openemr
 spec:
-  replicas: 5
+  replicas: 2
   selector:
     matchLabels:
-      io.kompose.service: openemr
+      name: openemr
   strategy:
     type: Recreate
   template:
-    metadata:
-      annotations:
-        kompose.cmd: kompose convert
-        kompose.version: 1.21.0 (992df58d8)
-      creationTimestamp: null
+    metadata:      
       labels:
-        io.kompose.service: openemr
+        name: openemr
     spec:
+      initContainers:
+      - name: init-mysql
+        image: busybox:1.28
+        command: ['sh', '-c', "until nslookup mysql.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for mysql; sleep 2; done"]
+      - name: init-redis
+        image: busybox:1.28
+        command: ['sh', '-c', "until nslookup redis.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for redis; sleep 2; done"]
       containers:
       - env:
         - name: MYSQL_HOST
           value: "mysql"
         - name: MYSQL_PASS
-          value: "openemr"
+          valueFrom:
+            secretKeyRef:
+              name: openemr-credentials
+              key: mysql-pass
         - name: MYSQL_ROOT_PASS
           value: "root"
         - name: MYSQL_USER
           value: "openemr"
         - name: OE_PASS
-          value: "pass"
+          valueFrom:
+            secretKeyRef:
+              name: openemr-credentials
+              key: admin-pass
         - name: OE_USER
           value: "admin"
         - name: REDIS_SERVER
           value: "redis"
         - name: SWARM_MODE
           value: "yes"
-        image: openemr/openemr:6.0.0
-        imagePullPolicy: ""
+        image: openemr/openemr:6.0.0        
         name: openemr
         ports:
         - containerPort: 80
         - containerPort: 443
-        resources: {}
+        resources:
+          limits:
+            cpu: 500m
+            memory: 2G
         volumeMounts:
         - mountPath: /var/www/localhost/htdocs/openemr/sites
           name: websitevolume
@@ -56,8 +63,7 @@ spec:
           name: sslvolume
         - mountPath: /etc/letsencrypt
           name: letsencryptvolume
-      restartPolicy: Always
-      serviceAccountName: ""
+      restartPolicy: Always     
       volumes:
       - name: websitevolume
         persistentVolumeClaim:
@@ -68,4 +74,3 @@ spec:
       - name: letsencryptvolume
         persistentVolumeClaim:
           claimName: letsencryptvolume
-status: {}
