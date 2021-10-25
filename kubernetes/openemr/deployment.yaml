@@ -33,7 +33,10 @@ spec:
               name: openemr-credentials
               key: mysql-pass
         - name: MYSQL_ROOT_PASS
-          value: "root"
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
         - name: MYSQL_USER
           value: "openemr"
         - name: OE_PASS
@@ -54,8 +57,8 @@ spec:
         - containerPort: 443
         resources:
           limits:
-            cpu: 500m
-            memory: 2G
+            cpu: 1000m
+            memory: 1G
         volumeMounts:
         - mountPath: /var/www/localhost/htdocs/openemr/sites
           name: websitevolume
