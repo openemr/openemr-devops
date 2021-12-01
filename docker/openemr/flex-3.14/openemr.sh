@@ -216,7 +216,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
 
     if [ -f /var/www/localhost/htdocs/openemr/package.json ]; then
         # install frontend dependencies (need unsafe-perm to run as root)
-        # IN ALPINE 3.14, there is an odd permission thing happening where need to give non-root ownership
+        # IN ALPINE 3.14+, there is an odd permission thing happening where need to give non-root ownership
         #  to several places ('node_modules' and 'public') in flex environment that npm is accessing via:
         #    'chown -R apache:1000 node_modules'
         #    'chown -R apache:1000 ccdaservice/node_modules'
