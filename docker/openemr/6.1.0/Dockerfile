@@ -8,7 +8,7 @@ RUN apk add --no-cache \
     php8-xml php8-xsl php8-gd php8-zip php8-soap php8-mbstring php8-zlib \
     php8-mysqli php8-sockets php8-xmlreader php8-redis php8-simplexml php8-xmlwriter php8-phar php8-fileinfo \
     php8-sodium php8-calendar php8-intl \
-    perl mysql-client tar curl imagemagick npm \
+    perl mysql-client tar curl imagemagick nodejs npm \
     python2 python3 openssl py-pip openssl-dev dcron \
     rsync shadow ncurses \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
