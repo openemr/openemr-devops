@@ -58,13 +58,7 @@ f () {
   fi
 
   apt-get update
-  apt-get install jq git duplicity -y
-  apt-get install apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
-  # apt-key fingerprint 0EBFCD88
-  add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-  apt-get update
-  apt-get install docker-ce docker-ce-cli containerd.io docker-compose -y
+  apt-get install jq git duplicity containerd docker-compose -y
 
   mkdir backups
 
@@ -73,8 +67,6 @@ f () {
   else
     git clone --single-branch --branch $REPOBRANCH https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
   fi
-  curl -L https://github.com/docker/compose/releases/download/1.15.0/docker-compose-`uname -s`-`uname -m` > docker-compose
-  chmod +x docker-compose
 
   if [[ $DEVELOPERMODE == 0 ]]; then
     ln -s docker-compose.prod.yml docker-compose.yml
