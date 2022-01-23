@@ -31,11 +31,11 @@ def setInputs(t, args):
 
     t.add_parameter(Parameter(
         'InstanceSize',
-        Description = 'EC2 instance size for tbe webserver (minimum t2.small recommended)',
+        Description = 'EC2 instance size for the webserver (minimum t3.small recommended)',
         Default = 't2.small',
         Type = 'String',
         AllowedValues = [
-            't2.micro', 't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
+            't3.micro', 't3.small', 't3.medium', 't3.large', 't3.xlarge', 't3.2xlarge'
         ]
     ))
 
@@ -44,46 +44,46 @@ def setInputs(t, args):
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
-            "UbuntuAMI": "ami-cd0f5cb6"
+            "UbuntuAMI": "ami-04505e74c0741db8d"
         },
         "us-east-2" : {
-            "UbuntuAMI": "ami-10547475"
+            "UbuntuAMI": "ami-0fb653ca2d3203ac1"
         },
         "us-west-1" : {
-            "UbuntuAMI": "ami-09d2fb69"
+            "UbuntuAMI": "ami-01f87c43e618bf8f0"
         },
         "us-west-2" : {
-            "UbuntuAMI": "ami-6e1a0117"
+            "UbuntuAMI": "ami-0892d3c7ee96c0bf7"
         },
         "ap-south-1" : {
-            "UbuntuAMI": "ami-099fe766"
+            "UbuntuAMI": "ami-0851b76e8b1bce90b"
         },
         "ap-northeast-1" : {
-            "UbuntuAMI": "ami-ea4eae8c"
+            "UbuntuAMI": "ami-088da9557aae42f39"
         },
         "ap-northeast-2" : {
-            "UbuntuAMI": "ami-d28a53bc"
+            "UbuntuAMI": "ami-0454bb2fefc7de534"
         },
         "ap-southeast-1" : {
-            "UbuntuAMI": "ami-6f198a0c"
+            "UbuntuAMI": "ami-055d15d9cfddf7bd3"
         },
         "ap-southeast-2" : {
-            "UbuntuAMI": "ami-e2021d81"
+            "UbuntuAMI": "ami-0b7dcd6e6fd797935"
         },
         "sa-east-1" : {
-            "UbuntuAMI": "ami-10186f7c"
+            "UbuntuAMI": "ami-090006f29ecb2d79a"
         },
         "ca-central-1" : {
-            "UbuntuAMI": "ami-b3d965d7"
+            "UbuntuAMI": "ami-0aee2d0182c9054ac"
         },
         "eu-central-1" : {
-            "UbuntuAMI": "ami-1e339e71"
+            "UbuntuAMI": "ami-0d527b8c289b4af7f"
         },
         "eu-west-1" : {
-            "UbuntuAMI": "ami-785db401"
+            "UbuntuAMI": "ami-08ca3fed11864d6bb"
         },
         "eu-west-2" : {
-            "UbuntuAMI": "ami-996372fd"
+            "UbuntuAMI": "ami-0015a39e4b7c0966f"
         }
     })
     return t
