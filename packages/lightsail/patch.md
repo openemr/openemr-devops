@@ -79,6 +79,7 @@ Create a cleanup script to delete sensitive scripts.
 #!/bin/sh
 
 # make a restore-point
+/etc/cron.daily/duplicity-backups
 
 #delete upgrade files that have served their purpose
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
