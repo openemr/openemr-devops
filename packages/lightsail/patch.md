@@ -55,36 +55,50 @@ docker exec "$OE_INSTANCE" chmod 400 /var/www/localhost/htdocs/openemr/6-0-0-Pat
 docker exec "$OE_INSTANCE" unzip -o /var/www/localhost/htdocs/openemr/6-0-0-Patch-4.zip
 ```
 
-You can copy and paste the above script and name it patch.sh and make it executable.
+You can copy and paste the above and create a patch.sh script.
 ```
 vi patch.sh
-# paste above text
+```
+Paste above text into vi after typing `i` to enter vi insert mode,
+then save with `:wq` . Then make it executable and run the patch script
+to copy the files into the OpenEMR docker.
+```
 chmod +x patch.sh
 ./patch.sh
 ```
 
 ### Step Three - Run the templates
-
 For one site navigate to `http://<your-instance>/sql_patch.php` and select `Patch database`.
 For multisite go to `http://<server_name>/openemr/admin.php` and select `Patch database` for each site.
 
 ### Step Four - Backup and clean up
 
 (If you're using OpenEMR Standard, go ahead and make a post-upgrade RDS snapshot.)
+```
+/etc/cron.daily/duplicity-backups
+```
+
+Create a cleanup script with vi as above to delete sensitive scripts.
+
+`vi clean-up.sh`
 
 ```
 #!/bin/sh
 
 # make a restore-point
-/etc/cron.daily/duplicity-backups
 
 #delete upgrade files that have served their purpose
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
 docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/6-0-0-Patch-4.zip
 
-
-# uncomment to delete the patch script if created
-# rm ./patch.sh 
+# comment below line to avoid deleting the patch script created above
+rm ./patch.sh 
 ```
+Make the script executable and run.
+```
+chmod +x clean-up.sh
+./clean-up.sh
+```
+That's it. You've patched OpenEMR! 
 
-That's it. You've patched OpenEMR! If there are any issues please contact https://community.open-emr.org/  
+If there are any issues please contact https://community.open-emr.org/  
