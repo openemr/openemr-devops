@@ -3,7 +3,7 @@
 ## Requirements
 
  * OpenEMR 5.0.0 or later, installed or launched via `docker-compose`. (Did you get here through the AWS Marketplace? You're in the right place.)
- * Up-to-the-minute backups. Full-instance volume snapshots, Duplicity backups, and (if appropriate) an RDS snapshot are the minimum acceptable.
+ * Up-to-the-minute backups. Full-instance volume snapshots, Duplicity backups, and (if appropriate) an [RDS snapshot](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_CreateSnapshot.html) are the minimum acceptable.
  * Familiarity with how to restore those backups &mdash; do you know how to get your backups running on a clean OpenEMR instance? There is literally no better time to learn than right now, before you proceed.
 
 ## Overview
@@ -67,15 +67,13 @@ chmod +x patch.sh
 For one site navigate to `http://<your-instance>/sql_patch.php` and select `Patch database`.
 For multisite go to `http://<server_name>/openemr/admin.php` and select `Patch database` for each site.
 
+That's it. You've patched OpenEMR! 
+
 ### Step Four - Backup and clean up
 
-(If you're using OpenEMR Standard, go ahead and make a post-upgrade RDS snapshot.)
-```
-/etc/cron.daily/duplicity-backups
-```
+If you're using OpenEMR Standard, go ahead and make a post-upgrade RDS snapshot.
 
 Create a cleanup script to delete sensitive scripts.
-
 ```
 #!/bin/sh
 
@@ -95,6 +93,5 @@ rm ./patch.sh
 chmod +x clean-up.sh
 ./clean-up.sh
 ```
-That's it. You've patched OpenEMR! 
 
 If there are any issues please contact https://community.open-emr.org/  
