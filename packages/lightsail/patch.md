@@ -80,11 +80,8 @@ For multisite go to `http://<server_name>/openemr/admin.php` and select `Patch d
 
 #delete upgrade files that have served their purpose
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
-<<<<<<< HEAD
 docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/6-0-0-Patch-4.zip
-=======
-docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/6-0-0-Patch-3.zip
->>>>>>> master
+
 
 # uncomment to delete the patch script if created
 # rm ./patch.sh 
