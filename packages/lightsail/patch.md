@@ -55,12 +55,7 @@ docker exec "$OE_INSTANCE" chmod 400 /var/www/localhost/htdocs/openemr/6-0-0-Pat
 docker exec "$OE_INSTANCE" unzip -o /var/www/localhost/htdocs/openemr/6-0-0-Patch-4.zip
 ```
 
-You can copy and paste the above and create a patch.sh script.
-```
-vi patch.sh
-```
-Paste above text into vi after typing `i` to enter vi insert mode,
-then save with `:wq` . Then make it executable and run the patch script
+You can copy and paste the above and create a patch.sh script. Paste above text into vi after typing `vi patch.sh` and then `i` to enter vi insert mode, then save with `:wq` . Then make it executable and run the patch script
 to copy the files into the OpenEMR docker.
 ```
 chmod +x patch.sh
@@ -78,9 +73,7 @@ For multisite go to `http://<server_name>/openemr/admin.php` and select `Patch d
 /etc/cron.daily/duplicity-backups
 ```
 
-Create a cleanup script with vi as above to delete sensitive scripts.
-
-`vi clean-up.sh`
+Create a cleanup script to delete sensitive scripts.
 
 ```
 #!/bin/sh
@@ -94,7 +87,8 @@ docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /va
 # comment below line to avoid deleting the patch script created above
 rm ./patch.sh 
 ```
-Make the script executable and run.
+
+ Copy the above text and use vi like before with the patch.sh script. Here we do it with `vi clean-up.sh`. Then make the script executable and run.
 ```
 chmod +x clean-up.sh
 ./clean-up.sh
