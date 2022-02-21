@@ -55,8 +55,10 @@ docker exec "$OE_INSTANCE" chmod 400 /var/www/localhost/htdocs/openemr/6-0-0-Pat
 docker exec "$OE_INSTANCE" unzip -o /var/www/localhost/htdocs/openemr/6-0-0-Patch-4.zip
 ```
 
-You can copy and paste the below script and make it executable for ease like patch.sh for example.
+You can copy and paste the above script and name it patch.sh and make it executable.
 ```
+vi patch.sh
+# paste above text
 chmod +x patch.sh
 ./patch.sh
 ```
@@ -78,7 +80,11 @@ For multisite go to `http://<server_name>/openemr/admin.php` and select `Patch d
 
 #delete upgrade files that have served their purpose
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
+<<<<<<< HEAD
 docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/6-0-0-Patch-4.zip
+=======
+docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/6-0-0-Patch-3.zip
+>>>>>>> master
 
 # uncomment to delete the patch script if created
 # rm ./patch.sh 
