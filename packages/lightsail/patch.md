@@ -10,9 +10,10 @@
 
 To patch OpenEMR, you'll want to follow four steps:
  * Backup your system.
- * Install the schema patch templates.
+ * If needed, ssh into your instance and get to a root shell with `sudo bash`.
+ * Create script and install the schema patch templates.
  * Run the patch script. If you're running multi-site you'll follow a different procedure detailed below.
- * Delete the patch templates.
+ * Delete the patch templates and run a fresh backup.
 
 ## Procedure
 
