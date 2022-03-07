@@ -254,7 +254,7 @@
         },
         "WebserverInstanceSize": {
             "AllowedValues": [
-                "t2.small",
+                "t3.small",
                 "t2.medium",
                 "t2.large",
                 "t2.xlarge",
@@ -272,7 +272,7 @@
                 "c5.9xlarge",
                 "c5.18xlarge"
             ],
-            "Default": "t2.small",
+            "Default": "t3.small",
             "Description": "EC2 instance size for the webserver",
             "Type": "String"
         }

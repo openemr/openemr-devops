@@ -9,7 +9,7 @@ You can use a VPN, or virtual private network, to tunnel into the Amazon VPC and
 1. Click **Services**, **EC2**, and then **Launch Instance** in the center of the screen.
 2. To the left, click **AWS Marketplace** and then search for **OpenVPN**.
 3. Locate **OpenVPN Access Server** and click **Select**.
-4. For **Choose an Instance Type**, select **t2.small** and then click **Next: Configure Instance Details**.
+4. For **Choose an Instance Type**, select **t3.small** and then click **Next: Configure Instance Details**.
 5. For **Network**, review the CloudFormation **Output** tab, and select the VPC it names.
 6. For **Subnet**, select **Public**.
 7. Checkbox **Protect against accidental termination**.

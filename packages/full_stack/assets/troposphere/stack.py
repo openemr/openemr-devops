@@ -629,7 +629,7 @@ def buildRedis(t, dual_az):
         t.add_resource(
             elasticache.CacheCluster(
                 'RedisCluster',
-                CacheNodeType='cache.t2.small',
+                CacheNodeType='cache.t3.small',
                 VpcSecurityGroupIds=[GetAtt('RedisSecurityGroup', 'GroupId')],
                 CacheSubnetGroupName=Ref('RedisSubnets'),
                 Engine='redis',
@@ -684,7 +684,7 @@ def buildMySQL(t, args):
                 'RDSInstance',
                 DeletionPolicy='Delete' if args.dev else 'Snapshot',
                 DBSnapshotIdentifier=Ref('RecoveryRDSSnapshotARN'),
-                DBInstanceClass='db.t2.small',
+                DBInstanceClass='db.t3.small',
                 PubliclyAccessible=False,
                 DBSubnetGroupName=Ref('RDSSubnetGroup'),
                 VPCSecurityGroups=[Ref('DBSecurityGroup')],
@@ -699,7 +699,7 @@ def buildMySQL(t, args):
                 DeletionPolicy='Delete' if args.dev else 'Snapshot',
                 DBName='openemr',
                 AllocatedStorage=Ref('PatientRecords'),
-                DBInstanceClass='db.t2.small',
+                DBInstanceClass='db.t3.small',
                 Engine='MySQL',
                 EngineVersion=FindInMap(
                     'RegionData', ref_region, 'MySQLVersion'),

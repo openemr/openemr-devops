@@ -218,10 +218,10 @@ def setRecoveryInputs(t, args):
     t.add_parameter(Parameter(
         'WebserverInstanceSize',
         Description='EC2 instance size for the webserver',
-        Default='t2.small',
+        Default='t3.small',
         Type='String',
         AllowedValues=[
-            't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
+            't3.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
         ]
     ))
 
@@ -231,10 +231,10 @@ def setRecoveryInputs(t, args):
     t.add_parameter(Parameter(
         'RDSInstanceSize',
         Description='RDS instance size for the back-end database',
-        Default='db.t2.small',
+        Default='db.t3.small',
         Type='String',
         AllowedValues=[
-            'db.t2.micro', 'db.t2.small', 'db.t2.medium', 'db.t2.large', 'db.m4.large'
+            'db.t2.micro', 'db.t3.small', 'db.t2.medium', 'db.t2.large', 'db.m4.large'
         ]
     ))
 

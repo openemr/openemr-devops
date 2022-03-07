@@ -32,7 +32,7 @@ def setInputs(t, args):
     t.add_parameter(Parameter(
         'InstanceSize',
         Description = 'EC2 instance size for the webserver (minimum t3.small recommended)',
-        Default = 't2.small',
+        Default = 't3.small',
         Type = 'String',
         AllowedValues = [
             't3.micro', 't3.small', 't3.medium', 't3.large', 't3.xlarge', 't3.2xlarge'
