@@ -347,8 +347,9 @@ def buildInstance(t, args):
         "#!/bin/bash -x\n",
         "exec > /tmp/part-001.log 2>&1\n",
         "apt-get -y update\n",
-        "apt-get -y install python-pip\n",
-        "pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+        "apt-get -y install python3-pip\n",
+        "pip3 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz\n",
+        "ln -s /root/aws-cfn-bootstrap-latest/init/ubuntu/cfn-hup /etc/init.d/cfn-hup\n",
         "cfn-init -v ",
         "         --stack ", ref_stack_name,
         "         --resource WebserverInstance ",
@@ -365,13 +366,16 @@ def buildInstance(t, args):
         "exec > /tmp/cloud-setup.log 2>&1\n",
 
         "DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" --force-yes\n",
-        "mkfs -t ext4 /dev/xvdd\n",
+
+        "DVOL_SERIAL=`echo ", Ref('DockerVolume'), " | sed s/-//`\n",
+        "DVOL_DEVICE=/dev/`lsblk -no +SERIAL | grep $DVOL_SERIAL | awk '{print $1}'`\n",
+        "mkfs -t ext4 $DVOL_DEVICE\n",        
+        "echo $DVOL_DEVICE /mnt/docker ext4 defaults,nofail 0 0 >> /etc/fstab\n",
         "mkdir /mnt/docker\n",
-        "cat /root/fstab.append >> /etc/fstab\n",
         "mount /mnt/docker\n",
         "ln -s /mnt/docker /var/lib/docker\n",
 
-        "apt-get -y install python-boto awscli\n",
+        "apt-get -y install python3-boto awscli\n",
         "S3=", Ref('S3Bucket'), "\n",
         "KMS=", OpenEMRKeyID, "\n",
         "touch /root/cloud-backups-enabled\n",
@@ -386,22 +390,12 @@ def buildInstance(t, args):
         "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n",
         "chmod +x /root/launch.sh && /root/launch.sh -s 0\n"
     ]
-
-    fstabFile = [
-        "/dev/xvdd /mnt/docker ext4 defaults,nofail 0 0\n"
-    ]
-
+    
     bootstrapInstall = cloudformation.InitConfig(
         files = {
             "/root/cloud-setup.sh" : {
                 "content" : Join("", setupScript),
                 "mode"  : "000500",
-                "owner" : "root",
-                "group" : "root"
-            },
-            "/root/fstab.append" : {
-                "content" : Join("", fstabFile),
-                "mode"  : "000400",
                 "owner" : "root",
                 "group" : "root"
             }
