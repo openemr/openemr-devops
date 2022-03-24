@@ -1,6 +1,6 @@
 # OpenEMR Cloud: Do-It-Yourself Lightsail Edition
 
-This process will install a fully-functional, secured, preconfigured OpenEMR 6.0.0 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information. While AWS is the main target, there is documentation around deploying to other webhosts or an on-premise server as well.
+This process will install a fully-functional, secured, preconfigured OpenEMR 6.1.0 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information. While AWS is the main target, there is documentation around deploying to other webhosts or an on-premise server as well.
 
 ## Installation
 
@@ -150,4 +150,4 @@ There is an important and immediate flaw in the backup regimen to address &mdash
 
 ## Support
 
-The OpenEMR [forums](https://community.open-emr.org/) and [chat](https://chat.open-emr.org/) are available if you have any questions. We'll be happy to help!
+The OpenEMR [forums](https://community.open-emr.org/) and Slack are available if you have any questions. We'll be happy to help!
