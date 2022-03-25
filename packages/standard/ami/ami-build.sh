@@ -28,7 +28,7 @@ DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -o Dpkg::Options::="--for
 apt-get install -y git jq duplicity awscli python3-boto python3-pip containerd docker-compose
 
 # CloudFormation hooks
-pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz
+pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
 
 # grab our Docker instance
 docker pull openemr/openemr${DOCKERLABEL}
