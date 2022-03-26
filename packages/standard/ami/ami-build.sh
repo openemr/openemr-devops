@@ -29,6 +29,7 @@ apt-get install -y git jq duplicity awscli python3-boto python3-pip containerd d
 
 # CloudFormation hooks
 pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
+ln -s /root/aws-cfn-bootstrap-latest/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
 
 # grab our Docker instance
 docker pull openemr/openemr${DOCKERLABEL}

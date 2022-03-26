@@ -49,7 +49,7 @@
             },
             "us-east-1": {
                 "MySQLVersion": "5.7.33",
-                "OpenEMRMktPlaceAMI": "ami-0dfabb22610673720"
+                "OpenEMRMktPlaceAMI": "ami-07124126f9225d337"
             },
             "us-east-2": {
                 "MySQLVersion": "5.7.33",
@@ -259,18 +259,22 @@
                 "t3.large",
                 "t3.xlarge",
                 "t3.2xlarge",
-                "m5.large",
-                "m5.xlarge",
-                "m5.2xlarge",
-                "m5.4xlarge",
-                "m5.12xlarge",
-                "m5.24xlarge",
-                "c5.large",
-                "c5.xlarge",
-                "c5.2xlarge",
-                "c5.4xlarge",
-                "c5.9xlarge",
-                "c5.18xlarge"
+                "m6a.large",
+                "m6a.xlarge",
+                "m6a.2xlarge",
+                "m6a.4xlarge",
+                "m6i.large",
+                "m6i.xlarge",
+                "m6i.2xlarge",
+                "m6i.4xlarge",
+                "c6a.large",
+                "c6a.xlarge",
+                "c6a.2xlarge",
+                "c6a.4xlarge",
+                "c6i.large",
+                "c6i.xlarge",
+                "c6i.2xlarge",
+                "c6i.4xlarge"
             ],
             "Default": "t3.small",
             "Description": "EC2 instance size for the webserver",

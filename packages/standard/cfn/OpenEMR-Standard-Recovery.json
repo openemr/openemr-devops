@@ -49,7 +49,7 @@
             },
             "us-east-1": {
                 "MySQLVersion": "5.7.33",
-                "OpenEMRMktPlaceAMI": "ami-0dfabb22610673720"
+                "OpenEMRMktPlaceAMI": "ami-07124126f9225d337"
             },
             "us-east-2": {
                 "MySQLVersion": "5.7.33",
