@@ -57,7 +57,9 @@ f () {
     echo Skipping swap allocation...
   fi
 
-  apt-get update
+  apt-get update -y
+  apt-get dist-upgrade -y
+  apt autoremove -y
   apt-get install jq git duplicity containerd docker-compose -y
 
   mkdir backups
