@@ -1,6 +1,6 @@
 #!/bin/sh
 
-MYSQLROOTPWD="${$1:root}"
+MYSQLROOTPWD="${1:-root}"
 
 f () {
     cd /root
