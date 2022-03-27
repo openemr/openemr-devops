@@ -16,11 +16,12 @@ f () {
     until docker top $(docker ps | grep _openemr | cut -f 1 -d " ") | grep httpd &> /dev/null
     do
         echo "waiting for service start..."
-        sleep 5
+        sleep 20
     done
     
     docker exec $(docker ps | grep mysql | cut -f 1 -d " ") mysql --password="$MYSQLROOTPWD" -e "update openemr.users set active=0 where id=1;"
     cp openemr-devops/packages/express/ami/ami-rekey.sh /etc/init.d/ami-rekey
+    chmod 755 /etc/init.d/ami-rekey
     update-rc.d ami-rekey defaults
     rm -f /root/.ssh/authorized_keys /home/ubuntu/.ssh/authorized_keys
     rm -f /home/ubuntu/.bash_history
