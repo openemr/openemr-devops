@@ -1,6 +1,11 @@
 FROM alpine:edge
 
 #Install dependencies and fix issue in apache
+#
+# TODO: python2 dependency was removed for flex-edge on 3/29/22 since it was not found.
+#  Unclear if this is a bug or if python2 is no longer available. Will intermittently
+#  try to add it back or figure out if it is simplty gone and no longer needed.
+#
 RUN apk --no-cache upgrade
 RUN apk add --no-cache \
     apache2 apache2-ssl git php8 php8-tokenizer php8-ctype php8-session php8-apache2 \
@@ -9,7 +14,7 @@ RUN apk add --no-cache \
     php8-mysqli php8-sockets php8-xmlreader php8-redis perl php8-simplexml php8-xmlwriter php8-phar php8-fileinfo \
     php8-sodium php8-calendar php8-intl \
     mysql-client tar curl imagemagick nodejs npm \
-    python2 python3 openssl git py-pip openssl-dev dcron \
+    python3 openssl git py-pip openssl-dev dcron \
     rsync shadow jq ncurses \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers

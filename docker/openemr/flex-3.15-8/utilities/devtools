@@ -69,6 +69,7 @@ if [ "$1" == "e2e-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep
     echo "Running OpenEMR e2e tests"
     cd /var/www/localhost/htdocs/openemr
     export PANTHER_NO_SANDBOX=1
+    export PANTHER_CHROME_ARGUMENTS='--disable-dev-shm-usage'
     export PANTHER_CHROME_DRIVER_BINARY=/usr/lib/chromium/chromedriver
     vendor/bin/phpunit --testsuite e2e --testdox
 fi
