@@ -41,6 +41,46 @@ def setInputs(t, args):
 
     return t
 
+def setRecoveryInputs(t, args):
+    # todo: duplicate Standard's organization and sorting
+    t.add_parameter(Parameter(
+        'EC2KeyPair',
+        Description = 'Amazon EC2 Key Pair',
+        Type = 'AWS::EC2::KeyPair::KeyName'
+    ))
+
+    t.add_parameter(Parameter(
+        'PracticeStorage',
+        Description = 'Storage for the OpenEMR practice (minimum 10 GB)',
+        Default = '10',
+        Type = 'Number',
+        MinValue = '10'
+    ))
+
+    t.add_parameter(Parameter(
+        'InstanceSize',
+        Description = 'EC2 instance size for the webserver (minimum t3.small recommended)',
+        Default = 't3.small',
+        Type = 'String',
+        AllowedValues = [
+            't3.micro', 't3.small', 't3.medium', 't3.large', 't3.xlarge', 't3.2xlarge'
+        ]
+    ))
+
+    t.add_parameter(Parameter(
+        'RecoveryKMSKey',
+        Description='Parent KMS ARN ("arn:aws:kms...")',
+        Type='String'
+    ))
+    
+    t.add_parameter(Parameter(
+        'RecoveryS3Bucket',
+        Description='Parent S3 bucket name',
+        Type='String'
+    ))
+
+    return t
+
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
@@ -293,6 +333,32 @@ def buildInstance(t, args):
         }
     ]
 
+    if (args.recovery):
+        rolePolicyStatements.extend([
+            {
+                "Sid": "Stmt1500699052004",
+                "Effect": "Allow",
+                "Action": ["s3:ListBucket"],
+                "Resource": [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket')])]
+            },
+            {
+                "Sid": "Stmt1500699052005",
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject",
+                ],
+                "Resource": [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket'), '/Backup/*'])]
+            },
+            {
+                "Sid": "Stmt1500612724002",
+                "Effect": "Allow",
+                "Action": [                
+                    "kms:Decrypt"
+                ],
+                "Resource": [ Ref('RecoveryKMSKey') ]
+            }
+        ])
+
     t.add_resource(
         iam.ManagedPolicy(
             'WebserverPolicy',
@@ -391,6 +457,17 @@ def buildInstance(t, args):
         "chmod +x /root/launch.sh && /root/launch.sh -s 0\n"
     ]
     
+    stackPassthroughFile = [
+        "S3=", Ref('S3Bucket'), "\n",
+        "KMS=", OpenEMRKeyID, "\n"
+    ]
+
+    if (args.recovery):
+        stackPassthroughFile.extend([
+            "RECOVERYS3=", Ref('RecoveryS3Bucket'), "\n",
+            "RECOVERYKMS=", Ref('RecoveryKMSKey'), "\n",
+        ])
+
     bootstrapInstall = cloudformation.InitConfig(
         files = {
             "/root/cloud-setup.sh" : {
@@ -398,7 +475,13 @@ def buildInstance(t, args):
                 "mode"  : "000500",
                 "owner" : "root",
                 "group" : "root"
-            }
+            },
+            "/root/cloud-variables": {
+                "content": Join("", stackPassthroughFile),
+                "mode": "000500",
+                "owner": "root",
+                "group": "root"
+            },
         },
         commands = {
             "01_setup" : {
@@ -452,26 +535,35 @@ def setOutputs(t, args):
         Output(
             'OpenEMR',
             Description='OpenEMR Setup',
-            Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp')])
+            Value=Join('', ['https://', GetAtt('WebserverInstance', 'PublicIp')])
         )
     )
     return t
 
 parser = argparse.ArgumentParser(description="OpenEMR Express Plus stack builder")
 parser.add_argument("--dev", help="purge development resources on exit", action="store_true")
+parser.add_argument("--recovery", help="load OpenEMR stack from backups", action="store_true")
 args = parser.parse_args()
 
 t = Template()
 
 t.add_version('2010-09-09')
 descString='OpenEMR Express Plus v6.0.0 cloud deployment'
+if (args.dev):
+    descString += ' [developer]'
+if (args.recovery):
+    descString += ' [recovery]'
 t.add_description(descString)
 
 # holdover from parent
 OpenEMRKeyID = Ref('OpenEMRKey')
 OpenEMRKeyARN = GetAtt('OpenEMRKey', 'Arn')
 
-setInputs(t,args)
+if (args.recovery):
+    setRecoveryInputs(t, args)
+else:
+    setInputs(t, args)
+
 setMappings(t,args)
 buildInfrastructure(t, args)
 buildInstance(t, args)

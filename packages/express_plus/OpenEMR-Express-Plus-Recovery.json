@@ -1,0 +1,742 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "OpenEMR Express Plus v6.0.0 cloud deployment [recovery]",
+    "Mappings": {
+        "RegionData": {
+            "ap-northeast-1": {
+                "UbuntuAMI": "ami-088da9557aae42f39"
+            },
+            "ap-northeast-2": {
+                "UbuntuAMI": "ami-0454bb2fefc7de534"
+            },
+            "ap-south-1": {
+                "UbuntuAMI": "ami-0851b76e8b1bce90b"
+            },
+            "ap-southeast-1": {
+                "UbuntuAMI": "ami-055d15d9cfddf7bd3"
+            },
+            "ap-southeast-2": {
+                "UbuntuAMI": "ami-0b7dcd6e6fd797935"
+            },
+            "ca-central-1": {
+                "UbuntuAMI": "ami-0aee2d0182c9054ac"
+            },
+            "eu-central-1": {
+                "UbuntuAMI": "ami-0d527b8c289b4af7f"
+            },
+            "eu-west-1": {
+                "UbuntuAMI": "ami-08ca3fed11864d6bb"
+            },
+            "eu-west-2": {
+                "UbuntuAMI": "ami-0015a39e4b7c0966f"
+            },
+            "sa-east-1": {
+                "UbuntuAMI": "ami-090006f29ecb2d79a"
+            },
+            "us-east-1": {
+                "UbuntuAMI": "ami-04505e74c0741db8d"
+            },
+            "us-east-2": {
+                "UbuntuAMI": "ami-0fb653ca2d3203ac1"
+            },
+            "us-west-1": {
+                "UbuntuAMI": "ami-01f87c43e618bf8f0"
+            },
+            "us-west-2": {
+                "UbuntuAMI": "ami-0892d3c7ee96c0bf7"
+            }
+        }
+    },
+    "Outputs": {
+        "OpenEMR": {
+            "Description": "OpenEMR Setup",
+            "Value": {
+                "Fn::Join": [
+                    "",
+                    [
+                        "https://",
+                        {
+                            "Fn::GetAtt": [
+                                "WebserverInstance",
+                                "PublicIp"
+                            ]
+                        }
+                    ]
+                ]
+            }
+        }
+    },
+    "Parameters": {
+        "EC2KeyPair": {
+            "Description": "Amazon EC2 Key Pair",
+            "Type": "AWS::EC2::KeyPair::KeyName"
+        },
+        "InstanceSize": {
+            "AllowedValues": [
+                "t3.micro",
+                "t3.small",
+                "t3.medium",
+                "t3.large",
+                "t3.xlarge",
+                "t3.2xlarge"
+            ],
+            "Default": "t3.small",
+            "Description": "EC2 instance size for the webserver (minimum t3.small recommended)",
+            "Type": "String"
+        },
+        "PracticeStorage": {
+            "Default": "10",
+            "Description": "Storage for the OpenEMR practice (minimum 10 GB)",
+            "MinValue": "10",
+            "Type": "Number"
+        },
+        "RecoveryKMSKey": {
+            "Description": "Parent KMS ARN (\"arn:aws:kms...\")",
+            "Type": "String"
+        },
+        "RecoveryS3Bucket": {
+            "Description": "Parent S3 bucket name",
+            "Type": "String"
+        }
+    },
+    "Resources": {
+        "BucketPolicy": {
+            "Properties": {
+                "Bucket": {
+                    "Ref": "S3Bucket"
+                },
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": "s3:GetBucketAcl",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "cloudtrail.amazonaws.com"
+                            },
+                            "Resource": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        "arn:aws:s3:::",
+                                        {
+                                            "Ref": "S3Bucket"
+                                        }
+                                    ]
+                                ]
+                            },
+                            "Sid": "AWSCloudTrailAclCheck"
+                        },
+                        {
+                            "Action": "s3:PutObject",
+                            "Condition": {
+                                "StringEquals": {
+                                    "s3:x-amz-acl": "bucket-owner-full-control"
+                                }
+                            },
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "cloudtrail.amazonaws.com"
+                            },
+                            "Resource": {
+                                "Fn::Join": [
+                                    "",
+                                    [
+                                        "arn:aws:s3:::",
+                                        {
+                                            "Ref": "S3Bucket"
+                                        },
+                                        "/AWSLogs/",
+                                        {
+                                            "Ref": "AWS::AccountId"
+                                        },
+                                        "/*"
+                                    ]
+                                ]
+                            },
+                            "Sid": "AWSCloudTrailWrite"
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                }
+            },
+            "Type": "AWS::S3::BucketPolicy"
+        },
+        "CloudTrail": {
+            "DependsOn": "BucketPolicy",
+            "Properties": {
+                "IncludeGlobalServiceEvents": "true",
+                "IsLogging": "true",
+                "IsMultiRegionTrail": "true",
+                "S3BucketName": {
+                    "Ref": "S3Bucket"
+                }
+            },
+            "Type": "AWS::CloudTrail::Trail"
+        },
+        "DockerVolume": {
+            "DeletionPolicy": "Snapshot",
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "0",
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "Encrypted": "true",
+                "KmsKeyId": {
+                    "Ref": "OpenEMRKey"
+                },
+                "Size": {
+                    "Ref": "PracticeStorage"
+                },
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "OpenEMR Practice"
+                    }
+                ],
+                "VolumeType": "gp2"
+            },
+            "Type": "AWS::EC2::Volume"
+        },
+        "OpenEMRKey": {
+            "DeletionPolicy": "Delete",
+            "Properties": {
+                "KeyPolicy": {
+                    "Id": "key-default-1",
+                    "Statement": [
+                        {
+                            "Action": "kms:*",
+                            "Effect": "Allow",
+                            "Principal": {
+                                "AWS": [
+                                    {
+                                        "Fn::Join": [
+                                            ":",
+                                            [
+                                                "arn:aws:iam:",
+                                                {
+                                                    "Ref": "AWS::AccountId"
+                                                },
+                                                "root"
+                                            ]
+                                        ]
+                                    }
+                                ]
+                            },
+                            "Resource": "*",
+                            "Sid": "1"
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                }
+            },
+            "Type": "AWS::KMS::Key"
+        },
+        "PublicSubnet1": {
+            "Properties": {
+                "AvailabilityZone": {
+                    "Fn::Select": [
+                        "0",
+                        {
+                            "Fn::GetAZs": ""
+                        }
+                    ]
+                },
+                "CidrBlock": "10.0.1.0/24",
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::Subnet"
+        },
+        "S3Bucket": {
+            "DeletionPolicy": "Retain",
+            "Properties": {
+                "BucketName": {
+                    "Fn::Join": [
+                        "-",
+                        [
+                            "openemr",
+                            {
+                                "Fn::Select": [
+                                    "2",
+                                    {
+                                        "Fn::Split": [
+                                            "/",
+                                            {
+                                                "Ref": "AWS::StackId"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    ]
+                }
+            },
+            "Type": "AWS::S3::Bucket"
+        },
+        "VPC": {
+            "Properties": {
+                "CidrBlock": "10.0.0.0/16",
+                "EnableDnsHostnames": "true",
+                "EnableDnsSupport": "true"
+            },
+            "Type": "AWS::EC2::VPC"
+        },
+        "WebserverInstance": {
+            "CreationPolicy": {
+                "ResourceSignal": {
+                    "Timeout": "PT25M"
+                }
+            },
+            "Metadata": {
+                "AWS::CloudFormation::Init": {
+                    "Install": {
+                        "commands": {
+                            "01_setup": {
+                                "command": "/root/cloud-setup.sh"
+                            }
+                        },
+                        "files": {
+                            "/root/cloud-setup.sh": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "#!/bin/bash -xe\n",
+                                            "exec > /tmp/cloud-setup.log 2>&1\n",
+                                            "DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" --force-yes\n",
+                                            "DVOL_SERIAL=`echo ",
+                                            {
+                                                "Ref": "DockerVolume"
+                                            },
+                                            " | sed s/-//`\n",
+                                            "DVOL_DEVICE=/dev/`lsblk -no +SERIAL | grep $DVOL_SERIAL | awk '{print $1}'`\n",
+                                            "mkfs -t ext4 $DVOL_DEVICE\n",
+                                            "echo $DVOL_DEVICE /mnt/docker ext4 defaults,nofail 0 0 >> /etc/fstab\n",
+                                            "mkdir /mnt/docker\n",
+                                            "mount /mnt/docker\n",
+                                            "ln -s /mnt/docker /var/lib/docker\n",
+                                            "apt-get -y install python3-boto awscli\n",
+                                            "S3=",
+                                            {
+                                                "Ref": "S3Bucket"
+                                            },
+                                            "\n",
+                                            "KMS=",
+                                            {
+                                                "Ref": "OpenEMRKey"
+                                            },
+                                            "\n",
+                                            "touch /root/cloud-backups-enabled\n",
+                                            "echo $S3 > /root/.cloud-s3.txt\n",
+                                            "echo $KMS > /root/.cloud-kms.txt\n",
+                                            "touch /tmp/mypass\n",
+                                            "chmod 500 /tmp/mypass\n",
+                                            "openssl rand -base64 32 >> /tmp/mypass\n",
+                                            "aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS\n",
+                                            "rm /tmp/mypass\n",
+                                            "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n",
+                                            "chmod +x /root/launch.sh && /root/launch.sh -s 0\n"
+                                        ]
+                                    ]
+                                },
+                                "group": "root",
+                                "mode": "000500",
+                                "owner": "root"
+                            },
+                            "/root/cloud-variables": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "S3=",
+                                            {
+                                                "Ref": "S3Bucket"
+                                            },
+                                            "\n",
+                                            "KMS=",
+                                            {
+                                                "Ref": "OpenEMRKey"
+                                            },
+                                            "\n",
+                                            "RECOVERYS3=",
+                                            {
+                                                "Ref": "RecoveryS3Bucket"
+                                            },
+                                            "\n",
+                                            "RECOVERYKMS=",
+                                            {
+                                                "Ref": "RecoveryKMSKey"
+                                            },
+                                            "\n"
+                                        ]
+                                    ]
+                                },
+                                "group": "root",
+                                "mode": "000500",
+                                "owner": "root"
+                            }
+                        }
+                    },
+                    "configSets": {
+                        "Setup": [
+                            "Install"
+                        ]
+                    }
+                }
+            },
+            "Properties": {
+                "IamInstanceProfile": {
+                    "Ref": "WebserverInstanceProfile"
+                },
+                "ImageId": {
+                    "Fn::FindInMap": [
+                        "RegionData",
+                        {
+                            "Ref": "AWS::Region"
+                        },
+                        "UbuntuAMI"
+                    ]
+                },
+                "InstanceInitiatedShutdownBehavior": "stop",
+                "InstanceType": {
+                    "Ref": "InstanceSize"
+                },
+                "KeyName": {
+                    "Ref": "EC2KeyPair"
+                },
+                "NetworkInterfaces": [
+                    {
+                        "AssociatePublicIpAddress": "true",
+                        "DeviceIndex": "0",
+                        "GroupSet": [
+                            {
+                                "Ref": "WebserverSG"
+                            }
+                        ],
+                        "SubnetId": {
+                            "Ref": "PublicSubnet1"
+                        }
+                    }
+                ],
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "OpenEMR Express Plus"
+                    }
+                ],
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+                            [
+                                "#!/bin/bash -x\n",
+                                "exec > /tmp/part-001.log 2>&1\n",
+                                "apt-get -y update\n",
+                                "apt-get -y install python3-pip\n",
+                                "pip3 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz\n",
+                                "ln -s /root/aws-cfn-bootstrap-latest/init/ubuntu/cfn-hup /etc/init.d/cfn-hup\n",
+                                "cfn-init -v ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource WebserverInstance ",
+                                "         --configsets Setup ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n",
+                                "cfn-signal -e $? ",
+                                "         --stack ",
+                                {
+                                    "Ref": "AWS::StackName"
+                                },
+                                "         --resource WebserverInstance ",
+                                "         --region ",
+                                {
+                                    "Ref": "AWS::Region"
+                                },
+                                "\n"
+                            ]
+                        ]
+                    }
+                },
+                "Volumes": [
+                    {
+                        "Device": "/dev/sdd",
+                        "VolumeId": {
+                            "Ref": "DockerVolume"
+                        }
+                    }
+                ]
+            },
+            "Type": "AWS::EC2::Instance"
+        },
+        "WebserverInstanceProfile": {
+            "Properties": {
+                "Path": "/",
+                "Roles": [
+                    {
+                        "Ref": "WebserverRole"
+                    }
+                ]
+            },
+            "Type": "AWS::IAM::InstanceProfile"
+        },
+        "WebserverPolicy": {
+            "Properties": {
+                "Description": "Policy for webserver instance",
+                "PolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "s3:ListBucket"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "S3Bucket"
+                                            }
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Sid": "Stmt1500699052003"
+                        },
+                        {
+                            "Action": [
+                                "s3:PutObject",
+                                "s3:GetObject",
+                                "s3:DeleteObject"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "S3Bucket"
+                                            },
+                                            "/Backup/*"
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Sid": "Stmt1500699052000"
+                        },
+                        {
+                            "Action": [
+                                "kms:Encrypt",
+                                "kms:Decrypt",
+                                "kms:GenerateDataKey*"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::GetAtt": [
+                                        "OpenEMRKey",
+                                        "Arn"
+                                    ]
+                                }
+                            ],
+                            "Sid": "Stmt1500612724002"
+                        },
+                        {
+                            "Action": [
+                                "s3:ListBucket"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "RecoveryS3Bucket"
+                                            }
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Sid": "Stmt1500699052004"
+                        },
+                        {
+                            "Action": [
+                                "s3:GetObject"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "RecoveryS3Bucket"
+                                            },
+                                            "/Backup/*"
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Sid": "Stmt1500699052005"
+                        },
+                        {
+                            "Action": [
+                                "kms:Decrypt"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Ref": "RecoveryKMSKey"
+                                }
+                            ],
+                            "Sid": "Stmt1500612724002"
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                }
+            },
+            "Type": "AWS::IAM::ManagedPolicy"
+        },
+        "WebserverRole": {
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Action": [
+                                "sts:AssumeRole"
+                            ],
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ec2.amazonaws.com"
+                                ]
+                            }
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                },
+                "ManagedPolicyArns": [
+                    {
+                        "Ref": "WebserverPolicy"
+                    }
+                ],
+                "Path": "/"
+            },
+            "Type": "AWS::IAM::Role"
+        },
+        "WebserverSG": {
+            "Properties": {
+                "GroupDescription": "Global Webserver Access",
+                "Tags": [
+                    {
+                        "Key": "Name",
+                        "Value": "Global Webserver Access"
+                    }
+                ],
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::SecurityGroup"
+        },
+        "WebserverSGIngress1": {
+            "Properties": {
+                "CidrIp": "0.0.0.0/0",
+                "FromPort": "22",
+                "GroupId": {
+                    "Ref": "WebserverSG"
+                },
+                "IpProtocol": "tcp",
+                "ToPort": "22"
+            },
+            "Type": "AWS::EC2::SecurityGroupIngress"
+        },
+        "WebserverSGIngress2": {
+            "Properties": {
+                "CidrIp": "0.0.0.0/0",
+                "FromPort": "80",
+                "GroupId": {
+                    "Ref": "WebserverSG"
+                },
+                "IpProtocol": "tcp",
+                "ToPort": "80"
+            },
+            "Type": "AWS::EC2::SecurityGroupIngress"
+        },
+        "WebserverSGIngress3": {
+            "Properties": {
+                "CidrIp": "0.0.0.0/0",
+                "FromPort": "443",
+                "GroupId": {
+                    "Ref": "WebserverSG"
+                },
+                "IpProtocol": "tcp",
+                "ToPort": "443"
+            },
+            "Type": "AWS::EC2::SecurityGroupIngress"
+        },
+        "ig": {
+            "Type": "AWS::EC2::InternetGateway"
+        },
+        "igAttach": {
+            "Properties": {
+                "InternetGatewayId": {
+                    "Ref": "ig"
+                },
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::VPCGatewayAttachment"
+        },
+        "rtPublic": {
+            "DependsOn": "igAttach",
+            "Properties": {
+                "DestinationCidrBlock": "0.0.0.0/0",
+                "GatewayId": {
+                    "Ref": "ig"
+                },
+                "RouteTableId": {
+                    "Ref": "rtTablePublic"
+                }
+            },
+            "Type": "AWS::EC2::Route"
+        },
+        "rtPublic1Attach": {
+            "Properties": {
+                "RouteTableId": {
+                    "Ref": "rtTablePublic"
+                },
+                "SubnetId": {
+                    "Ref": "PublicSubnet1"
+                }
+            },
+            "Type": "AWS::EC2::SubnetRouteTableAssociation"
+        },
+        "rtTablePublic": {
+            "Properties": {
+                "VpcId": {
+                    "Ref": "VPC"
+                }
+            },
+            "Type": "AWS::EC2::RouteTable"
+        }
+    }
+}
