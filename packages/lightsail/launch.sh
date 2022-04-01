@@ -16,12 +16,15 @@ CURRENTDOCKER=openemr:latest
 OVERRIDEDOCKER=$CURRENTDOCKER
 
 DEVELOPERMODE=0
+EMPTYSHELLMODE=0
 REPOBRANCH=master
 CURRENTBUILD=6.1.0
 OVERRIDEBUILD=$CURRENTBUILD
 
-while getopts "s:b:t:d:" opt; do
+while getopts "es:b:t:d:" opt; do
   case $opt in
+    e)
+      EMPTYSHELLMODE=1
     s)
       SWAPAMT=$OPTARG
       ;;
@@ -34,7 +37,7 @@ while getopts "s:b:t:d:" opt; do
       ;;
     t)
       OVERRIDEDOCKER=$OPTARG
-      ;;
+      ;;      
     \?)
       echo "Invalid option: -$opt" >&2
       exit 1
@@ -70,6 +73,12 @@ f () {
     git clone --single-branch --branch $REPOBRANCH https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
   fi
 
+  if [[ $EMPTYSHELLMODE == 1 ]]; then
+    ln -s docker-compose.shell.yml docker-compose.yml
+    if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
+      echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
+      sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+    fi
   if [[ $DEVELOPERMODE == 0 ]]; then
     ln -s docker-compose.prod.yml docker-compose.yml
     if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
@@ -88,7 +97,7 @@ f () {
   chmod a+x duplicity/*.sh
 
   cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
-  cp duplicity/restore.sh /root/restore.sh
+  cp duplicity/restore.sh duplicity/wait_until_ready.sh /root
 
   echo "launch.sh: done"
   exit 0

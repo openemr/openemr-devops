@@ -81,6 +81,14 @@ def setRecoveryInputs(t, args):
 
     return t
 
+def setDeveloperInputs(t, args):
+    t.addParameter(Parameter(
+        'DeploymentBranch',
+        Description='openemr-devops branch to launch from',
+        Default='master',
+        Type='String'
+    ))
+
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "us-east-1" : {
@@ -306,13 +314,13 @@ def buildInstance(t, args):
 
     rolePolicyStatements = [
         {
-          "Sid": "Stmt1500699052003",
+          "Sid": "SeeBuckets",
           "Effect": "Allow",
           "Action": ["s3:ListBucket"],
           "Resource" : [Join("", ["arn:aws:s3:::", Ref('S3Bucket')])]
         },
         {
-            "Sid": "Stmt1500699052000",
+            "Sid": "BucketRW",
             "Effect": "Allow",
             "Action": [
               "s3:PutObject",
@@ -322,7 +330,7 @@ def buildInstance(t, args):
             "Resource": [Join("", ["arn:aws:s3:::", Ref('S3Bucket'), '/Backup/*'])]
         },
         {
-            "Sid": "Stmt1500612724002",
+            "Sid": "KeyRW",
             "Effect": "Allow",
             "Action": [
               "kms:Encrypt",
@@ -336,13 +344,13 @@ def buildInstance(t, args):
     if (args.recovery):
         rolePolicyStatements.extend([
             {
-                "Sid": "Stmt1500699052004",
+                "Sid": "SeeRecoveryBucket",
                 "Effect": "Allow",
                 "Action": ["s3:ListBucket"],
                 "Resource": [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket')])]
             },
             {
-                "Sid": "Stmt1500699052005",
+                "Sid": "RecoveryBucketRead",
                 "Effect": "Allow",
                 "Action": [
                     "s3:GetObject",
@@ -350,7 +358,7 @@ def buildInstance(t, args):
                 "Resource": [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket'), '/Backup/*'])]
             },
             {
-                "Sid": "Stmt1500612724002",
+                "Sid": "RecoveryKeyRead",
                 "Effect": "Allow",
                 "Action": [                
                     "kms:Decrypt"
@@ -442,8 +450,7 @@ def buildInstance(t, args):
         "ln -s /mnt/docker /var/lib/docker\n",
 
         "apt-get -y install python3-boto awscli\n",
-        "S3=", Ref('S3Bucket'), "\n",
-        "KMS=", OpenEMRKeyID, "\n",
+        "source /root/cloud-variables\n",        
         "touch /root/cloud-backups-enabled\n",
         "echo $S3 > /root/.cloud-s3.txt\n",
         "echo $KMS > /root/.cloud-kms.txt\n",
@@ -453,9 +460,29 @@ def buildInstance(t, args):
         "aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS\n",
         "rm /tmp/mypass\n",
 
-        "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n",
-        "chmod +x /root/launch.sh && /root/launch.sh -s 0\n"
+        "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n"
     ]
+
+    # this goes four ways, no help for it
+    if (args.developer):
+        if (args.recovery):
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -e -s 0 -b ", Ref('DeploymentBranch'), "\n"]
+        else:
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -s 0 -b ", Ref('DeploymentBranch'), "\n"]
+    else:
+        if (args.recovery):
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -e -s 0\n"]
+        else:
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -s 0\n"]            
+    setupScript.extend( launchLine )
+    setupScript.extend( ["duplicity/wait_until_ready.sh\n" ])
+
+    if (args.recovery):
+        setupScript.extend([                        
+            "touch /root/recovery-restore-required\n",
+            "duplicity/restore.sh --confirm\n",
+            "rm /root/recovery-restore-required\n",
+        ])    
     
     stackPassthroughFile = [
         "S3=", Ref('S3Bucket'), "\n",
@@ -563,6 +590,9 @@ if (args.recovery):
     setRecoveryInputs(t, args)
 else:
     setInputs(t, args)
+
+if (args.dev):
+    setDeveloperInputs(t, args)
 
 setMappings(t,args)
 buildInfrastructure(t, args)
