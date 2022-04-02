@@ -33,4 +33,4 @@ See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_P
 
 ## Contact Us
 
-The OpenEMR [Forum](https://community.open-emr.org/) and [Chat](https://www.open-emr.org/chat/) are always available if you have any questions.
+The OpenEMR [Forum](https://community.open-emr.org/) and Slack are always available if you have any questions.
