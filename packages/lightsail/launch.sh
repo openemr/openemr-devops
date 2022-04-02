@@ -6,6 +6,7 @@
 #        -s: amount of swap to allocate, in gigabytes
 #        -b: oe-devops repo branch to load instead of master
 #        -d: specify repository build file to start in developer mode (local containers, open ports)
+#        -e: empty shell mode (do not attempt autoconfiguration)
 
 exec > /tmp/launch.log 2>&1
 

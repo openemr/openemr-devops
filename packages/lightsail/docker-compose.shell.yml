@@ -19,7 +19,7 @@ services:
     - logvolume01:/var/log
     - sitevolume:/var/www/localhost/htdocs/openemr/sites
     environment:
-      MANUAL_SETUP: yes
+      MANUAL_SETUP: 'yes'
       OPENEMR_DOCKER_ENV_TAG: lightsail_based
     links:
     - mysql
