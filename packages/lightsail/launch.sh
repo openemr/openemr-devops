@@ -95,6 +95,8 @@ f () {
   docker-compose up -d --build
 
   chmod a+x duplicity/*.sh
+  echo launch.sh: waiting for init...
+  duplicity/wait_until_ready.sh
 
   cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
   cp duplicity/restore.sh duplicity/wait_until_ready.sh /root
