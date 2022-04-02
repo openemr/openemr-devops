@@ -80,7 +80,7 @@ f () {
       echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
       sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
     fi
-  if [[ $DEVELOPERMODE == 0 ]]; then
+  elif [[ $DEVELOPERMODE == 0 ]]; then
     ln -s docker-compose.prod.yml docker-compose.yml
     if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
       echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
