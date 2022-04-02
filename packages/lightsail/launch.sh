@@ -25,6 +25,7 @@ while getopts "es:b:t:d:" opt; do
   case $opt in
     e)
       EMPTYSHELLMODE=1
+      ;;
     s)
       SWAPAMT=$OPTARG
       ;;
