@@ -82,7 +82,7 @@ def setRecoveryInputs(t, args):
     return t
 
 def setDeveloperInputs(t, args):
-    t.addParameter(Parameter(
+    t.add_parameter(Parameter(
         'DeploymentBranch',
         Description='openemr-devops branch to launch from',
         Default='master',
@@ -410,7 +410,7 @@ def buildInstance(t, args):
             DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
             Size=Ref('PracticeStorage'),
             AvailabilityZone = Select("0", GetAZs("")),
-            VolumeType = 'gp2',
+            VolumeType = 'gp3',
             Encrypted = True,
             KmsKeyId = OpenEMRKeyID,
             Tags=Tags(Name="OpenEMR Practice")
@@ -464,7 +464,7 @@ def buildInstance(t, args):
     ]
 
     # this goes four ways, no help for it
-    if (args.developer):
+    if (args.dev):
         if (args.recovery):
             launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -e -s 0 -b ", Ref('DeploymentBranch'), "\n"]
         else:

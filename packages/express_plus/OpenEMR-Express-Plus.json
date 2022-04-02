@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR Express Plus v6.0.0 cloud deployment",
+    "Description": "OpenEMR Express Plus v6.1.0 cloud deployment",
     "Mappings": {
         "RegionData": {
             "ap-northeast-1": {
@@ -54,7 +54,7 @@
                 "Fn::Join": [
                     "",
                     [
-                        "http://",
+                        "https://",
                         {
                             "Fn::GetAtt": [
                                 "WebserverInstance",
@@ -189,7 +189,7 @@
                         "Value": "OpenEMR Practice"
                     }
                 ],
-                "VolumeType": "gp2"
+                "VolumeType": "gp3"
             },
             "Type": "AWS::EC2::Volume"
         },
@@ -314,16 +314,7 @@
                                             "mount /mnt/docker\n",
                                             "ln -s /mnt/docker /var/lib/docker\n",
                                             "apt-get -y install python3-boto awscli\n",
-                                            "S3=",
-                                            {
-                                                "Ref": "S3Bucket"
-                                            },
-                                            "\n",
-                                            "KMS=",
-                                            {
-                                                "Ref": "OpenEMRKey"
-                                            },
-                                            "\n",
+                                            "source /root/cloud-variables\n",
                                             "touch /root/cloud-backups-enabled\n",
                                             "echo $S3 > /root/.cloud-s3.txt\n",
                                             "echo $KMS > /root/.cloud-kms.txt\n",
@@ -333,7 +324,30 @@
                                             "aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS\n",
                                             "rm /tmp/mypass\n",
                                             "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n",
-                                            "chmod +x /root/launch.sh && /root/launch.sh -s 0\n"
+                                            "chmod +x /root/launch.sh && /root/launch.sh -s 0\n",
+                                            "duplicity/wait_until_ready.sh\n"
+                                        ]
+                                    ]
+                                },
+                                "group": "root",
+                                "mode": "000500",
+                                "owner": "root"
+                            },
+                            "/root/cloud-variables": {
+                                "content": {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "S3=",
+                                            {
+                                                "Ref": "S3Bucket"
+                                            },
+                                            "\n",
+                                            "KMS=",
+                                            {
+                                                "Ref": "OpenEMRKey"
+                                            },
+                                            "\n"
                                         ]
                                     ]
                                 },
@@ -473,7 +487,7 @@
                                     ]
                                 }
                             ],
-                            "Sid": "Stmt1500699052003"
+                            "Sid": "SeeBuckets"
                         },
                         {
                             "Action": [
@@ -496,7 +510,7 @@
                                     ]
                                 }
                             ],
-                            "Sid": "Stmt1500699052000"
+                            "Sid": "BucketRW"
                         },
                         {
                             "Action": [
@@ -513,7 +527,7 @@
                                     ]
                                 }
                             ],
-                            "Sid": "Stmt1500612724002"
+                            "Sid": "KeyRW"
                         }
                     ],
                     "Version": "2012-10-17"

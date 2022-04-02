@@ -63,6 +63,9 @@ $ pip install -r requirements.txt
 $ python stack.py > OpenEMR-Express-Plus.json
 ```
 
+#### Windows Interactions
+
+Note that if you run Python from PowerShell your console output will be in UTF-16 encoding, which CloudFormation cannot directly import. Please use the enclosed `stackmaker` batchfile to produce UTF-8.
 ## Support
 
 The OpenEMR [forums](https://community.open-emr.org/) and Slack are available if you have any questions. We'll be happy to help!
