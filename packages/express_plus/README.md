@@ -27,7 +27,7 @@ We offer an AWS CloudFormation template, which slightly increases the billable A
   * You will need network access, don't try to build from a private IP without NAT egress.
   * Check the process list, make sure `auto_configure.php` isn't running before you attempt to log in.
   * Some region-specific hardcoding is required, and if AWS has released a new region you might be the first to notice we're not supporting it yet. Reach out on the forums if CloudFormation can't resolve the template for your area.
-* Express Plus is based on our (master installation script)[../lightsail] which contains complete notes on common administration tasks, including container interaction and installation of SSL certificates.
+* Express Plus is based on our [master installation script](../lightsail) which contains complete notes on common administration tasks, including container interaction and installation of SSL certificates.
 
 ### HIPAA Compliance
 
