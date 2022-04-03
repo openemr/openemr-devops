@@ -549,7 +549,7 @@ def buildInstance(t, args):
             UserData = Base64(Join('', bootstrapScript)),
             CreationPolicy = {
               "ResourceSignal" : {
-                "Timeout" : "PT25M"
+                "Timeout" : "PT1H" if args.recovery else "PT20M"
               }
             }
         )

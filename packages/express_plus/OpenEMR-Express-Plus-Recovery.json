@@ -290,7 +290,7 @@
         "WebserverInstance": {
             "CreationPolicy": {
                 "ResourceSignal": {
-                    "Timeout": "PT25M"
+                    "Timeout": "PT1H"
                 }
             },
             "Metadata": {
