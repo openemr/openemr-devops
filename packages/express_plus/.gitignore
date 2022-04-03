@@ -1,2 +1,3 @@
 *.json
 !OpenEMR-Express-Plus.json
+!OpenEMR-Express-Plus-Recovery.json

@@ -1,6 +1,6 @@
 # OpenEMR Cloud Express Plus
 
-This process will install a fully-functional, secured, preconfigured OpenEMR 6.0.0 instance on an AWS Ubuntu server (and several other Amazon services), providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information.
+This process will install a fully-functional, secured, preconfigured OpenEMR 6.1.0 instance on an AWS Ubuntu server (and several other Amazon services), providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Installation
 
@@ -63,6 +63,9 @@ $ pip install -r requirements.txt
 $ python stack.py > OpenEMR-Express-Plus.json
 ```
 
+#### Windows Interactions
+
+Note that if you run Python from PowerShell your console output will be in UTF-16 encoding, which CloudFormation cannot directly import. Please use the enclosed `stackmaker` batchfile to produce UTF-8.
 ## Support
 
 The OpenEMR [forums](https://community.open-emr.org/) and Slack are available if you have any questions. We'll be happy to help!

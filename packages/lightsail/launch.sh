@@ -6,6 +6,7 @@
 #        -s: amount of swap to allocate, in gigabytes
 #        -b: oe-devops repo branch to load instead of master
 #        -d: specify repository build file to start in developer mode (local containers, open ports)
+#        -e: empty shell mode (do not attempt autoconfiguration)
 
 exec > /tmp/launch.log 2>&1
 
@@ -16,12 +17,16 @@ CURRENTDOCKER=openemr:latest
 OVERRIDEDOCKER=$CURRENTDOCKER
 
 DEVELOPERMODE=0
+EMPTYSHELLMODE=0
 REPOBRANCH=master
 CURRENTBUILD=6.1.0
 OVERRIDEBUILD=$CURRENTBUILD
 
-while getopts "s:b:t:d:" opt; do
+while getopts "es:b:t:d:" opt; do
   case $opt in
+    e)
+      EMPTYSHELLMODE=1
+      ;;
     s)
       SWAPAMT=$OPTARG
       ;;
@@ -34,7 +39,7 @@ while getopts "s:b:t:d:" opt; do
       ;;
     t)
       OVERRIDEDOCKER=$OPTARG
-      ;;
+      ;;      
     \?)
       echo "Invalid option: -$opt" >&2
       exit 1
@@ -70,7 +75,13 @@ f () {
     git clone --single-branch --branch $REPOBRANCH https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
   fi
 
-  if [[ $DEVELOPERMODE == 0 ]]; then
+  if [[ $EMPTYSHELLMODE == 1 ]]; then
+    ln -s docker-compose.shell.yml docker-compose.yml
+    if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
+      echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
+      sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+    fi
+  elif [[ $DEVELOPERMODE == 0 ]]; then
     ln -s docker-compose.prod.yml docker-compose.yml
     if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
       echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
@@ -85,11 +96,14 @@ f () {
   fi
   docker-compose up -d --build
 
-  chmod a+x duplicity/*.sh
+  chmod a+x duplicity/*.sh  
+  cp duplicity/restore.sh duplicity/wait_until_ready.sh /root
 
+  echo launch.sh: waiting for init...
+  duplicity/wait_until_ready.sh
+  
   cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
-  cp duplicity/restore.sh /root/restore.sh
-
+  
   echo "launch.sh: done"
   exit 0
 }

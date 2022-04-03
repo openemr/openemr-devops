@@ -1,0 +1,30 @@
+version: '2.0'
+services:
+  mysql:
+    restart: always
+    image: openemr/mysql-xtrabackup:latest
+    command: ['mysqld','--character-set-server=utf8']
+    volumes:
+    - sqlbackup:/mnt/backups
+    - databasevolume:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+  openemr:
+    restart: always
+    image: openemr/openemr:6.1.0
+    ports:
+    - 80:80
+    - 443:443
+    volumes:
+    - logvolume01:/var/log
+    - sitevolume:/var/www/localhost/htdocs/openemr/sites
+    environment:
+      MANUAL_SETUP: 'yes'
+      OPENEMR_DOCKER_ENV_TAG: lightsail_based
+    links:
+    - mysql
+volumes:
+  logvolume01: {}
+  sitevolume: {}
+  sqlbackup: {}
+  databasevolume: {}

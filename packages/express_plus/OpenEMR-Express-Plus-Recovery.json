@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR Express Plus v6.1.0 cloud deployment",
+    "Description": "OpenEMR Express Plus v6.1.0 cloud deployment [recovery]",
     "Mappings": {
         "RegionData": {
             "ap-northeast-1": {
@@ -89,6 +89,14 @@
             "Description": "Storage for the OpenEMR practice (minimum 10 GB)",
             "MinValue": "10",
             "Type": "Number"
+        },
+        "RecoveryKMSKey": {
+            "Description": "Parent KMS ARN (\"arn:aws:kms...\")",
+            "Type": "String"
+        },
+        "RecoveryS3Bucket": {
+            "Description": "Parent S3 bucket name",
+            "Type": "String"
         }
     },
     "Resources": {
@@ -282,7 +290,7 @@
         "WebserverInstance": {
             "CreationPolicy": {
                 "ResourceSignal": {
-                    "Timeout": "PT20M"
+                    "Timeout": "PT1H"
                 }
             },
             "Metadata": {
@@ -324,7 +332,10 @@
                                             "aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS\n",
                                             "rm /tmp/mypass\n",
                                             "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n",
-                                            "chmod +x /root/launch.sh && /root/launch.sh -s 0\n"
+                                            "chmod +x /root/launch.sh && /root/launch.sh -e -s 0\n",
+                                            "touch /root/recovery-restore-required\n",
+                                            "/root/restore.sh --confirm\n",
+                                            "rm /root/recovery-restore-required\n"
                                         ]
                                     ]
                                 },
@@ -345,6 +356,16 @@
                                             "KMS=",
                                             {
                                                 "Ref": "OpenEMRKey"
+                                            },
+                                            "\n",
+                                            "RECOVERYS3=",
+                                            {
+                                                "Ref": "RecoveryS3Bucket"
+                                            },
+                                            "\n",
+                                            "RECOVERYKMS=",
+                                            {
+                                                "Ref": "RecoveryKMSKey"
                                             },
                                             "\n"
                                         ]
@@ -527,6 +548,59 @@
                                 }
                             ],
                             "Sid": "KeyRW"
+                        },
+                        {
+                            "Action": [
+                                "s3:ListBucket"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "RecoveryS3Bucket"
+                                            }
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Sid": "SeeRecoveryBucket"
+                        },
+                        {
+                            "Action": [
+                                "s3:GetObject"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Fn::Join": [
+                                        "",
+                                        [
+                                            "arn:aws:s3:::",
+                                            {
+                                                "Ref": "RecoveryS3Bucket"
+                                            },
+                                            "/Backup/*"
+                                        ]
+                                    ]
+                                }
+                            ],
+                            "Sid": "RecoveryBucketRead"
+                        },
+                        {
+                            "Action": [
+                                "kms:Decrypt"
+                            ],
+                            "Effect": "Allow",
+                            "Resource": [
+                                {
+                                    "Ref": "RecoveryKMSKey"
+                                }
+                            ],
+                            "Sid": "RecoveryKeyRead"
                         }
                     ],
                     "Version": "2012-10-17"
