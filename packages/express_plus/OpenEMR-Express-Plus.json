@@ -324,8 +324,7 @@
                                             "aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS\n",
                                             "rm /tmp/mypass\n",
                                             "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n",
-                                            "chmod +x /root/launch.sh && /root/launch.sh -s 0\n",
-                                            "duplicity/wait_until_ready.sh\n"
+                                            "chmod +x /root/launch.sh && /root/launch.sh -s 0\n"
                                         ]
                                     ]
                                 },

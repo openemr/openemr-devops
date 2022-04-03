@@ -458,24 +458,24 @@ def buildInstance(t, args):
         "chmod 500 /tmp/mypass\n",
         "openssl rand -base64 32 >> /tmp/mypass\n",
         "aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS\n",
-        "rm /tmp/mypass\n",
-
-        "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n"
+        "rm /tmp/mypass\n"
     ]
 
     # this goes four ways, no help for it
     if (args.dev):
+        scriptLine = [ "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/", Ref('DeploymentBranch'), "/packages/lightsail/launch.sh > /root/launch.sh\n"]
         if (args.recovery):
             launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -e -s 0 -b ", Ref('DeploymentBranch'), "\n"]
         else:
             launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -s 0 -b ", Ref('DeploymentBranch'), "\n"]
     else:
+        scriptLine = [ "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n" ]
         if (args.recovery):
             launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -e -s 0\n"]
         else:
             launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -s 0\n"]            
-    setupScript.extend( launchLine )
-    setupScript.extend( ["duplicity/wait_until_ready.sh\n" ])
+    setupScript.extend( scriptLine )            
+    setupScript.extend( launchLine )   
 
     if (args.recovery):
         setupScript.extend([                        
