@@ -480,7 +480,7 @@ def buildInstance(t, args):
     if (args.recovery):
         setupScript.extend([                        
             "touch /root/recovery-restore-required\n",
-            "duplicity/restore.sh --confirm\n",
+            "./restore.sh --confirm\n",
             "rm /root/recovery-restore-required\n",
         ])    
     

@@ -334,7 +334,7 @@
                                             "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n",
                                             "chmod +x /root/launch.sh && /root/launch.sh -e -s 0\n",
                                             "touch /root/recovery-restore-required\n",
-                                            "duplicity/restore.sh --confirm\n",
+                                            "./restore.sh --confirm\n",
                                             "rm /root/recovery-restore-required\n"
                                         ]
                                     ]
