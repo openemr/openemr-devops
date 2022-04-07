@@ -100,7 +100,7 @@ sqlDataDrive() {
 # parameter 1 is identifier
 backupOpenemr() {
     mkdir -p "/snapshots/${1}"
-    mysqldump --hex-blob -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" > "/snapshots/${1}/backup.sql"
+    mysqldump --ignore-table="$CUSTOM_DATABASE".onsite_activity_view --hex-blob -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" > "/snapshots/${1}/backup.sql"
     rsync --delete --recursive --links /var/www/localhost/htdocs/openemr/sites "/snapshots/${1}/"
     rsync --delete --recursive --links /couchdb/data "/snapshots/${1}/"
     cd /snapshots
@@ -112,10 +112,17 @@ backupOpenemr() {
 restoreOpenemr() {
     cd /snapshots
     tar -xzf "${1}.tgz"
+    # need to empty the database before the restore database import
+    mysqldump -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" --add-drop-table --no-data "$CUSTOM_DATABASE" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE"
     mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "/snapshots/${1}/backup.sql"
+    # note keeping same sqlconf.php in case snapshot is from somewhere else (ie. such as the demo farm) with different credentials
+    sqlconf=`cat /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php`
     rsync --delete --recursive --links "/snapshots/${1}/sites" /var/www/localhost/htdocs/openemr/
+    echo "$sqlconf" > /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     chown -R apache /var/www/localhost/htdocs/openemr/
-    rsync --delete --recursive --links "/snapshots/${1}/data" /couchdb/
+    if [ -d "/snapshots/${1}/data" ]; then
+        rsync --delete --recursive --links "/snapshots/${1}/data" /couchdb/
+    fi
     rm -fr "/snapshots/${1}"
 }
 
