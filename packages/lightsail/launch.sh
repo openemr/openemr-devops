@@ -5,7 +5,7 @@
 #        -t: specific OpenEMR container to load
 #        -s: amount of swap to allocate, in gigabytes
 #        -b: oe-devops repo branch to load instead of master
-#        -d: specify repository build file to start in developer mode (local containers, open ports)
+#        -d: specify x86 repository build file to start in developer mode (local containers, open ports)
 #        -e: empty shell mode (do not attempt autoconfiguration)
 
 exec > /tmp/launch.log 2>&1
@@ -81,6 +81,18 @@ f () {
       echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
       sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
     fi
+  elif [[ $(dpkg --print-architecture) =~ arm && $DEVELOPERMODE == 0 ]]; then
+    ln -s docker-compose.arm.yml docker-compose.yml
+    if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
+      echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
+      sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+    fi      
+  elif [[ $(dpkg --print-architecture) =~ arm ]]; then
+    ln -s docker-compose.arm.dev.yml docker-compose.yml
+    if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
+      echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
+      sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+    fi    
   elif [[ $DEVELOPERMODE == 0 ]]; then
     ln -s docker-compose.prod.yml docker-compose.yml
     if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
@@ -103,7 +115,7 @@ f () {
   duplicity/wait_until_ready.sh
   
   cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
-  
+
   echo "launch.sh: done"
   exit 0
 }

@@ -40,6 +40,11 @@ else
   duplicity --no-encryption --force file:///root/backups /
 fi
 
+if [[ $(dpkg --print-architecture) =~ arm ]]; then
+  echo File system restored, skipping unavailable arm DB restore
+  exit 0
+fi
+
 DR_SETSWAP=0
 # Xtrabackup's incremental recovery mode requires a gig of free memory -- go ahead and find /that/ in the docs. Ugh.
 if [[ $(free --total --mega | grep Total | awk '{ print $4 }') -lt 1024 ]]; then
