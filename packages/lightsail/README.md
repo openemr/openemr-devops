@@ -133,6 +133,12 @@ It is recommended, in the strongest possible terms, that you familiarize yoursel
 
 See the `mysql-xtrabackup` container for more information about the `xbackup.sh` and `xrecovery.sh` scripts called by the Duplicity wrappers.
 
+### Non-Lightsail Import
+
+The provided script `ingestion.sh` can import a manually-created OpenEMR backup, the `openemr.tar` file, destroying all current data in the instance without remedy. It's provided in order to ease transitions from Windows XAMPP installations or manual LAMP stacks to the dockerized environment, and although it can serve as part of a backup-and-restore regimen it's more a migration tool that may require remediation (non-LBF customization may be outright missed) before it can shoulder production loads.
+
+Launch it, preferably in a just-launched Lightsail instance, with `./ingestion.sh <backup-name>` after setting it executable.
+
 ### Next Steps
 
 There is an important and immediate flaw in the backup regimen to address &mdash; your backups will not be stored safely off the instance; until this is amended, if something happens to the server, your backups will be lost as well. Duplicity can be configured with a *bewildering* array of remote storage backends, and it is encouraged that you explore them as soon as possible.
