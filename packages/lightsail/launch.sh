@@ -8,7 +8,7 @@
 #        -d: specify x86 repository build file to start in developer mode (local containers, open ports)
 #        -e: empty shell mode (do not attempt autoconfiguration)
 
-exec > /tmp/launch.log 2>&1
+exec > /var/log/lightsail-launch.log 2>&1
 
 SWAPAMT=1
 SWAPPATHNAME=/mnt/auto.swap
