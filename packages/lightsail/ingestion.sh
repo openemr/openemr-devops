@@ -11,12 +11,15 @@ mkdir /tmp/backup-ingestion
 cd /tmp/backup-ingestion
 tar -xf $1 -C /tmp/backup-ingestion/ --no-same-owner
 
+DOCKERID=$(docker ps | grep _openemr | cut -f 1 -d " ")
+
 # retrieve site
 mkdir webroot
 tar -zxf openemr.tar.gz -C webroot
 rm openemr.tar.gz
-docker cp $(docker ps | grep _openemr | cut -f 1 -d " "):/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php webroot/sites/default
-docker cp webroot/sites/default $(docker ps | grep _openemr | cut -f 1 -d " "):/var/www/localhost/htdocs/openemr/sites/default-recovery
+find webroot -type d -name 'node_modules' -exec rm -rf {} +
+docker cp $DOCKERID:/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php webroot/sites/default
+docker cp webroot $DOCKERID:/tmp/oe-recovery
 
 # straighten out internal permissions
 docker exec -i $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh -s << "EOF"
@@ -32,13 +35,13 @@ EOF
 
 # restore database
 gzip -d openemr.sql.gz
-echo 'USE openemr;' | cat - openemr.sql | docker exec -i $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh -c 'mysql -h"$MYSQL_HOST" -u"$MYSQL_USER" -p"$MYSQL_PASS"'
+echo 'USE openemr;' | cat - openemr.sql | docker exec -i $DOCKERID /bin/sh -c 'mysql -h"$MYSQL_HOST" -u"$MYSQL_USER" -p"$MYSQL_PASS"'
 rm openemr.sql
 
 # swift kick to PHP
-docker restart $(docker ps | grep _openemr | cut -f 1 -d " ")
+docker restart $DOCKERID
 
-cd /
+cd /root
 rm -rf /tmp/backup-ingestion
 
 echo Restore operation complete!
