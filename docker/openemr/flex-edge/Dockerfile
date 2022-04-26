@@ -38,7 +38,11 @@ RUN apk add --no-cache build-base libffi-dev python3-dev cargo \
     && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache libffi-dev python3-dev cargo
+    && apk del --no-cache libffi-dev python3-dev cargo \    
+    && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/httpd.conf \
+    && sed -i 's/^ *ErrorLog/#ErrorLog/' /etc/apache2/httpd.conf \
+    && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/conf.d/ssl.conf \
+    && sed -i 's/^ *TransferLog/#TransferLog/' /etc/apache2/conf.d/ssl.conf
 WORKDIR /var/www/localhost/htdocs
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly

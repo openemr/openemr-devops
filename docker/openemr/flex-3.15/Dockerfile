@@ -3,7 +3,7 @@ FROM alpine:3.15
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
 RUN apk add --no-cache \
-    apache2 apache2-ssl git php7 php7-tokenizer php7-ctype php7-session php7-apache2 \
+    apache2 apache2-ssl apache2-utils git php7 php7-tokenizer php7-ctype php7-session php7-apache2 \
     php7-json php7-pdo php7-pdo_mysql php7-curl php7-ldap php7-openssl php7-iconv \
     php7-xml php7-xsl php7-gd php7-zip php7-soap php7-mbstring php7-zlib \
     php7-mysqli php7-sockets php7-xmlreader php7-redis perl php7-simplexml php7-xmlwriter php7-phar php7-fileinfo \
@@ -30,7 +30,12 @@ RUN apk add --no-cache build-base libffi-dev python3-dev cargo \
     && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache libffi-dev python3-dev cargo
+    && apk del --no-cache libffi-dev python3-dev cargo \
+    && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/httpd.conf \
+    && sed -i 's/^ *ErrorLog/#ErrorLog/' /etc/apache2/httpd.conf \
+    && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/conf.d/ssl.conf \
+    && sed -i 's/^ *TransferLog/#TransferLog/' /etc/apache2/conf.d/ssl.conf
+    
 WORKDIR /var/www/localhost/htdocs
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
