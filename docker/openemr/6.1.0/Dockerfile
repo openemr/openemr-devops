@@ -1,4 +1,5 @@
-FROM alpine:3.15
+#FROM alpine:3.15
+FROM yobasystems/alpine-mariadb
 
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
