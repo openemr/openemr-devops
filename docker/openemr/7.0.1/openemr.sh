@@ -200,8 +200,8 @@ fi
 if [ "$REDIS_SERVER" != "" ] &&
    [ ! -f /etc/php-redis-configured ]; then
     # Variable for $REDIS_SERVER is usually going to be something like 'redis'
-    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php8/php.ini
-    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"tcp://$REDIS_SERVER:6379\"@" /etc/php8/php.ini
+    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php81/php.ini
+    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"tcp://$REDIS_SERVER:6379\"@" /etc/php81/php.ini
     # Ensure only configure this one time
     touch /etc/php-redis-configured
 fi
