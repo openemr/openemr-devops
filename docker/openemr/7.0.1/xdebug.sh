@@ -15,7 +15,7 @@ if [ ! -f /etc/php-xdebug-configured ]; then
 
     # set up xdebug in php.ini
     echo "; start xdebug configuration" >> /etc/php81/php.ini
-    echo "zend_extension=/usr/lib/php8/modules/xdebug.so" >> /etc/php81/php.ini
+    echo "zend_extension=/usr/lib/php81/modules/xdebug.so" >> /etc/php81/php.ini
     echo "xdebug.output_dir=/tmp" >> /etc/php81/php.ini
     echo "xdebug.start_with_request=trigger" >> /etc/php81/php.ini
     echo "xdebug.remote_handler=dbgp" >> /etc/php81/php.ini
