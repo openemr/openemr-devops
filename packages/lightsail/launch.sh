@@ -19,7 +19,7 @@ OVERRIDEDOCKER=$CURRENTDOCKER
 DEVELOPERMODE=0
 EMPTYSHELLMODE=0
 REPOBRANCH=master
-CURRENTBUILD=6.1.0
+CURRENTBUILD=7.0.0
 OVERRIDEBUILD=$CURRENTBUILD
 
 while getopts "es:b:t:d:" opt; do
@@ -65,7 +65,7 @@ f () {
   apt-get update -y
   apt-get dist-upgrade -y
   apt autoremove -y
-  apt-get install jq git duplicity containerd docker-compose -y
+  apt-get install jq git duplicity containerd docker-compose python3-boto -y
 
   mkdir backups
 
