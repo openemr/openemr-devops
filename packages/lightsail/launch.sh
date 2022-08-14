@@ -65,7 +65,7 @@ f () {
   apt-get update -y
   apt-get dist-upgrade -y
   apt autoremove -y
-  apt-get install jq git duplicity containerd docker-compose python3-boto -y
+  apt-get install jq git duplicity containerd docker-compose python3-boto3 -y
 
   mkdir backups
 

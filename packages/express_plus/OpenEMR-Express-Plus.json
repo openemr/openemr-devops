@@ -313,7 +313,7 @@
                                             "mkdir /mnt/docker\n",
                                             "mount /mnt/docker\n",
                                             "ln -s /mnt/docker /var/lib/docker\n",
-                                            "apt-get -y install python3-boto awscli\n",
+                                            "apt-get -y install python3-boto3 awscli\n",
                                             "source /root/cloud-variables\n",
                                             "touch /root/cloud-backups-enabled\n",
                                             "echo $S3 > /root/.cloud-s3.txt\n",
