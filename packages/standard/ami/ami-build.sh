@@ -25,7 +25,7 @@ apt-get update -y
 DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --force-yes
 
 # grab packages
-apt-get install -y git jq duplicity awscli python3-boto python3-pip containerd docker-compose
+apt-get install -y git jq duplicity awscli python3-boto3 python3-pip containerd docker-compose
 
 # CloudFormation hooks
 pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz
