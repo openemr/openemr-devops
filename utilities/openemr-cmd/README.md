@@ -6,7 +6,7 @@ OpenEMR-Cmd is similar to devtools, it helps developers to manage and troublesho
 
 ## Implementation
 
-1. Copy the script to local linux environment, create the bin directory if not exist.
+1. Copy the script to local linux environment, create the bin directory if it does not exist. (May have to use ~/.local/bin for newer versions of Ubuntu in steps 1 and 2 so the script is found in $PATH.)
 
 ```
 mkdir ~/bin
