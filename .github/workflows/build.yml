@@ -1,6 +1,7 @@
 name: Development 7.0.1 Docker Nightly Build
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '0 2 * * *' # run at 2 AM UTC
 
