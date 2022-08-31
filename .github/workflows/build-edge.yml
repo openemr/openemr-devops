@@ -1,7 +1,9 @@
-name: Flex edge Docker Build
+name: Flex edge Docker Nightly Build
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *' # run at 2 AM UTC
 
 jobs:
   build:
