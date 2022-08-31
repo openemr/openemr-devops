@@ -23,9 +23,8 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          file: {context}/docker/openemr/7.0.1/Dockerfile
+          file: ./docker/openemr/7.0.1/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: openemr/openemr:7.0.1 , openemr/openemr:dev , openemr/openemr:next
+          tags: openemr/openemr:7.0.1,openemr/openemr:dev,openemr/openemr:next
           no-cache: true
-
