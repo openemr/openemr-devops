@@ -273,7 +273,6 @@ docker-pull-image(){
         else 
           echo "Skipping $IMAGE";
         fi
-
     fi  
     done
 }
