@@ -267,12 +267,12 @@ docker-pull-image(){
     do
     if [ $IMAGE != "IMAGE" ] 
     then
-        read -e -p "Do you wish to pull $IMAGE ? (y) " RESP
-        if [ "$RESP" = "y" ]; then 
+      read -e -p "Do you wish to pull $IMAGE ? (y) " RESP
+      if [ "$RESP" = "y" ]; then 
         docker pull "$IMAGE";
-        else 
-          echo "Skipping $IMAGE";
-        fi
+      else 
+        echo "Skipping $IMAGE";
+      fi
     fi  
     done
 }
