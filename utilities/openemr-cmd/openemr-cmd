@@ -267,15 +267,17 @@ docker-pull-image(){
     do
     if [ $IMAGE != "IMAGE" ] 
     then
-        echo $IMAGE
-        read -e -p "Do you wish to pull this $IMAGE ? (y/n) " RESP
+        read -e -p "Do you wish to pull $IMAGE ? (y) " RESP
         if [ "$RESP" = "y" ]; then 
         docker pull "$IMAGE";
-        fi  
+        else 
+          echo "Skipping $IMAGE";
+        fi
+
     fi  
     done
 }
-    
+
 USAGE_EXIT_CODE=13
 VERSION_EXIT_CODE=14
 FINAL_EXIT_CODE=0
