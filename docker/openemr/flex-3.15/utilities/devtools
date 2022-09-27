@@ -4,7 +4,11 @@ source /root/devtoolsLibrary.source
 
 if [ "$1" == "php-log" ]; then
     echo "Generating PHP error log"
-    cat /var/log/apache2/error.log
+    if [[ $(ls -1tc /var/log/apache2/error.log* | wc -l) -gt 0 ]]; then
+        cat $(ls -1tc /var/log/apache2/error.log* | head -n 1)
+    else
+        echo "no PHP error log found";
+    fi
 fi
 
 if [ "$1" == "build-themes" ]; then
@@ -69,6 +73,7 @@ if [ "$1" == "e2e-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep
     echo "Running OpenEMR e2e tests"
     cd /var/www/localhost/htdocs/openemr
     export PANTHER_NO_SANDBOX=1
+    export PANTHER_CHROME_ARGUMENTS='--disable-dev-shm-usage'
     export PANTHER_CHROME_DRIVER_BINARY=/usr/lib/chromium/chromedriver
     vendor/bin/phpunit --testsuite e2e --testdox
 fi
@@ -200,7 +205,7 @@ if [ "$1" == "backup" ]; then
         echo "Missing a backup identifier"
         exit
     fi
-    if echo "$2" | grep -Eq '[^a-zA-Z0-9]'; then
+    if echo "$2" | grep -Eq '[^a-zA-Z0-9\-]'; then
         echo "Invalid identifier (can only contain numbers and letters)"
         exit
     fi
@@ -218,7 +223,7 @@ if [ "$1" == "restore" ]; then
         echo "Missing a restore identifier"
         exit
     fi
-    if echo "$2" | grep -Eq '[^a-zA-Z0-9]'; then
+    if echo "$2" | grep -Eq '[^a-zA-Z0-9\-]'; then
         echo "Invalid identifier (can only contain numbers and letters)"
         exit
     fi

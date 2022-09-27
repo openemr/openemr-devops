@@ -14,7 +14,7 @@ ref_region = Ref('AWS::Region')
 ref_stack_name = Ref('AWS::StackName')
 ref_account = Ref('AWS::AccountId')
 
-docker_version = ':6.0.0'
+docker_version = ':7.0.0'
 
 
 def setInputs(t, args):
@@ -58,8 +58,10 @@ def setInputs(t, args):
         Type='String',
         AllowedValues=[
             't3.small', 't3.medium', 't3.large', 't3.xlarge', 't3.2xlarge',
-            'm5.large', 'm5.xlarge', 'm5.2xlarge', 'm5.4xlarge', 'm5.12xlarge', 'm5.24xlarge',
-            'c5.large', 'c5.xlarge', 'c5.2xlarge', 'c5.4xlarge', 'c5.9xlarge', 'c5.18xlarge'
+            'm6a.large', 'm6a.xlarge', 'm6a.2xlarge', 'm6a.4xlarge',
+            'm6i.large', 'm6i.xlarge', 'm6i.2xlarge', 'm6i.4xlarge',
+            'c6a.large', 'c6a.xlarge', 'c6a.2xlarge', 'c6a.4xlarge',
+            'c6i.large', 'c6i.xlarge', 'c6i.2xlarge', 'c6i.4xlarge'
         ]
     ))
 
@@ -218,10 +220,11 @@ def setRecoveryInputs(t, args):
     t.add_parameter(Parameter(
         'WebserverInstanceSize',
         Description='EC2 instance size for the webserver',
-        Default='t2.small',
+        Default='t3.small',
         Type='String',
         AllowedValues=[
-            't2.small', 't2.medium', 't2.large', 't2.xlarge', 't2.2xlarge'
+            't3.small', 't3.medium', 't3.large',
+            'm6a.large', 'm6a.xlarge', 'm6i.large', 'm6i.xlarge'
         ]
     ))
 
@@ -231,10 +234,12 @@ def setRecoveryInputs(t, args):
     t.add_parameter(Parameter(
         'RDSInstanceSize',
         Description='RDS instance size for the back-end database',
-        Default='db.t2.small',
+        Default='db.t3.small',
         Type='String',
         AllowedValues=[
-            'db.t2.micro', 'db.t2.small', 'db.t2.medium', 'db.t2.large', 'db.m4.large'
+            'db.t3.micro', 'db.t3.small', 'db.t3.medium', 
+            'db.m6g.large', 'db.m6g.xlarge',
+            'db.r6g.large', 'db.r6g.xlarge', 'db.r6g.2xlarge'
         ]
     ))
 
@@ -360,63 +365,63 @@ def setRecoveryInputs(t, args):
 def setMappings(t, args):
     t.add_mapping('RegionData', {
         "ap-northeast-1": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-2086695f"
         },
         "ap-northeast-2": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-d04ce5be"
         },
         "ap-south-1": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-d2bd9dbd"
         },
         "ap-southeast-1": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-2fb49f53"
         },
         "ap-southeast-2": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-2a459148"
         },
         "ca-central-1": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-8de666e9"
         },
         "eu-central-1": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-b105265a"
         },
         "eu-west-1": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-dd99b2a4"
         },
         "eu-west-2": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-96da38f1"
         },
         "eu-west-3": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-6c902111"
         },
         "sa-east-1": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-56e5b73a"
         },
         "us-east-1": {
-            "MySQLVersion": "5.6.39",
-            "OpenEMRMktPlaceAMI": "ami-0dfabb22610673720"
+            "MySQLVersion": "5.7.33",
+            "OpenEMRMktPlaceAMI": "ami-07124126f9225d337"
         },
         "us-east-2": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-f97f429c"
         },
         "us-west-1": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-f5d6c995"
         },
         "us-west-2": {
-            "MySQLVersion": "5.6.39",
+            "MySQLVersion": "5.7.33",
             "OpenEMRMktPlaceAMI": "ami-8b4d3af3"
         }
     })
@@ -871,7 +876,8 @@ def buildInstance(t, args):
 
     stackPassthroughFile = [
         "S3=", Ref('S3Bucket'), "\n",
-        "KMS=", OpenEMRKeyID, "\n"
+        "KMS=", OpenEMRKeyID, "\n",
+        "DVOL=", Ref('DockerVolume') , "\n"
     ]
 
     if (args.recovery):
@@ -1031,7 +1037,7 @@ args = parser.parse_args()
 t = Template()
 
 t.add_version('2010-09-09')
-descString = 'OpenEMR Cloud Standard v6.0.0 cloud deployment'
+descString = 'OpenEMR Cloud Standard v7.0.0 cloud deployment'
 if (args.dev):
     descString += ' [developer]'
 if (args.recovery):

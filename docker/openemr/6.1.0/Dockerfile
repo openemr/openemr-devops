@@ -3,7 +3,7 @@ FROM alpine:3.15
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
 RUN apk add --no-cache \
-    apache2 apache2-ssl git php8 php8-tokenizer php8-ctype php8-session php8-apache2 \
+    apache2 apache2-ssl apache2-utils git php8 php8-tokenizer php8-ctype php8-session php8-apache2 \
     php8-json php8-pdo php8-pdo_mysql php8-curl php8-ldap php8-openssl php8-iconv \
     php8-xml php8-xsl php8-gd php8-zip php8-soap php8-mbstring php8-zlib \
     php8-mysqli php8-sockets php8-xmlreader php8-redis php8-simplexml php8-xmlwriter php8-phar php8-fileinfo \
@@ -46,7 +46,12 @@ RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
     && pip install --upgrade pip \
     && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache git build-base libffi-dev python3-dev cargo
+    && apk del --no-cache git build-base libffi-dev python3-dev cargo \
+    && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/httpd.conf \
+    && sed -i 's/^ *ErrorLog/#ErrorLog/' /etc/apache2/httpd.conf \
+    && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/conf.d/ssl.conf \
+    && sed -i 's/^ *TransferLog/#TransferLog/' /etc/apache2/conf.d/ssl.conf
+    
 WORKDIR /var/www/localhost/htdocs/openemr
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
@@ -62,10 +67,12 @@ RUN chmod 500 openemr.sh ssl.sh xdebug.sh /root/unlock_admin.sh \
 COPY upgrade/docker-version \
      upgrade/fsupgrade-1.sh \
      upgrade/fsupgrade-2.sh \
+     upgrade/fsupgrade-3.sh \
      /root/
 RUN chmod 500 \
     /root/fsupgrade-1.sh \
-    /root/fsupgrade-2.sh
+    /root/fsupgrade-2.sh \
+    /root/fsupgrade-3.sh
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
 #Copy dev tools library to root

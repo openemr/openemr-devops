@@ -32,7 +32,7 @@ def setInputs(t, args):
     t.add_parameter(Parameter(
         'InstanceSize',
         Description = 'EC2 instance size for the webserver (minimum t3.small recommended)',
-        Default = 't2.small',
+        Default = 't3.small',
         Type = 'String',
         AllowedValues = [
             't3.micro', 't3.small', 't3.medium', 't3.large', 't3.xlarge', 't3.2xlarge'
@@ -40,6 +40,54 @@ def setInputs(t, args):
     ))
 
     return t
+
+def setRecoveryInputs(t, args):
+    # todo: duplicate Standard's organization and sorting
+    t.add_parameter(Parameter(
+        'EC2KeyPair',
+        Description = 'Amazon EC2 Key Pair',
+        Type = 'AWS::EC2::KeyPair::KeyName'
+    ))
+
+    t.add_parameter(Parameter(
+        'PracticeStorage',
+        Description = 'Storage for the OpenEMR practice (minimum 10 GB)',
+        Default = '10',
+        Type = 'Number',
+        MinValue = '10'
+    ))
+
+    t.add_parameter(Parameter(
+        'InstanceSize',
+        Description = 'EC2 instance size for the webserver (minimum t3.small recommended)',
+        Default = 't3.small',
+        Type = 'String',
+        AllowedValues = [
+            't3.micro', 't3.small', 't3.medium', 't3.large', 't3.xlarge', 't3.2xlarge'
+        ]
+    ))
+
+    t.add_parameter(Parameter(
+        'RecoveryKMSKey',
+        Description='Parent KMS ARN ("arn:aws:kms...")',
+        Type='String'
+    ))
+    
+    t.add_parameter(Parameter(
+        'RecoveryS3Bucket',
+        Description='Parent S3 bucket name',
+        Type='String'
+    ))
+
+    return t
+
+def setDeveloperInputs(t, args):
+    t.add_parameter(Parameter(
+        'DeploymentBranch',
+        Description='openemr-devops branch to launch from',
+        Default='master',
+        Type='String'
+    ))
 
 def setMappings(t, args):
     t.add_mapping('RegionData', {
@@ -266,13 +314,13 @@ def buildInstance(t, args):
 
     rolePolicyStatements = [
         {
-          "Sid": "Stmt1500699052003",
+          "Sid": "SeeBuckets",
           "Effect": "Allow",
           "Action": ["s3:ListBucket"],
           "Resource" : [Join("", ["arn:aws:s3:::", Ref('S3Bucket')])]
         },
         {
-            "Sid": "Stmt1500699052000",
+            "Sid": "BucketRW",
             "Effect": "Allow",
             "Action": [
               "s3:PutObject",
@@ -282,7 +330,7 @@ def buildInstance(t, args):
             "Resource": [Join("", ["arn:aws:s3:::", Ref('S3Bucket'), '/Backup/*'])]
         },
         {
-            "Sid": "Stmt1500612724002",
+            "Sid": "KeyRW",
             "Effect": "Allow",
             "Action": [
               "kms:Encrypt",
@@ -292,6 +340,32 @@ def buildInstance(t, args):
             "Resource": [ OpenEMRKeyARN ]
         }
     ]
+
+    if (args.recovery):
+        rolePolicyStatements.extend([
+            {
+                "Sid": "SeeRecoveryBucket",
+                "Effect": "Allow",
+                "Action": ["s3:ListBucket"],
+                "Resource": [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket')])]
+            },
+            {
+                "Sid": "RecoveryBucketRead",
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject",
+                ],
+                "Resource": [Join("", ["arn:aws:s3:::", Ref('RecoveryS3Bucket'), '/Backup/*'])]
+            },
+            {
+                "Sid": "RecoveryKeyRead",
+                "Effect": "Allow",
+                "Action": [                
+                    "kms:Decrypt"
+                ],
+                "Resource": [ Ref('RecoveryKMSKey') ]
+            }
+        ])
 
     t.add_resource(
         iam.ManagedPolicy(
@@ -336,7 +410,7 @@ def buildInstance(t, args):
             DeletionPolicy = 'Delete' if args.dev else 'Snapshot',
             Size=Ref('PracticeStorage'),
             AvailabilityZone = Select("0", GetAZs("")),
-            VolumeType = 'gp2',
+            VolumeType = 'gp3',
             Encrypted = True,
             KmsKeyId = OpenEMRKeyID,
             Tags=Tags(Name="OpenEMR Practice")
@@ -347,8 +421,9 @@ def buildInstance(t, args):
         "#!/bin/bash -x\n",
         "exec > /tmp/part-001.log 2>&1\n",
         "apt-get -y update\n",
-        "apt-get -y install python-pip\n",
-        "pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz\n",
+        "apt-get -y install python3-pip\n",
+        "pip3 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz\n",
+        "ln -s /root/aws-cfn-bootstrap-latest/init/ubuntu/cfn-hup /etc/init.d/cfn-hup\n",
         "cfn-init -v ",
         "         --stack ", ref_stack_name,
         "         --resource WebserverInstance ",
@@ -365,15 +440,17 @@ def buildInstance(t, args):
         "exec > /tmp/cloud-setup.log 2>&1\n",
 
         "DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" --force-yes\n",
-        "mkfs -t ext4 /dev/xvdd\n",
+
+        "DVOL_SERIAL=`echo ", Ref('DockerVolume'), " | sed s/-//`\n",
+        "DVOL_DEVICE=/dev/`lsblk -no +SERIAL | grep $DVOL_SERIAL | awk '{print $1}'`\n",
+        "mkfs -t ext4 $DVOL_DEVICE\n",        
+        "echo $DVOL_DEVICE /mnt/docker ext4 defaults,nofail 0 0 >> /etc/fstab\n",
         "mkdir /mnt/docker\n",
-        "cat /root/fstab.append >> /etc/fstab\n",
         "mount /mnt/docker\n",
         "ln -s /mnt/docker /var/lib/docker\n",
 
-        "apt-get -y install python-boto awscli\n",
-        "S3=", Ref('S3Bucket'), "\n",
-        "KMS=", OpenEMRKeyID, "\n",
+        "apt-get -y install python3-boto3 awscli\n",
+        "source /root/cloud-variables\n",        
         "touch /root/cloud-backups-enabled\n",
         "echo $S3 > /root/.cloud-s3.txt\n",
         "echo $KMS > /root/.cloud-kms.txt\n",
@@ -381,15 +458,42 @@ def buildInstance(t, args):
         "chmod 500 /tmp/mypass\n",
         "openssl rand -base64 32 >> /tmp/mypass\n",
         "aws s3 cp /tmp/mypass s3://$S3/Backup/passphrase.txt --sse aws:kms --sse-kms-key-id $KMS\n",
-        "rm /tmp/mypass\n",
-
-        "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n",
-        "chmod +x /root/launch.sh && /root/launch.sh -s 0\n"
+        "rm /tmp/mypass\n"
     ]
 
-    fstabFile = [
-        "/dev/xvdd /mnt/docker ext4 defaults,nofail 0 0\n"
+    # this goes four ways, no help for it
+    if (args.dev):
+        scriptLine = [ "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/", Ref('DeploymentBranch'), "/packages/lightsail/launch.sh > /root/launch.sh\n"]
+        if (args.recovery):
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -e -s 0 -b ", Ref('DeploymentBranch'), "\n"]
+        else:
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -s 0 -b ", Ref('DeploymentBranch'), "\n"]
+    else:
+        scriptLine = [ "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n" ]
+        if (args.recovery):
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -e -s 0\n"]
+        else:
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -s 0\n"]            
+    setupScript.extend( scriptLine )            
+    setupScript.extend( launchLine )   
+
+    if (args.recovery):
+        setupScript.extend([                        
+            "touch /root/recovery-restore-required\n",
+            "/root/restore.sh --confirm\n",
+            "rm /root/recovery-restore-required\n",
+        ])    
+    
+    stackPassthroughFile = [
+        "S3=", Ref('S3Bucket'), "\n",
+        "KMS=", OpenEMRKeyID, "\n"
     ]
+
+    if (args.recovery):
+        stackPassthroughFile.extend([
+            "RECOVERYS3=", Ref('RecoveryS3Bucket'), "\n",
+            "RECOVERYKMS=", Ref('RecoveryKMSKey'), "\n",
+        ])
 
     bootstrapInstall = cloudformation.InitConfig(
         files = {
@@ -399,12 +503,12 @@ def buildInstance(t, args):
                 "owner" : "root",
                 "group" : "root"
             },
-            "/root/fstab.append" : {
-                "content" : Join("", fstabFile),
-                "mode"  : "000400",
-                "owner" : "root",
-                "group" : "root"
-            }
+            "/root/cloud-variables": {
+                "content": Join("", stackPassthroughFile),
+                "mode": "000500",
+                "owner": "root",
+                "group": "root"
+            },
         },
         commands = {
             "01_setup" : {
@@ -445,7 +549,7 @@ def buildInstance(t, args):
             UserData = Base64(Join('', bootstrapScript)),
             CreationPolicy = {
               "ResourceSignal" : {
-                "Timeout" : "PT25M"
+                "Timeout" : "PT1H" if args.recovery else "PT20M"
               }
             }
         )
@@ -458,26 +562,38 @@ def setOutputs(t, args):
         Output(
             'OpenEMR',
             Description='OpenEMR Setup',
-            Value=Join('', ['http://', GetAtt('WebserverInstance', 'PublicIp')])
+            Value=Join('', ['https://', GetAtt('WebserverInstance', 'PublicIp')])
         )
     )
     return t
 
 parser = argparse.ArgumentParser(description="OpenEMR Express Plus stack builder")
 parser.add_argument("--dev", help="purge development resources on exit", action="store_true")
+parser.add_argument("--recovery", help="load OpenEMR stack from backups", action="store_true")
 args = parser.parse_args()
 
 t = Template()
 
 t.add_version('2010-09-09')
-descString='OpenEMR Express Plus v6.0.0 cloud deployment'
+descString='OpenEMR Express Plus v7.0.0 cloud deployment'
+if (args.dev):
+    descString += ' [developer]'
+if (args.recovery):
+    descString += ' [recovery]'
 t.add_description(descString)
 
 # holdover from parent
 OpenEMRKeyID = Ref('OpenEMRKey')
 OpenEMRKeyARN = GetAtt('OpenEMRKey', 'Arn')
 
-setInputs(t,args)
+if (args.recovery):
+    setRecoveryInputs(t, args)
+else:
+    setInputs(t, args)
+
+if (args.dev):
+    setDeveloperInputs(t, args)
+
 setMappings(t,args)
 buildInfrastructure(t, args)
 buildInstance(t, args)
