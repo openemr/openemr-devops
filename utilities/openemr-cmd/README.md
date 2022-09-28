@@ -3,7 +3,7 @@
 ## Overview
 
 OpenEMR-Cmd is similar to devtools, it helps developers to manage and troubleshoot openemr outside the docker,see more detail [here](https://github.com/openemr/openemr/blob/master/CONTRIBUTING.md).
-qh(quick help) is get the help from openemr-cmd -h quickly.
+OpenEMR-Cmd-H is getting the help from openemr-cmd -h quickly.
 
 ## Implementation
 
@@ -12,14 +12,14 @@ qh(quick help) is get the help from openemr-cmd -h quickly.
 ```
 mkdir ~/bin
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd > ~/bin/openemr-cmd
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/qh > ~/bin/qh
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd-h > ~/bin/openemr-cmd-h
 ```
 
 2. Apply executable permissions to the script.
 
 ```
 chmod +x ~/bin/openemr-cmd
-chmod +x ~/bin/qh
+chmod +x ~/bin/openemr-cmd-h
 ```
 
 3. Test the installation.
@@ -32,22 +32,33 @@ Commands:
   --version                    Show the openemr-cmd command version
 
 
-# qh
+# openemr-cmd-h
 To search the keyword from openemr-cmd -h output quickly
-Usage: qh keyword
-  e.g. qh ssl
-# qh ssl
-ssl-management:
-  ss, sql-ssl                        Use testing sql ssl CA cert
-  sso, sql-ssl-off                   Remove testing sql ssl CA cert
-  ssc, sql-ssl-client                Use testing sql ssl client certs
-  ssco, sql-ssl-client-off           Remove testing sql ssl client certs
-  css, couchdb-ssl                   Use testing couchdb ssl CA cert
-  cso, couchdb-ssl-off               Remove testing couchdb ssl CA cert
-  csc, couchdb-ssl-client            Use testing couchdb ssl client certs
-  csco, couchdb-ssl-client-off       Remove testing couchdb ssl client certs
-  lss, ldap-ssl                      Use testing ldap ssl CA cert
-  lso, ldap-ssl-off                  Remove testing ldap ssl CA cert
-  lsc, ldap-ssl-client               Use testing ldap ssl client certs
-  lsco, ldap-ssl-client-off          Remove testing ldap ssl client certs
+  Usage: openemr-cmd-h keyword
+  e.g.   openemr-cmd-h ssl
+  h                         openemr-cmd -h
+  docker                    docker-management
+  php                       php-management
+  test                      test-management
+  sweep                     sweep-management
+  reset                     reset-management
+  backup                    backup-management
+  ssl                       ssl-management
+  mul                       multisite-management
+  api                       api-management
+  com                       computational-health-informatics
+  webroot                   webroot-management
+  others                    others
+  keyword                   grep from openemr-cmd -h
+
+# openemr-cmd-h test
+test-management:
+  ut, unit-test                      To run unit testing
+  at, api-test                       To run api testing
+  et, e2e-test                       To run e2e testing
+  st, services-test                  To run services testing
+  ft, fixtures-test                  To run fixtures testing
+  vt, validators-test                To run validators testing
+  ct, controllers-test               To run controllers testing
+  ctt, common-test                   To run common testing
 ```

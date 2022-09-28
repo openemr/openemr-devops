@@ -1,9 +1,0 @@
-#!/bin/bash
-if [ $# -eq 0 ]
-then
-	echo 'To search the keyword from openemr-cmd -h output quickly'
-	echo 'Usage: qh keyword'
-	echo '  e.g. qh ssl'
-	exit
-fi
-openemr-cmd -h|grep -i $1
