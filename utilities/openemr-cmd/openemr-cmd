@@ -261,6 +261,22 @@ set-webroot(){
     docker restart "$CONTAINER_ID"
 }
 
+docker-pull-image(){
+    docker_images=$(docker ps --format "table {{.Image}}")
+    for IMAGE in $docker_images
+    do
+    if [ $IMAGE != "IMAGE" ] 
+    then
+      read -e -p "Do you wish to pull $IMAGE ? (y) " RESP
+      if [ "$RESP" = "y" ]; then 
+        docker pull "$IMAGE";
+      else 
+        echo "Skipping $IMAGE";
+      fi
+    fi  
+    done
+}
+
 USAGE_EXIT_CODE=13
 VERSION_EXIT_CODE=14
 FINAL_EXIT_CODE=0
@@ -288,8 +304,9 @@ then
   echo "  stop                               Execute: docker-compose stop"
   echo "  s, shell                           Open a docker shell quickly"
   echo "  e, exec                            Execute commands outside docker"
-	echo "  dl, docker-log                     To check docker log"
-	echo "  dn, docker-names                   To check docker the running docker names"
+  echo "  dl, docker-log                     To check docker log"
+  echo "  dn, docker-names                   To check docker the running docker names"
+  echo "  dpi, docker-pull-image             Prompt to pull docker image"
   echo 'php-management:'
   echo "  bt, build-themes                   Make changes to any files on your local file system"
 	echo "  pl, php-log                        To check PHP error logs"
@@ -431,6 +448,9 @@ case "$FIRST_ARG" in
 		;;
 	dn|docker-names)
 		check_docker_names "$@"
+		;;
+    dpi|docker-pull-image)
+		docker-pull-image "$@"
 		;;
 	bs|backup-snapshot)
 		creat_a_backup_snapshot "$@"
