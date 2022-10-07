@@ -30,7 +30,7 @@ check_docker_compose_install_or_not(){
 }
 
 quick_open_a_docker_shell(){
-  docker exec -it $CONTAINER_ID sh
+  docker exec -w /var/www/localhost/htdocs/openemr -it $CONTAINER_ID sh
 }
 
 execute_command_flexible(){
