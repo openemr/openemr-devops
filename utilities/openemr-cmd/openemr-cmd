@@ -10,7 +10,7 @@
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.11"
+VERSION="1.0.12"
 
 # Set the default container name/id to look for
 INSANE_DEV_DOCKER="_openemr-8-1_1"
