@@ -48,7 +48,7 @@ Script to be run:
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
 #docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v7_0_0_2/admin.php > /var/www/localhost/htdocs/openemr/admin.php'
 docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v7_0_0_2/sql_patch.php > /var/www/localhost/htdocs/openemr/sql_patch.php'
-docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://www.open-emr.org/patch/7-0-0-Patch-2.zip > /var/www/localhost/htdocs/openemr/7-0-0-2.zip'
+docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://www.open-emr.org/patch/7-0-0-Patch-2.zip > /var/www/localhost/htdocs/openemr/7-0-0-Patch-2.zip'
 #docker exec "$OE_INSTANCE" chown apache:root /var/www/localhost/htdocs/openemr/admin.php 
 docker exec "$OE_INSTANCE" chown apache:root /var/www/localhost/htdocs/openemr/7-0-0-Patch-2.zip /var/www/localhost/htdocs/openemr/sql_patch.php
 #docker exec "$OE_INSTANCE" chmod 400 /var/www/localhost/htdocs/openemr/admin.php 
