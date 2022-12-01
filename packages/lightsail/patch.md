@@ -46,14 +46,14 @@ Script to be run:
 # For multi-site also uncomment the 3 commented docker exec lines below. 
  
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
-#docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v7_0_0/admin.php > /var/www/localhost/htdocs/openemr/admin.php'
-docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v7_0_0/sql_patch.php > /var/www/localhost/htdocs/openemr/sql_patch.php'
-docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://www.open-emr.org/patch/7-0-0-Patch-1.zip > /var/www/localhost/htdocs/openemr/7-0-0-Patch-1.zip'
+#docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v7_0_0_2/admin.php > /var/www/localhost/htdocs/openemr/admin.php'
+docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v7_0_0_2/sql_patch.php > /var/www/localhost/htdocs/openemr/sql_patch.php'
+docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://www.open-emr.org/patch/7-0-0-Patch-2.zip > /var/www/localhost/htdocs/openemr/7-0-0-Patch-2.zip'
 #docker exec "$OE_INSTANCE" chown apache:root /var/www/localhost/htdocs/openemr/admin.php 
-docker exec "$OE_INSTANCE" chown apache:root /var/www/localhost/htdocs/openemr/7-0-0-Patch-1.zip /var/www/localhost/htdocs/openemr/sql_patch.php
+docker exec "$OE_INSTANCE" chown apache:root /var/www/localhost/htdocs/openemr/7-0-0-Patch-2.zip /var/www/localhost/htdocs/openemr/sql_patch.php
 #docker exec "$OE_INSTANCE" chmod 400 /var/www/localhost/htdocs/openemr/admin.php 
-docker exec "$OE_INSTANCE" chmod 400 /var/www/localhost/htdocs/openemr/7-0-0-Patch-1.zip /var/www/localhost/htdocs/openemr/sql_patch.php
-docker exec "$OE_INSTANCE" unzip -o /var/www/localhost/htdocs/openemr/7-0-0-Patch-1.zip
+docker exec "$OE_INSTANCE" chmod 400 /var/www/localhost/htdocs/openemr/7-0-0-Patch-2.zip /var/www/localhost/htdocs/openemr/sql_patch.php
+docker exec "$OE_INSTANCE" unzip -o /var/www/localhost/htdocs/openemr/7-0-0-Patch-2.zip
 ```
 
 You can copy and paste the above and create a patch.sh script. Paste above text into vi after typing `vi patch.sh` and then `i` to enter vi insert mode, then save with `:wq` . Then make it executable and run the patch script
@@ -82,7 +82,7 @@ Create a cleanup script to delete sensitive scripts.
 
 #delete upgrade files that have served their purpose
 OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
-docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/7-0-0-Patch-1.zip
+docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/7-0-0-Patch-2.zip
 
 # comment below line to avoid deleting the patch script created above
 rm ./patch.sh 
