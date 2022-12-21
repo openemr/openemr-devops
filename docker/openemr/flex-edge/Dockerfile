@@ -3,11 +3,11 @@ FROM alpine:edge
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
 RUN apk add --no-cache \
-    apache2 apache2-ssl apache2-utils git php81 php81-tokenizer php81-ctype php81-session php81-apache2 \
-    php81-json php81-pdo php81-pdo_mysql php81-curl php81-ldap php81-openssl php81-iconv \
-    php81-xml php81-xsl php81-gd php81-zip php81-soap php81-mbstring php81-zlib \
-    php81-mysqli php81-sockets php81-xmlreader php81-redis perl php81-simplexml php81-xmlwriter php81-phar php81-fileinfo \
-    php81-sodium php81-calendar php81-intl \
+    apache2 apache2-ssl apache2-utils git php82 php82-tokenizer php82-ctype php82-session php82-apache2 \
+    php82-json php82-pdo php82-pdo_mysql php82-curl php82-ldap php82-openssl php82-iconv \
+    php82-xml php82-xsl php82-gd php82-zip php82-soap php82-mbstring php82-zlib \
+    php82-mysqli php82-sockets php82-xmlreader php82-redis perl php82-simplexml php82-xmlwriter php82-phar php82-fileinfo \
+    php82-sodium php82-calendar php82-intl \
     mysql-client tar curl imagemagick nodejs npm \
     python3 openssl git py-pip openssl-dev dcron \
     rsync shadow jq ncurses \
@@ -19,7 +19,7 @@ RUN apk add --no-cache \
     unzip vim nano bash bash-doc bash-completion tree
 
 #BELOW LINE NEEDED TO SUPPORT PHP8 ON ALPINE 3.13+; SHOULD BE ABLE TO REMOVE THIS IN FUTURE ALPINE VERSIONS
-RUN cp /usr/bin/php81 /usr/bin/php
+RUN cp /usr/bin/php82 /usr/bin/php
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
 # TODO: Note that flex series 3.14+ needs to keep build-base package in (ie. not apk del it after done) for now
@@ -42,7 +42,7 @@ WORKDIR /var/www/localhost/htdocs
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
 ENV APACHE_LOG_DIR=/var/log/apache2
-COPY php.ini /etc/php81/php.ini
+COPY php.ini /etc/php82/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
 #add runner and auto_configure and prevent auto_configure from being run w/o being enabled
 COPY openemr.sh ssl.sh xdebug.sh auto_configure.php /var/www/localhost/htdocs/
