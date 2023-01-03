@@ -84,19 +84,14 @@ if [ "$SWARM_MODE" == "yes" ]; then
             echo "Waiting for the docker-leader to finish configuration before proceeding."
             sleep 10;
         done
-fi
+    fi
 
     if [ "$AUTHORITY" == "yes" ]; then       
         touch /var/www/localhost/htdocs/openemr/sites/docker-initiated
-    if [ ! -f /etc/ssl/openssl.cnf ]; then
-        # Restore the emptied /etc/ssl directory
-        echo "Restoring empty /etc/ssl directory."
-        rsync --owner --group --perms --recursive --links /swarm-pieces/ssl /etc/
-    fi
-        if [ ! -d /var/www/localhost/htdocs/openemr/sites/default ]; then
-            # Restore the emptied /var/www/localhost/htdocs/openemr/sites directory
-            echo "Restoring empty /var/www/localhost/htdocs/openemr/sites directory."
-            rsync --owner --group --perms --recursive --links /swarm-pieces/sites /var/www/localhost/htdocs/openemr/
+        if [ ! -f /etc/ssl/openssl.cnf ]; then
+            # Restore the emptied /etc/ssl directory
+            echo "Restoring empty /etc/ssl directory."
+            rsync --owner --group --perms --recursive --links /swarm-pieces/ssl /etc/
         fi
     fi
 fi

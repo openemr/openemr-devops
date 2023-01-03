@@ -93,11 +93,6 @@ if [ "$SWARM_MODE" == "yes" ]; then
             echo "Restoring empty /etc/ssl directory."
             rsync --owner --group --perms --recursive --links /swarm-pieces/ssl /etc/
         fi
-        if [ ! -d /var/www/localhost/htdocs/openemr/sites/default ]; then
-            # Restore the emptied /var/www/localhost/htdocs/openemr/sites directory
-            echo "Restoring empty /var/www/localhost/htdocs/openemr/sites directory."
-            rsync --owner --group --perms --recursive --links /swarm-pieces/sites /var/www/localhost/htdocs/openemr/
-        fi
     fi
 fi
 
