@@ -3,6 +3,8 @@ OpenEMR Kubernetes orchestration. Creates 2 instances of OpenEMR with 1 instance
  
 (Quick note: Development in progress, minikube not required for deployment. :8080 for http, :8090 for https, grab the NodePort for phpmyadmin)
 
+You should drop down to one OpenEMR instance-node before trying to pull in an updated image.
+
 # Use
 1. Install (and then start) Kubernetes with Minikube: https://kubernetes.io/docs/setup/learning-environment/minikube/
     - If you want to set up the base services(e.g. git, docker, docker-compose, openemr-cmd, minikube and kubectl) easily, please try [openemr-env-installer](https://github.com/openemr/openemr-devops/tree/master/utilities/openemr-env-installer)

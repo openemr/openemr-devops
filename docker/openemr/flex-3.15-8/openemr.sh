@@ -22,7 +22,7 @@ set -e
 source /root/devtoolsLibrary.source
 
 swarm_wait() {
-    if [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-completed ]; then
+    if [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
         # true
         return 0
     else
@@ -71,32 +71,33 @@ if [ "$K8S" == "admin" ]; then
 elif [ "$K8S" == "worker" ]; then
     AUTHORITY=no
 fi
+
 if [ "$SWARM_MODE" == "yes" ]; then
     # atomically test for leadership
     set -o noclobber
-    { > /etc/docker-leader ; } &> /dev/null || AUTHORITY=no
+    { > /var/www/localhost/htdocs/openemr/sites/docker-leader ; } &> /dev/null || AUTHORITY=no
     set +o noclobber
     
-    if [ "$AUTHORITY" == "yes" ]; then       
-        touch /var/www/localhost/htdocs/openemr/sites/default/docker-initiated                  
-    fi
-fi
-
-if [ "$SWARM_MODE" == "yes" ]; then
-    # Check if the shared volumes have been emptied out (persistent volumes in
-    # kubernetes seems to do this). If they have been emptied, then restore them.
-    if [ ! -f /etc/ssl/openssl.cnf ]; then
-        # Restore the emptied /etc/ssl directory
-        echo "Restoring empty /etc/ssl directory."
-        rsync --owner --group --perms --recursive --links /swarm-pieces/ssl /etc/
-    fi
-    mkdir -p /var/www/localhost/htdocs/openemr/sites/default
     if [ "$AUTHORITY" == "no" ] &&
-       [ ! -f /var/www/localhost/htdocs/openemr/sites/default/docker-completed ]; then
+       [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
         while swarm_wait; do
             echo "Waiting for the docker-leader to finish configuration before proceeding."
             sleep 10;
         done
+    fi
+
+    if [ "$AUTHORITY" == "yes" ]; then       
+        touch /var/www/localhost/htdocs/openemr/sites/docker-initiated
+        if [ ! -f /etc/ssl/openssl.cnf ]; then
+            # Restore the emptied /etc/ssl directory
+            echo "Restoring empty /etc/ssl directory."
+            rsync --owner --group --perms --recursive --links /swarm-pieces/ssl /etc/
+        fi
+        if [ ! -d /var/www/localhost/htdocs/openemr/sites/default ]; then
+            # Restore the emptied /var/www/localhost/htdocs/openemr/sites directory
+            echo "Restoring empty /var/www/localhost/htdocs/openemr/sites directory."
+            rsync --owner --group --perms --recursive --links /swarm-pieces/sites /var/www/localhost/htdocs/openemr/
+        fi
     fi
 fi
 
@@ -131,11 +132,11 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
         git checkout "$FLEX_REPOSITORY_TAG"
         cd ../
     fi
-    if [ -f /etc/docker-leader ] &&
+    if [ "$AUTHORITY" == "yes" ] &&
        [ "$SWARM_MODE" == "yes" ]; then
         touch openemr/sites/default/docker-initiated
     fi
-    if [ ! -f /etc/docker-leader ] &&
+    if [ "$AUTHORITY" == "no" ] &&
        [ "$SWARM_MODE" == "yes" ]; then
         # non-leader is building so remove the openemr/sites directory to avoid breaking anything in leader's build
         rm -fr openemr/sites
@@ -257,7 +258,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     cd /var/www/localhost/htdocs
 fi
 
-if [ -f /etc/docker-leader ] ||
+if [ "$AUTHORITY" == "yes" ] ||
    [ "$SWARM_MODE" != "yes" ]; then
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
        [ "$EASY_DEV_MODE" != "yes" ]; then
@@ -347,7 +348,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
     fi
 fi
 
-if [ -f /etc/docker-leader ] &&
+if [ "$AUTHORITY" == "yes" ] &&
    [ "$SWARM_MODE" == "yes" ] &&
    [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
     # Set flag that the docker-leader configuration is complete
