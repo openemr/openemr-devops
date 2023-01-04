@@ -22,7 +22,7 @@ spec:
             secretKeyRef:
               name: mysql-credentials
               key: password
-        image: mariadb:10.5        
+        image: mariadb:10.6
         name: mysql
         resources:
           requests:  
