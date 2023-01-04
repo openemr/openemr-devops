@@ -347,7 +347,8 @@ if [ "$AUTHORITY" == "yes" ] &&
    [ "$SWARM_MODE" == "yes" ] &&
    [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
     # Set flag that the docker-leader configuration is complete
-    touch /var/www/localhost/htdocs/openemr/sites/default/docker-completed
+    touch /var/www/localhost/htdocs/openemr/sites/docker-completed
+    rm -f /var/www/localhost/htdocs/openemr/sites/docker-leader
 fi
 
 # ensure the auto_configure.php script has been removed
