@@ -8,7 +8,7 @@ You should drop down to one OpenEMR instance-node before trying to pull in an up
 # Use
 1. Install (and then start) Kubernetes with Minikube or Kind or other.
     - For Minikube or other, can find online documentation.
-    - For Kind, see below for instructions sets with 1 node or 3 nodes.
+    - For Kind, see below for instructions sets with 1 node or 4 nodes.
         - 1 node:
             ```bash
             kind create cluster
