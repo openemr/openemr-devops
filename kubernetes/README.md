@@ -7,7 +7,22 @@ You should drop down to one OpenEMR instance-node before trying to pull in an up
 
 # Use
 1. Install (and then start) Kubernetes with Minikube or Kind or other.
-    - If you want to set up the base services(e.g. git, docker, docker-compose, openemr-cmd, minikube and kubectl) easily, please try [openemr-env-installer](https://github.com/openemr/openemr-devops/tree/master/utilities/openemr-env-installer)
+    - For Minikube or other, can find online documentation.
+    - For Kind, see below for instructions sets with 1 node or 3 nodes.
+        - 1 node:
+            ```bash
+            kind create cluster
+            kubectl cluster-info --context kind-kind
+            ```
+        - 4 nodes (1 control-plane node and 3 worker nodes):
+            ```bash
+            kind create cluster --config kind-config-4-nodes.yaml
+            kubectl cluster-info --context kind-kind
+            ```
+            - Use following command to ensure all the nodes are ready before proceeding to next step
+                ```bash
+                kubectl get nodes
+                ```
 2. To start OpenEMR orchestration:
     ```bash
     bash kub-up
