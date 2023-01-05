@@ -1,8 +1,25 @@
 # four node (three workers) cluster config
+#   Supports shared volumes over different nodes, however, to support this,
+#   have hard-coded hostpath to use /tmp/hostpath-provisioner in this script
+#   and in the kind-pvc-hostpath.yaml (custom storage class) script.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
+  extraMounts:
+  - hostPath: ./kind-pvc-hostpath.yaml
+    containerPath: /kind/manifests/default-storage.yaml
+  - hostPath: /tmp/hostpath-provisioner
+    containerPath: /tmp/hostpath-provisioner
+- role:  worker
+  extraMounts:
+  - hostPath: /tmp/hostpath-provisioner
+    containerPath: /tmp/hostpath-provisioner
+- role:  worker
+  extraMounts:
+  - hostPath: /tmp/hostpath-provisioner
+    containerPath: /tmp/hostpath-provisioner
 - role: worker
-- role: worker
-- role: worker
+  extraMounts:
+  - hostPath: /tmp/hostpath-provisioner
+    containerPath: /tmp/hostpath-provisioner

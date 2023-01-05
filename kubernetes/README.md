@@ -14,7 +14,7 @@ You should drop down to one OpenEMR instance-node before trying to pull in an up
             kind create cluster
             kubectl cluster-info --context kind-kind
             ```
-        - 4 nodes (1 control-plane node and 3 worker nodes):
+        - 4 nodes (1 control-plane node and 3 worker nodes), which will store shared volumes in host at /tmp/hostpath-provisioner to allow nodes to share volumes (you will need to remove the contents of the /tmp/hostpath-provisioner when tearing this down to prevent the shared volumes causing issues when rebuild it):
             ```bash
             kind create cluster --config kind-config-4-nodes.yaml
             kubectl cluster-info --context kind-kind
@@ -22,6 +22,10 @@ You should drop down to one OpenEMR instance-node before trying to pull in an up
             - Use following command to ensure all the nodes are ready before proceeding to next step
                 ```bash
                 kubectl get nodes
+                ```
+            - After you run the kub-up command below, here is a neat command to show which nodes the pods are in
+                ```bash
+                kubectl get pod -o wide
                 ```
 2. To start OpenEMR orchestration:
     ```bash
