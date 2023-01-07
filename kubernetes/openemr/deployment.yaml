@@ -5,7 +5,7 @@ metadata:
     name: openemr
   name: openemr
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       name: openemr
@@ -17,10 +17,10 @@ spec:
         name: openemr
     spec:
       initContainers:
-      - name: init-mysql
+      - name: init-mysql-wait
         image: busybox:1.28
         command: ['sh', '-c', "until nslookup mysql.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for mysql; sleep 2; done"]
-      - name: init-redis
+      - name: init-redis-wait
         image: busybox:1.28
         command: ['sh', '-c', "until nslookup redis.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for redis; sleep 2; done"]
       containers:

@@ -1,9 +1,15 @@
+# note the service always directs to the primary (and not the replica, which if allowed
+#  would break horribly since replicas are just set for mariadb replication) via the selector
 apiVersion: v1
 kind: Service
 metadata:
   name: mysql
+  labels:
+    app: mysql
 spec:
   ports:
-    - port: 3306
+  - port: 3306
+    name: mysql-port
+  clusterIP: None
   selector:
-    service: mysql
+    statefulset.kubernetes.io/pod-name: mysql-sts-0

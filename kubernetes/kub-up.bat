@@ -1,8 +1,9 @@
 @echo off
 kubectl apply ^
+    -f mysql/configmap.yaml ^
     -f mysql/secret.yaml ^
-    -f mysql/deployment.yaml ^
     -f mysql/service.yaml ^
+    -f mysql/statefulset.yaml ^
     -f redis/deployment.yaml ^
     -f redis/service.yaml ^
     -f phpmyadmin/deployment.yaml ^
