@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-acl
+data:
+  users.acl: |
+    user admin on >adminpassword ~* &* +@all
+    user replication on >replicationpassword +psync +replconf +ping
+    user default on nopass ~* &* +@all -@dangerous
