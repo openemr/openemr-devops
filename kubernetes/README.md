@@ -1,5 +1,5 @@
 # Overview
-OpenEMR Kubernetes orchestration. Creates 2 instances of OpenEMR with 1 instance of MariaDB, Redis, and phpMyAdmin. Would not consider it production quality, but will be a good working, starting point, and hopefully open the door to a myriad of other kubernetes based solutions. Note this is supported by 6.0.0 and higher dockers. If wish to use the most recent development codebase, then can change from openemr/openemr:7.0.0 to openemr/openemr:flex in the openemr/deployment.yaml script (note this will take much longer to start up (probably at least 10 minutes and up to 90 minutes) and is more cpu intensive since each instance of OpenEMR will download codebase and build separately).
+OpenEMR Kubernetes orchestration. Orchestration included OpenEMR, MariaDB, Redis, and phpMyAdmin. 3 deployment replications of OpenEMR are created. 2 statefulset replications of MariaDB (1 primary/master with 1 replica/slave) are created. In addition to 1 deployment instance of Redis and phpMyAdmin. Would not consider it production quality, but will be a good working, starting point, and hopefully open the door to a myriad of other kubernetes based solutions. Note this is supported by 6.0.0 and higher dockers. If wish to use the most recent development codebase, then can change from openemr/openemr:7.0.0 to openemr/openemr:flex in the openemr/deployment.yaml script (note this will take much longer to start up (probably at least 10 minutes and up to 90 minutes) and is more cpu intensive since each instance of OpenEMR will download codebase and build separately).
  
 (Quick note: Development in progress, minikube or kind not required for deployment. :8080 for http, :8090 for https, grab the NodePort for phpmyadmin)
 
@@ -87,20 +87,20 @@ You should drop down to one OpenEMR instance-node before trying to pull in an up
         ```bash
         docker inspect kind-control-plane | grep "IPAddress"
         ```
-7. Some cool replicas stuff. The OpenEMR docker pods are run as a replica set (since it is set to 2 replicas in this OpenEMR deployment script). Gonna cover how to view the replica set and how to change the number of replicas on the fly in this step.
+7. Some cool replicas stuff with OpenEMR. The OpenEMR docker pods are run as a replica set (since it is set to 3 replicas in this OpenEMR deployment script). Gonna cover how to view the replica set and how to change the number of replicas on the fly in this step.
     - First. lets list the replica set like this:
         ```bash
         kubectl get rs
         ```
-        - It will look something like this (note OpenEMR has 2 desired and 2 current replicas going):
+        - It will look something like this (note OpenEMR has 3 desired and 3 current replicas going):
             ```console
             NAME                    DESIRED   CURRENT   READY   AGE
             mysql-64449b8cf7        1         1         1       4m5s
-            openemr-5f6db6c87c      2         2         2       4m5s
+            openemr-5f6db6c87c      3         3         3       4m5s
             phpmyadmin-78968d6cfb   1         1         1       4m5s
             redis-74cc9d667         1         1         1       4m5s
             ```
-    - Second, lets increase OpenEMR's replicas from 2 to 10 (ie. pretend in an environment where a huge number of OpenEMR users are using the system at the same time)
+    - Second, lets increase OpenEMR's replicas from 3 to 10 (ie. pretend in an environment where a huge number of OpenEMR users are using the system at the same time)
         ```bash
         kubectl scale deployment.apps/openemr --replicas=10
         ```
@@ -108,7 +108,7 @@ You should drop down to one OpenEMR instance-node before trying to pull in an up
             ```console
             deployment.apps/openemr scaled
             ```
-        - Now, there are 10 replicas of OpenEMR instead of 2. Enter the `kubectl get rs` and `kubectl get pod` to see what happened.
+        - Now, there are 10 replicas of OpenEMR instead of 3. Enter the `kubectl get rs` and `kubectl get pod` to see what happened.
     - Third, lets decrease OpenEMR's replicas from 10 to 5 (ie. pretend in an environment where don't need to expend resources of offering 10 replicas, and can drop to 5 replicas)
         ```bash
         kubectl scale deployment.apps/openemr --replicas=5
@@ -119,7 +119,16 @@ You should drop down to one OpenEMR instance-node before trying to pull in an up
             ```
         - Now, there are 5 replicas of OpenEMR instead of 10. Enter the `kubectl get rs` and `kubectl get pod` to see what happened.
     - This is just a quick overview of scaling. Note we just did manual scaling in the example above, but there are also options of automatic scaling for example depending on cpu use etc.
-8. To stop and remove OpenEMR orchestration (this will delete everything):
+8. Some cool replicas stuff with MariaDB. 2 statefulset replications of MariaDB (1 primary/master with 1 replica/slave) are created by default. The number of replicas can be increased or decreased.
+    - Increase replicas (after this command will have the 1 primary/master with 3 replicas/slaves).
+        ```bash
+        kubectl scale sts mysql-sts --replicas=4
+        ```
+    - Decrease replicas (after this command will have the 1 primary/master with 2 replicas/slaves).
+        ```bash
+        kubectl scale sts mysql-sts --replicas=3
+        ```
+9. To stop and remove OpenEMR orchestration (this will delete everything):
     ```bash
     bash kub-down
     ```

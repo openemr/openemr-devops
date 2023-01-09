@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-sts
+spec:
+  serviceName: "mysql"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      initContainers:
+      - name: init-mysql
+        args:
+        - mysqld
+        - --character-set-server=utf8mb4
+        image: mariadb:10.6
+        command:
+        - bash
+        - "-c"
+        - |
+          set -ex
+          echo 'Starting init-mariadb';
+          # Check config map to directory that already exists 
+          # (but must be used as a volume for main container)
+          ls /mnt/config-map
+          # Statefulset has sticky identity, number should be last
+          [[ `hostname` =~ -([0-9]+)$ ]] || exit 1
+          ordinal=${BASH_REMATCH[1]}
+          # Copy appropriate conf.d files from config-map to 
+          # mysql-config volume (emptyDir) depending on pod number
+          if [[ $ordinal -eq 0 ]]; then
+            # This file holds SQL for connecting to primary
+            cp /mnt/config-map/primary.cnf /etc/mysql/conf.d/server-id.cnf
+            # Create the users needed for replication on primary on a volume
+            # initdb (emptyDir)
+            cp /mnt/config-map/primary.sql /docker-entrypoint-initdb.d
+          else
+            # This file holds SQL for connecting to secondary
+            cp /mnt/config-map/replica.cnf /etc/mysql/conf.d/server-id.cnf
+            # On replicas use secondary configuration on initdb volume
+            cp /mnt/config-map/secondary.sql /docker-entrypoint-initdb.d
+          fi
+          # Add an offset to avoid reserved server-id=0 value.
+          echo server-id=$((3000 + $ordinal)) >> etc/mysql/conf.d/server-id.cnf
+          ls /etc/mysql/conf.d/
+          cat /etc/mysql/conf.d/server-id.cnf
+        volumeMounts:
+          - name: mysql-config-map
+            mountPath: /mnt/config-map
+          - name: mysql-config
+            mountPath: /etc/mysql/conf.d/
+          - name: initdb
+            mountPath: /docker-entrypoint-initdb.d
+      containers:
+      - name: mysql
+        args:
+        - mysqld
+        - --character-set-server=utf8mb4
+        image: mariadb:10.6
+        ports:
+        - containerPort: 3306
+          name: mysql-port
+        env:
+        # Using Secrets
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
+        - name: MYSQL_INITDB_SKIP_TZINFO
+          value: "1"
+        # Mount volume from persistent volume claim
+        volumeMounts:
+        - name: datadir
+          mountPath: /var/lib/mysql/
+        - name: mysql-config
+          mountPath: /etc/mysql/conf.d/
+        - name: initdb
+          mountPath: /docker-entrypoint-initdb.d
+      volumes:
+      - name: mysql-config-map
+        configMap:
+          name: mysql-configmap
+          #defaultMode: 0544
+      - name: mysql-config
+        emptyDir: {}
+      - name: initdb
+        emptyDir: {}
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
