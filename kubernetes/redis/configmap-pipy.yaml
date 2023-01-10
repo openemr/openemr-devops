@@ -7,6 +7,7 @@ data:
     {
         "redisAdminUser" : "admin",
         "redisAdminPass" : "adminpassword",
+        "debug" : false,
         "port" : 6379,
         "servers" : ["redis-0.redis:6379", "redis-1.redis:6379", "redis-2.redis:6379"],
         "connectTimeout" : "1s",
@@ -58,7 +59,7 @@ data:
         )
         .handleData(
           req => (
-            console.log(`Sending request to node ${_target}`)
+            config.debug && console.log(`Sending request to node ${_target}`)
           )
         )
         .connect(() => _target,
@@ -70,7 +71,7 @@ data:
         .handleData(
           data => (
             _requestLatency.observe(Date.now() - _reqTime),
-            console.log(`Response received from node ${_target}`)
+            config.debug && console.log(`Response received from node ${_target}`)
           )
         )
     
