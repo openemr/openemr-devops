@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redisproxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: redisproxy
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: redisproxy
+    spec:
+      initContainers:
+      - name: proxy-init-redis-wait-1
+        image: busybox:1.28
+        command: ['sh', '-c', "until nslookup redis-0.redis; do echo waiting for redis-0.redis; sleep 10; done"]
+      - name: proxy-init-redis-wait-2
+        image: busybox:1.28
+        command: ['sh', '-c', "until nslookup redis-1.redis; do echo waiting for redis-1.redis; sleep 10; done"]
+      - name: proxy-init-redis-wait-3
+        image: busybox:1.28
+        command: ['sh', '-c', "until nslookup redis-2.redis; do echo waiting for redis-2.redis; sleep 10; done"]
+      containers:
+      - env:
+        - name: PIPY_CONFIG_FILE
+          value: /proxy/proxy.js
+        image: naqvis/pipy:0.30.0-23
+        name: redisproxy
+        volumeMounts:
+        - name: redisproxyconf
+          mountPath: /proxy
+      volumes:
+      - name: redisproxyconf
+        configMap:
+          name: pipy-config
+          items:
+            - key: config.json
+              path: config/config.json
+            - key: proxy.js
+              path: proxy.js

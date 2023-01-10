@@ -1,9 +1,17 @@
 # Overview
-OpenEMR Kubernetes orchestration. Orchestration included OpenEMR, MariaDB, Redis, and phpMyAdmin. 3 deployment replications of OpenEMR are created. 2 statefulset replications of MariaDB (1 primary/master with 1 replica/slave) are created. In addition to 1 deployment instance of Redis and phpMyAdmin. Would not consider it production quality, but will be a good working, starting point, and hopefully open the door to a myriad of other kubernetes based solutions. Note this is supported by 6.0.0 and higher dockers. If wish to use the most recent development codebase, then can change from openemr/openemr:7.0.0 to openemr/openemr:flex in the openemr/deployment.yaml script (note this will take much longer to start up (probably at least 10 minutes and up to 90 minutes) and is more cpu intensive since each instance of OpenEMR will download codebase and build separately).
- 
+OpenEMR Kubernetes orchestration. Orchestration included OpenEMR, MariaDB, Redis, and phpMyAdmin.
+    - OpenEMR - 3 deployment replications of OpenEMR are created. Replications can be increased/decreased.
+    - MariaDB - 2 statefulset replications of MariaDB (1 primary/master with 1 replica/slave) are created. Replications can be increased/decreased which will increase/decrease number of replica/slaves.
+    - Redis - Configured to support failover. There is 1 master and 2 slaves (no read access on slaves) for a statefulset, 3 sentinels for another statefulset, and then 2 proxies deployment. The proxies ensure that redis traffic is always directed towards master. The proxy replications can be increased/decreased. However the primary/slaves and sentinels would require script changes if wish to increase/decrease replicates for these since these are hard-coded several place in the scripts. There are 3 users/passwords (`default` (nopass), `replication` (replicationpassword), `admin` (adminpassword)) used in this redis scheme, and the passwords should be set to something else if use this scheme in production. The main place the passwords are set is in kubernetes/redis/configmap-acl.yaml script. Other places where passwords are set include the following: `replication` in kubernetes/redis/configmap-main.yaml, `admin` in kubernetes/redis/configmap-pipy.yaml, `admin` in kubernetes/redis/statefulset-sentinel.yaml. The `default` is the typical worker/app/client user, which will plan to assign a password when OpenEMR docker is updated to support redis username/password.
+    - phpMyAdmin - There is 1 deployment instance of phpMyAdmin.
+
+Would not consider this production quality, but will be a good working, starting point, and hopefully open the door to a myriad of other kubernetes based solutions. Note this is supported by 6.0.0 and higher dockers. If wish to use the most recent development codebase, then can change from openemr/openemr:7.0.0 to openemr/openemr:flex in the openemr/deployment.yaml script (note this will take much longer to start up (probably at least 10 minutes and up to 90 minutes) and is more cpu intensive since each instance of OpenEMR will download codebase and build separately).
+
 (Quick note: Development in progress, minikube or kind not required for deployment. :8080 for http, :8090 for https, grab the NodePort for phpmyadmin)
 
 You should drop down to one OpenEMR instance-node before trying to pull in an updated image.
+
+TODO (optimizing some things). Add support for redis password in the OpenEMR dockers; then add password to the default user in the redis acl (it is now set to work without a password); then turn on protected mode in redis config.
 
 # Use
 1. Install (and then start) Kubernetes with Minikube or Kind or other.
