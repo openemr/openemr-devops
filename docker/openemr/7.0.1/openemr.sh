@@ -201,15 +201,15 @@ if [ "$REDIS_SERVER" != "" ] &&
     if [ "$REDIS_USERNAME" != "" ] &&
        [ "$REDIS_PASSWORD" != "" ]; then
         echo "redis setup with username and password"
-        REDIS_PATH="$REDIS_PATH&auth[user]=$REDIS_USERNAME&auth[pass]=$REDIS_PASSWORD"
+        REDIS_PATH="$REDIS_PATH\&auth[user]=$REDIS_USERNAME\&auth[pass]=$REDIS_PASSWORD"
     elif [ "$REDIS_USERNAME" != "" ]; then
         # only a username, thus using a user which redis has set to nopass
         echo "redis setup with username"
-        REDIS_PATH="$REDIS_PATH&auth[user]=$REDIS_USERNAME"
+        REDIS_PATH="$REDIS_PATH\&auth[user]=$REDIS_USERNAME"
     elif [ "$REDIS_PASSWORD" != "" ]; then
         echo "redis setup with password"
         # only a password, thus using the default user which redis has set a password for
-        REDIS_PATH="$REDIS_PATH&auth[pass]=$REDIS_PASSWORD"
+        REDIS_PATH="$REDIS_PATH\&auth[pass]=$REDIS_PASSWORD"
     else
         # no user or password, thus using the default user which is set to nopass in redis
         # so just keeping original REDIS_PATH: REDIS_PATH="$REDIS_PATH"
