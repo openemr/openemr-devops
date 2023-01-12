@@ -197,15 +197,17 @@ fi
 if [ "$REDIS_SERVER" != "" ] &&
    [ ! -f /etc/php-redis-configured ]; then
 
+    # Support the following redis auth:
+    #   No username and No password set (using redis default user with nopass set)
+    #   Both username and password set (using the redis user and pertinent password)
+    #   Only password set (using redis default user and pertinent password)
+    #   NOTE that only username set is not supported (in this case will ignore the username
+    #      and use no username and no password set mode)
     REDIS_PATH="tcp://$REDIS_SERVER:6379"
     if [ "$REDIS_USERNAME" != "" ] &&
        [ "$REDIS_PASSWORD" != "" ]; then
         echo "redis setup with username and password"
         REDIS_PATH="$REDIS_PATH?auth[user]=$REDIS_USERNAME\&auth[pass]=$REDIS_PASSWORD"
-    elif [ "$REDIS_USERNAME" != "" ]; then
-        # only a username, thus using a user which redis has set to nopass
-        echo "redis setup with username"
-        REDIS_PATH="$REDIS_PATH?auth[user]=$REDIS_USERNAME"
     elif [ "$REDIS_PASSWORD" != "" ]; then
         echo "redis setup with password"
         # only a password, thus using the default user which redis has set a password for
