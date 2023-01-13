@@ -356,9 +356,30 @@ rm -f /var/www/localhost/htdocs/auto_configure.php
 
 if [ "$REDIS_SERVER" != "" ] &&
    [ ! -f /etc/php-redis-configured ]; then
-    # Variable for $REDIS_SERVER is usually going to be something like 'redis'
+
+    # Support the following redis auth:
+    #   No username and No password set (using redis default user with nopass set)
+    #   Both username and password set (using the redis user and pertinent password)
+    #   Only password set (using redis default user and pertinent password)
+    #   NOTE that only username set is not supported (in this case will ignore the username
+    #      and use no username and no password set mode)
+    REDIS_PATH="tcp://$REDIS_SERVER:6379"
+    if [ "$REDIS_USERNAME" != "" ] &&
+       [ "$REDIS_PASSWORD" != "" ]; then
+        echo "redis setup with username and password"
+        REDIS_PATH="$REDIS_PATH?auth[user]=$REDIS_USERNAME\&auth[pass]=$REDIS_PASSWORD"
+    elif [ "$REDIS_PASSWORD" != "" ]; then
+        echo "redis setup with password"
+        # only a password, thus using the default user which redis has set a password for
+        REDIS_PATH="$REDIS_PATH?auth[pass]=$REDIS_PASSWORD"
+    else
+        # no user or password, thus using the default user which is set to nopass in redis
+        # so just keeping original REDIS_PATH: REDIS_PATH="$REDIS_PATH"
+        echo "redis setup"
+    fi
+
     sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php8/php.ini
-    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"tcp://$REDIS_SERVER:6379\"@" /etc/php8/php.ini
+    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"$REDIS_PATH\"@" /etc/php8/php.ini
     # Ensure only configure this one time
     touch /etc/php-redis-configured
 fi
