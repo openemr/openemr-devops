@@ -17,16 +17,14 @@ data:
     #appendfilename "appendonly.aof"
     
     # Enabled ACL based auth. 
-    # TODO - support protected mode after have support for a redis password in the openemr docker
-    #        then can set password for the default user in the acl conf
-    protected-mode no
+    protected-mode yes
     
     # This is used by the replics nodes to communicate with master to replicate the data.
     # we are using a user called "replication" for this, and the a strong pwd for the same is given in masterauth
     masterauth replicationpassword
     masteruser replication
     
-    # this is the second ConfiMap will be mounted to. it has the list of uses needed.
+    # this is the second ConfigMap will be mounted to. it has the list of users needed.
     aclfile /conf/acl/users.acl
     
     # port, each redis nodes will be used

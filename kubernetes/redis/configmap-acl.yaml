@@ -6,4 +6,4 @@ data:
   users.acl: |
     user admin on >adminpassword ~* &* +@all
     user replication on >replicationpassword +psync +replconf +ping
-    user default on nopass ~* &* +@all -@dangerous
+    user default on >defaultpassword ~* &* +@all -@dangerous

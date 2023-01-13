@@ -36,6 +36,7 @@ data:
             unhealthy_nodes.remove(_target),
             data = resp.shift(40).toString().split('\r\n'),
             role = data[3].split(':')[1],
+            config.debug && console.log(`Role is ${role} for ${_target}`),
             role === 'master' && unhealthy_master.remove(_target)
           ))()
       })
