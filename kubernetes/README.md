@@ -152,3 +152,11 @@ Would not consider this production quality, but will be a good working, starting
     ```bash
     bash kub-down
     ```
+    - For Kind, also need to delete the cluster:
+        ````bash
+        kind delete cluster
+        ````
+    - Additionally, if using Kind with 4 nodes, then also need to delete the shared volume at /tmp/hostpath-provisioner
+        ````bash
+        sudo rm -fr /tmp/hostpath-provisioner
+        ````
