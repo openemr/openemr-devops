@@ -1,4 +1,14 @@
 @echo off
+
+kubectl delete ^
+    -f certs/selfsigned-issuer.yaml ^
+    -f certs/ca-certificate.yaml ^
+    -f certs/ca-issuer.yaml ^
+    -f certs/mysql.yaml ^
+    -f certs/phpmyadmin.yaml
+
+kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.11.0/cert-manager.yaml
+
 kubectl delete ^
     -f mysql/configmap.yaml ^
     -f mysql/secret.yaml ^
@@ -13,6 +23,7 @@ kubectl delete ^
     -f redis/service-redis.yaml ^
     -f redis/service-sentinel.yaml ^
     -f redis/service-redisproxy.yaml ^
+    -f phpmyadmin/configmap.yaml ^
     -f phpmyadmin/deployment.yaml ^
     -f phpmyadmin/service.yaml ^
     -f volumes/letsencrypt.yaml ^
@@ -21,4 +32,3 @@ kubectl delete ^
     -f openemr/secret.yaml ^
     -f openemr/deployment.yaml ^
     -f openemr/service.yaml 
-

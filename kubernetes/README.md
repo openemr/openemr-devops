@@ -1,13 +1,11 @@
 # Overview
 OpenEMR Kubernetes orchestration. Orchestration included OpenEMR, MariaDB, Redis, and phpMyAdmin.
-  - OpenEMR - 3 deployment replications of OpenEMR are created. Replications can be increased/decreased.
-  - MariaDB - 2 statefulset replications of MariaDB (1 primary/master with 1 replica/slave) are created. Replications can be increased/decreased which will increase/decrease number of replica/slaves.
+  - OpenEMR - 3 deployment replications of OpenEMR are created. Replications can be increased/decreased. Ports for both http and https.
+  - MariaDB - 2 statefulset replications of MariaDB (1 primary/master with 1 replica/slave) are created. Replications can be increased/decreased which will increase/decrease number of replica/slaves. Connections are encrypted over the wire.
   - Redis - Configured to support failover. There is 1 master and 2 slaves (no read access on slaves) for a statefulset, 3 sentinels for another statefulset, and then 2 proxies deployment. The proxies ensure that redis traffic is always directed towards master. The proxy replications can be increased/decreased. However the primary/slaves and sentinels would require script changes if wish to increase/decrease replicates for these since these are hard-coded several place in the scripts. There are 3 users/passwords (`default` (defaultpassword), `replication` (replicationpassword), `admin` (adminpassword)) used in this redis scheme, and the passwords should be set to something else if use this scheme in production. The main place the passwords are set is in kubernetes/redis/configmap-acl.yaml script. Other places where passwords are used include the following: `replication` in kubernetes/redis/configmap-main.yaml, `admin` in kubernetes/redis/configmap-pipy.yaml, `admin` in kubernetes/redis/statefulset-sentinel.yaml. The `default` is the typical worker/app/client user.
-  - phpMyAdmin - There is 1 deployment instance of phpMyAdmin.
+  - phpMyAdmin - There is 1 deployment instance of phpMyAdmin. Ports for both http and https.
 
 Would not consider this production quality, but will be a good working, starting point, and hopefully open the door to a myriad of other kubernetes based solutions. Note this is supported by 7.0.0 and higher dockers. If wish to use the most recent development codebase, then can change from openemr/openemr:7.0.0 to openemr/openemr:dev (in the openemr/deployment.yaml script), which is built nightly from the development codebase. If you wish to build dynamically from a branch/tag from a github repo or other git repo, then can change from openemr/openemr:7.0.0 to openemr/openemr:flex (in the openemr/deployment.yaml script) (note this will take much longer to start up (probably at least 10 minutes and up to 90 minutes) and is more cpu intensive since each instance of OpenEMR will download codebase and build separately).
-
-(Quick note: Development in progress, minikube or kind not required for deployment. :8080 for http, :8090 for https, grab the NodePort for phpmyadmin)
 
 # Use
 1. Install (and then start) Kubernetes with Minikube or Kind or other.
@@ -61,7 +59,7 @@ Would not consider this production quality, but will be a good working, starting
           service/kubernetes   ClusterIP      10.96.0.1      <none>        443/TCP                         3m40s
           service/mysql        ClusterIP      None           <none>        3306/TCP                        111s
           service/openemr      LoadBalancer   10.96.6.51     <pending>     8080:32561/TCP,8090:32468/TCP   111s
-          service/phpmyadmin   NodePort       10.96.64.163   <none>        8081:31466/TCP                  111s
+          service/phpmyadmin   NodePort       10.96.64.163   <none>        8081:32195/TCP,8091:31981/TCP   111s
           service/redis        ClusterIP      None           <none>        6379/TCP                        111s
           service/redisproxy   ClusterIP      None           <none>        6379/TCP                        111s
           service/sentinel     ClusterIP      None           <none>        5000/TCP                        111s
@@ -91,7 +89,7 @@ Would not consider this production quality, but will be a good working, starting
             http://192.168.99.100:31314
             http://192.168.99.100:30613
             ```
-    - If using kind, then can use the 3***** port shown in step 3 (at `service/openemr`) above with the ip address obtained from following command:
+    - If using kind, then can use the 3***** port(s) (1st is http, 2nd is https) shown in step 3 (at `service/openemr`) above with the ip address obtained from following command:
         ```bash
         docker inspect kind-control-plane | grep "IPAddress"
         ```
@@ -103,8 +101,9 @@ Would not consider this production quality, but will be a good working, starting
         - It will look something like this:
             ```console
             http://192.168.99.100:30571
+            http://192.168.99.100:30578
             ```
-    - If using kind, then can use the 3***** port shown in step 3 (at `service/phpmyadmin`) above with the ip address obtained from following command:
+    - If using kind, then can use the 3***** port(s) (1st is http, 2nd is https) shown in step 3 (at `service/phpmyadmin`) above with the ip address obtained from following command:
         ```bash
         docker inspect kind-control-plane | grep "IPAddress"
         ```

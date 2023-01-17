@@ -18,10 +18,26 @@ spec:
       - env:
         - name: PMA_HOSTS
           value: mysql
-        image: phpmyadmin/phpmyadmin        
+        image: phpmyadmin/phpmyadmin
         name: phpmyadmin
+        command: ["/wrapper.sh"]
+        volumeMounts:
+        - name: phpmyadmin-server-certs
+          mountPath: /certs
+        - name: mysql-server-certs
+          mountPath: /etc/mysql
+        - name: phpmyadmin-config-map
+          mountPath: /etc/phpmyadmin/config.user.inc.php
+          subPath: config.user.inc.php
+        - name: phpmyadmin-config-map
+          mountPath: /etc/apache2/sites-enabled/000-default.conf
+          subPath: 000-default.conf
+        - name: phpmyadmin-config-map
+          mountPath: /wrapper.sh
+          subPath: wrapper.sh
         ports:
         - containerPort: 80
+        - containerPort: 443
         resources:
           requests:  
             cpu: 100m       
@@ -29,3 +45,24 @@ spec:
           limits:
             cpu: 500m
             memory: 2G
+      volumes:
+      - name: phpmyadmin-server-certs
+        secret:
+          secretName: phpmyadmin-server-certs
+          items:
+          - key: ca.crt
+            path: ca.crt
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+      - name: mysql-server-certs
+        secret:
+          secretName: mysql-server-certs
+          items:
+          - key: ca.crt
+            path: ca.pem
+      - name: phpmyadmin-config-map
+        configMap:
+          name: phpmyadmin-configmap
+          defaultMode: 0744

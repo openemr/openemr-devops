@@ -1,0 +1,24 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ca-certificate
+spec:
+  secretName: ca-key-pair
+  duration: 87660h # 10y
+  renewBefore: 360h # 15d
+  subject:
+    organizations:
+      - OpenEMR admin
+  commonName: OpenEMR admin
+  isCA: true
+  privateKey:
+    size: 2048
+    algorithm: RSA
+    encoding: PKCS1
+  usages:
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io

@@ -8,6 +8,9 @@ spec:
   - name: "8081"
     port: 8081
     targetPort: 80
+  - name: "8091"
+    port: 8091
+    targetPort: 443
   selector:
     name: phpmyadmin
     

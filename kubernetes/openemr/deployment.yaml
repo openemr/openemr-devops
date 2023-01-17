@@ -62,6 +62,8 @@ spec:
             cpu: 1000m
             memory: 1G
         volumeMounts:
+        - mountPath: /root/certs/mysql/server
+          name: mysql-server-certs
         - mountPath: /var/www/localhost/htdocs/openemr/sites
           name: websitevolume
         - mountPath: /etc/ssl
@@ -70,6 +72,12 @@ spec:
           name: letsencryptvolume
       restartPolicy: Always     
       volumes:
+      - name: mysql-server-certs
+        secret:
+          secretName: mysql-server-certs
+          items:
+          - key: ca.crt
+            path: mysql-ca
       - name: websitevolume
         persistentVolumeClaim:
           claimName: websitevolume
