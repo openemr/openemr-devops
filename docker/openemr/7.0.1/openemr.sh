@@ -120,6 +120,65 @@ if [ "$AUTHORITY" == "no" ] &&
     exit 1
 fi
 
+# key/cert management (if key/cert exists in /root/certs/.. and not in sites/defauly/documents/certificates, then it will be copied into it)
+#  current use case is bringing in as secret(s) in kubernetes, but can bring in as shared volume or directly brought in during docker build
+#   dir structure:
+#    /root/certs/mysql/server/mysql-ca (supported)
+#    /root/certs/mysql/client/mysql-cert (supported)
+#    /root/certs/mysql/client/mysql-key (supported)
+#    /root/certs/couchdb/couchdb-ca (supported)
+#    /root/certs/couchdb/couchdb-cert (supported)
+#    /root/certs/couchdb/couchdb-key (supported)
+#    /root/certs/ldap/ldap-ca (supported)
+#    /root/certs/ldap/ldap-cert (supported)
+#    /root/certs/ldap/ldap-key (supported)
+#    /root/certs/redis/.. (not yet supported)
+if [ -f /root/certs/mysql/server/mysql-ca ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
+    echo "copied over mysql-ca"
+    cp /root/certs/mysql/server/mysql-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
+fi
+if [ -f /root/certs/mysql/server/mysql-cert ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert ]; then
+    echo "copied over mysql-cert"
+    cp /root/certs/mysql/server/mysql-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
+fi
+if [ -f /root/certs/mysql/server/mysql-key ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key ]; then
+    echo "copied over mysql-key"
+    cp /root/certs/mysql/server/mysql-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
+fi
+if [ -f /root/certs/couchdb/couchdb-ca ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca ]; then
+    echo "copied over couchdb-ca"
+    cp /root/certs/couchdb/couchdb-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
+fi
+if [ -f /root/certs/couchdb/couchdb-cert ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert ]; then
+    echo "copied over couchdb-cert"
+    cp /root/certs/couchdb/couchdb-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert
+fi
+if [ -f /root/certs/couchdb/couchdb-key ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key ]; then
+    echo "copied over couchdb-key"
+    cp /root/certs/couchdb/couchdb-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key
+fi
+if [ -f /root/certs/ldap/ldap-ca ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca ]; then
+    echo "copied over ldap-ca"
+    cp /root/certs/ldap/ldap-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
+fi
+if [ -f /root/certs/ldap/ldap-cert ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert ]; then
+    echo "copied over ldap-cert"
+    cp /root/certs/ldap/ldap-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert
+fi
+if [ -f /root/certs/ldap/ldap-key ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key ]; then
+    echo "copied over ldap-key"
+    cp /root/certs/ldap/ldap-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
+fi
+
 if [ "$AUTHORITY" == "yes" ]; then
     if [ "$CONFIG" == "0" ] &&
        [ "$MYSQL_HOST" != "" ] &&
@@ -185,65 +244,6 @@ if
         rm -f auto_configure.php
         echo "Setup scripts removed, we should be ready to go now!"
     fi
-fi
-
-# key/cert management (if key/cert exists in /root/certs/.. and not in sites/defauly/documents/certificates, then it will be copied into it)
-#  current use case is bringing in as secret(s) in kubernetes, but can bring in as shared volume or directly brought in during docker build
-#   dir structure:
-#    /root/certs/mysql/server/mysql-ca (supported)
-#    /root/certs/mysql/client/mysql-cert (supported)
-#    /root/certs/mysql/client/mysql-key (supported)
-#    /root/certs/couchdb/couchdb-ca (supported)
-#    /root/certs/couchdb/couchdb-cert (supported)
-#    /root/certs/couchdb/couchdb-key (supported)
-#    /root/certs/ldap/ldap-ca (supported)
-#    /root/certs/ldap/ldap-cert (supported)
-#    /root/certs/ldap/ldap-key (supported)
-#    /root/certs/redis/.. (not yet supported)
-if [ -f /root/certs/mysql/server/mysql-ca ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
-    echo "copied over mysql-ca"
-    cp /root/certs/mysql/server/mysql-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
-fi
-if [ -f /root/certs/mysql/server/mysql-cert ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert ]; then
-    echo "copied over mysql-cert"
-    cp /root/certs/mysql/server/mysql-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
-fi
-if [ -f /root/certs/mysql/server/mysql-key ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key ]; then
-    echo "copied over mysql-key"
-    cp /root/certs/mysql/server/mysql-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
-fi
-if [ -f /root/certs/couchdb/couchdb-ca ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca ]; then
-    echo "copied over couchdb-ca"
-    cp /root/certs/couchdb/couchdb-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
-fi
-if [ -f /root/certs/couchdb/couchdb-cert ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert ]; then
-    echo "copied over couchdb-cert"
-    cp /root/certs/couchdb/couchdb-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert
-fi
-if [ -f /root/certs/couchdb/couchdb-key ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key ]; then
-    echo "copied over couchdb-key"
-    cp /root/certs/couchdb/couchdb-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key
-fi
-if [ -f /root/certs/ldap/ldap-ca ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca ]; then
-    echo "copied over ldap-ca"
-    cp /root/certs/ldap/ldap-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
-fi
-if [ -f /root/certs/ldap/ldap-cert ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert ]; then
-    echo "copied over ldap-cert"
-    cp /root/certs/ldap/ldap-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert
-fi
-if [ -f /root/certs/ldap/ldap-key ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key ]; then
-    echo "copied over ldap-key"
-    cp /root/certs/ldap/ldap-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
 fi
 
 if [ "$AUTHORITY" == "yes" ] &&
