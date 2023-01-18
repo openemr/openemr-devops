@@ -23,7 +23,7 @@ prepareVariables() {
     else
         CUSTOM_DATABASE="openemr"
     fi
-    if [ "$MYSQL_PASS" != "" ]; then
+    if [ "$MYSQL_PORT" != "" ]; then
         CONFIGURATION="${CONFIGURATION} port=${MYSQL_PORT}"
     fi
     if [ "$OE_USER" != "" ]; then
