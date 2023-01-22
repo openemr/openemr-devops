@@ -23,6 +23,12 @@ prepareVariables() {
     else
         CUSTOM_DATABASE="openemr"
     fi
+    if [ "$MYSQL_PORT" != "" ]; then
+        CONFIGURATION="${CONFIGURATION} port=${MYSQL_PORT}"
+        CUSTOM_PORT="$MYSQL_PORT"
+    else
+        CUSTOM_PORT=3306
+    fi
     if [ "$OE_USER" != "" ]; then
         CONFIGURATION="${CONFIGURATION} iuser=${OE_USER}"
     fi
@@ -42,16 +48,16 @@ setGlobalSettings() {
             CORRECT_SETTING_TEMP=`echo "$SETTING_TEMP" | awk -F 'PENEMR_SETTING_' '{print $2}'`
             VALUE_TEMP=`echo "$line" | awk -F "${CORRECT_SETTING_TEMP}=" '{print $2}'`
             echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
-            mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
+            mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "$CUSTOM_DATABASE"
         done
     fi
 }
 
 resetOpenemr() {
     echo "Remove database"
-    mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP DATABASE ${CUSTOM_DATABASE}"
+    mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "DROP DATABASE ${CUSTOM_DATABASE}"
     echo "Remove database user"
-    mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "Drop user '${CUSTOM_USER}'@'%';FLUSH PRIVILEGES;"
+    mysql -f -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "Drop user '${CUSTOM_USER}'@'%';FLUSH PRIVILEGES;"
     echo "Reset couchdb"
     rsync --delete --recursive --links /couchdb/original/data /couchdb/
     echo "Remove files"
@@ -70,8 +76,8 @@ installOpenemr() {
 
 demoData() {
     echo "Install demo data"
-    mysqldump -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" --add-drop-table --no-data "$CUSTOM_DATABASE" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE"
-    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < /root/demo_5_0_0_5.sql
+    mysqldump -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" --add-drop-table --no-data "$CUSTOM_DATABASE" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" "$CUSTOM_DATABASE"
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" "$CUSTOM_DATABASE" < /root/demo_5_0_0_5.sql
     upgradeOpenEMR 5.0.0
     changeEncodingCollation utf8mb4 utf8mb4_general_ci
 }
@@ -92,7 +98,7 @@ sqlDataDrive() {
         #Loop over all sql files inside of the current directory
         for f in *.sql ; do
             echo "Loading sql data from ${f}"
-            mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "$f"
+            mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" "$CUSTOM_DATABASE" < "$f"
         done
     fi
 }
@@ -100,7 +106,7 @@ sqlDataDrive() {
 # parameter 1 is identifier
 backupOpenemr() {
     mkdir -p "/snapshots/${1}"
-    mysqldump --ignore-table="$CUSTOM_DATABASE".onsite_activity_view --hex-blob -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" > "/snapshots/${1}/backup.sql"
+    mysqldump --ignore-table="$CUSTOM_DATABASE".onsite_activity_view --hex-blob -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" "$CUSTOM_DATABASE" > "/snapshots/${1}/backup.sql"
     rsync --delete --recursive --links /var/www/localhost/htdocs/openemr/sites "/snapshots/${1}/"
     rsync --delete --recursive --links /couchdb/data "/snapshots/${1}/"
     cd /snapshots
@@ -113,8 +119,8 @@ restoreOpenemr() {
     cd /snapshots
     tar -xzf "${1}.tgz"
     # need to empty the database before the restore database import
-    mysqldump -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" --add-drop-table --no-data "$CUSTOM_DATABASE" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE"
-    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" "$CUSTOM_DATABASE" < "/snapshots/${1}/backup.sql"
+    mysqldump -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" --add-drop-table --no-data "$CUSTOM_DATABASE" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" "$CUSTOM_DATABASE"
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" "$CUSTOM_DATABASE" < "/snapshots/${1}/backup.sql"
     # note keeping same sqlconf.php in case snapshot is from somewhere else (ie. such as the demo farm) with different credentials
     sqlconf=`cat /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php`
     rsync --delete --recursive --links "/snapshots/${1}/sites" /var/www/localhost/htdocs/openemr/
@@ -129,8 +135,8 @@ restoreOpenemr() {
 # parameter 1 is character set
 # parameter 2 is collation
 changeEncodingCollation() {
-    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST"
-    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST"
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT"
+    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' | egrep '^ALTER' | mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT"
 }
 
 forceHttps() {
@@ -177,9 +183,9 @@ setupClientCert() {
     sed -i "s@#SSLOptions@ SSLOptions@" /etc/apache2/conf.d/openemr.conf
     sed -i "s@#SSLCACertificateFile@ SSLCACertificateFile@" /etc/apache2/conf.d/openemr.conf
     # configure openemr
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 1 WHERE gl_name = 'is_client_ssl_enabled'" "$CUSTOM_DATABASE"
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '/etc/ssl/certs/CAcustomclientbasedwebserver.cert.pem' WHERE gl_name = 'certificate_authority_crt'" "$CUSTOM_DATABASE"
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '/etc/ssl/private/CAcustomclientbasedwebserver.key.pem' WHERE gl_name = 'certificate_authority_key'" "$CUSTOM_DATABASE"
+    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "UPDATE globals SET gl_value = 1 WHERE gl_name = 'is_client_ssl_enabled'" "$CUSTOM_DATABASE"
+    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "UPDATE globals SET gl_value = '/etc/ssl/certs/CAcustomclientbasedwebserver.cert.pem' WHERE gl_name = 'certificate_authority_crt'" "$CUSTOM_DATABASE"
+    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "UPDATE globals SET gl_value = '/etc/ssl/private/CAcustomclientbasedwebserver.key.pem' WHERE gl_name = 'certificate_authority_key'" "$CUSTOM_DATABASE"
 }
 
 toggleOnSelfSignedCert() {
@@ -195,9 +201,9 @@ toggleOnSelfSignedCert() {
     sed -i "s@[^#]SSLOptions@#SSLOptions@" /etc/apache2/conf.d/openemr.conf
     sed -i "s@[^#]SSLCACertificateFile@#SSLCACertificateFile@" /etc/apache2/conf.d/openemr.conf
     # configure openemr
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 0 WHERE gl_name = 'is_client_ssl_enabled'" "$CUSTOM_DATABASE"
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_crt'" "$CUSTOM_DATABASE"
-    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_key'" "$CUSTOM_DATABASE"
+    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "UPDATE globals SET gl_value = 0 WHERE gl_name = 'is_client_ssl_enabled'" "$CUSTOM_DATABASE"
+    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_crt'" "$CUSTOM_DATABASE"
+    mysql -u "$CUSTOM_USER" --password="$CUSTOM_PASSWORD" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_key'" "$CUSTOM_DATABASE"
 }
 
 # parameter 1 is number of random patients to create and import
@@ -231,12 +237,12 @@ generateMultisiteBank() {
     do
         run="run${a}"
         echo "dropping ${run} sql database, sql user, and directory if they already exist (just ignore any errors that are displayed)"
-        mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP DATABASE ${run}"
-        mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "DROP USER '${run}'"
+        mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "DROP DATABASE ${run}"
+        mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -P "$CUSTOM_PORT" -e "DROP USER '${run}'"
         rm -fr /var/www/localhost/htdocs/openemr/sites/${run}
         rm /tmp/setup_dump.sql
         echo "adding ${run} multisite"
-        php /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php rootpass=root server="$MYSQL_HOST" loginhost=% login=${run} pass=${run} dbname=${run} site=${run} source_site_id=default clone_database=yes
+        php /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php rootpass=root server="$MYSQL_HOST" port="$CUSTOM_PORT" loginhost=% login=${run} pass=${run} dbname=${run} site=${run} source_site_id=default clone_database=yes
         chown -R apache /var/www/localhost/htdocs/openemr/sites/${run}
         find /var/www/localhost/htdocs/openemr/sites/${run} -type d -print0 | xargs -0 chmod 500
         find /var/www/localhost/htdocs/openemr/sites/${run} -type f -print0 | xargs -0 chmod 400
