@@ -1,4 +1,16 @@
 @echo off
+
+kubectl apply --validate=false -f https://github.com/cert-manager/cert-manager/releases/download/v1.11.0/cert-manager.yaml
+timeout 60
+
+kubectl apply ^
+    -f certs/selfsigned-issuer.yaml ^
+    -f certs/ca-certificate.yaml ^
+    -f certs/ca-issuer.yaml ^
+    -f certs/mysql.yaml ^
+    -f certs/phpmyadmin.yaml
+timeout 15
+
 kubectl apply ^
     -f mysql/configmap.yaml ^
     -f mysql/secret.yaml ^
@@ -13,6 +25,7 @@ kubectl apply ^
     -f redis/service-redis.yaml ^
     -f redis/service-sentinel.yaml ^
     -f redis/service-redisproxy.yaml ^
+    -f phpmyadmin/configmap.yaml ^
     -f phpmyadmin/deployment.yaml ^
     -f phpmyadmin/service.yaml ^
     -f volumes/letsencrypt.yaml ^

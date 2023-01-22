@@ -76,6 +76,8 @@ spec:
           value: "1"
         # Mount volume from persistent volume claim
         volumeMounts:
+        - name: mysql-server-certs
+          mountPath: /etc/mysql/ssl/
         - name: datadir
           mountPath: /var/lib/mysql/
         - name: mysql-config
@@ -83,6 +85,16 @@ spec:
         - name: initdb
           mountPath: /docker-entrypoint-initdb.d
       volumes:
+      - name: mysql-server-certs
+        secret:
+          secretName: mysql-server-certs
+          items:
+          - key: ca.crt
+            path: ca.crt
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
       - name: mysql-config-map
         configMap:
           name: mysql-configmap

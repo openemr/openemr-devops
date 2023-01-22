@@ -9,22 +9,32 @@ data:
     [mariadb]
     log-bin                         # enable binary logging
     log-basename=my-mariadb         # used to be independent of hostname changes (otherwise is in datadir/mysql)
+    ssl_ca=/etc/mysql/ssl/ca.crt
+    ssl_cert=/etc/mysql/ssl/tls.crt
+    ssl_key=/etc/mysql/ssl/tls.key
 
   replica.cnf: |
     [mariadb]
     log-basename=my-mariadb         # used to be independent of hostname changes (otherwise is in datadir/mysql)
+    ssl_ca=/etc/mysql/ssl/ca.crt
+    ssl_cert=/etc/mysql/ssl/tls.crt
+    ssl_key=/etc/mysql/ssl/tls.key
 
   primary.sql: |
     CREATE USER 'repluser'@'%' IDENTIFIED BY 'replsecret';
-    GRANT REPLICATION REPLICA ON *.* TO 'repluser'@'%';
+    GRANT REPLICATION REPLICA ON *.* TO 'repluser'@'%' REQUIRE SSL;
     CREATE DATABASE primary_db;
 
   secondary.sql: |
     # We have to know name of sts (`mysql-sts`) and 
     # service `mysql` in advance as an FQDN.
     # No need to use master_port
+    # encryption with server cert verification is configured
     CHANGE MASTER TO 
     MASTER_HOST='mysql-sts-0.mysql.default.svc.cluster.local',
     MASTER_USER='repluser',
     MASTER_PASSWORD='replsecret',
-    MASTER_CONNECT_RETRY=10;
+    MASTER_CONNECT_RETRY=10,
+    MASTER_SSL=1,
+    MASTER_SSL_CA='/etc/mysql/ssl/ca.crt';
+    MASTER_SSL_VERIFY_SERVER_CERT=1;
