@@ -21,13 +21,19 @@ spec:
         args:
           - |
             REDIS_PASSWORD=adminpassword
+            # Set below to true if using redis x509
+            REDISX509=false
             nodes=redis-0.redis,redis-1.redis,redis-2.redis
+            TLSPARAMETERS="--tls --cacert /certs/ca.crt"
+            if $REDISX509; then
+                TLSPARAMETERS="$TLSPARAMETERS --cert /certs/tls.crt --key /certs/tls.key"
+            fi
             echo "Looping through the redis list to see if Redis Master node is available now"
             while [ 1 ]
             do
                 for i in ${nodes//,/ }
                 do
-                    MASTER=$(redis-cli --no-auth-warning --raw -h $i --user admin -a $REDIS_PASSWORD info replication | awk '{print $1}' | grep master_host: | cut -d ":" -f2)
+                    MASTER=$(redis-cli $TLSPARAMETERS --no-auth-warning --raw -h $i --user admin -a $REDIS_PASSWORD info replication | awk '{print $1}' | grep master_host: | cut -d ":" -f2)
                     if [ "$MASTER" == "" ]; then
                         echo "no master info found in $i"
                         MASTER=
@@ -45,7 +51,15 @@ spec:
                 fi
             done
             echo "Creating Sentinel configuration file"
-            echo "port 5000
+            echo "tls-port 5000
+            port 0 
+            tls-cert-file /certs/tls.crt
+            tls-key-file /certs/tls.key
+            tls-ca-cert-file /certs/ca.crt
+            tls-auth-clients no
+            # uncomment below (and comment line above) if using redis x509
+            # tls-auth-clients yes
+            tls-replication yes
             sentinel monitor mymaster $MASTER 6379 2
             sentinel resolve-hostnames yes
             sentinel announce-hostnames yes
@@ -57,6 +71,8 @@ spec:
             " > /etc/redis/sentinel.conf
             cat /etc/redis/sentinel.conf
         volumeMounts:
+        - name: sentinel-certs
+          mountPath: /certs/
         - name: redis-config
           mountPath: /etc/redis/
       containers:
@@ -68,11 +84,23 @@ spec:
         - containerPort: 5000
           name: sentinel
         volumeMounts:
+        - name: sentinel-certs
+          mountPath: /certs/
         - name: redis-config
           mountPath: /etc/redis/
         - name: data
           mountPath: /data
       volumes:
+      - name: sentinel-certs
+        secret:
+          secretName: sentinel-certs
+          items:
+          - key: ca.crt
+            path: ca.crt
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
       - name: redis-config
         emptyDir: {}
   volumeClaimTemplates:
