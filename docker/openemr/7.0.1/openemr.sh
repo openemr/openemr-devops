@@ -132,7 +132,7 @@ fi
 #    /root/certs/ldap/ldap-ca (supported)
 #    /root/certs/ldap/ldap-cert (supported)
 #    /root/certs/ldap/ldap-key (supported)
-#    /root/certs/redis/.. (not yet supported)
+#    /root/certs/redis/redis-ca (supported)
 if [ -f /root/certs/mysql/server/mysql-ca ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
     echo "copied over mysql-ca"
@@ -177,6 +177,11 @@ if [ -f /root/certs/ldap/ldap-key ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key ]; then
     echo "copied over ldap-key"
     cp /root/certs/ldap/ldap-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
+fi
+if [ -f /root/certs/redis/redis-ca ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca ]; then
+    echo "copied over redis-ca"
+    cp /root/certs/redis/redis-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
 fi
 
 if [ "$AUTHORITY" == "yes" ]; then
@@ -262,19 +267,28 @@ if [ "$REDIS_SERVER" != "" ] &&
     #   Only password set (using redis default user and pertinent password)
     #   NOTE that only username set is not supported (in this case will ignore the username
     #      and use no username and no password set mode)
-    REDIS_PATH="tcp://$REDIS_SERVER:6379"
+    REDIS_PATH="$REDIS_SERVER:6379"
     if [ "$REDIS_USERNAME" != "" ] &&
        [ "$REDIS_PASSWORD" != "" ]; then
         echo "redis setup with username and password"
         REDIS_PATH="$REDIS_PATH?auth[user]=$REDIS_USERNAME\&auth[pass]=$REDIS_PASSWORD"
+        GET_CONNECTOR="\&"
     elif [ "$REDIS_PASSWORD" != "" ]; then
         echo "redis setup with password"
         # only a password, thus using the default user which redis has set a password for
         REDIS_PATH="$REDIS_PATH?auth[pass]=$REDIS_PASSWORD"
+        GET_CONNECTOR="\&"
     else
         # no user or password, thus using the default user which is set to nopass in redis
         # so just keeping original REDIS_PATH: REDIS_PATH="$REDIS_PATH"
         echo "redis setup"
+        GET_CONNECTOR="?"
+    fi
+
+    if [ "$REDIS_TLS" == "yes" ]; then
+        REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[verify_peer]=0&stream[local_cert]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca"
+    else
+        REDIS_PATH="tcp://$REDIS_PATH"
     fi
 
     sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php81/php.ini
