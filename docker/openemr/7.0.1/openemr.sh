@@ -286,7 +286,7 @@ if [ "$REDIS_SERVER" != "" ] &&
     fi
 
     if [ "$REDIS_TLS" == "yes" ]; then
-        REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[verify_peer]=0&stream[local_cert]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca"
+        REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[verify_peer]=0\&stream[local_cert]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca"
     else
         REDIS_PATH="tcp://$REDIS_PATH"
     fi
