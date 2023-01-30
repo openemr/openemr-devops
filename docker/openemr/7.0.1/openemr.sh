@@ -183,6 +183,16 @@ if [ -f /root/certs/redis/redis-ca ] &&
     echo "copied over redis-ca"
     cp /root/certs/redis/redis-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
 fi
+if [ -f /root/certs/redis/redis-cert ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert ]; then
+    echo "copied over redis-cert"
+    cp /root/certs/redis/redis-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert
+fi
+if [ -f /root/certs/redis/redis-key ] &&
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key ]; then
+    echo "copied over redis-key"
+    cp /root/certs/redis/redis-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
+fi
 
 if [ "$AUTHORITY" == "yes" ]; then
     if [ "$CONFIG" == "0" ] &&
@@ -285,9 +295,14 @@ if [ "$REDIS_SERVER" != "" ] &&
         GET_CONNECTOR="?"
     fi
 
-    if [ "$REDIS_TLS" == "yes" ]; then
-        REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[verify_peer]=0\&stream[local_cert]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca"
+    if [ "$REDIS_X509" == "yes" ]; then
+        echo "redis x509"
+        REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[cafile]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca\&stream[local_cert]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert\&stream[local_pk]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key"
+    elif [ "$REDIS_TLS" == "yes" ]; then
+        echo "redis tls"
+        REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[cafile]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca"
     else
+        echo "redis tcp"
         REDIS_PATH="tcp://$REDIS_PATH"
     fi
 
