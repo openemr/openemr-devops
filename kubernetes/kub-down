@@ -5,7 +5,9 @@ kubectl delete \
     -f certs/ca-certificate.yaml \
     -f certs/ca-issuer.yaml \
     -f certs/mysql.yaml \
-    -f certs/phpmyadmin.yaml
+    -f certs/mysql-openemr-client.yaml \
+    -f certs/phpmyadmin.yaml \
+    -f certs/mysql-phpmyadmin-client.yaml
 
 kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.11.0/cert-manager.yaml
 

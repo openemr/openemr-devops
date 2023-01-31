@@ -8,7 +8,9 @@ kubectl apply ^
     -f certs/ca-certificate.yaml ^
     -f certs/ca-issuer.yaml ^
     -f certs/mysql.yaml ^
-    -f certs/phpmyadmin.yaml
+    -f certs/mysql-openemr-client.yaml ^
+    -f certs/phpmyadmin.yaml ^
+    -f certs/mysql-phpmyadmin-client.yaml
 timeout 15
 
 kubectl apply ^

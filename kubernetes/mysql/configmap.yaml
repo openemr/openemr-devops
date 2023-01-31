@@ -23,6 +23,8 @@ data:
   primary.sql: |
     CREATE USER 'repluser'@'%' IDENTIFIED BY 'replsecret';
     GRANT REPLICATION REPLICA ON *.* TO 'repluser'@'%' REQUIRE SSL;
+    # uncomment below line (and comment above line) if forcing mysql x509
+    # GRANT REPLICATION REPLICA ON *.* TO 'repluser'@'%' REQUIRE X509;
     CREATE DATABASE primary_db;
 
   secondary.sql: |
@@ -35,6 +37,9 @@ data:
     MASTER_USER='repluser',
     MASTER_PASSWORD='replsecret',
     MASTER_CONNECT_RETRY=10,
-    MASTER_SSL=1,
     MASTER_SSL_CA='/etc/mysql/ssl/ca.crt',
+    # uncomment below 2 lines if forcing mysql x509
+    # MASTER_SSL_CERT = '/etc/mysql/ssl/tls.crt',
+    # MASTER_SSL_KEY = '/etc/mysql/ssl/tls.key',
+    MASTER_SSL=1,
     MASTER_SSL_VERIFY_SERVER_CERT=1;

@@ -1,0 +1,25 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mysql-openemr-client
+spec:
+  secretName: mysql-openemr-client-certs
+  duration: 87660h # 10y
+  renewBefore: 360h # 15d
+  isCA: false
+  privateKey:
+    size: 2048
+    algorithm: RSA
+    encoding: PKCS1
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+  subject:
+    organizations:
+      - openemr
+  commonName: openemr
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+    group: cert-manager.io

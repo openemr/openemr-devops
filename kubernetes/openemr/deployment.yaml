@@ -53,6 +53,8 @@ spec:
         - name: SWARM_MODE
           value: "yes"
         - name: FORCE_DATABASE_SSL_CONNECT
+        # uncomment below line (and comment above line) if forcing mysql x509
+        #- name: FORCE_DATABASE_X509_CONNECT
           value: "1"
         image: openemr/openemr:7.0.0
         name: openemr
@@ -65,7 +67,7 @@ spec:
             memory: 1G
         volumeMounts:
         - mountPath: /root/certs/mysql/server
-          name: mysql-server-certs
+          name: mysql-openemr-client-certs
         - mountPath: /var/www/localhost/htdocs/openemr/sites
           name: websitevolume
         - mountPath: /etc/ssl
@@ -74,12 +76,17 @@ spec:
           name: letsencryptvolume
       restartPolicy: Always     
       volumes:
-      - name: mysql-server-certs
+      - name: mysql-openemr-client-certs
         secret:
-          secretName: mysql-server-certs
+          secretName: mysql-openemr-client-certs
           items:
           - key: ca.crt
             path: mysql-ca
+          # uncomment below if forcing mysql x509
+          #- key: tls.crt
+          #  path: mysql-cert
+          #- key: tls.key
+          #  path: mysql-key
       - name: websitevolume
         persistentVolumeClaim:
           claimName: websitevolume

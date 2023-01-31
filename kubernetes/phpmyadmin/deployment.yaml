@@ -24,7 +24,7 @@ spec:
         volumeMounts:
         - name: phpmyadmin-server-certs
           mountPath: /certs
-        - name: mysql-server-certs
+        - name: mysql-phpmyadmin-client-certs
           mountPath: /etc/mysql
         - name: phpmyadmin-config-map
           mountPath: /etc/phpmyadmin/config.user.inc.php
@@ -56,12 +56,17 @@ spec:
             path: tls.crt
           - key: tls.key
             path: tls.key
-      - name: mysql-server-certs
+      - name: mysql-phpmyadmin-client-certs
         secret:
-          secretName: mysql-server-certs
+          secretName: mysql-phpmyadmin-client-certs
           items:
           - key: ca.crt
             path: ca.pem
+          # uncomment below if forcing mysql x509
+          #- key: tls.crt
+          #  path: tls.crt
+          #- key: tls.key
+          #  path: tls.key
       - name: phpmyadmin-config-map
         configMap:
           name: phpmyadmin-configmap
