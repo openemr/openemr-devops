@@ -9,16 +9,16 @@ data:
     [mariadb]
     log-bin                         # enable binary logging
     log-basename=my-mariadb         # used to be independent of hostname changes (otherwise is in datadir/mysql)
-    ssl_ca=/etc/mysql/ssl/ca.crt
-    ssl_cert=/etc/mysql/ssl/tls.crt
-    ssl_key=/etc/mysql/ssl/tls.key
+    ssl_ca=/etc/mysql/ssl/main/ca.crt
+    ssl_cert=/etc/mysql/ssl/main/tls.crt
+    ssl_key=/etc/mysql/ssl/main/tls.key
 
   replica.cnf: |
     [mariadb]
     log-basename=my-mariadb         # used to be independent of hostname changes (otherwise is in datadir/mysql)
-    ssl_ca=/etc/mysql/ssl/ca.crt
-    ssl_cert=/etc/mysql/ssl/tls.crt
-    ssl_key=/etc/mysql/ssl/tls.key
+    ssl_ca=/etc/mysql/ssl/replication/ca.crt
+    ssl_cert=/etc/mysql/ssl/replication/tls.crt
+    ssl_key=/etc/mysql/ssl/replication/tls.key
 
   primary.sql: |
     CREATE USER 'repluser'@'%' IDENTIFIED BY 'replsecret';
@@ -37,9 +37,9 @@ data:
     MASTER_USER='repluser',
     MASTER_PASSWORD='replsecret',
     MASTER_CONNECT_RETRY=10,
-    MASTER_SSL_CA='/etc/mysql/ssl/ca.crt',
+    MASTER_SSL_CA='/etc/mysql/ssl/replication/ca.crt',
     # uncomment below 2 lines if forcing mysql x509
-    # MASTER_SSL_CERT = '/etc/mysql/ssl/tls.crt',
-    # MASTER_SSL_KEY = '/etc/mysql/ssl/tls.key',
+    # MASTER_SSL_CERT = '/etc/mysql/ssl/replication/tls.crt',
+    # MASTER_SSL_KEY = '/etc/mysql/ssl/replication/tls.key',
     MASTER_SSL=1,
     MASTER_SSL_VERIFY_SERVER_CERT=1;

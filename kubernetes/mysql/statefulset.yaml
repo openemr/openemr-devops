@@ -77,7 +77,9 @@ spec:
         # Mount volume from persistent volume claim
         volumeMounts:
         - name: mysql-server-certs
-          mountPath: /etc/mysql/ssl/
+          mountPath: /etc/mysql/ssl/main/
+        - name: mysql-replication-certs
+          mountPath: /etc/mysql/ssl/replication/
         - name: datadir
           mountPath: /var/lib/mysql/
         - name: mysql-config
@@ -88,6 +90,16 @@ spec:
       - name: mysql-server-certs
         secret:
           secretName: mysql-server-certs
+          items:
+          - key: ca.crt
+            path: ca.crt
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+      - name: mysql-replication-certs
+        secret:
+          secretName: mysql-replication-certs
           items:
           - key: ca.crt
             path: ca.crt

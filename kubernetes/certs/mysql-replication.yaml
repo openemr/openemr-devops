@@ -1,0 +1,26 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mysql-replication
+spec:
+  secretName: mysql-replication-certs
+  duration: 87660h # 10y
+  renewBefore: 360h # 15d
+  isCA: false
+  privateKey:
+    size: 2048
+    algorithm: RSA
+    encoding: PKCS1
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - client auth
+  subject:
+    organizations:
+      - mysql
+  commonName: mysql
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+    group: cert-manager.io
