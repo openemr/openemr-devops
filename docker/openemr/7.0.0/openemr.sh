@@ -138,7 +138,7 @@ if [ -f /root/certs/mysql/server/mysql-ca ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
     echo "copied over mysql-ca"
     cp /root/certs/mysql/server/mysql-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
-    # for 7.0.0 docker specific issue in kubernetes, need to change permissions at end of this script for it to work
+    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     MYSQLCA=true
 fi
 MYSQLCERT=false
@@ -146,7 +146,7 @@ if [ -f /root/certs/mysql/server/mysql-cert ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert ]; then
     echo "copied over mysql-cert"
     cp /root/certs/mysql/server/mysql-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
-    # for 7.0.0 docker specific issue in kubernetes, need to change permissions at end of this script for it to work
+    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     MYSQLCERT=true
 fi
 MYSQLKEY=false
@@ -154,7 +154,7 @@ if [ -f /root/certs/mysql/server/mysql-key ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key ]; then
     echo "copied over mysql-key"
     cp /root/certs/mysql/server/mysql-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
-    # for 7.0.0 docker specific issue in kubernetes, need to change permissions at end of this script for it to work
+    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     MYSQLKEY=true
 fi
 if [ -f /root/certs/couchdb/couchdb-ca ] &&
@@ -256,17 +256,17 @@ if
 fi
 
 if $MYSQLCA ; then
-    # for 7.0.0 docker specific issue in kubernetes, need to change permissions for it to work
+    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     echo "adjusted permissions for mysql-ca"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
 fi
 if $MYSQLCERT ; then
-    # for 7.0.0 docker specific issue in kubernetes, need to change permissions for it to work
+    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     echo "adjusted permissions for mysql-cert"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
 fi
 if $MYSQLKEY ; then
-    # for 7.0.0 docker specific issue in kubernetes, need to change permissions for it to work
+    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     echo "adjusted permissions for mysql-key"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
 fi
