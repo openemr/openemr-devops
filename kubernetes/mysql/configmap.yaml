@@ -36,5 +36,5 @@ data:
     MASTER_PASSWORD='replsecret',
     MASTER_CONNECT_RETRY=10,
     MASTER_SSL=1,
-    MASTER_SSL_CA='/etc/mysql/ssl/ca.crt';
+    MASTER_SSL_CA='/etc/mysql/ssl/ca.crt',
     MASTER_SSL_VERIFY_SERVER_CERT=1;

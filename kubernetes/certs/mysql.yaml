@@ -19,6 +19,9 @@ spec:
     organizations:
       - mysql
   commonName: mysql
+  dnsNames:
+    - mysql-sts-0
+    - mysql-sts-0.mysql.default.svc.cluster.local
   issuerRef:
     name: ca-issuer
     kind: Issuer
