@@ -296,6 +296,33 @@ fi
 if [ "$REDIS_SERVER" != "" ] &&
    [ ! -f /etc/php-redis-configured ]; then
 
+    # Support phpredis build
+    #   This will allow building phpredis towards either most recent development version "develop",
+    #    or a specific sha1 commit id, such as "e571a81f8d3009aab38cbb88dde865edeb0607ac".
+    #    This allows support for tls (ie. encrypted connections) since not available in production
+    #    version 5.3.7 .
+    if [ "$PHPREDIS_BUILD" != "" ]; then
+      apk update
+      apk del --no-cache php81-redis
+      apk add --no-cache git php81-dev php81-pecl-igbinary gcc make g++
+      mkdir /tmpredis
+      cd /tmpredis
+      git clone https://github.com/phpredis/phpredis.git
+      cd /tmpredis/phpredis
+      if [ "$PHPREDIS_BUILD" != "develop" ]; then
+          git reset --hard "$PHPREDIS_BUILD"
+      fi
+      phpize
+      ./configure --enable-redis-igbinary
+      make
+      make install
+      echo "extension=redis" > /etc/php81/conf.d/20_redis.ini
+      #rm -fr /tmpredis/phpredis
+      #apk del git
+      apk del php81-dev gcc make g++
+      cd /var/www/localhost/htdocs/openemr
+    fi
+
     # Support the following redis auth:
     #   No username and No password set (using redis default user with nopass set)
     #   Both username and password set (using the redis user and pertinent password)
