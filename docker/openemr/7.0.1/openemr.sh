@@ -187,20 +187,29 @@ if [ -f /root/certs/ldap/ldap-key ] &&
     echo "copied over ldap-key"
     cp /root/certs/ldap/ldap-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
 fi
+REDISCA=false
 if [ -f /root/certs/redis/redis-ca ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca ]; then
     echo "copied over redis-ca"
     cp /root/certs/redis/redis-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
+    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+    REDISCA=true
 fi
+REDISCERT=false
 if [ -f /root/certs/redis/redis-cert ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert ]; then
     echo "copied over redis-cert"
     cp /root/certs/redis/redis-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert
+    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+    REDISCERT=true
 fi
+REDISKEY=false
 if [ -f /root/certs/redis/redis-key ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key ]; then
     echo "copied over redis-key"
     cp /root/certs/redis/redis-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
+    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+    REDISKEY=true
 fi
 
 if [ "$AUTHORITY" == "yes" ]; then
@@ -285,6 +294,21 @@ if $MYSQLKEY ; then
     echo "adjusted permissions for mysql-key"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
 fi
+if $REDISCA ; then
+    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+    echo "adjusted permissions for redis-ca"
+    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
+fi
+if $REDISCERT ; then
+    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+    echo "adjusted permissions for redis-cert"
+    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert
+fi
+if $REDISKEY ; then
+    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+    echo "adjusted permissions for redis-key"
+    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
+fi
 
 if [ "$AUTHORITY" == "yes" ] &&
    [ "$SWARM_MODE" == "yes" ]; then
@@ -317,9 +341,8 @@ if [ "$REDIS_SERVER" != "" ] &&
       make
       make install
       echo "extension=redis" > /etc/php81/conf.d/20_redis.ini
-      #rm -fr /tmpredis/phpredis
-      #apk del git
-      apk del php81-dev gcc make g++
+      rm -fr /tmpredis/phpredis
+      apk del --no-cache git php81-dev gcc make g++
       cd /var/www/localhost/htdocs/openemr
     fi
 
