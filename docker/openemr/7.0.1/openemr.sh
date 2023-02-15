@@ -310,13 +310,6 @@ if $REDISKEY ; then
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
 fi
 
-if [ "$AUTHORITY" == "yes" ] &&
-   [ "$SWARM_MODE" == "yes" ]; then
-    # Set flag that the docker-leader configuration is complete
-    touch /var/www/localhost/htdocs/openemr/sites/docker-completed
-    rm -f /var/www/localhost/htdocs/openemr/sites/docker-leader 
-fi
-
 if [ "$REDIS_SERVER" != "" ] &&
    [ ! -f /etc/php-redis-configured ]; then
 
@@ -390,6 +383,13 @@ fi
 if [ "$XDEBUG_IDE_KEY" != "" ] ||
    [ "$XDEBUG_ON" == 1 ]; then
    sh xdebug.sh
+fi
+
+if [ "$AUTHORITY" == "yes" ] &&
+   [ "$SWARM_MODE" == "yes" ]; then
+    # Set flag that the docker-leader configuration is complete
+    touch /var/www/localhost/htdocs/openemr/sites/docker-completed
+    rm -f /var/www/localhost/htdocs/openemr/sites/docker-leader
 fi
 
 echo ""
