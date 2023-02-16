@@ -21,6 +21,16 @@ swarm_wait() {
     fi
 }
 
+swarm_lock_wait() {
+    if [ -f /var/www/localhost/htdocs/openemr/sites/docker-swarm-lock ]; then
+        # true
+        return 0
+    else
+        # false
+        return 1
+    fi
+}
+
 auto_setup() {
     prepareVariables
 
@@ -133,29 +143,20 @@ fi
 #    /root/certs/ldap/ldap-cert (supported)
 #    /root/certs/ldap/ldap-key (supported)
 #    /root/certs/redis/redis-ca (supported)
-MYSQLCA=false
 if [ -f /root/certs/mysql/server/mysql-ca ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
     echo "copied over mysql-ca"
     cp /root/certs/mysql/server/mysql-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
-    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
-    MYSQLCA=true
 fi
-MYSQLCERT=false
 if [ -f /root/certs/mysql/server/mysql-cert ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert ]; then
     echo "copied over mysql-cert"
     cp /root/certs/mysql/server/mysql-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
-    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
-    MYSQLCERT=true
 fi
-MYSQLKEY=false
 if [ -f /root/certs/mysql/server/mysql-key ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key ]; then
     echo "copied over mysql-key"
     cp /root/certs/mysql/server/mysql-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
-    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
-    MYSQLKEY=true
 fi
 if [ -f /root/certs/couchdb/couchdb-ca ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca ]; then
@@ -187,29 +188,20 @@ if [ -f /root/certs/ldap/ldap-key ] &&
     echo "copied over ldap-key"
     cp /root/certs/ldap/ldap-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
 fi
-REDISCA=false
 if [ -f /root/certs/redis/redis-ca ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca ]; then
     echo "copied over redis-ca"
     cp /root/certs/redis/redis-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
-    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
-    REDISCA=true
 fi
-REDISCERT=false
 if [ -f /root/certs/redis/redis-cert ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert ]; then
     echo "copied over redis-cert"
     cp /root/certs/redis/redis-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert
-    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
-    REDISCERT=true
 fi
-REDISKEY=false
 if [ -f /root/certs/redis/redis-key ] &&
    [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key ]; then
     echo "copied over redis-key"
     cp /root/certs/redis/redis-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
-    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
-    REDISKEY=true
 fi
 
 if [ "$AUTHORITY" == "yes" ]; then
@@ -251,60 +243,87 @@ if
         echo -n $DOCKER_VERSION_ROOT > /var/www/localhost/htdocs/openemr/sites/default/docker-version
         echo "Completed upgrade"
     fi
+fi
 
-    if [ -f auto_configure.php ]; then
-        # This section only runs once after above configuration since auto_configure.php gets removed after this script
-        echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
-        #set all directories to 500
-        find . -type d -print0 | xargs -0 chmod 500
-        #set all file access to 400
-        find . -type f -print0 | xargs -0 chmod 400
+if
+   [ "$AUTHORITY" == "yes" ] ||
+   [ "$SWARM_MODE" == "yes" ]; then
+    if
+    [ "$CONFIG" == "1" ] &&
+    [ "$MANUAL_SETUP" != "yes" ]; then
+    # OpenEMR has been configured
 
-        echo "Default file permissions and ownership set, allowing writing to specific directories"
-        chmod 700 openemr.sh
-        # Set file and directory permissions
-        find sites/default/documents -type d -print0 | xargs -0 chmod 700
-        find sites/default/documents -type f -print0 | xargs -0 chmod 700
+        if [ -f auto_configure.php ]; then
+            # This section only runs once after per docker since auto_configure.php gets removed after this script
+            #  In swarm mode need to have a lock where only one docker can do this at a time or for some reason,
+            #   things sort of break (not end of world if this happens, but best to try to avoid)
+            if [ "$SWARM_MODE" == "yes" ]; then
+                if [ -f /var/www/localhost/htdocs/openemr/sites/docker-swarm-lock ]; then
+                    while swarm_lock_wait; do
+                        echo "Waiting for the another docker to complete miscellaneous stuff before can proceed."
+                        sleep 10;
+                    done
+                fi
+                touch /var/www/localhost/htdocs/openemr/sites/docker-swarm-lock
+            fi
 
-        echo "Removing remaining setup scripts"
-        #remove all setup scripts
-        rm -f admin.php
-        rm -f acl_upgrade.php
-        rm -f setup.php
-        rm -f sql_patch.php
-        rm -f sql_upgrade.php
-        rm -f ippf_upgrade.php
-        rm -f auto_configure.php
-        echo "Setup scripts removed, we should be ready to go now!"
+            echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
+            #set all directories to 500
+            find . -type d -print0 | xargs -0 chmod 500
+            #set all file access to 400
+            find . -type f -print0 | xargs -0 chmod 400
+
+            echo "Default file permissions and ownership set, allowing writing to specific directories"
+            chmod 700 openemr.sh
+            # Set file and directory permissions
+            find sites/default/documents -type d -print0 | xargs -0 chmod 700
+            find sites/default/documents -type f -print0 | xargs -0 chmod 700
+
+            echo "Removing remaining setup scripts"
+            #remove all setup scripts
+            rm -f admin.php
+            rm -f acl_upgrade.php
+            rm -f setup.php
+            rm -f sql_patch.php
+            rm -f sql_upgrade.php
+            rm -f ippf_upgrade.php
+            rm -f auto_configure.php
+            echo "Setup scripts removed, we should be ready to go now!"
+
+            if [ "$SWARM_MODE" == "yes" ]; then
+                rm -f /var/www/localhost/htdocs/openemr/sites/docker-swarm-lock
+            fi
+
+        fi
     fi
 fi
 
-if $MYSQLCA ; then
+if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
     # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     echo "adjusted permissions for mysql-ca"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
 fi
-if $MYSQLCERT ; then
+if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert ]; then
     # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     echo "adjusted permissions for mysql-cert"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
 fi
-if $MYSQLKEY ; then
+if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key ]; then
     # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     echo "adjusted permissions for mysql-key"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
 fi
-if $REDISCA ; then
+if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca ]; then
     # for specific issue in docker and kubernetes that is required for successful openemr redis connections
     echo "adjusted permissions for redis-ca"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
 fi
-if $REDISCERT ; then
+if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert ]; then
     # for specific issue in docker and kubernetes that is required for successful openemr redis connections
     echo "adjusted permissions for redis-cert"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert
 fi
-if $REDISKEY ; then
+if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key ]; then
     # for specific issue in docker and kubernetes that is required for successful openemr redis connections
     echo "adjusted permissions for redis-key"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
