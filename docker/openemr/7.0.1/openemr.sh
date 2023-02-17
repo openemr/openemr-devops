@@ -21,16 +21,6 @@ swarm_wait() {
     fi
 }
 
-swarm_lock_wait() {
-    if [ -f /var/www/localhost/htdocs/openemr/sites/docker-swarm-lock ]; then
-        # true
-        return 0
-    else
-        # false
-        return 1
-    fi
-}
-
 auto_setup() {
     prepareVariables
 
@@ -245,92 +235,11 @@ if
     fi
 fi
 
-if
-   [ "$AUTHORITY" == "yes" ] ||
-   [ "$SWARM_MODE" == "yes" ]; then
-    if
-    [ "$CONFIG" == "1" ] &&
-    [ "$MANUAL_SETUP" != "yes" ]; then
-    # OpenEMR has been configured
-
-        if [ -f auto_configure.php ]; then
-            # This section only runs once after per docker since auto_configure.php gets removed after this script
-            #  In swarm mode need to have a lock where only one docker can do this at a time or for some reason,
-            #   things sort of break (not end of world if this happens, but best to try to avoid)
-            if [ "$SWARM_MODE" == "yes" ]; then
-                if [ -f /var/www/localhost/htdocs/openemr/sites/docker-swarm-lock ]; then
-                    while swarm_lock_wait; do
-                        echo "Waiting for the another docker to complete miscellaneous stuff before can proceed."
-                        sleep 10;
-                    done
-                fi
-                touch /var/www/localhost/htdocs/openemr/sites/docker-swarm-lock
-            fi
-
-            echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
-            #set all directories to 500
-            find . -type d -print0 | xargs -0 chmod 500
-            #set all file access to 400
-            find . -type f -print0 | xargs -0 chmod 400
-
-            echo "Default file permissions and ownership set, allowing writing to specific directories"
-            chmod 700 openemr.sh
-            # Set file and directory permissions
-            find sites/default/documents -type d -print0 | xargs -0 chmod 700
-            find sites/default/documents -type f -print0 | xargs -0 chmod 700
-
-            echo "Removing remaining setup scripts"
-            #remove all setup scripts
-            rm -f admin.php
-            rm -f acl_upgrade.php
-            rm -f setup.php
-            rm -f sql_patch.php
-            rm -f sql_upgrade.php
-            rm -f ippf_upgrade.php
-            rm -f auto_configure.php
-            echo "Setup scripts removed, we should be ready to go now!"
-
-            if [ "$SWARM_MODE" == "yes" ]; then
-                rm -f /var/www/localhost/htdocs/openemr/sites/docker-swarm-lock
-            fi
-
-        fi
-    fi
-fi
-
-if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
-    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
-    echo "adjusted permissions for mysql-ca"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
-fi
-if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert ]; then
-    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
-    echo "adjusted permissions for mysql-cert"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
-fi
-if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key ]; then
-    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
-    echo "adjusted permissions for mysql-key"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
-fi
-if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca ]; then
-    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
-    echo "adjusted permissions for redis-ca"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
-fi
-if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert ]; then
-    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
-    echo "adjusted permissions for redis-cert"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert
-fi
-if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key ]; then
-    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
-    echo "adjusted permissions for redis-key"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
-fi
-
 if [ "$REDIS_SERVER" != "" ] &&
    [ ! -f /etc/php-redis-configured ]; then
+    # Doing this redis section before the below openemr file config section since both these sections take some time
+    #  and in swarm mode the docker will be functional after this redis section (ie. if do the below config section first
+    #  then the breakage time of the pod will be markedly less).
 
     # Support phpredis build
     #   This will allow building phpredis towards either most recent development version "develop",
@@ -397,6 +306,68 @@ if [ "$REDIS_SERVER" != "" ] &&
     sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"$REDIS_PATH\"@" /etc/php81/php.ini
     # Ensure only configure this one time
     touch /etc/php-redis-configured
+fi
+
+if
+   [ "$AUTHORITY" == "yes" ] ||
+   [ "$SWARM_MODE" == "yes" ]; then
+    if
+    [ "$CONFIG" == "1" ] &&
+    [ "$MANUAL_SETUP" != "yes" ]; then
+    # OpenEMR has been configured
+
+        if [ -f auto_configure.php ]; then
+            # This section only runs once after per docker since auto_configure.php gets removed after this script
+
+            echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
+            #set all directories to 500 (note that sites/default/documents is dealt with below which need to skip here to prevent breakage in swarm mode)
+            find . -type d -not -path "./sites/default/documents/*" -print0 | xargs -0 chmod 500
+            #set all file access to 400 (note that sites/default/documents is dealt with below which need to skip here to prevent breakage in swarm mode)
+            find . -type f -not -path "./sites/default/documents/*" -print0 | xargs -0 chmod 400
+
+            echo "Default file permissions and ownership set, allowing writing to specific directories"
+            chmod 700 openemr.sh
+
+            # Set file and directory permissions
+            #  Note this is only done once in swarm mode (to prevent breakage) since is a shared volume.
+            if
+               [ "$SWARM_MODE" != "yes" ] ||
+               [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
+                echo "Setting sites/default/documents permissions to 700"
+                find sites/default/documents -type d -print0 | xargs -0 chmod 700
+                find sites/default/documents -type f -print0 | xargs -0 chmod 700
+            fi
+
+            echo "Removing remaining setup scripts"
+            #remove all setup scripts
+            rm -f admin.php
+            rm -f acl_upgrade.php
+            rm -f setup.php
+            rm -f sql_patch.php
+            rm -f sql_upgrade.php
+            rm -f ippf_upgrade.php
+            rm -f auto_configure.php
+            echo "Setup scripts removed, we should be ready to go now!"
+        fi
+    fi
+fi
+
+if [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
+    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
+    echo "adjusted permissions for mysql-ca"
+    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
+    echo "adjusted permissions for mysql-cert"
+    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
+    echo "adjusted permissions for mysql-key"
+    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
+
+    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+    echo "adjusted permissions for redis-ca"
+    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
+    echo "adjusted permissions for redis-cert"
+    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert
+    echo "adjusted permissions for redis-key"
+    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
 fi
 
 if [ "$XDEBUG_IDE_KEY" != "" ] ||
