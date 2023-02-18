@@ -353,21 +353,36 @@ if
 fi
 
 if [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
-    # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
-    echo "adjusted permissions for mysql-ca"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
-    echo "adjusted permissions for mysql-cert"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
-    echo "adjusted permissions for mysql-key"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
-
-    # for specific issue in docker and kubernetes that is required for successful openemr redis connections
-    echo "adjusted permissions for redis-ca"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
-    echo "adjusted permissions for redis-cert"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert
-    echo "adjusted permissions for redis-key"
-    chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
+    if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
+        # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
+        echo "adjusted permissions for mysql-ca"
+        chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
+    fi
+    if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert ]; then
+        # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
+        echo "adjusted permissions for mysql-cert"
+        chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
+    fi
+    if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key ]; then
+        # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
+        echo "adjusted permissions for mysql-key"
+        chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
+    fi
+    if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca ]; then
+        # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+        echo "adjusted permissions for redis-ca"
+        chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca
+    fi
+    if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert ]; then
+        # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+        echo "adjusted permissions for redis-cert"
+        chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert
+    fi
+    if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key ]; then
+        # for specific issue in docker and kubernetes that is required for successful openemr redis connections
+        echo "adjusted permissions for redis-key"
+        chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
+    fi
 fi
 
 if [ "$XDEBUG_IDE_KEY" != "" ] ||
