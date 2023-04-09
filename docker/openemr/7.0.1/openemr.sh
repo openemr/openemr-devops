@@ -352,7 +352,10 @@ if
     fi
 fi
 
-if [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
+#  Note this is only done once in swarm mode (to prevent breakage) since is a shared volume.
+if
+   [ "$SWARM_MODE" != "yes" ] ||
+   [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
     if [ -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
         # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
         echo "adjusted permissions for mysql-ca"
