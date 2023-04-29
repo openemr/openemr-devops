@@ -56,7 +56,7 @@ spec:
         # uncomment below line (and comment above line) if forcing mysql x509
         #- name: FORCE_DATABASE_X509_CONNECT
           value: "1"
-        image: openemr/openemr:7.0.0
+        image: openemr/openemr:7.0.1
         name: openemr
         ports:
         - containerPort: 80
