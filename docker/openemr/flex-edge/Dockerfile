@@ -45,9 +45,9 @@ ENV APACHE_LOG_DIR=/var/log/apache2
 COPY php.ini /etc/php82/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
 #add runner and auto_configure and prevent auto_configure from being run w/o being enabled
-COPY openemr.sh ssl.sh xdebug.sh auto_configure.php /var/www/localhost/htdocs/
+COPY openemr.sh ssl.sh xdebug.sh opcache.sh auto_configure.php /var/www/localhost/htdocs/
 COPY utilities/unlock_admin.php utilities/unlock_admin.sh /root/
-RUN chmod 500 openemr.sh ssl.sh xdebug.sh /root/unlock_admin.sh \
+RUN chmod 500 openemr.sh ssl.sh xdebug.sh opcache.sh /root/unlock_admin.sh \
     && chmod 000 auto_configure.php /root/unlock_admin.php
 #fix issue with apache2 dying prematurely
 RUN mkdir -p /run/apache2
