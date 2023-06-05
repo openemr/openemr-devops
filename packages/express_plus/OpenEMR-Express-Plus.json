@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR Express Plus v7.0.0 cloud deployment",
+    "Description": "OpenEMR Express Plus v7.0.1 cloud deployment",
     "Mappings": {
         "RegionData": {
             "ap-northeast-1": {

@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion": "2010-09-09",
-    "Description": "OpenEMR Cloud Standard v7.0.0 cloud deployment [recovery]",
+    "Description": "OpenEMR Cloud Standard v7.0.1 cloud deployment [recovery]",
     "Mappings": {
         "RegionData": {
             "ap-northeast-1": {
@@ -711,7 +711,7 @@
                                             "  openemr:\n",
                                             "    restart: always\n",
                                             "    image: openemr/openemr",
-                                            ":7.0.0",
+                                            ":7.0.1",
                                             "\n",
                                             "    ports:\n",
                                             "    - 80:80\n",
