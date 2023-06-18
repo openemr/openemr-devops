@@ -22,7 +22,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: "{{defaultContext}}:docker/openemr/flex-3.17"
-          tags: openemr/openemr:flex-3.17, openemr/openemr:flex
+          tags: openemr/openemr:flex-3.17
           platforms: linux/amd64,linux/arm64
           push: true
           no-cache: true
