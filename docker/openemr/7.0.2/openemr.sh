@@ -248,8 +248,8 @@ if [ "$REDIS_SERVER" != "" ] &&
     #    version 5.3.7 .
     if [ "$PHPREDIS_BUILD" != "" ]; then
       apk update
-      apk del --no-cache php81-redis
-      apk add --no-cache git php81-dev php81-pecl-igbinary gcc make g++
+      apk del --no-cache php82-redis
+      apk add --no-cache git php82-dev php82-pecl-igbinary gcc make g++
       mkdir /tmpredis
       cd /tmpredis
       git clone https://github.com/phpredis/phpredis.git
@@ -261,9 +261,9 @@ if [ "$REDIS_SERVER" != "" ] &&
       ./configure --enable-redis-igbinary
       make
       make install
-      echo "extension=redis" > /etc/php81/conf.d/20_redis.ini
+      echo "extension=redis" > /etc/php82/conf.d/20_redis.ini
       rm -fr /tmpredis/phpredis
-      apk del --no-cache git php81-dev gcc make g++
+      apk del --no-cache git php82-dev gcc make g++
       cd /var/www/localhost/htdocs/openemr
     fi
 
@@ -302,8 +302,8 @@ if [ "$REDIS_SERVER" != "" ] &&
         REDIS_PATH="tcp://$REDIS_PATH"
     fi
 
-    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php81/php.ini
-    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"$REDIS_PATH\"@" /etc/php81/php.ini
+    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php82/php.ini
+    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"$REDIS_PATH\"@" /etc/php82/php.ini
     # Ensure only configure this one time
     touch /etc/php-redis-configured
 fi
