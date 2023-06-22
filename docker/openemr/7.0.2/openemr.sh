@@ -257,8 +257,10 @@ if [ "$REDIS_SERVER" != "" ] &&
       if [ "$PHPREDIS_BUILD" != "develop" ]; then
           git reset --hard "$PHPREDIS_BUILD"
       fi
-      phpize
-      ./configure --enable-redis-igbinary
+      # note for php 8.2, needed to change from 'phpize' to:
+      phpize82
+      # note for php 8.2, needed to change from './configure --enable-redis-igbinary' to:
+      ./configure --with-php-config=/usr/bin/php-config82 --enable-redis-igbinary
       make
       make install
       echo "extension=redis" > /etc/php82/conf.d/20_redis.ini
