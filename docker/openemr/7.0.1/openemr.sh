@@ -400,6 +400,14 @@ if [ "$AUTHORITY" == "yes" ] &&
     rm -f /var/www/localhost/htdocs/openemr/sites/docker-leader
 fi
 
+if [ "$SWARM_MODE" == "yes" ]; then
+    # Set flag that the instance is ready when in swarm mode
+    echo ""
+    echo "swarm mode on: this instance is ready"
+    echo ""
+    touch /root/instance-swarm-ready
+fi
+
 echo ""
 echo "Love OpenEMR? You can now support the project via the open collective:"
 echo " > https://opencollective.com/openemr/donate"
