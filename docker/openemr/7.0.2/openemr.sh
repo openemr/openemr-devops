@@ -393,6 +393,9 @@ fi
 if [ "$XDEBUG_IDE_KEY" != "" ] ||
    [ "$XDEBUG_ON" == 1 ]; then
    sh xdebug.sh
+else
+   echo "opcache.jit_buffer_size=100M" >> /etc/php82/php.ini
+   echo "opcache.jit=tracing" >> /etc/php82/php.ini
 fi
 
 if [ "$AUTHORITY" == "yes" ] &&
