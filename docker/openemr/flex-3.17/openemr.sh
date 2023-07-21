@@ -471,6 +471,17 @@ fi
 if [ "$XDEBUG_IDE_KEY" != "" ] ||
    [ "$XDEBUG_ON" == 1 ]; then
    sh xdebug.sh
+   #also need to turn off opcache since it can not be turned on with xdebug
+   if [ ! -f /etc/php-opcache-jit-configured ]; then
+      echo "opcache.enable=0" >> /etc/php81/php.ini
+      touch /etc/php-opcache-jit-configured
+   fi
+else
+   # Configure opcache jit if Xdebug is not being used (note opcache is already on, so just need to add setting(s) to php.ini that are different from the default setting(s))
+   if [ ! -f /etc/php-opcache-jit-configured ]; then
+      echo "opcache.jit_buffer_size=100M" >> /etc/php81/php.ini
+      touch /etc/php-opcache-jit-configured
+   fi
 fi
 
 echo ""

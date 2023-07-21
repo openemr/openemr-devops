@@ -7,7 +7,7 @@ RUN apk add --no-cache \
     php81-json php81-pdo php81-pdo_mysql php81-curl php81-ldap php81-openssl php81-iconv \
     php81-xml php81-xsl php81-gd php81-zip php81-soap php81-mbstring php81-zlib \
     php81-mysqli php81-sockets php81-xmlreader php81-redis perl php81-simplexml php81-xmlwriter php81-phar php81-fileinfo \
-    php81-sodium php81-calendar php81-intl \
+    php81-sodium php81-calendar php81-intl php81-opcache \
     mysql-client tar curl imagemagick nodejs npm \
     python3 openssl git py-pip openssl-dev dcron \
     rsync shadow jq ncurses \
