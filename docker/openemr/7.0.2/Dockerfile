@@ -24,7 +24,7 @@ RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
     && git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
     && cd openemr \
-    && composer install --no-dev --optimize-autoloader --apcu-autoloader \
+    && composer install --no-dev \
     && npm install --unsafe-perm \
     && npm run build \
     && cd ccdaservice \
