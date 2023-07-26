@@ -24,6 +24,8 @@ swarm_wait() {
 auto_setup() {
     prepareVariables
 
+    chmod -R 600 .
+
     #create temporary file cache directory for auto_configure.php to use
     TMP_FILE_CACHE_LOCATION="/tmp/php-file-cache"
     mkdir $TMP_FILE_CACHE_LOCATION
