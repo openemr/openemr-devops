@@ -38,7 +38,26 @@ auto_setup() {
         chmod -R 600 /var/www/localhost/htdocs/openemr
     fi
 
-    php /var/www/localhost/htdocs/auto_configure.php -f ${CONFIGURATION} || return 1
+    #create temporary file cache directory for auto_configure.php to use
+    TMP_FILE_CACHE_LOCATION="/tmp/php-file-cache"
+    mkdir $TMP_FILE_CACHE_LOCATION
+
+    #create auto_configure.ini to be able to leverage opcache for operations
+    touch auto_configure.ini
+    echo "opcache.enable=1" >> auto_configure.ini
+    echo "opcache.enable_cli=1" >> auto_configure.ini
+    echo "opcache.file_cache=$TMP_FILE_CACHE_LOCATION" >> auto_configure.ini
+    echo "opcache.file_cache_only=1" >> auto_configure.ini
+    echo "opcache.file_cache_consistency_checks=1" >> auto_configure.ini
+    echo "opcache.enable_file_override=1" >> auto_configure.ini
+    echo "opcache.max_accelerated_files=1000000" >> auto_configure.ini
+
+    #run auto_configure
+    php /var/www/localhost/htdocs/auto_configure.php -c auto_configure.ini -f ${CONFIGURATION} || return 1
+
+    #remove temporary file cache directory and auto_configure.ini
+    rm -r $TMP_FILE_CACHE_LOCATION
+    rm auto_configure.ini
 
     echo "OpenEMR configured."
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
@@ -248,7 +267,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     composer global remove phing/phing
 
     # optimize
-    composer dump-autoload -o
+    composer dump-autoload --optimize --apcu
 
     cd /var/www/localhost/htdocs
 fi
@@ -373,16 +392,20 @@ if
         cd /var/www/localhost/htdocs/openemr/
         # This section only runs once after above configuration since auto_configure.php gets removed after this script
         echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
+
+        #return number from nproc to have value for -P flag in xargs
+        N_PROC=$(nproc --all)
+
         #set all directories to 500
-        find . -type d -print0 | xargs -0 chmod 500
+        find . -type d -print0 | xargs -0 -P $N_PROC chmod 500
         #set all file access to 400
-        find . -type f -print0 | xargs -0 chmod 400
+        find . -type f -print0 | xargs -0 -P $N_PROC chmod 400
 
         echo "Default file permissions and ownership set, allowing writing to specific directories"
         chmod 700 /var/www/localhost/htdocs/openemr.sh
         # Set file and directory permissions
-        find sites/default/documents -type d -print0 | xargs -0 chmod 700
-        find sites/default/documents -type f -print0 | xargs -0 chmod 700
+        find sites/default/documents -type d -print0 | xargs -0 -P $N_PROC chmod 700
+        find sites/default/documents -type f -print0 | xargs -0 -P $N_PROC chmod 700
 
         echo "Removing remaining setup scripts"
         #remove all setup scripts

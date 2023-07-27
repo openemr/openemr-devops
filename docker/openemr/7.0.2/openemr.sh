@@ -25,7 +25,27 @@ auto_setup() {
     prepareVariables
 
     chmod -R 600 .
-    php auto_configure.php -f ${CONFIGURATION} || return 1
+
+    #create temporary file cache directory for auto_configure.php to use
+    TMP_FILE_CACHE_LOCATION="/tmp/php-file-cache"
+    mkdir $TMP_FILE_CACHE_LOCATION
+
+    #create auto_configure.ini to be able to leverage opcache for operations
+    touch auto_configure.ini
+    echo "opcache.enable=1" >> auto_configure.ini
+    echo "opcache.enable_cli=1" >> auto_configure.ini
+    echo "opcache.file_cache=$TMP_FILE_CACHE_LOCATION" >> auto_configure.ini
+    echo "opcache.file_cache_only=1" >> auto_configure.ini
+    echo "opcache.file_cache_consistency_checks=1" >> auto_configure.ini
+    echo "opcache.enable_file_override=1" >> auto_configure.ini
+    echo "opcache.max_accelerated_files=1000000" >> auto_configure.ini
+
+    #run auto_configure
+    php auto_configure.php -c auto_configure.ini -f ${CONFIGURATION} || return 1
+
+    #remove temporary file cache directory and auto_configure.ini
+    rm -r $TMP_FILE_CACHE_LOCATION
+    rm auto_configure.ini
 
     echo "OpenEMR configured."
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
@@ -261,7 +281,7 @@ if [ "$REDIS_SERVER" != "" ] &&
       phpize82
       # note for php 8.2, needed to change from './configure --enable-redis-igbinary' to:
       ./configure --with-php-config=/usr/bin/php-config82 --enable-redis-igbinary
-      make
+      make -j $(nproc --all)
       make install
       echo "extension=redis" > /etc/php82/conf.d/20_redis.ini
       rm -fr /tmpredis/phpredis
@@ -322,10 +342,14 @@ if
             # This section only runs once after per docker since auto_configure.php gets removed after this script
 
             echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
+
+            #return number from nproc to have value for -P flag in xargs
+            N_PROC=$(nproc --all)
+
             #set all directories to 500 (note that sites/default/documents is dealt with below which need to skip here to prevent breakage in swarm mode)
-            find . -type d -not -path "./sites/default/documents/*" -print0 | xargs -0 chmod 500
+            find . -type d -not -path "./sites/default/documents/*" -print0 | xargs -0 -P $N_PROC chmod 500
             #set all file access to 400 (note that sites/default/documents is dealt with below which need to skip here to prevent breakage in swarm mode)
-            find . -type f -not -path "./sites/default/documents/*" -print0 | xargs -0 chmod 400
+            find . -type f -not -path "./sites/default/documents/*" -print0 | xargs -0 -P $N_PROC chmod 400
 
             echo "Default file permissions and ownership set, allowing writing to specific directories"
             chmod 700 openemr.sh
@@ -336,8 +360,8 @@ if
                [ "$SWARM_MODE" != "yes" ] ||
                [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
                 echo "Setting sites/default/documents permissions to 700"
-                find sites/default/documents -type d -print0 | xargs -0 chmod 700
-                find sites/default/documents -type f -print0 | xargs -0 chmod 700
+                find sites/default/documents -type d -print0 | xargs -0 -P $N_PROC chmod 700
+                find sites/default/documents -type f -print0 | xargs -0 -P $N_PROC chmod 700
             fi
 
             echo "Removing remaining setup scripts"

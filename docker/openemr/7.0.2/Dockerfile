@@ -7,7 +7,7 @@ RUN apk add --no-cache \
     php82-json php82-pdo php82-pdo_mysql php82-curl php82-ldap php82-openssl php82-iconv \
     php82-xml php82-xsl php82-gd php82-zip php82-soap php82-mbstring php82-zlib \
     php82-mysqli php82-sockets php82-xmlreader php82-redis php82-simplexml php82-xmlwriter php82-phar php82-fileinfo \
-    php82-sodium php82-calendar php82-intl php82-opcache \
+    php82-sodium php82-calendar php82-intl php82-opcache php82-pecl-apcu \
     perl mysql-client tar curl imagemagick nodejs npm \
     python3 openssl py-pip openssl-dev dcron \
     rsync shadow ncurses \
@@ -34,7 +34,7 @@ RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
     && /root/.composer/vendor/bin/phing vendor-clean \
     && /root/.composer/vendor/bin/phing assets-clean \
     && composer global remove phing/phing \
-    && composer dump-autoload -o \
+    && composer dump-autoload --optimize --apcu \
     && composer clearcache \
     && npm cache clear --force \
     && rm -fr node_modules \
