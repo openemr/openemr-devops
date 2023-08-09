@@ -320,7 +320,8 @@ then
 	echo "  xl, xdebug-log                     To check xdebug log"
 	echo "  lxp, list-xdebug-profiles          To list xdebug profiles"
   echo 'test-management:'
-	echo "  ut, unit-test                      To run unit testing"
+	echo "  ut, unit-test                      To run php unit testing"
+	echo "  jut, javascript-unit-test          To run javascript unit testing"
 	echo "  at, api-test                       To run api testing"
 	echo "  et, e2e-test                       To run e2e testing"
 	echo "  st, services-test                  To run services testing"
@@ -526,6 +527,9 @@ case "$FIRST_ARG" in
 		;;
 	ut)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS unit-test"
+		;;
+	jut)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS javascript-unit-test"
 		;;
 	at)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS api-test"
