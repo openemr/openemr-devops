@@ -314,6 +314,8 @@ then
 	echo "  pf, psr12-fix                      To fix PSR12 code styling issues"
 	echo "  ltr, lint-themes-report            To create a report of theme styling issues"
 	echo "  ltf, lint-themes-fix               To fix theme styling issues"
+  echo "  ljr, lint-javascript-report        To create a report of javascript styling issues"
+  echo "  ljf, lint-javascript-fix           To fix javascript styling issues"
 	echo "  pp, php-parserror                  To check PHP parsing errors"
 	echo "  xl, xdebug-log                     To check xdebug log"
 	echo "  lxp, list-xdebug-profiles          To list xdebug profiles"
@@ -512,6 +514,12 @@ case "$FIRST_ARG" in
 		;;
 	ltf)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS lint-themes-fix"
+		;;
+	ljr)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS lint-javascript-report"
+		;;
+	ljf)
+		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS lint-javascript-fix"
 		;;
 	pp)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS php-parserror"
