@@ -35,6 +35,12 @@ if [ "$1" == "lint-themes-report" ]; then
     npx stylelint "**/*.{css,scss}"
 fi
 
+if [ "$1" == "lint-javascript-report" ]; then
+    echo "Generating lint javascript error report "
+    cd /var/www/localhost/htdocs/openemr
+    npm run lint:js
+fi
+
 if [ "$1" == "psr2-fix" ] ||  [ "$1" == "psr12-fix" ] || [ "$1" == "clean-sweep" ]; then
     echo "Fixing PSR12 code styling errors "
     cd /var/www/localhost/htdocs/openemr
@@ -46,6 +52,12 @@ if [ "$1" == "lint-themes-fix" ] || [ "$1" == "clean-sweep" ]; then
     cd /var/www/localhost/htdocs/openemr
     npx stylelint "**/*.{css,scss}"
     npx stylelint --fix "**/*.{css,scss}"
+fi
+
+if [ "$1" == "lint-javascript-fix" ] || [ "$1" == "clean-sweep" ]; then
+    echo "Fixing lint javascript errors "
+    cd /var/www/localhost/htdocs/openemr
+    npm run lint:js-fix
 fi
 
 if [ "$1" == "php-parserror" ] || [ "$1" == "clean-sweep" ]; then
