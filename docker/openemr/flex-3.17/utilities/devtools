@@ -67,9 +67,15 @@ if [ "$1" == "php-parserror" ] || [ "$1" == "clean-sweep" ]; then
 fi
 
 if [ "$1" == "unit-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
-    echo "Running OpenEMR Unit tests"
+    echo "Running OpenEMR PHP Unit tests"
     cd /var/www/localhost/htdocs/openemr
     vendor/bin/phpunit --testsuite unit --testdox
+fi
+
+if [ "$1" == "javascript-unit-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
+    echo "Running OpenEMR Javascript Unit tests"
+    cd /var/www/localhost/htdocs/openemr
+    npm run test:js
 fi
 
 if [ "$1" == "api-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
