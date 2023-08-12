@@ -32,7 +32,7 @@ fi
 if [ "$1" == "lint-themes-report" ]; then
     echo "Generating lint themes error report "
     cd /var/www/localhost/htdocs/openemr
-    npx stylelint "**/*.{css,scss}"
+    npm run stylelint
 fi
 
 if [ "$1" == "lint-javascript-report" ]; then
@@ -50,8 +50,8 @@ fi
 if [ "$1" == "lint-themes-fix" ] || [ "$1" == "clean-sweep" ]; then
     echo "Fixing lint themes errors "
     cd /var/www/localhost/htdocs/openemr
-    npx stylelint "**/*.{css,scss}"
-    npx stylelint --fix "**/*.{css,scss}"
+    npm run stylelint
+    npm run stylelint-fix
 fi
 
 if [ "$1" == "lint-javascript-fix" ] || [ "$1" == "clean-sweep" ]; then
@@ -76,6 +76,13 @@ if [ "$1" == "javascript-unit-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == 
     echo "Running OpenEMR Javascript Unit tests"
     cd /var/www/localhost/htdocs/openemr
     npm run test:js
+fi
+
+if [ "$1" == "jut-reports-build" ]; then
+    echo "Building javascript unit testing reports browser user interface, which can view in web browser at HOST/coverage/js-unit/lcov-report (HOST is the server host, for example http://localhost:8300)"
+    cd /var/www/localhost/htdocs/openemr
+    npm run test:js-coverage
+    echo "Done, you can view reports in web browser at HOST/coverage/js-unit/lcov-report (HOST is the server host, for example http://localhost:8300)"
 fi
 
 if [ "$1" == "api-test" ] || [ "$1" == "clean-sweep" ] || [ "$1" == "clean-sweep-tests" ]; then
