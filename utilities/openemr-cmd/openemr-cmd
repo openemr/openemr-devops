@@ -14,19 +14,24 @@ VERSION="1.0.12"
 
 # Set the default container name/id to look for
 INSANE_DEV_DOCKER="_openemr-8-1_1"
-# To determine a snap or a non-snap docker
-# Function to determine EASY_DEV_DOCKER
-get_easy_dev_docker() {
+# If the docker is snap or non-snap docker
+# Setting the container names accordingly
+get_container_names() {
 	snap_docker=$(which docker)
 	if [ $snap_docker == '/snap/bin/docker' ]
 	then
-   		echo "openemr-1"
-	else
-		echo "_openemr_1"
-	fi
+		INSANE_DEV_DOCKER="openemr-8-1"
+		EASY_DEV_DOCKER="openemr-1"
+        COUCHDB_DOCKER="couchdb-1"
+    else
+		INSANE_DEV_DOCKER="_openemr-8-1_1"
+		EASY_DEV_DOCKER="_openemr_1"
+        COUCHDB_DOCKER="_couchdb_1" 
+	fi	
 }
-EASY_DEV_DOCKER=$(get_easy_dev_docker)
-COUCHDB_DOCKER="_couchdb_1"
+
+# Set the container names
+get_container_names
 
 # Set some constants
 DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec command
