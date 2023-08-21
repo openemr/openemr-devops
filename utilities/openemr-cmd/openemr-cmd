@@ -20,7 +20,7 @@ get_container_names() {
 	snap_docker=$(which docker)
 	if [ $snap_docker == '/snap/bin/docker' ]
 	then
-		INSANE_DEV_DOCKER="openemr-8-1"
+		INSANE_DEV_DOCKER="openemr-8-1-1"
 		EASY_DEV_DOCKER="openemr-1"
         COUCHDB_DOCKER="couchdb-1"
     else
