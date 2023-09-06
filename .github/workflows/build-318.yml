@@ -23,6 +23,6 @@ jobs:
         with:
           context: "{{defaultContext}}:docker/openemr/flex-3.18"
           tags: openemr/openemr:flex-3.18, openemr/openemr:flex
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           no-cache: true
