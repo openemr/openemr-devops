@@ -9,7 +9,7 @@ RUN apk add --no-cache \
     php82-mysqli php82-sockets php82-xmlreader php82-redis perl php82-simplexml php82-xmlwriter php82-phar php82-fileinfo \
     php82-sodium php82-calendar php82-intl php82-opcache php82-pecl-apcu \
     mysql-client tar curl imagemagick nodejs npm \
-    python3 openssl git py-pip openssl-dev dcron \
+    certbot openssl git openssl-dev dcron \
     rsync shadow jq ncurses \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
@@ -25,15 +25,13 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin -
 # TODO: Note that flex series 3.14+ needs to keep build-base package in (ie. not apk del it after done) for now
 #  since npm package libxmljs needs to be built during openemr build; this is part of the ccda npm build and
 #  can place build-base in below apk del line when this issue is fixed)
-#  btw, when this is fixed and we apk del build-base, this will decrease size of docker by 190MB :)
-RUN apk add --no-cache build-base libffi-dev python3-dev cargo \
+#  btw, when this is fixed and we apk del build-base (actually, will not even need to install it),
+#     this will decrease size of docker by 190MB :)
+RUN apk add --no-cache build-base \
     && mkdir -p /var/www/localhost/htdocs/openemr/sites \
     && chown -R apache /var/www/localhost/htdocs/openemr \
-    && git clone https://github.com/letsencrypt/letsencrypt --depth 1 /opt/certbot \
-    && pip install --upgrade pip \
-    && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache libffi-dev python3-dev cargo \    
+    # && apk del --no-cache build-base \
     && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/httpd.conf \
     && sed -i 's/^ *ErrorLog/#ErrorLog/' /etc/apache2/httpd.conf \
     && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/conf.d/ssl.conf \
