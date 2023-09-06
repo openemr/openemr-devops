@@ -9,7 +9,7 @@ RUN apk add --no-cache \
     php82-mysqli php82-sockets php82-xmlreader php82-redis php82-simplexml php82-xmlwriter php82-phar php82-fileinfo \
     php82-sodium php82-calendar php82-intl php82-opcache php82-pecl-apcu \
     perl mysql-client tar curl imagemagick nodejs npm \
-    python3 openssl py-pip openssl-dev dcron \
+    certbot openssl openssl-dev dcron \
     rsync shadow ncurses \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 # Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
@@ -20,7 +20,7 @@ RUN cp /usr/bin/php82 /usr/bin/php
 # Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
-RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
+RUN apk add --no-cache git build-base \
     && git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
     && cd openemr \
@@ -42,11 +42,8 @@ RUN apk add --no-cache git build-base libffi-dev python3-dev cargo \
     && chmod 666 openemr/sites/default/sqlconf.php \
     && chown -R apache openemr/ \
     && mv openemr /var/www/localhost/htdocs/ \
-    && git clone https://github.com/letsencrypt/letsencrypt --depth 1 /opt/certbot \
-    && pip install --upgrade pip \
-    && pip install -e /opt/certbot/acme -e /opt/certbot/certbot \
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache git build-base libffi-dev python3-dev cargo \
+    && apk del --no-cache git build-base \
     && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/httpd.conf \
     && sed -i 's/^ *ErrorLog/#ErrorLog/' /etc/apache2/httpd.conf \
     && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/conf.d/ssl.conf \
