@@ -61,6 +61,9 @@ f () {
   else
     echo Skipping swap allocation...
   fi
+  
+  # Make sure we don't fail out if there is an interactive prompt... go with defaults
+  export DEBIAN_FRONTEND=noninteractive
 
   apt-get update -y
   apt-get dist-upgrade -y
