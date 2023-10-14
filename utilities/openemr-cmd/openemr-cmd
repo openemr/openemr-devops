@@ -10,7 +10,7 @@
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.14"
+VERSION="1.0.15"
 
 # If the docker is snap or non-snap docker
 # Setting the container names accordingly
@@ -18,11 +18,11 @@ get_container_names() {
 	snap_docker=$(which docker)
 	if [ $snap_docker == '/snap/bin/docker' ]
 	then
-		INSANE_DEV_DOCKER="openemr-8-1-1"
+		INSANE_DEV_DOCKER="openemr-8-2-1"
 		EASY_DEV_DOCKER="openemr-1"
     COUCHDB_DOCKER="couchdb-1"
   else
-		INSANE_DEV_DOCKER="_openemr-8-1_1"
+		INSANE_DEV_DOCKER="_openemr-8-2_1"
 		EASY_DEV_DOCKER="_openemr_1"
     COUCHDB_DOCKER="_couchdb_1"
 	fi
