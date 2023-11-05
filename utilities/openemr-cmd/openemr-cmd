@@ -10,22 +10,24 @@
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.15"
+VERSION="1.0.16"
 
 # If the docker is snap or non-snap docker
 # Setting the container names accordingly
 get_container_names() {
-	snap_docker=$(which docker)
-	if [ $snap_docker == '/snap/bin/docker' ]
-	then
-		INSANE_DEV_DOCKER="openemr-8-2-1"
-		EASY_DEV_DOCKER="openemr-1"
-    COUCHDB_DOCKER="couchdb-1"
-  else
-		INSANE_DEV_DOCKER="_openemr-8-2_1"
-		EASY_DEV_DOCKER="_openemr_1"
-    COUCHDB_DOCKER="_couchdb_1"
-	fi
+    snap_docker=$(which docker)
+    if [ $snap_docker == '/snap/bin/docker' ]
+    then
+        INSANE_DEV_DOCKER="openemr-8-1-1"
+        EASY_DEV_DOCKER="openemr-1"
+        COUCHDB_DOCKER="couchdb-1"
+        MARIADB_DOCKER="mysql-1"
+    else
+        INSANE_DEV_DOCKER="_openemr-8-1_1"
+        EASY_DEV_DOCKER="_openemr_1"
+        COUCHDB_DOCKER="_couchdb_1"
+        MARIADB_DOCKER="_mysql_1"
+    fi
 }
 
 # Set the container names
@@ -45,6 +47,10 @@ check_docker_compose_install_or_not(){
 
 quick_open_a_docker_shell(){
   docker exec -w /var/www/localhost/htdocs/openemr -it $CONTAINER_ID sh
+}
+
+quick_open_a_maria_docker_shell(){
+  docker exec -it $MARIADB_CONTAINER_ID /bin/bash
 }
 
 execute_command_flexible(){
@@ -86,7 +92,7 @@ check_docker_names() {
 }
 
 restart_couchdb_docker(){
-  if [ -z $COUCHDB_CONTAINER ]
+  if [ -z "$COUCHDB_CONTAINER" ]
   then
     echo "Unable to find the couchdb docker, so could not restart it"
   else
@@ -317,6 +323,7 @@ then
   echo "  start                              Execute: docker-compose start"
   echo "  stop                               Execute: docker-compose stop"
   echo "  s, shell                           Open a docker shell quickly"
+  echo "  ms, maria-shell                    Open a maria docker shell quickly"
   echo "  e, exec                            Execute commands outside docker"
   echo "  dl, docker-log                     To check docker log"
   echo "  dn, docker-names                   To check docker the running docker names"
@@ -404,7 +411,7 @@ then
 	exit $USAGE_EXIT_CODE
 elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
 then
-	echo "openemer-cmd $VERSION"
+	echo "openemr-cmd $VERSION"
 	exit $VERSION_EXIT_CODE
 fi
 
@@ -435,6 +442,9 @@ fi
 
 #collect the couchdb docker name
 COUCHDB_CONTAINER=$(docker ps | grep $COUCHDB_DOCKER | cut -f 1 -d " ")
+
+# Collect the mariadb container id
+MARIADB_CONTAINER_ID=$(docker ps | grep $MARIADB_DOCKER | cut -f 1 -d " ")
 
 # See how we were called.
 # For the shift usage, it used to cover the insane env.
@@ -512,6 +522,9 @@ case "$FIRST_ARG" in
 		;;
   cwo|change-webroot-openemr)
     set-webroot openemr
+		;;
+  ms|maria-shell)
+    quick_open_a_maria_docker_shell
 		;;
 	bt)
 		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-themes"
