@@ -12,7 +12,7 @@ It is recommended to specify a version number in production, to ensure your buil
 ## How can I just spin up OpenEMR?
 
 *You **need** to run an instance of mysql/mariadb as well and connect it to this container! You can then either use auto-setup with environment variables (see below) or you can manually set up, telling the server where to find the db.* The easiest way is to use `docker-compose`. The following `docker-compose.yml` file is a good example:
-  - If you are using Raspberry Pi, then change the `mariadb:10.6` to `jsurf/rpi-mariadb`.
+  - If you are using Raspberry Pi, then change the `mariadb:10.11` to `jsurf/rpi-mariadb`.
 ```yaml
 # Use admin/pass as user/password credentials to login to openemr (from OE_USER and OE_PASS below)
 # MYSQL_HOST and MYSQL_ROOT_PASS are required for openemr
@@ -30,7 +30,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     restart: always
-    image: openemr/openemr:7.0.2
+    image: openemr/openemr:7.0.3
     ports:
     - 80:80
     - 443:443
@@ -51,7 +51,7 @@ volumes:
   sitevolume: {}
   databasevolume: {}
 ```
-[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/640b8735f7dc48f43458f8801187a912/raw/036d8808e2c0be865c0021faacddf0801d32a851/openemr-702-docker-example-docker-compose.yml)
+[![Try it!](https://github.com/play-with-docker/stacks/raw/cff22438cb4195ace27f9b15784bbb497047afa7/assets/images/button.png)](http://play-with-docker.com/?stack=https://gist.githubusercontent.com/bradymiller/cecc3159ce806aa520712bb2e1379392/raw/70e97b2ea90b555f16386c4403194c5cc709ec94/openemr-703-docker-example-docker-compose.yml)
 
 ## Environment Variables
 
@@ -59,7 +59,7 @@ See the https://hub.docker.com/r/openemr/openemr/ page for documentation of envi
 
 ## Support on Raspberry Pi
 
-Both 32 bit and 64 bit architectures are supported on Raspberry Pi. If you are using Raspberry Pi, then you need to change the `mariadb:10.6` to `jsurf/rpi-mariadb` in the above docker-compose.yml example.
+Both 32 bit and 64 bit architectures are supported on Raspberry Pi. If you are using Raspberry Pi, then you need to change the `mariadb:10.11` to `jsurf/rpi-mariadb` in the above docker-compose.yml example.
 
 ## Where to get help?
 
