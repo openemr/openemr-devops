@@ -18,12 +18,12 @@ get_container_names() {
     snap_docker=$(which docker)
     if [ $snap_docker == '/snap/bin/docker' ]
     then
-        INSANE_DEV_DOCKER="openemr-8-1-1"
+        INSANE_DEV_DOCKER="openemr-8-2-1"
         EASY_DEV_DOCKER="openemr-1"
         COUCHDB_DOCKER="couchdb-1"
         MARIADB_DOCKER="mysql-1"
     else
-        INSANE_DEV_DOCKER="_openemr-8-1_1"
+        INSANE_DEV_DOCKER="_openemr-8-2_1"
         EASY_DEV_DOCKER="_openemr_1"
         COUCHDB_DOCKER="_couchdb_1"
         MARIADB_DOCKER="_mysql_1"
@@ -323,7 +323,7 @@ then
   echo "  start                              Execute: docker-compose start"
   echo "  stop                               Execute: docker-compose stop"
   echo "  s, shell                           Open a docker shell quickly"
-  echo "  ms, maria-shell                    Open a maria docker shell quickly"
+  echo "  ms, maria-shell                    Open a maria docker shell quickly (only works in the easy dev environment)"
   echo "  e, exec                            Execute commands outside docker"
   echo "  dl, docker-log                     To check docker log"
   echo "  dn, docker-names                   To check docker the running docker names"
