@@ -25,6 +25,6 @@ jobs:
         with:
           context: "{{defaultContext}}:docker/openemr/7.0.2"
           tags: openemr/openemr:7.0.2 , openemr/openemr:next
-          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          platforms: linux/amd64,linux/arm64
           push: true
           no-cache: true
