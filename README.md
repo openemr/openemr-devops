@@ -16,7 +16,7 @@ See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_P
 
 * [Ubuntu Installer](packages/lightsail): Launch OpenEMR on any Ubuntu 16.04 instance; examples given for AWS Lightsail hosting
 * [Virtual Appliance](packages/appliance): Downloadable virtual appliance encapsulating a full OpenEMR install
-* [Raspberry Pi](raspberrypi): Install OpenEMR Docker on Raspberry Pi (supports both ARMv7 and ARMv8 infrastructure)
+* [Raspberry Pi](raspberrypi): Install OpenEMR Docker on Raspberry Pi (supports ARMv8 infrastructure)
 
 ### Components and Infrastructure
 
