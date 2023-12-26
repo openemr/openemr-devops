@@ -485,8 +485,8 @@ if [ "$REDIS_SERVER" != "" ] &&
         echo "redis setup"
     fi
 
-    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php82/php.ini
-    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"$REDIS_PATH\"@" /etc/php82/php.ini
+    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php83/php.ini
+    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"$REDIS_PATH\"@" /etc/php83/php.ini
     # Ensure only configure this one time
     touch /etc/php-redis-configured
 fi
@@ -496,13 +496,13 @@ if [ "$XDEBUG_IDE_KEY" != "" ] ||
    sh xdebug.sh
    #also need to turn off opcache since it can not be turned on with xdebug
    if [ ! -f /etc/php-opcache-jit-configured ]; then
-      echo "opcache.enable=0" >> /etc/php82/php.ini
+      echo "opcache.enable=0" >> /etc/php83/php.ini
       touch /etc/php-opcache-jit-configured
    fi
 else
    # Configure opcache jit if Xdebug is not being used (note opcache is already on, so just need to add setting(s) to php.ini that are different from the default setting(s))
    if [ ! -f /etc/php-opcache-jit-configured ]; then
-      echo "opcache.jit_buffer_size=100M" >> /etc/php82/php.ini
+      echo "opcache.jit_buffer_size=100M" >> /etc/php83/php.ini
       touch /etc/php-opcache-jit-configured
    fi
 fi
