@@ -268,8 +268,8 @@ if [ "$REDIS_SERVER" != "" ] &&
     #    version 5.3.7 .
     if [ "$PHPREDIS_BUILD" != "" ]; then
       apk update
-      apk del --no-cache php82-redis
-      apk add --no-cache git php82-dev php82-pecl-igbinary gcc make g++
+      apk del --no-cache php83-redis
+      apk add --no-cache git php83-dev php83-pecl-igbinary gcc make g++
       mkdir /tmpredis
       cd /tmpredis
       git clone https://github.com/phpredis/phpredis.git
@@ -277,15 +277,15 @@ if [ "$REDIS_SERVER" != "" ] &&
       if [ "$PHPREDIS_BUILD" != "develop" ]; then
           git reset --hard "$PHPREDIS_BUILD"
       fi
-      # note for php 8.2, needed to change from 'phpize' to:
-      phpize82
-      # note for php 8.2, needed to change from './configure --enable-redis-igbinary' to:
-      ./configure --with-php-config=/usr/bin/php-config82 --enable-redis-igbinary
+      # note for php 8.3, needed to change from 'phpize' to:
+      phpize83
+      # note for php 8.3, needed to change from './configure --enable-redis-igbinary' to:
+      ./configure --with-php-config=/usr/bin/php-config83 --enable-redis-igbinary
       make -j $(nproc --all)
       make install
-      echo "extension=redis" > /etc/php82/conf.d/20_redis.ini
+      echo "extension=redis" > /etc/php83/conf.d/20_redis.ini
       rm -fr /tmpredis/phpredis
-      apk del --no-cache git php82-dev gcc make g++
+      apk del --no-cache git php83-dev gcc make g++
       cd /var/www/localhost/htdocs/openemr
     fi
 
@@ -324,8 +324,8 @@ if [ "$REDIS_SERVER" != "" ] &&
         REDIS_PATH="tcp://$REDIS_PATH"
     fi
 
-    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php82/php.ini
-    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"$REDIS_PATH\"@" /etc/php82/php.ini
+    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php83/php.ini
+    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"$REDIS_PATH\"@" /etc/php83/php.ini
     # Ensure only configure this one time
     touch /etc/php-redis-configured
 fi
@@ -419,13 +419,13 @@ if [ "$XDEBUG_IDE_KEY" != "" ] ||
    sh xdebug.sh
    #also need to turn off opcache since it can not be turned on with xdebug
    if [ ! -f /etc/php-opcache-jit-configured ]; then
-      echo "opcache.enable=0" >> /etc/php82/php.ini
+      echo "opcache.enable=0" >> /etc/php83/php.ini
       touch /etc/php-opcache-jit-configured
    fi
 else
    # Configure opcache jit if Xdebug is not being used (note opcache is already on, so just need to add setting(s) to php.ini that are different from the default setting(s))
    if [ ! -f /etc/php-opcache-jit-configured ]; then
-      echo "opcache.jit_buffer_size=100M" >> /etc/php82/php.ini
+      echo "opcache.jit_buffer_size=100M" >> /etc/php83/php.ini
       touch /etc/php-opcache-jit-configured
    fi
 fi
