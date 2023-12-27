@@ -1,4 +1,4 @@
-name: Development 7.0.2 Docker Nightly Build
+name: Production 7.0.2 Docker Build
 
 on:
   workflow_dispatch:
