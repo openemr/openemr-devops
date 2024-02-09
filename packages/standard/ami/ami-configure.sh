@@ -37,9 +37,9 @@ cd /root/openemr-devops/packages/standard
 if [ -z "$RECOVERYS3" ]; then
   # configure, but do not launch, OpenEMR docker
   docker-compose create
-  # load the Amazon CA
-  cp snippets/rds-combined-ca-bundle.pem /mnt/docker/volumes/standard_sitevolume/_data/default/documents/certificates/mysql-ca
-  # I'm not convinced this is stable
+  # now we'll install the AWS certs we got when I built the instance
+  # this doesn't feel like the right way to do it but it works  
+  mv /root/mysql-ca /mnt/docker/volumes/standard_sitevolume/_data/default/documents/certificates
   chown 1000 /mnt/docker/volumes/standard_sitevolume/_data/default/documents/certificates/mysql-ca
   # okay, now go
   docker-compose up -d

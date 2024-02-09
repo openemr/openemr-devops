@@ -43,4 +43,9 @@ else
 fi
 chmod +x ami/*.sh scripts/*.sh
 
+# before we get started, we need the AWS cert chain installed
+# we can't grab it later because we can't depend on downloading things
+wget https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+mv global-bundle.pem mysql-ca
+
 echo ami-build.sh: done
