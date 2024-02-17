@@ -13,7 +13,7 @@ exec > /var/log/lightsail-launch.log 2>&1
 SWAPAMT=1
 SWAPPATHNAME=/mnt/auto.swap
 
-CURRENTDOCKER=openemr:latest
+CURRENTDOCKER=openemr:7.0.2
 OVERRIDEDOCKER=$CURRENTDOCKER
 
 DEVELOPERMODE=0
