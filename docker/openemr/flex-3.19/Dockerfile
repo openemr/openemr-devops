@@ -3,11 +3,11 @@ FROM alpine:3.19
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
 RUN apk add --no-cache \
-    apache2 apache2-ssl apache2-utils git php83 php83-tokenizer php83-ctype php83-session php83-apache2 \
+    apache2 apache2-ssl apache2-utils apache2-proxy git php83 php83-tokenizer php83-ctype php83-session php83-apache2 \
     php83-json php83-pdo php83-pdo_mysql php83-curl php83-ldap php83-openssl php83-iconv \
     php83-xml php83-xsl php83-gd php83-zip php83-soap php83-mbstring php83-zlib \
     php83-mysqli php83-sockets php83-xmlreader php83-redis perl php83-simplexml php83-xmlwriter php83-phar php83-fileinfo \
-    php83-sodium php83-calendar php83-intl php83-opcache php83-pecl-apcu \
+    php83-sodium php83-calendar php83-intl php83-opcache php83-pecl-apcu php83-fpm \
     mysql-client tar curl imagemagick nodejs npm \
     certbot openssl git openssl-dev dcron \
     rsync shadow jq ncurses \
