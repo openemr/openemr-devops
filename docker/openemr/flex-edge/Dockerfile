@@ -3,11 +3,11 @@ FROM alpine:edge
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
 RUN apk add --no-cache \
-    apache2 apache2-ssl apache2-utils apache2-proxy git php83 php83-tokenizer php83-ctype php83-session php83-apache2 \
+    apache2 apache2-ssl apache2-utils apache2-proxy git php83 php83-fpm php83-tokenizer php83-ctype php83-session \
     php83-json php83-pdo php83-pdo_mysql php83-curl php83-ldap php83-openssl php83-iconv \
     php83-xml php83-xsl php83-gd php83-zip php83-soap php83-mbstring php83-zlib \
     php83-mysqli php83-sockets php83-xmlreader php83-redis perl php83-simplexml php83-xmlwriter php83-phar php83-fileinfo \
-    php83-sodium php83-calendar php83-intl php83-opcache php83-pecl-apcu php83-fpm \
+    php83-sodium php83-calendar php83-intl php83-opcache php83-pecl-apcu \
     mysql-client tar curl imagemagick nodejs npm \
     certbot openssl git openssl-dev dcron \
     rsync shadow jq ncurses \
@@ -18,8 +18,16 @@ RUN apk add --no-cache \
 RUN apk add --no-cache \
     unzip vim nano bash bash-doc bash-completion tree
 
-#BELOW LINE NEEDED TO SUPPORT PHP8 ON ALPINE 3.13+; SHOULD BE ABLE TO REMOVE THIS IN FUTURE ALPINE VERSIONS
+#STEPS TO ENSURE php and php-fpm/fcgi both work, which configure proper user/group for php-fpm and set the alpine Event MPM
+# (NOTE this needs to be modified with each new php version in 4 lines below)
 RUN cp /usr/bin/php83 /usr/bin/php
+RUN cp /usr/sbin/php-fpm83 /usr/sbin/php-fpm
+RUN sed -i "s/^user = [^ ]*/user = apache/" /etc/php83/php-fpm.d/www.conf
+RUN sed -i "s/^group = [^ ]*/group = apache/" /etc/php83/php-fpm.d/www.conf
+RUN sed -i "/^LoadModule mpm_prefork_module modules\/mod_mpm_prefork.so/ s/^/#/" /etc/apache2/httpd.conf
+RUN sed -i "/LoadModule mpm_event_module modules\/mod_mpm_event.so/ s/# *//" /etc/apache2/httpd.conf
+
+# Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
 # TODO: Note that flex series 3.14+ needs to keep build-base package in (ie. not apk del it after done) for now
