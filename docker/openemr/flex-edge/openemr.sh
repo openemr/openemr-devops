@@ -502,6 +502,7 @@ if [ "$XDEBUG_IDE_KEY" != "" ] ||
 else
    # Configure opcache jit if Xdebug is not being used (note opcache is already on, so just need to add setting(s) to php.ini that are different from the default setting(s))
    if [ ! -f /etc/php-opcache-jit-configured ]; then
+      echo "opcache.jit=tracing" >> /etc/php83/php.ini
       echo "opcache.jit_buffer_size=100M" >> /etc/php83/php.ini
       touch /etc/php-opcache-jit-configured
    fi
