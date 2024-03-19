@@ -27,7 +27,17 @@ data:
     # this is the second ConfigMap will be mounted to. it has the list of users needed.
     aclfile /conf/acl/users.acl
     
-    # port, each redis nodes will be used
-    port 6379
+    # tls certs and setting
+    tls-cert-file /certs/tls.crt
+    tls-key-file /certs/tls.key
+    tls-ca-cert-file /certs/ca.crt
+    tls-auth-clients no
+    # uncomment below (and comment line above) if using redis x509
+    # tls-auth-clients yes
+    tls-replication yes
+    
+    # port, each redis nodes will be used (only use tls)
+    port 0
+    tls-port 6379
     # More configurations are optional, if not provided, redis will consider default values ------
     # ------ More details on configuration : https://redis.io/docs/manual/config/ ------

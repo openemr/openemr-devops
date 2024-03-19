@@ -24,21 +24,42 @@ spec:
       - name: proxy-init-redis-wait-3
         image: busybox:1.28
         command: ['sh', '-c', "until nslookup redis-2.redis; do echo waiting for redis-2.redis; sleep 10; done"]
+      - name: proxy-init-sentinel-wait-1
+        image: busybox:1.28
+        command: ['sh', '-c', "until nslookup sentinel-0.sentinel; do echo waiting for sentinel-0.sentinel; sleep 10; done"]
+      - name: proxy-init-sentinel-wait-2
+        image: busybox:1.28
+        command: ['sh', '-c', "until nslookup sentinel-1.sentinel; do echo waiting for sentinel-1.sentinel; sleep 10; done"]
+      - name: proxy-init-sentinel-wait-3
+        image: busybox:1.28
+        command: ['sh', '-c', "until nslookup sentinel-2.sentinel; do echo waiting for sentinel-2.sentinel; sleep 10; done"]
       containers:
-      - env:
-        - name: PIPY_CONFIG_FILE
-          value: /proxy/proxy.js
-        image: naqvis/pipy:0.30.0-23
-        name: redisproxy
+      - name: redisproxy
+        image: openemr/kub-haproxy-redis-tools:2.8
         volumeMounts:
+        - name: redisproxy-certs
+          mountPath: /certs
         - name: redisproxyconf
-          mountPath: /proxy
+          mountPath: /usr/local/etc/haproxy/haproxy.cfg
+          subPath: haproxy.cfg
+        - name: redisproxyhealthcheck
+          mountPath: /var/lib/haproxy/healthcheck.sh
+          subPath: healthcheck.sh
       volumes:
+      - name: redisproxy-certs
+        secret:
+          secretName: redisproxy-certs
+          items:
+          - key: ca.crt
+            path: ca.crt
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
       - name: redisproxyconf
         configMap:
-          name: pipy-config
-          items:
-            - key: config.json
-              path: config/config.json
-            - key: proxy.js
-              path: proxy.js
+          name: haproxy-config
+      - name: redisproxyhealthcheck
+        configMap:
+          name: haproxy-healthcheck
+          defaultMode: 0777
