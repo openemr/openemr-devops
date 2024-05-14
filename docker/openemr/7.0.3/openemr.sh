@@ -357,7 +357,7 @@ if
                [ "$SWARM_MODE" != "yes" ] ||
                [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
                 echo "Setting sites/default/documents permissions to 700"
-                find sites/default/documents -not -path "sites/default/documents/smarty/main/*" -not -perm 700 -exec chmod 700 {} \+
+                find sites/default/documents -not -perm 700 -exec chmod 700 {} \+
             fi
 
             echo "Removing remaining setup scripts"
