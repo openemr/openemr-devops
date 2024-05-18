@@ -29,7 +29,7 @@ chmod +x ./launch.sh && sudo ./launch.sh
 
 #### Requirements
 
-* Ubuntu 20.04 server (root access, 1 GB RAM, 20 GB storage)
+* Ubuntu 24.04 server (root access, 1 GB RAM, 20 GB storage)
 * Outbound internet access (during installation)
 
 #### Synopsis

@@ -68,7 +68,7 @@ f () {
   apt-get update -y
   apt-get dist-upgrade -y
   apt autoremove -y
-  apt-get install jq git duplicity containerd docker-compose python3-boto3 -y
+  apt-get install jq git duplicity containerd docker-compose-v2 python3-boto3 -y
 
   mkdir backups
 
@@ -109,7 +109,7 @@ f () {
       sed -i "s^../../docker/openemr/$CURRENTBUILD^../../docker/openemr/$OVERRIDEBUILD^" docker-compose.yml
     fi
   fi
-  docker-compose up -d --build
+  docker compose up -d --build
 
   chmod a+x duplicity/*.sh  
   cp duplicity/restore.sh duplicity/wait_until_ready.sh /root
