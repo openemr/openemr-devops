@@ -35,7 +35,7 @@ auto_setup() {
     prepareVariables
 
     if [ "$EASY_DEV_MODE" != "yes" ]; then
-        chmod -R 600 /var/www/localhost/htdocs/openemr
+        find /var/www/localhost/htdocs/openemr -not -perm 600 -exec chmod 600 {} \+
     fi
 
     #create temporary file cache directory for auto_configure.php to use
@@ -397,15 +397,14 @@ if
         N_PROC=$(nproc --all)
 
         #set all directories to 500
-        find . -type d -print0 | xargs -0 -P $N_PROC chmod 500
+        find . -type d -not -path "./sites/default/documents/*" -not -perm 500 -exec chmod 500 {} \+
         #set all file access to 400
-        find . -type f -print0 | xargs -0 -P $N_PROC chmod 400
+        find . -type f -not -path "./sites/default/documents/*" -not -path './openemr.sh' -not -perm 400 -exec chmod 400 {} \+
 
         echo "Default file permissions and ownership set, allowing writing to specific directories"
         chmod 700 /var/www/localhost/htdocs/openemr.sh
         # Set file and directory permissions
-        find sites/default/documents -type d -print0 | xargs -0 -P $N_PROC chmod 700
-        find sites/default/documents -type f -print0 | xargs -0 -P $N_PROC chmod 700
+        find sites/default/documents -not -perm 700 -exec chmod 700 {} \+
 
         echo "Removing remaining setup scripts"
         #remove all setup scripts
