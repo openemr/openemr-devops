@@ -24,7 +24,7 @@ swarm_wait() {
 auto_setup() {
     prepareVariables
 
-    chmod -R 600 .
+    find . -not -perm 600 -exec chmod 600 {} \+
 
     #create temporary file cache directory for auto_configure.php to use
     TMP_FILE_CACHE_LOCATION="/tmp/php-file-cache"
@@ -343,13 +343,10 @@ if
 
             echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
 
-            #return number from nproc to have value for -P flag in xargs
-            N_PROC=$(nproc --all)
-
             #set all directories to 500 (note that sites/default/documents is dealt with below which need to skip here to prevent breakage in swarm mode)
-            find . -type d -not -path "./sites/default/documents/*" -print0 | xargs -0 -P $N_PROC chmod 500
+            find . -type d -not -path "./sites/default/documents/*" -not -perm 500 -exec chmod 500 {} \+
             #set all file access to 400 (note that sites/default/documents is dealt with below which need to skip here to prevent breakage in swarm mode)
-            find . -type f -not -path "./sites/default/documents/*" -print0 | xargs -0 -P $N_PROC chmod 400
+            find . -type f -not -path "./sites/default/documents/*" -not -path './openemr.sh' -not -perm 400 -exec chmod 400 {} \+
 
             echo "Default file permissions and ownership set, allowing writing to specific directories"
             chmod 700 openemr.sh
@@ -360,8 +357,7 @@ if
                [ "$SWARM_MODE" != "yes" ] ||
                [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
                 echo "Setting sites/default/documents permissions to 700"
-                find sites/default/documents -type d -print0 | xargs -0 -P $N_PROC chmod 700
-                find sites/default/documents -type f -print0 | xargs -0 -P $N_PROC chmod 700
+                find sites/default/documents -not -perm 700 -exec chmod 700 {} \+
             fi
 
             echo "Removing remaining setup scripts"
