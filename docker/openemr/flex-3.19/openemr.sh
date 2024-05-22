@@ -393,9 +393,6 @@ if
         # This section only runs once after above configuration since auto_configure.php gets removed after this script
         echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
 
-        #return number from nproc to have value for -P flag in xargs
-        N_PROC=$(nproc --all)
-
         #set all directories to 500
         find . -type d -not -path "./sites/default/documents/*" -not -perm 500 -exec chmod 500 {} \+
         #set all file access to 400
