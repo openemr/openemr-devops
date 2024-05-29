@@ -510,6 +510,8 @@ echo " > https://opencollective.com/openemr/donate"
 echo ""
 
 if [ "$OPERATOR" == "yes" ]; then
+    echo "Starting php-fpm!"
+    /usr/sbin/php-fpm
     echo "Starting apache!"
     /usr/sbin/httpd -D FOREGROUND
 else
