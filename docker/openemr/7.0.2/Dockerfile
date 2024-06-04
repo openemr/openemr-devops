@@ -21,7 +21,7 @@ RUN cp /usr/bin/php82 /usr/bin/php
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
 RUN apk add --no-cache git build-base \
-    && git clone https://github.com/openemr/openemr.git --branch rel-702 --depth 1 \
+    && git clone https://github.com/openemr/openemr.git --branch v_7_0_2_1 --depth 1 \
     && rm -rf openemr/.git \
     && cd openemr \
     && composer install --no-dev \
