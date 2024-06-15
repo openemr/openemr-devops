@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haproxy-config
+data:
+  haproxy.cfg: |
+    defaults
+     mode tcp
+     timeout connect 4s
+     timeout server 30s
+     timeout client 30s
+    global
+     insecure-fork-wanted
+     external-check
+    resolvers mydns
+     parse-resolv-conf
+     accepted_payload_size 4096
+     hold valid 3s
+    frontend ft_redis
+     bind *:6379
+     default_backend bk_redis
+    backend bk_redis
+     option external-check
+     external-check command /var/lib/haproxy/healthcheck.sh
+     default-server check inter 3s fall 1 rise 1 resolvers mydns
+     server R1 redis-0.redis.default.svc.cluster.local:6379
+     server R2 redis-1.redis.default.svc.cluster.local:6379
+     server R3 redis-2.redis.default.svc.cluster.local:6379

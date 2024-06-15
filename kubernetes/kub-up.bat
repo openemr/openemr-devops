@@ -11,7 +11,11 @@ kubectl apply ^
     -f certs/mysql-replication.yaml ^
     -f certs/mysql-openemr-client.yaml ^
     -f certs/phpmyadmin.yaml ^
-    -f certs/mysql-phpmyadmin-client.yaml
+    -f certs/mysql-phpmyadmin-client.yaml ^
+    -f certs/redis.yaml ^
+    -f certs/redis-openemr-client.yaml ^
+    -f certs/sentinel.yaml ^
+    -f certs/redisproxy.yaml
 timeout 15
 
 kubectl apply ^
@@ -21,7 +25,8 @@ kubectl apply ^
     -f mysql/statefulset.yaml ^
     -f redis/configmap-main.yaml ^
     -f redis/configmap-acl.yaml ^
-    -f redis/configmap-pipy.yaml ^
+    -f redis/configmap-haproxy.yaml ^
+    -f redis/healthcheck-haproxy.yaml ^
     -f redis/statefulset-redis.yaml ^
     -f redis/statefulset-sentinel.yaml ^
     -f redis/deployment-redisproxy.yaml ^

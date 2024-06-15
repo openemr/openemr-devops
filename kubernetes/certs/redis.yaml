@@ -1,0 +1,31 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: redis
+spec:
+  secretName: redis-certs
+  duration: 87660h # 10y
+  renewBefore: 360h # 15d
+  isCA: false
+  privateKey:
+    size: 2048
+    algorithm: RSA
+    encoding: PKCS1
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+    - client auth
+  subject:
+    organizations:
+      - redis
+  commonName: redis
+  dnsNames:
+    - redisproxy
+    - redis-0.redis
+    - redis-1.redis
+    - redis-2.redis
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+    group: cert-manager.io
