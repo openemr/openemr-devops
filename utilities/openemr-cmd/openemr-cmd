@@ -3,31 +3,22 @@
 # Function  : Manage the docker command line
 # Version   : See below --version section
 # Copyright : Copyright (c) 2020 Reid Liu <guliu@redhat.com>
-# Copyright : Copyright (c) 2020-2022 Brady Miller <brady.g.miller@gmail.com>
+# Copyright : Copyright (c) 2020-2024 Brady Miller <brady.g.miller@gmail.com>
 # Author    : Reid Liu <guliu@redhat.com>
 # Author    : Brady Miller <brady.g.miller@gmail.com>
 # License   : https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.17"
+VERSION="1.0.18"
 
 # If the docker is snap or non-snap docker
 # Setting the container names accordingly
 get_container_names() {
-    snap_docker=$(which docker)
-    if [ $snap_docker == '/snap/bin/docker' ]
-    then
-        INSANE_DEV_DOCKER="openemr-8-3-1"
-        EASY_DEV_DOCKER="openemr-1"
-        COUCHDB_DOCKER="couchdb-1"
-        MARIADB_DOCKER="mysql-1"
-    else
-        INSANE_DEV_DOCKER="_openemr-8-3_1"
-        EASY_DEV_DOCKER="_openemr_1"
-        COUCHDB_DOCKER="_couchdb_1"
-        MARIADB_DOCKER="_mysql_1"
-    fi
+    INSANE_DEV_DOCKER="openemr-8-3[_\-]1"
+    EASY_DEV_DOCKER="openemr[_\-]1"
+    COUCHDB_DOCKER="couchdb[_\-]1"
+    MARIADB_DOCKER="mysql[_\-]1"
 }
 
 # Set the container names
