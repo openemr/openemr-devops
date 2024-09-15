@@ -46,10 +46,17 @@ spec:
               key: admin-pass
         - name: OE_USER
           value: "admin"
+        - name: PHPREDIS_BUILD
+          value: "e571a81f8d3009aab38cbb88dde865edeb0607ac"
         - name: REDIS_SERVER
           value: "redisproxy"
         - name: REDIS_PASSWORD
           value: "defaultpassword"
+        - name: REDIS_TLS
+          value: "yes"
+        # uncomment below if using redis x509
+        #- name: REDIS_X509
+        #  value: "yes"
         - name: SWARM_MODE
           value: "yes"
         - name: FORCE_DATABASE_SSL_CONNECT
@@ -68,6 +75,8 @@ spec:
         volumeMounts:
         - mountPath: /root/certs/mysql/server
           name: mysql-openemr-client-certs
+        - mountPath: /root/certs/redis
+          name: redis-openemr-client-certs
         - mountPath: /var/www/localhost/htdocs/openemr/sites
           name: websitevolume
         - mountPath: /etc/ssl
@@ -87,6 +96,17 @@ spec:
           #  path: mysql-cert
           #- key: tls.key
           #  path: mysql-key
+      - name: redis-openemr-client-certs
+        secret:
+          secretName: redis-openemr-client-certs
+          items:
+          - key: ca.crt
+            path: redis-ca
+          # uncomment below if using redis x509
+          #- key: tls.crt
+          #  path: redis-cert
+          #- key: tls.key
+          #  path: redis-key
       - name: websitevolume
         persistentVolumeClaim:
           claimName: websitevolume

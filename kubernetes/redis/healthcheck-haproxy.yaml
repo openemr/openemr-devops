@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haproxy-healthcheck
+data:
+  healthcheck.sh: |
+    #!/bin/bash
+    # Set below to true if using redis x509
+    REDISX509=false
+    TLSPARAMETERS="--tls --cacert /certs/ca.crt"
+    if $REDISX509; then
+      TLSPARAMETERS="$TLSPARAMETERS --cert /certs/tls.crt --key /certs/tls.key"
+    fi    
+    REDISREPLY=`/usr/bin/redis-cli --no-auth-warning $TLSPARAMETERS -h $3 --user admin -a adminpassword -p $4 info replication`
+    if [[ "$REDISREPLY" =~ .*"role:master".* ]]; then
+      exit 0
+    fi
+    exit 1
