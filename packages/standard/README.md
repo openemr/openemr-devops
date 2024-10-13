@@ -16,7 +16,6 @@
     5. Exit `exit` back to the EC2 `$` prompt.
     6. Run a temporary mysql docker client and connect to RDS with above credenials `docker run --network <docker network> -it --rm mysql mysql -h<hostname> -u<user> -p<password> openemr`
 
-
 ### Backups
 
 Your RDS instance will take regular automated snapshots at the configured time of day, and encrypted backups of the OpenEMR filesystem and patient records are made via Duplicity to a stack-provided KMS-managed S3 bucket.
