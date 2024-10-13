@@ -8,13 +8,13 @@
 
 * Access the OpenEMR container: `sudo -i -- sh -c 'docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh'`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
-* Access the Mysql container
+* Open mysql shell
     1. Ssh into the EC2.
-    2. Run `docker network ls` to find the docker network that OpenEMR connects with the RDS.
-    3. Follow above access the OpenEMR container.
+    2. Run `docker network ls` to find the docker network that OpenEMR connects with the RDS likely name is `lightsail_default`.
+    3. Follow above command to "Access the OpenEMR container".
     4. Reveal mysql credentials `cat sites/default/sqlconf.php`.
     5. Exit `exit` back to the EC2 `$` prompt.
-    6. Run a temporary mysql docker client and connect to RDS with credenials like `docker run --network lightsail_default -it --rm mysql mysql -h<hostname> -u<user> -p<password> openemr`
+    6. Run a temporary mysql docker client and connect to RDS with above credenials `docker run --network <docker network> -it --rm mysql mysql -h<hostname> -u<user> -p<password> openemr`
 
 
 ### Backups
