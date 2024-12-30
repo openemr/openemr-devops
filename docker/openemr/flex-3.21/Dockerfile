@@ -1,4 +1,4 @@
-FROM alpine:edge
+FROM alpine:3.21
 
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
