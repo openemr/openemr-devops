@@ -1,13 +1,13 @@
-FROM alpine:3.20
+FROM alpine:3.21
 
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
 RUN apk add --no-cache \
-    apache2 apache2-ssl apache2-utils apache2-proxy git php83 php83-tokenizer php83-ctype php83-session php83-apache2 \
-    php83-json php83-pdo php83-pdo_mysql php83-curl php83-ldap php83-openssl php83-iconv \
-    php83-xml php83-xsl php83-gd php83-zip php83-soap php83-mbstring php83-zlib \
-    php83-mysqli php83-sockets php83-xmlreader php83-redis php83-simplexml php83-xmlwriter php83-phar php83-fileinfo \
-    php83-sodium php83-calendar php83-intl php83-opcache php83-pecl-apcu php83-fpm \
+    apache2 apache2-ssl apache2-utils apache2-proxy git php84 php84-tokenizer php84-ctype php84-session php84-apache2 \
+    php84-json php84-pdo php84-pdo_mysql php84-curl php84-ldap php84-openssl php84-iconv \
+    php84-xml php84-xsl php84-gd php84-zip php84-soap php84-mbstring php84-zlib \
+    php84-mysqli php84-sockets php84-xmlreader php84-redis php84-simplexml php84-xmlwriter php84-phar php84-fileinfo \
+    php84-sodium php84-calendar php84-intl php84-opcache php84-pecl-apcu php84-fpm \
     perl mysql-client mariadb-connector-c tar curl imagemagick nodejs npm \
     certbot openssl openssl-dev dcron \
     rsync shadow ncurses \
@@ -16,12 +16,12 @@ RUN apk add --no-cache \
 RUN usermod -u 1000 apache
 
 #BELOW LINE NEEDED TO SUPPORT PHP8 ON ALPINE 3.13+; SHOULD BE ABLE TO REMOVE THIS IN FUTURE ALPINE VERSIONS
-RUN cp /usr/bin/php83 /usr/bin/php
+RUN cp /usr/bin/php84 /usr/bin/php
 # Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
 RUN apk add --no-cache git build-base \
-    && git clone https://github.com/openemr/openemr.git --branch rel-703 --depth 1 \
+    && git clone https://github.com/openemr/openemr.git --depth 1 \
     && rm -rf openemr/.git \
     && cd openemr \
     && composer install --no-dev \
@@ -52,7 +52,7 @@ WORKDIR /var/www/localhost/htdocs/openemr
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 #configure apache & php properly
 ENV APACHE_LOG_DIR=/var/log/apache2
-COPY php.ini /etc/php83/php.ini
+COPY php.ini /etc/php84/php.ini
 COPY openemr.conf /etc/apache2/conf.d/
 #add runner and auto_configure and prevent auto_configure from being run w/o being enabled
 COPY openemr.sh ssl.sh xdebug.sh auto_configure.php /var/www/localhost/htdocs/openemr/

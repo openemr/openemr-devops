@@ -1,4 +1,4 @@
-name: Development 7.0.3 Docker Nightly Build
+name: Development 7.0.4 Docker Nightly Build
 
 on:
   workflow_dispatch:
@@ -20,11 +20,11 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and push 7.0.3 docker
+      - name: Build and push 7.0.4 docker
         uses: docker/build-push-action@v5
         with:
-          context: "{{defaultContext}}:docker/openemr/7.0.3"
-          tags: openemr/openemr:7.0.3, openemr/openemr:next
+          context: "{{defaultContext}}:docker/openemr/7.0.4"
+          tags: openemr/openemr:7.0.4, openemr/openemr:dev
           platforms: linux/amd64,linux/arm64
           push: true
           no-cache: true
