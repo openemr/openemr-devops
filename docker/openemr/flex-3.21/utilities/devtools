@@ -443,13 +443,13 @@ fi
 if [ "$1" == "enable-ldap" ]; then
     echo "Enabling LDAP authentication - login credentials are admin:admin"
     prepareVariables
-    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 1 WHERE gl_name = 'gbl_ldap_enabled'" "$CUSTOM_DATABASE"
+    mariadb --skip-ssl -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 1 WHERE gl_name = 'gbl_ldap_enabled'" "$CUSTOM_DATABASE"
 fi
 
 if [ "$1" == "disable-ldap" ]; then
     echo "Disabling LDAP authentication - use standard login credentials"
     prepareVariables
-    mysql -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 0 WHERE gl_name = 'gbl_ldap_enabled'" "$CUSTOM_DATABASE"
+    mariadb --skip-ssl -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 0 WHERE gl_name = 'gbl_ldap_enabled'" "$CUSTOM_DATABASE"
 fi
 
 if [ "$1" == "xdebug-log" ]; then

@@ -8,7 +8,7 @@ RUN apk add --no-cache \
     php84-xml php84-xsl php84-gd php84-zip php84-soap php84-mbstring php84-zlib \
     php84-mysqli php84-sockets php84-xmlreader php84-redis php84-simplexml php84-xmlwriter php84-phar php84-fileinfo \
     php84-sodium php84-calendar php84-intl php84-opcache php84-pecl-apcu php84-fpm \
-    perl mysql-client mariadb-connector-c tar curl imagemagick nodejs npm \
+    perl mariadb-client mariadb-connector-c tar curl imagemagick nodejs npm \
     certbot openssl openssl-dev dcron \
     rsync shadow ncurses \
     && sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
