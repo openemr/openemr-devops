@@ -355,8 +355,8 @@ fi
 # Script usage.
 if [[ $# -eq 0 || "${FIRST_ARG}" = '--help' || "${FIRST_ARG}" = '-h' ]]; then
   echo ""
-  echo "Usage: $(basename "$0") COMMAND [ARGS]"
-  echo "Usage: $(basename "$0") -d <docker name> COMMAND [ARGS]"
+  echo "Usage: ${0##*/} COMMAND [ARGS]"
+  echo "Usage: ${0##*/} -d <docker name> COMMAND [ARGS]"
   echo "Options:"
   echo "  -h, --help                         Show the commands usage"
   echo "  -v, --version                      Show the openemr-cmd command version"
