@@ -11,8 +11,8 @@ filter_help_output(){
 	openemr-cmd -h | grep "${FILTER_ARG}" -A "${LINE_COUNT}"
 }
 
-# Use [[ ]] for test
-if [[ $# -eq 0 ]]
+# Use (( )) for numeric comparisons
+if (( $# == 0 ))
 then
 	echo "To search the keyword from openemr-cmd -h output quickly
   Usage: openemr-cmd-h keyword

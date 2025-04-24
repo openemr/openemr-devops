@@ -191,7 +191,7 @@ copy_capsule_from_docker_to_host(){
 	local BACKUP_FILE="$1"
 	local BACKUP_HOST_DIR="${2:-}" #optional parameter, default to empty
 	local BACKUP_FILE_CODE=19
-	if [[ $# != 1 ]] && [[ $# != 2 ]]; then
+	if (( $# != 1 && $# != 2 )); then
 		echo 'Please provide the capsule name.'
 		echo 'e.g. openemr-cmd [get-capsule|gc] example.tgz'
 		echo 'An optional setting is the path to save to. If nothing provided, then will save in current directory.'
@@ -308,7 +308,7 @@ set-swagger-to-multisite(){
 
 set-webroot(){
     local sed_command
-    if [[ $# == 1 ]]; then
+    if (( $# == 1 )); then
       # assume the openemr parameter was given, so set openemr webroot
       echo "changing webroot to openemr"
       sed_command="sed -i 's@^DocumentRoot /var/www/localhost/htdocs.*@DocumentRoot /var/www/localhost/htdocs@g' /etc/apache2/conf.d/openemr.conf"
@@ -332,7 +332,7 @@ docker-pull-image(){
       if [[ "${IMAGE}" != "IMAGE" ]]; then
         # Use -r with read
         read -r -e -p "Do you wish to pull ${IMAGE} ? (y) " RESP
-        if [[ "${RESP}" == "y" ]]; then
+        if [[ "${RESP,,}" = y ]]; then
           docker pull "${IMAGE}"
         else
           echo "Skipping ${IMAGE}"
@@ -455,7 +455,7 @@ if [[ $# -eq 0 ]] || [[ "${FIRST_ARG}" == '--help' ]] || [[ "${FIRST_ARG}" == '-
 
   exit "${USAGE_EXIT_CODE}"
 
-elif [[ "${FIRST_ARG}" == '--version' ]] || [[ "${FIRST_ARG}" == '-v' ]]; then
+elif [[ "${FIRST_ARG}" = '--version' || "${FIRST_ARG}" = '-v' ]]; then
 	echo "openemr-cmd ${VERSION}"
 	exit "${VERSION_EXIT_CODE}"
 fi
@@ -508,7 +508,7 @@ case "${FIRST_ARG}" in
   *)
     # All other commands likely need a CONTAINER_ID
     # Check if CONTAINER_ID is empty AND -d wasn't the *original* first arg
-    if [[ -z "${CONTAINER_ID}" ]] && [[ "${FIRST_ARG}" != '-d' ]]; then
+    if [[ -z "${CONTAINER_ID}" && "${FIRST_ARG}" != '-d' ]]; then
       echo "Error: Could not automatically determine target OpenEMR container (tried '${INSANE_DEV_DOCKER}' and '${EASY_DEV_DOCKER}')." >&2
       echo "Use -d <container_name_or_id> to specify the target container." >&2
       exit 1
