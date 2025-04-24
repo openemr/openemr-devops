@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Exit on error, unset var, pipe failure
+set -euo pipefail
+
 ################################################################################################
 # Function  : Manage the docker command line
 # Version   : See below --version section
@@ -24,267 +28,291 @@ get_container_names() {
 # Set the container names
 get_container_names
 
+# Function to run the devtools script inside the specified container
+# Usage: run_devtools_in_docker <container_id> <devtools_command> [args...]
+run_devtools_in_docker() {
+  local container_id="$1"
+  shift # Remove container_id from arguments
+  # DEV_TOOLS is '/root/devtools'
+  # "$@" passes the remaining arguments (devtools command and its args) correctly quoted
+  docker exec -i "${container_id}" "${DEV_TOOLS}" "$@"
+}
+
+# Function to run an arbitrary shell command string inside the specified container
+# Usage: run_shell_command_in_docker <container_id> <command_string>
+run_shell_command_in_docker() {
+  local container_id="$1"
+  local command_string="$2"
+  docker exec -i "${container_id}" sh -c "${command_string}"
+}
+
 # Set some constants
-DOCKER_EXEC_CMD='docker exec -i'                                 # docker exec command
-SHELL_TYPE='sh -c'                                               # specify shell type
-FIRST_ARG=$1											                               # define the first parameter
-DEV_TOOLS=/root/devtools
+FIRST_ARG="${1:-}" # define the first parameter, default to empty if not set
+DEV_TOOLS='/root/devtools'
 
 check_docker_compose_install_or_not(){
-	DOCKER_COMPOSE_CODE=22
-	which docker-compose &>/dev/null
-	[ $? -ne 0 ] && echo "Please check docker-compose install or not." && exit $DOCKER_COMPOSE_CODE
+	local DOCKER_COMPOSE_CODE=22
+	if ! command -v docker-compose &>/dev/null; then
+		echo "Please check docker-compose install or not."
+    exit "${DOCKER_COMPOSE_CODE}"
+	fi
 }
 
 quick_open_a_docker_shell(){
-  docker exec -w /var/www/localhost/htdocs/openemr -it $CONTAINER_ID sh
+  docker exec -w /var/www/localhost/htdocs/openemr -it "${CONTAINER_ID}" sh
 }
 
 quick_open_a_maria_docker_shell(){
-  docker exec -it $MARIADB_CONTAINER_ID /bin/bash
+  docker exec -it "${MARIADB_CONTAINER_ID}" /bin/bash
 }
 
 execute_command_flexible(){
-	if [ $# -lt 1 ]
-	then
+	if [[ $# -lt 1 ]]; then
 		echo "Please provide the command."
-		echo "e.g. `basename $0` [exec|e] \"tail -f /var/log/apache2/error.log\""
-		echo "e.g. `basename $0` -d docker_openemr-7-3-redis-312_1 [exec|e] \"tail -f /var/log/apache2/error.log\""
+		echo "e.g. $(basename "$0") [exec|e] \"tail -f /var/log/apache2/error.log\""
+		echo "e.g. $(basename "$0") -d docker_openemr-7-3-redis-312_1 [exec|e] \"tail -f /var/log/apache2/error.log\""
 	else
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$@"
+		# Use the function for arbitrary commands
+		run_shell_command_in_docker "${CONTAINER_ID}" "$@"
 	fi
 }
 
 check_docker_log() {
-  docker logs $CONTAINER_ID
+  docker logs "${CONTAINER_ID}"
 }
 
 check_docker_names() {
-	CHECK_NAME=$1     # specify the checking name
-	if [ $# -eq 1 ]
-	then
+	if [[ $# -eq 1 ]]; then
+        local CHECK_NAME="$1"     # specify the checking name
 		# ARGS: couchdb php fhir mariadb mysql nginx openemr openldap orthanc redis.
 		echo '===Check the single Docker Name==='
 		echo '  STATUS        NAME'
-		docker ps -a --format "{{.Status}}\t{{.Names}}"| grep $CHECK_NAME
+        # Capture output, check if empty
+        local matching_container
+        matching_container=$(docker ps -a --format "{{.Status}}\t{{.Names}}"| grep "${CHECK_NAME}" || true) # Keep || true here temporarily to prevent exit during capture
+        if [[ -z "${matching_container}" ]]; then
+            echo "No containers found matching '${CHECK_NAME}'"
+        else
+            echo "${matching_container}"
+        fi
 
 	else
 		# Show all the docker names.
 		echo '***************************************************************'
 		echo 'Show all the docker names by default.'
 		echo 'Please provide the keyword if you want to check the single one.'
-		echo "e.g `basename $0` [docker-names|dn] php"
+		echo "e.g $(basename "$0") [docker-names|dn] php"
 		echo '***************************************************************'
 		echo '=======Running Docker Names======='
-		docker ps | awk '{print $NF}'|grep -v NAMES|sort -n
+		
+        # Capture output, check if empty
+        local running_containers
+        running_containers=$(docker ps --format "{{.Status}}\t{{.Names}}" | { grep -v NAMES || true; } | sort -n) # Isolate grep's potential failure
+        if [[ -z "${running_containers}" ]]; then
+            echo "No running containers found."
+        else
+		    echo '  STATUS        NAME'
+            echo "${running_containers}"
+        fi
 		echo '====Other Docker Status Names====='
-		docker ps -a --format "table{{.Status}}\t{{.Names}}"| grep -v Up
+        # Capture output, check if empty
+        local other_containers
+        other_containers=$(docker ps -a --format "{{.Status}}\t{{.Names}}" | grep -v Up || true) # Keep || true here temporarily to prevent exit during capture
+        if [[ -z "${other_containers}" ]]; then
+            echo "No containers found with other statuses."
+        else
+		    echo '  STATUS        NAME'
+            echo "${other_containers}"
+        fi
 	fi
 }
 
 restart_couchdb_docker(){
-  if [ -z "$COUCHDB_CONTAINER" ]
-  then
+  if [[ -z "${COUCHDB_CONTAINER}" ]]; then
     echo "Unable to find the couchdb docker, so could not restart it"
   else
     echo "Restarting couchdb docker"
-    docker restart "$COUCHDB_CONTAINER"
+    docker restart "${COUCHDB_CONTAINER}"
   fi
 }
 
 creat_a_backup_snapshot(){
-    BACKUP_FILE=$1
-    BACKUP_FILE_CODE=20
-    if [ $# != 1 ]
-    then
+    local BACKUP_FILE="$1"
+    local BACKUP_FILE_CODE=20
+    if [[ $# != 1 ]]; then
 		echo 'Please provide a snapshot name.'
 		echo 'e.g. openemr-cmd [backup-snapshot|bs] example'
-		exit $BACKUP_FILE_CODE
+		exit "${BACKUP_FILE_CODE}"
 	else
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS backup $BACKUP_FILE"
+		# Use the devtools function
+		run_devtools_in_docker "${CONTAINER_ID}" backup "${BACKUP_FILE}"
 	fi
 }
 
 restore_from_a_snapshot(){
-    BACKUP_FILE=$1
-    BACKUP_FILE_CODE=21
-    if [ $# != 1 ]
-    then
+    local BACKUP_FILE="$1"
+    local BACKUP_FILE_CODE=21
+    if [[ $# != 1 ]]; then
         echo 'Please provide a restore snapshot name.'
         echo 'e.g. openemr-cmd [restore-snapshot|rs] example'
-        exit $BACKUP_FILE_CODE
+        exit "${BACKUP_FILE_CODE}"
     else
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS restore $BACKUP_FILE"
+		# Use the devtools function
+		run_devtools_in_docker "${CONTAINER_ID}" restore "${BACKUP_FILE}"
 	fi
 }
 
 copy_capsule_from_docker_to_host(){
-	BACKUP_FILE=$1
-	BACKUP_HOST_DIR=$2 #optional parameter
-	BACKUP_FILE_CODE=19
-	if [ $# != 1 ] && [ $# != 2 ]
-	then
+	local BACKUP_FILE="$1"
+	local BACKUP_HOST_DIR="${2:-}" #optional parameter, default to empty
+	local BACKUP_FILE_CODE=19
+	if [[ $# != 1 ]] && [[ $# != 2 ]]; then
 		echo 'Please provide the capsule name.'
 		echo 'e.g. openemr-cmd [get-capsule|gc] example.tgz'
 		echo 'An optional setting is the path to save to. If nothing provided, then will save in current directory.'
 		echo 'e.g. openemr-cmd [get-capsule|gc] example.tgz /path/to/save'
-		exit $BACKUP_FILE_CODE
+		exit "${BACKUP_FILE_CODE}"
 	else
-	  if [ -z "$BACKUP_HOST_DIR" ]
-	  then
-		  docker cp ${CONTAINER_ID}:/snapshots/$BACKUP_FILE .
+	  if [[ -z "${BACKUP_HOST_DIR}" ]]; then
+		  docker cp "${CONTAINER_ID}:/snapshots/${BACKUP_FILE}" .
     else
-      	  docker cp ${CONTAINER_ID}:/snapshots/$BACKUP_FILE "${BACKUP_HOST_DIR}/"
+      	  docker cp "${CONTAINER_ID}:/snapshots/${BACKUP_FILE}" "${BACKUP_HOST_DIR}/"
     fi
 	fi
 }
 
 copy_capsule_from_host_to_docker(){
 	# Need a capsule parameter
-	BACKUP_FILE=$1
-	CP_CAP_DIR_DKR_CODE=15
-	BACKUP_FILE_CODE=18
-	if [ $# != 1 ]
-	then
+	local BACKUP_FILE="$1"
+	local CP_CAP_DIR_DKR_CODE=15
+	local BACKUP_FILE_CODE=18
+	if [[ $# != 1 ]]; then
 		echo 'Please provide the capsule file name (including path if applicable).'
 		echo 'e.g. openemr-cmd [put-capsule|pc] example.tgz'
-		exit $BACKUP_FILE_CODE
+		exit "${BACKUP_FILE_CODE}"
 	else
-		ls $BACKUP_FILE  &>/dev/null
-		if [ $? -ne 0 ]
-		then
+		if ! ls "${BACKUP_FILE}" &>/dev/null; then
 			echo 'Please check whether the capsule file exists or not'
-			exit $CP_CAP_DIR_DKR_CODE
+			exit "${CP_CAP_DIR_DKR_CODE}"
 		else
-			docker cp $BACKUP_FILE  ${CONTAINER_ID}:/snapshots/
+			docker cp "${BACKUP_FILE}" "${CONTAINER_ID}:/snapshots/"
 		fi
 	fi
 }
 
 ensure_current_ver_with_upgrade_ver(){
   # Need a version parameter
-  UPGRADE_FROM_VERSION=$1
-  BACKUP_FILE_CODE=22
-	if [ $# != 1 ]
-	then
+  local UPGRADE_FROM_VERSION="$1"
+  local BACKUP_FILE_CODE=22
+	if [[ $# != 1 ]]; then
 		echo 'Please provide the OpenEMR version to upgrade database from.'
 		echo 'e.g. openemr-cmd [ensure-version|ev] 5.0.2'
-		exit $BACKUP_FILE_CODE
+		exit "${BACKUP_FILE_CODE}"
 	else
-    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS upgrade ${UPGRADE_FROM_VERSION}"
+    # Use the devtools function
+    run_devtools_in_docker "${CONTAINER_ID}" upgrade "${UPGRADE_FROM_VERSION}"
 	fi
 }
 
 change_db_character_set_and_collation(){
-	CHARACTER_SET_COLLATION_CODE=17
-	if [ $# != 2 ]
-	then
+	local CHARACTER_SET_COLLATION_CODE=17
+	if [[ $# != 2 ]]; then
 		echo 'Please provide two parameters.'
 		echo 'e.g. openemr-cmd [encoding-collation|ec] utf8mb4 utf8mb4_general_ci'
 		echo '     openemr-cmd [encoding-collation|ec] utf8mb4 utf8mb4_unicode_ci'
 		echo '     openemr-cmd [encoding-collation|ec] utf8mb4 utf8mb4_vietnamese_ci'
 		echo '     openemr-cmd [encoding-collation|ec] utf8 utf8_general_ci'
-		exit $CHARACTER_SET_COLLATION_CODE
+		exit "${CHARACTER_SET_COLLATION_CODE}"
 	else
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS change-encoding-collation $1 $2"
+		# Use the devtools function, passing both arguments
+		run_devtools_in_docker "${CONTAINER_ID}" change-encoding-collation "$1" "$2"
 	fi
 }
 
 setup-client-cert(){
-    CERT_PACKAGE=$1
-    CERT_PACKAGE_CODE=30
-    if [ $# != 1 ]
-    then
+    local CERT_PACKAGE="$1"
+    local CERT_PACKAGE_CODE=30
+    if [[ $# != 1 ]]; then
         echo 'Please provide a certificate package name.'
         echo 'e.g. openemr-cmd [scc|setup-client-cert] sll'
-        exit $CERT_PACKAGE_CODE
+        exit "${CERT_PACKAGE_CODE}"
     else
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS setup-client-cert $CERT_PACKAGE"
+		# Use the devtools function
+		run_devtools_in_docker "${CONTAINER_ID}" setup-client-cert "${CERT_PACKAGE}"
 	fi
 }
 
 put-client-cert(){
 	# Need a capsule parameter
-	CERT_PACKAGE_FILE=$1
-	PUT_CLIENT_CERT_CODE=32
-	CERT_PACKAGE_FILE_CODE=31
-	if [ $# != 1 ]
-	then
+	local CERT_PACKAGE_FILE="$1"
+	local PUT_CLIENT_CERT_CODE=32
+	local CERT_PACKAGE_FILE_CODE=31
+	if [[ $# != 1 ]]; then
 		echo 'Please provide the certificate package file name (including path if applicable).'
 		echo 'e.g. openemr-cmd [pcc|put-client-cert] sll.zip'
-		exit $CERT_PACKAGE_FILE_CODE
+		exit "${CERT_PACKAGE_FILE_CODE}"
 	else
-		ls $CERT_PACKAGE_FILE &>/dev/null
-		if [ $? -ne 0 ]
-		then
+		if ! ls "${CERT_PACKAGE_FILE}" &>/dev/null; then
 			echo 'Please check whether the certificate package file exists or not'
-			exit $PUT_CLIENT_CERT_CODE
+			exit "${PUT_CLIENT_CERT_CODE}"
 		else
-			docker cp $CERT_PACKAGE_FILE ${CONTAINER_ID}:/certs/
+			docker cp "${CERT_PACKAGE_FILE}" "${CONTAINER_ID}:/certs/"
 		fi
 	fi
 }
 
 import-random-patients(){
-  if [ $# == 2 ]
-  then
-    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS import-random-patients $1 $2"
-  else
-    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS import-random-patients $1"
-  fi
+  # Use the devtools function, passing all arguments ($@)
+  run_devtools_in_docker "${CONTAINER_ID}" import-random-patients "$@"
 }
 
 register-oauth2-client-demo(){
-  $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS register-oauth2-client-demo $1"
+  # Use the devtools function, passing all arguments ($@)
+  run_devtools_in_docker "${CONTAINER_ID}" register-oauth2-client-demo "$@"
 }
 
 register-oauth2-client(){
-  if [ $# == 1 ]
-  then
-    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS register-oauth2-client $1"
-  else
-    $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS register-oauth2-client"
-  fi
+  # Use the devtools function, passing all arguments ($@)
+  run_devtools_in_docker "${CONTAINER_ID}" register-oauth2-client "$@"
 }
 
 set-swagger-to-multisite(){
-    if [ $# == 1 ]
-    then
-      $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS set-swagger-to-multisite $1"
-    else
-      $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS set-swagger-to-multisite"
-    fi
+  # Use the devtools function, passing all arguments ($@)
+  run_devtools_in_docker "${CONTAINER_ID}" set-swagger-to-multisite "$@"
 }
 
 set-webroot(){
-    if [ $# == 1 ]
-    then
+    local sed_command
+    if [[ $# == 1 ]]; then
       # assume the openemr parameter was given, so set openemr webroot
       echo "changing webroot to openemr"
-      $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "sed -i 's@^DocumentRoot /var/www/localhost/htdocs.*@DocumentRoot /var/www/localhost/htdocs@g' /etc/apache2/conf.d/openemr.conf"
+      sed_command="sed -i 's@^DocumentRoot /var/www/localhost/htdocs.*@DocumentRoot /var/www/localhost/htdocs@g' /etc/apache2/conf.d/openemr.conf"
     else
       # set to blank, so set blank webroot
       echo "changing webroot to blank"
-      $DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "sed -i 's@^DocumentRoot /var/www/localhost/htdocs.*@DocumentRoot /var/www/localhost/htdocs/openemr@g' /etc/apache2/conf.d/openemr.conf"
+      sed_command="sed -i 's@^DocumentRoot /var/www/localhost/htdocs.*@DocumentRoot /var/www/localhost/htdocs/openemr@g' /etc/apache2/conf.d/openemr.conf"
     fi
+    # Use the function for arbitrary commands
+    run_shell_command_in_docker "${CONTAINER_ID}" "${sed_command}"
     # restart the docker
     echo "restarting openemr docker so the apache configuration change will take effect"
-    docker restart "$CONTAINER_ID"
+    docker restart "${CONTAINER_ID}"
 }
 
 docker-pull-image(){
+    local docker_images
     docker_images=$(docker ps --format "table {{.Image}}")
-    for IMAGE in $docker_images
-    do
-    if [ $IMAGE != "IMAGE" ] 
-    then
-      read -e -p "Do you wish to pull $IMAGE ? (y) " RESP
-      if [ "$RESP" = "y" ]; then 
-        docker pull "$IMAGE";
-      else 
-        echo "Skipping $IMAGE";
+    local IMAGE RESP
+    for IMAGE in ${docker_images}; do
+      if [[ "${IMAGE}" != "IMAGE" ]]; then
+        # Use -r with read
+        read -r -e -p "Do you wish to pull ${IMAGE} ? (y) " RESP
+        if [[ "${RESP}" == "y" ]]; then
+          docker pull "${IMAGE}"
+        else
+          echo "Skipping ${IMAGE}"
+        fi
       fi
-    fi  
     done
 }
 
@@ -294,15 +322,16 @@ FINAL_EXIT_CODE=0
 
 # Confirm the docker install or not.
 DOCKER_CODE=16
-which docker &>/dev/null
-[ $? -ne 0 ] && echo "Please check docker install or not." && exit $DOCKER_CODE
+if ! command -v docker &>/dev/null; then
+  echo "Please check docker install or not."
+  exit "${DOCKER_CODE}"
+fi
 
 # Script usage.
-if [ $# -eq 0 ] || [ "$FIRST_ARG" == '--help' ] || [ "$FIRST_ARG" == '-h' ]
-then
+if [[ $# -eq 0 ]] || [[ "${FIRST_ARG}" == '--help' ]] || [[ "${FIRST_ARG}" == '-h' ]]; then
   echo ""
-  echo "Usage: `basename $0` COMMAND [ARGS]"
-  echo "Usage: `basename $0` -d <docker name> COMMAND [ARGS]"
+  echo "Usage: $(basename "$0") COMMAND [ARGS]"
+  echo "Usage: $(basename "$0") -d <docker name> COMMAND [ARGS]"
   echo "Options:"
   echo "  -h, --help                         Show the commands usage"
   echo "  -v, --version                      Show the openemr-cmd command version"
@@ -321,125 +350,150 @@ then
   echo "  dpi, docker-pull-image             Prompt to pull docker image"
   echo 'php-management:'
   echo "  bt, build-themes                   Make changes to any files on your local file system"
-	echo "  pl, php-log                        To check PHP error logs"
-	echo "  pr, psr12-report                   To create a report of PSR12 code styling issues"
-	echo "  pf, psr12-fix                      To fix PSR12 code styling issues"
-	echo "  ltr, lint-themes-report            To create a report of theme styling issues"
-	echo "  ltf, lint-themes-fix               To fix theme styling issues"
+  echo "  pl, php-log                        To check PHP error logs"
+  echo "  pr, psr12-report                   To create a report of PSR12 code styling issues"
+  echo "  pf, psr12-fix                      To fix PSR12 code styling issues"
+  echo "  ltr, lint-themes-report            To create a report of theme styling issues"
+  echo "  ltf, lint-themes-fix               To fix theme styling issues"
   echo "  ljr, lint-javascript-report        To create a report of javascript styling issues"
   echo "  ljf, lint-javascript-fix           To fix javascript styling issues"
-	echo "  pp, php-parserror                  To check PHP parsing errors"
-	echo "  xl, xdebug-log                     To check xdebug log"
-	echo "  lxp, list-xdebug-profiles          To list xdebug profiles"
+  echo "  pp, php-parserror                  To check PHP parsing errors"
+  echo "  xl, xdebug-log                     To check xdebug log"
+  echo "  lxp, list-xdebug-profiles          To list xdebug profiles"
   echo 'test-management:'
-	echo "  ut, unit-test                      To run php unit testing"
-	echo "  jut, javascript-unit-test          To run javascript unit testing"
-	echo "  jrb, jut-reports-build             To build javascript unit testing reports browser user interface"
-	echo "  at, api-test                       To run api testing"
-	echo "  et, e2e-test                       To run e2e testing"
-	echo "  st, services-test                  To run services testing"
-	echo "  ft, fixtures-test                  To run fixtures testing"
-	echo "  vt, validators-test                To run validators testing"
-	echo "  ct, controllers-test               To run controllers testing"
-	echo "  ctt, common-test                   To run common testing"
+  echo "  ut, unit-test                      To run php unit testing"
+  echo "  jut, javascript-unit-test          To run javascript unit testing"
+  echo "  jrb, jut-reports-build             To build javascript unit testing reports browser user interface"
+  echo "  at, api-test                       To run api testing"
+  echo "  et, e2e-test                       To run e2e testing"
+  echo "  st, services-test                  To run services testing"
+  echo "  ft, fixtures-test                  To run fixtures testing"
+  echo "  vt, validators-test                To run validators testing"
+  echo "  ct, controllers-test               To run controllers testing"
+  echo "  ctt, common-test                   To run common testing"
   echo 'sweep-management:'
-	echo "  cs, clean-sweep                    To run the entire dev tool suite"
-	echo "  cst, clean-sweep-tests             To run only all the automated tests"
+  echo "  cs, clean-sweep                    To run the entire dev tool suite"
+  echo "  cst, clean-sweep-tests             To run only all the automated tests"
   echo 'reset-mamagement:'
-	echo "  dr, dev-reset                      To reset OpenEMR only"
-	echo "  di, dev-install                    To install OpenEMR (reset needs to be run prior)"
-	echo "  dri, dev-reset-install             To reset and reinstall OpenEMR"
-	echo "  drid, dev-reset-install-demodata   To reset and reinstall OpenEMR with demo data"
+  echo "  dr, dev-reset                      To reset OpenEMR only"
+  echo "  di, dev-install                    To install OpenEMR (reset needs to be run prior)"
+  echo "  dri, dev-reset-install             To reset and reinstall OpenEMR"
+  echo "  drid, dev-reset-install-demodata   To reset and reinstall OpenEMR with demo data"
   echo 'backup-management:'
-	echo "  bs, backup-snapshot                Create a backup snapshot"
-	echo "  rs, restore-snapshot               Restore from a snapshot"
-	echo "  ls, list-snapshots                 To list the snapshots"
-	echo "  lc, list-capsules                  List the capsules"
-	echo "  gc, get-capsule                    Copy the capsule from the docker to your host directory"
-	echo "  pc, put-capsule                    Copy the capsule into the docker"
+  echo "  bs, backup-snapshot                Create a backup snapshot"
+  echo "  rs, restore-snapshot               Restore from a snapshot"
+  echo "  ls, list-snapshots                 To list the snapshots"
+  echo "  lc, list-capsules                  List the capsules"
+  echo "  gc, get-capsule                    Copy the capsule from the docker to your host directory"
+  echo "  pc, put-capsule                    Copy the capsule into the docker"
   echo 'ssl-management:'
-	echo "  fh, force-https                    Force https"
-	echo "  ufh, un-force-https                Removing forcing of https"
-	echo "  ossc, on-self-signed-cert          Toggle on self signed certificates (on by default)"
-	echo "  scc, setup-client-cert             Turn on client based cert with designated package"
-	echo "  lcc, list-client-certs             To list the certificate packages"
-	echo "  pcc, put-client-cert               To copy certificate package into the docker"
-	echo "  ss, sql-ssl                        Use testing sql ssl CA cert"
+  echo "  fh, force-https                    Force https"
+  echo "  ufh, un-force-https                Removing forcing of https"
+  echo "  ossc, on-self-signed-cert          Toggle on self signed certificates (on by default)"
+  echo "  scc, setup-client-cert             Turn on client based cert with designated package"
+  echo "  lcc, list-client-certs             To list the certificate packages"
+  echo "  pcc, put-client-cert               To copy certificate package into the docker"
+  echo "  ss, sql-ssl                        Use testing sql ssl CA cert"
   echo "  sso, sql-ssl-off                   Remove testing sql ssl CA cert"
   echo "  ssc, sql-ssl-client                Use testing sql ssl client certs"
   echo "  ssco, sql-ssl-client-off           Remove testing sql ssl client certs"
-	echo "  css, couchdb-ssl                   Use testing couchdb ssl CA cert"
+  echo "  css, couchdb-ssl                   Use testing couchdb ssl CA cert"
   echo "  cso, couchdb-ssl-off               Remove testing couchdb ssl CA cert"
   echo "  csc, couchdb-ssl-client            Use testing couchdb ssl client certs"
   echo "  csco, couchdb-ssl-client-off       Remove testing couchdb ssl client certs"
-	echo "  lss, ldap-ssl                      Use testing ldap ssl CA cert"
+  echo "  lss, ldap-ssl                      Use testing ldap ssl CA cert"
   echo "  lso, ldap-ssl-off                  Remove testing ldap ssl CA cert"
   echo "  lsc, ldap-ssl-client               Use testing ldap ssl client certs"
   echo "  lsco, ldap-ssl-client-off          Remove testing ldap ssl client certs"
   echo 'multisite-management:'
   echo "  lm, list-multisites                List multisites"
   echo "  swtm, set-swagger-to-multisite     Direct swagger api testing suite to use a multisite <multisite>"
-	echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
-	echo "  em, enable-multisite               Turn on support for multisite in setup.php"
-	echo "  dm, disable-multisite              Turn off support for multisite in setup.php"
+  echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
+  echo "  em, enable-multisite               Turn on support for multisite in setup.php"
+  echo "  dm, disable-multisite              Turn off support for multisite in setup.php"
   echo 'api-management:'
   echo "  bad, build-api-docs                Build and place api documentation/configuration for swagger"
   echo "  roc, register-oauth2-client        Register oauth2 client (returns client id/secret)"
   echo "  rocd, register-oauth2-client-demo  Register oauth2 client (returns client id/secret) on online demo"
   echo "  swtm, set-swagger-to-multisite     Direct swagger api testing suite to use a multisite <multisite>"
   echo 'computational-health-informatics:'
-	echo "  irp, import-random-patients        Create and import random patients <number patients>"
-	echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
+  echo "  irp, import-random-patients        Create and import random patients <number patients>"
+  echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
   echo 'webroot-management:'
-	echo "  cwb, change-webroot-blank          Change webroot to be blank (this is default setting of environment)"
-	echo "  cwo, change-webroot-openemr        Change webroot to be openemr"
+  echo "  cwb, change-webroot-blank          Change webroot to be blank (this is default setting of environment)"
+  echo "  cwo, change-webroot-openemr        Change webroot to be openemr"
   echo 'others:'
-	echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
-	echo "  el, enable-ldap                    Turn on support for LDAP - login credentials are admin:admin"
-	echo "  dld, disable-ldap                  Turn off support for LDAP - standard login credentials"
-	echo "  ec, encoding-collation             Change the database character set and collation"
+  echo "  ev, ensure-version                 Upgrade OpenEMR from specified old version to current version"
+  echo "  el, enable-ldap                    Turn on support for LDAP - login credentials are admin:admin"
+  echo "  dld, disable-ldap                  Turn off support for LDAP - standard login credentials"
+  echo "  ec, encoding-collation             Change the database character set and collation"
 
-	exit $USAGE_EXIT_CODE
-elif [ "$FIRST_ARG" == '--version' ] || [ "$FIRST_ARG" == '-v' ]
-then
-	echo "openemr-cmd $VERSION"
-	exit $VERSION_EXIT_CODE
+  exit "${USAGE_EXIT_CODE}"
+
+elif [[ "${FIRST_ARG}" == '--version' ]] || [[ "${FIRST_ARG}" == '-v' ]]; then
+	echo "openemr-cmd ${VERSION}"
+	exit "${VERSION_EXIT_CODE}"
 fi
 
 # Specify the docker id/name to execute the commands.
-#  default to insane dev docker, if exists
-CONTAINER_ID=$(docker ps | grep $INSANE_DEV_DOCKER | cut -f 1 -d " ")
-if [ -z $CONTAINER_ID ]
-then
-  # else, default to easy dev docker, if exists
-  CONTAINER_ID=$(docker ps | grep $EASY_DEV_DOCKER | cut -f 1 -d " ")
+# Default to insane dev docker, if exists, otherwise easy dev docker.
+# Try to find the insane dev docker ID directly
+if insane_id=$(docker ps --filter "name=${INSANE_DEV_DOCKER}" --format "{{.ID}}" | head -n 1); [[ -n "${insane_id}" ]]; then
+  CONTAINER_ID="${insane_id}"
+# Try to find the easy dev docker ID directly
+elif easy_id=$(docker ps --filter "name=${EASY_DEV_DOCKER}" --format "{{.ID}}" | head -n 1); [[ -n "${easy_id}" ]]; then
+  CONTAINER_ID="${easy_id}"
+else
+  # Neither container found running, set CONTAINER_ID to empty.
+  # The script's later logic handles the -d flag or errors if no container is specified.
+  CONTAINER_ID=""
 fi
+
 # override the default container setting if supplied via the -d parameter
 #  (also removing no longer needed parameters via shift)
 CHANGE_CONTAINER_CODE=25
-if [ "$FIRST_ARG" == '-d' ] && [ $# -ge 3 ]
-then
-	CONTAINER_ID=$2
-	FIRST_ARG=$3
+if [[ "${FIRST_ARG}" == '-d' ]] && [[ $# -ge 3 ]]; then
+	CONTAINER_ID="$2"
+	FIRST_ARG="$3"
 	shift 3
-elif [ "$FIRST_ARG" == '-d' ] && [ $# -lt 3 ]
-then
+elif [[ "${FIRST_ARG}" == '-d' ]] && [[ $# -lt 3 ]]; then
 	echo 'Please provide a docker id/name when using -d parameter.'
 	echo 'e.g. openemr-cmd -d docker_openemr-7-3-redis-312_1 dl'
-	exit $CHANGE_CONTAINER_CODE
+	exit "${CHANGE_CONTAINER_CODE}"
 else
   shift
 fi
 
 #collect the couchdb docker name
-COUCHDB_CONTAINER=$(docker ps | grep $COUCHDB_DOCKER | cut -f 1 -d " ")
+# Use docker ps --filter and --format for efficiency and robustness
+couchdb_id=$(docker ps --filter "name=${COUCHDB_DOCKER}" --format "{{.ID}}" | head -n 1)
+COUCHDB_CONTAINER="${couchdb_id:-}" # Set to empty if not found
 
 # Collect the mariadb container id
-MARIADB_CONTAINER_ID=$(docker ps | grep $MARIADB_DOCKER | cut -f 1 -d " ")
+# Use docker ps --filter and --format for efficiency and robustness
+mariadb_id=$(docker ps --filter "name=${MARIADB_DOCKER}" --format "{{.ID}}" | head -n 1)
+MARIADB_CONTAINER_ID="${mariadb_id:-}" # Set to empty if not found
+
+# Check if a target container ID was determined or provided before proceeding with commands that need it
+# (Allow proceeding if the command doesn't require a container, like up, down, start, stop, --help, --version)
+case "${FIRST_ARG}" in
+  up|down|start|stop|--help|-h|--version|-v)
+    # These commands don't necessarily need a running container ID determined here
+    ;;
+  *)
+    # All other commands likely need a CONTAINER_ID
+    if [[ -z "${CONTAINER_ID}" ]] && [[ "${FIRST_ARG}" != '-d' ]]; then # Check if CONTAINER_ID is empty AND -d wasn't the *original* first arg
+      echo "Error: Could not automatically determine target OpenEMR container (tried '${INSANE_DEV_DOCKER}' and '${EASY_DEV_DOCKER}')." >&2
+      echo "Use -d <container_name_or_id> to specify the target container." >&2
+      exit 1
+    fi
+    # If -d was used, CONTAINER_ID was set in the parameter parsing block
+    ;;
+esac
 
 # See how we were called.
 # For the shift usage, it used to cover the insane env.
-case "$FIRST_ARG" in
+case "${FIRST_ARG}" in
 	up)
 		check_docker_compose_install_or_not
 		docker-compose up -d
@@ -518,168 +572,170 @@ case "$FIRST_ARG" in
     quick_open_a_maria_docker_shell
 		;;
 	bt)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-themes"
+		run_devtools_in_docker "${CONTAINER_ID}" build-themes
 		;;
 	pl)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS php-log"
+		run_devtools_in_docker "${CONTAINER_ID}" php-log
 		;;
 	pr)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS psr12-report"
+		run_devtools_in_docker "${CONTAINER_ID}" psr12-report
 		;;
 	pf)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS psr12-fix"
+		run_devtools_in_docker "${CONTAINER_ID}" psr12-fix
 		;;
 	ltr)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS lint-themes-report"
+		run_devtools_in_docker "${CONTAINER_ID}" lint-themes-report
 		;;
 	ltf)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS lint-themes-fix"
+		run_devtools_in_docker "${CONTAINER_ID}" lint-themes-fix
 		;;
 	ljr)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS lint-javascript-report"
+		run_devtools_in_docker "${CONTAINER_ID}" lint-javascript-report
 		;;
 	ljf)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS lint-javascript-fix"
+		run_devtools_in_docker "${CONTAINER_ID}" lint-javascript-fix
 		;;
 	pp)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS php-parserror"
+		run_devtools_in_docker "${CONTAINER_ID}" php-parserror
 		;;
 	ut)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS unit-test"
+		run_devtools_in_docker "${CONTAINER_ID}" unit-test
 		;;
 	jut)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS javascript-unit-test"
+		run_devtools_in_docker "${CONTAINER_ID}" javascript-unit-test
 		;;
 	jrb)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS jut-reports-build"
+		run_devtools_in_docker "${CONTAINER_ID}" jut-reports-build
 		;;
 	at)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS api-test"
+		run_devtools_in_docker "${CONTAINER_ID}" api-test
 		;;
 	et)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS e2e-test"
+		run_devtools_in_docker "${CONTAINER_ID}" e2e-test
 		;;
 	st)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS services-test"
+		run_devtools_in_docker "${CONTAINER_ID}" services-test
 		;;
 	ft)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS fixtures-test"
+		run_devtools_in_docker "${CONTAINER_ID}" fixtures-test
 		;;
 	vt)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS validators-test"
+		run_devtools_in_docker "${CONTAINER_ID}" validators-test
 		;;
 	ct)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS controllers-test"
+		run_devtools_in_docker "${CONTAINER_ID}" controllers-test
 		;;
 	ctt)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS common-test"
+		run_devtools_in_docker "${CONTAINER_ID}" common-test
 		;;
 	cs)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS clean-sweep"
+		run_devtools_in_docker "${CONTAINER_ID}" clean-sweep
 		;;
 	cst)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS clean-sweep-tests"
+		run_devtools_in_docker "${CONTAINER_ID}" clean-sweep-tests
 		;;
 	dr)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-reset"
+		run_devtools_in_docker "${CONTAINER_ID}" dev-reset
 		restart_couchdb_docker
 		;;
 	di)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-install"
+		run_devtools_in_docker "${CONTAINER_ID}" dev-install
 		restart_couchdb_docker
 		;;
 	dri)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-reset-install"
+		run_devtools_in_docker "${CONTAINER_ID}" dev-reset-install
 		restart_couchdb_docker
 		;;
 	drid)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS dev-reset-install-demodata"
+		run_devtools_in_docker "${CONTAINER_ID}" dev-reset-install-demodata
 		restart_couchdb_docker
 		;;
 	ls)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-snapshots"
+		run_devtools_in_docker "${CONTAINER_ID}" list-snapshots
 		;;
 	lc)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-capsules"
+		run_devtools_in_docker "${CONTAINER_ID}" list-capsules
 		;;
 	em)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS enable-multisite"
+		run_devtools_in_docker "${CONTAINER_ID}" enable-multisite
 		;;
 	dm)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS disable-multisite"
+		run_devtools_in_docker "${CONTAINER_ID}" disable-multisite
 		;;
 	fh)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS force-https"
+		run_devtools_in_docker "${CONTAINER_ID}" force-https
 		;;
 	ufh)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS un-force-https"
+		run_devtools_in_docker "${CONTAINER_ID}" un-force-https
 		;;
 	ossc)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS on-self-signed-cert"
+		run_devtools_in_docker "${CONTAINER_ID}" on-self-signed-cert
 		;;
 	lcc)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-client-certs"
+		run_devtools_in_docker "${CONTAINER_ID}" list-client-certs
 		;;
 	ss)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS sql-ssl"
+		run_devtools_in_docker "${CONTAINER_ID}" sql-ssl
 		;;
 	sso)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS sql-ssl-off"
+		run_devtools_in_docker "${CONTAINER_ID}" sql-ssl-off
 		;;
 	ssc)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS sql-ssl-client"
+		run_devtools_in_docker "${CONTAINER_ID}" sql-ssl-client
 		;;
 	ssco)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS sql-ssl-client-off"
+		run_devtools_in_docker "${CONTAINER_ID}" sql-ssl-client-off
 		;;
 	css)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl"
+		run_devtools_in_docker "${CONTAINER_ID}" couchdb-ssl
 		;;
 	cso)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl-off"
+		run_devtools_in_docker "${CONTAINER_ID}" couchdb-ssl-off
 		;;
 	csc)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl-client"
+		run_devtools_in_docker "${CONTAINER_ID}" couchdb-ssl-client
 		;;
 	csco)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS couchdb-ssl-client-off"
+		run_devtools_in_docker "${CONTAINER_ID}" couchdb-ssl-client-off
 		;;
 	lss)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl"
+		run_devtools_in_docker "${CONTAINER_ID}" ldap-ssl
 		;;
 	lso)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl-off"
+		run_devtools_in_docker "${CONTAINER_ID}" ldap-ssl-off
 		;;
 	lsc)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl-client"
+		run_devtools_in_docker "${CONTAINER_ID}" ldap-ssl-client
 		;;
 	lsco)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS ldap-ssl-client-off"
+		run_devtools_in_docker "${CONTAINER_ID}" ldap-ssl-client-off
 		;;
 	gmb|generate-multisite-bank)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS generate-multisite-bank $@"
+    # Pass remaining arguments ($@) correctly quoted to the devtools function
+		run_devtools_in_docker "${CONTAINER_ID}" generate-multisite-bank "$@"
 		;;
 	el)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS enable-ldap"
+		run_devtools_in_docker "${CONTAINER_ID}" enable-ldap
 		;;
 	dld)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS disable-ldap"
+		run_devtools_in_docker "${CONTAINER_ID}" disable-ldap
 		;;
 	xl)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS xdebug-log"
+		run_devtools_in_docker "${CONTAINER_ID}" xdebug-log
 		;;
 	lxp)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-xdebug-profiles"
+		run_devtools_in_docker "${CONTAINER_ID}" list-xdebug-profiles
 		;;
 	bad)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS build-api-docs"
+		run_devtools_in_docker "${CONTAINER_ID}" build-api-docs
 		;;
 	lm)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS list-multisites"
+		run_devtools_in_docker "${CONTAINER_ID}" list-multisites
 		;;
 
 	*)
-		$DOCKER_EXEC_CMD $CONTAINER_ID $SHELL_TYPE "$DEV_TOOLS $FIRST_ARG"
+		# Default case: assume it's a devtools command
+		run_devtools_in_docker "${CONTAINER_ID}" "${FIRST_ARG}" "$@"
 		;;
 esac
-exit $FINAL_EXIT_CODE
+exit "${FINAL_EXIT_CODE}"
