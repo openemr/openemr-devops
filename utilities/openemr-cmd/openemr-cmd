@@ -52,12 +52,34 @@ run_shell_command_in_docker() {
 FIRST_ARG="${1:-}" # define the first parameter, default to empty if not set
 DEV_TOOLS='/root/devtools'
 
-check_docker_compose_install_or_not(){
+check_docker_compose_install(){
 	local DOCKER_COMPOSE_CODE=22
-	if ! command -v docker-compose &>/dev/null; then
-		echo "Please check docker-compose install or not."
-    exit "${DOCKER_COMPOSE_CODE}"
-	fi
+    # Using an array due to variable expansion for the resulting command
+    # Check for 'docker compose' (plugin syntax) first
+    if docker compose &>/dev/null; then
+        DOCKER_COMPOSE_CMD=(docker compose)
+    # If plugin not found, check for 'docker-compose' (standalone)
+    elif command -v docker-compose &>/dev/null; then
+        DOCKER_COMPOSE_CMD=(docker-compose)
+    else
+        # Neither found, error out.
+        echo "Error: Neither 'docker compose' (plugin) nor 'docker-compose' (standalone) found." >&2
+        echo "Please ensure Docker Compose is installed correctly." >&2
+        exit "${DOCKER_COMPOSE_CODE}"
+    fi
+}
+
+# Function to run the determined docker compose command
+# Usage: run_docker_compose <compose_args...>
+run_docker_compose() {
+    check_docker_compose_install
+    # Ensure the command has been determined
+    if [[ "${#DOCKER_COMPOSE_CMD[@]}" -eq 0 ]]; then
+        echo "Error: Docker Compose command not determined." >&2
+        exit 1
+    fi
+    # Execute the stored command with provided arguments
+    "${DOCKER_COMPOSE_CMD[@]}" "$@"
 }
 
 quick_open_a_docker_shell(){
@@ -499,20 +521,16 @@ esac
 # For the shift usage, it used to cover the insane env.
 case "${FIRST_ARG}" in
 	up)
-		check_docker_compose_install_or_not
-		docker-compose up -d
+		run_docker_compose up -d
 		;;
 	down)
-		check_docker_compose_install_or_not
-		docker-compose down -v
+		run_docker_compose down -v
 		;;
 	stop)
-		check_docker_compose_install_or_not
-		docker-compose stop
+		run_docker_compose stop
 		;;
 	start)
-		check_docker_compose_install_or_not
-		docker-compose start
+		run_docker_compose start
 		;;
 	s|shell)
 		quick_open_a_docker_shell
