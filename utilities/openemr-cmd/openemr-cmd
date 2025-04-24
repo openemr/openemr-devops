@@ -93,8 +93,8 @@ quick_open_a_maria_docker_shell(){
 execute_command_flexible(){
 	if [[ $# -lt 1 ]]; then
 		echo "Please provide the command."
-		echo "e.g. $(basename "$0") [exec|e] \"tail -f /var/log/apache2/error.log\""
-		echo "e.g. $(basename "$0") -d docker_openemr-7-3-redis-312_1 [exec|e] \"tail -f /var/log/apache2/error.log\""
+		echo "e.g. ${0##*/} [exec|e] \"tail -f /var/log/apache2/error.log\""
+		echo "e.g. ${0##*/} -d docker_openemr-7-3-redis-312_1 [exec|e] \"tail -f /var/log/apache2/error.log\""
 	else
 		# Use the function for arbitrary commands
 		run_shell_command_in_docker "${CONTAINER_ID}" "$@"
