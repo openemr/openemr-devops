@@ -477,14 +477,15 @@ fi
 # override the default container setting if supplied via the -d parameter
 #  (also removing no longer needed parameters via shift)
 CHANGE_CONTAINER_CODE=25
-if [[ "${FIRST_ARG}" == '-d' ]] && [[ $# -ge 3 ]]; then
-	CONTAINER_ID="$2"
-	FIRST_ARG="$3"
-	shift 3
-elif [[ "${FIRST_ARG}" == '-d' ]] && [[ $# -lt 3 ]]; then
-	echo 'Please provide a docker id/name when using -d parameter.'
-	echo 'e.g. openemr-cmd -d docker_openemr-7-3-redis-312_1 dl'
-	exit "${CHANGE_CONTAINER_CODE}"
+if [[ "${FIRST_ARG}" = '-d' ]]; then
+  if (( $# < 3 )); then
+    echo 'Please provide a docker id/name when using -d parameter.'
+    echo 'e.g. openemr-cmd -d docker_openemr-7-3-redis-312_1 dl'
+    exit "${CHANGE_CONTAINER_CODE}"
+  fi
+  CONTAINER_ID="$2"
+  FIRST_ARG="$3"
+  shift 3
 else
   shift
 fi
