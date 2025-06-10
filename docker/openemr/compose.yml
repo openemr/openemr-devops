@@ -19,6 +19,8 @@ services:
       timeout: 5s
       retries: 3
   openemr:
+    profiles:
+    - prod
     build:
       context: ${DOCKER_CONTEXT_PATH}
     ports:
@@ -40,8 +42,15 @@ services:
       - curl
       - -fsSLo/dev/null
       - http://localhost/
-      start_period: 1m
+      start_period: 10m
       start_interval: 10s
       interval: 1m
       timeout: 5s
       retries: 3
+  openemr-flex:
+    extends:
+      service: openemr
+    profiles: !override
+    - flex
+    volumes:
+    - ../../openemr:/var/www/localhost/htdocs/openemr

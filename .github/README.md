@@ -1,39 +1,40 @@
 # OpenEMR Docker Testing
 
-This directory contains a GitHub Actions workflow to test the OpenEMR 7.0.4 Docker image.
+## Workflow: Production Docker Test (test-prod.yml)
 
-## Workflow: OpenEMR Docker Test
+The `test-prod.yml` workflow verifies that the production OpenEMR Docker images can be built correctly and function with a database connection. These images have the OpenEMR code embedded within them and are identified by version numbers (e.g., 7.0.4).
 
-The `build-test.yml` workflow verifies that the OpenEMR Docker image can be built correctly and functions with a database connection. It performs the following steps:
+The workflow performs the following steps:
 
-1. Builds the OpenEMR 7.0.4 Docker image
+1. Builds OpenEMR Docker images defined in docker/openemr for numbered versions (e.g., 6.1.0, 7.0.4)
 2. Sets up a test environment using Docker Compose with:
    - MariaDB 11.4 database
    - OpenEMR container connected to the database
 3. Verifies that the web server is responding correctly
+4. Runs the OpenEMR installation process
+5. Executes multiple test suites including unit, fixtures, services, validators, and controllers tests
 
-### Triggers
+### Triggers for Production Tests
 
 The workflow runs automatically when:
-- Files in the `docker/openemr/7.0.4/` directory are changed on the main branch
-- A pull request targeting the main branch changes files in the `docker/openemr/7.0.4/` directory
+- Files in the `docker/openemr/[0-9]*.[0-9]*.[0-9]/**` directory are changed on the main branch
+- A pull request targeting the main branch changes files in the numbered version directories
 
-It can also be run manually through the GitHub Actions tab using workflow_dispatch.
+## Workflow: Flex Docker Test (test-flex.yml)
 
-## Running the Test Manually
+The `test-flex.yml` workflow tests the development-oriented "flex" Docker images. Unlike production images, flex builds don't embed the OpenEMR code within the image - they're designed for development purposes where the code is mounted separately.
 
-To run the test manually:
-1. Go to the GitHub Actions tab in the repository
-2. Select "OpenEMR Docker Test" from the workflows list
-3. Click "Run workflow"
-4. Choose the branch to run the test on
-5. Click "Run workflow"
+The workflow performs the following steps:
 
-For debugging purposes, you can enable the tmate debugging option when running the workflow manually. This will provide an SSH connection to the GitHub Actions runner for interactive debugging.
+1. Checks out both the openemr-devops repository and the OpenEMR code repository
+2. Builds the flex Docker images defined in docker/openemr
+3. Sets up a test environment using Docker Compose with:
+   - MariaDB database
+   - OpenEMR container with mounted code
+4. Verifies that the web server is responding correctly
 
-## Adding Tests for Other OpenEMR Versions
+### Triggers for Flex Tests
 
-To add tests for other OpenEMR versions:
-1. Copy the existing workflow and update the version number
-2. Update the paths in the workflow triggers
-3. Update the image tags and other version-specific information
+The workflow runs automatically when:
+- Files in the `docker/openemr/**` directory are changed on the main branch
+- A pull request targeting the main branch changes files in the docker/openemr directory
