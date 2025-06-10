@@ -125,19 +125,16 @@ jobs:
           # This relies on one space between each path name.
           echo "files=${unique_files[*]}" >> "$GITHUB_OUTPUT"
       - name: Run shellcheck on unique files
+        if: ${{ steps.unique-files.outputs.files != '' }}
         run: |
-          if [[ -z "${{ steps.unique-files.outputs.files }}" ]]; then
-            echo "No shell files to check."
-            exit 0
-          fi
           shellcheck --check-sourced --external-sources --format=checkstyle ${{ steps.unique-files.outputs.files }} | tee checkstyle-shellcheck.xml
       - uses: staabm/annotate-pull-request-from-checkstyle-action@v1
-        if: always()
+        if: ${{ failure() && hashFiles('checkstyle-shellcheck.xml') != '' }}
         with:
           files: checkstyle-shellcheck.xml
           notices-as-warnings: true
       - name: Upload shellcheck results
-        if: always()
+        if: ${{ failure() && hashFiles('checkstyle-shellcheck.xml') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: shellcheck-results
