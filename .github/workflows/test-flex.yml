@@ -27,9 +27,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # TODO: we'd like to collect these by looking at the filesystem,
+        # but we need to know what version of openemr to test against,
+        # so we hardcode the branches here for now.
         docker-dir:
-        - container: flex-3.18
-          branch: rel-702
         - container: flex-3.20
           branch: rel-703
         - container: flex-3.21

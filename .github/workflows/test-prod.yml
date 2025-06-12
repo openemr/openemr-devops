@@ -21,19 +21,41 @@ env:
   OPENEMR_SERVICE_NAME: openemr
 
 jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Collect OpenEMR Prod Dockerfiles
+      id: docker-dirs
+      ##
+      # Parse out the test parameters from subdirectories of docker/openemr
+      # Use that output as a test matrix in github actions.
+      run: |
+        shopt -s nullglob
+        shopt -s extglob
+        dirs=( docker/openemr/!(flex-*)/Dockerfile )
+        if (( "${#dirs[@]}" == 0 )); then
+          echo 'No Dockerfiles found in docker/openemr subdirectories.' >&2
+          exit 1
+        fi
+        dirs=( "${dirs[@]%/Dockerfile}" )
+        dirs=( "${dirs[@]#docker/openemr/}" )
+        # Use jq to ensure that the output is valid JSON or fail trying.
+        # The output (after '=') must be valid JSON for GitHub Actions to use it as a matrix.
+        {
+          printf 'docker_dirs='
+          printf '"%s"\n' "${dirs[@]}" | jq -cs .
+        } >> "$GITHUB_OUTPUT"
+    outputs:
+      docker_dirs: ${{ steps.docker-dirs.outputs.docker_dirs }}
   build-and-test:
     name: Test OpenEMR Image
     runs-on: ubuntu-latest
+    needs: collect
     strategy:
       fail-fast: false
       matrix:
-        docker-dir:
-        - 6.1.0
-        - 7.0.0
-        - 7.0.1
-        - 7.0.2
-        - 7.0.3
-        - 7.0.4
+        docker-dir: ${{ fromJson(needs.collect.outputs.docker_dirs) }}
     defaults:
       run:
         working-directory: docker/openemr
