@@ -29,7 +29,7 @@ services:
       mysql:
         condition: service_healthy
     environment:
-      MANUAL_SETUP: 'yes'
+      MANUAL_SETUP: 'no'
       MYSQL_HOST: mysql
       MYSQL_PASS: openemr
       MYSQL_ROOT_PASS: root
