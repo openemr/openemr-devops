@@ -5,14 +5,14 @@ on:
     branches:
     - master
     paths:
-    - '.github/workflows/test-prod.yml'
+    - '.github/workflows/test.yml'
     - 'docker/openemr/[0-9]*.[0-9]*.[0-9]/**'
     - 'docker/openemr/flex-*/**'
   pull_request:
     branches:
     - master
     paths:
-    - '.github/workflows/test-prod.yml'
+    - '.github/workflows/test.yml'
     - 'docker/openemr/[0-9]*.[0-9]*.[0-9]/**'
     - 'docker/openemr/flex-*/**'
 
