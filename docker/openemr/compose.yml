@@ -54,3 +54,14 @@ services:
     - flex
     volumes:
     - ../../openemr:/var/www/localhost/htdocs/openemr
+  openemr-kcov:
+    extends:
+      service: openemr-flex
+    profiles: !override
+    - kcov
+    build:
+      context: ${DOCKER_CONTEXT_PATH}
+      target: kcov
+    volumes:
+    - ../../openemr:/var/www/localhost/htdocs/openemr
+    - ./coverage-reports:/var/www/localhost/htdocs/coverage

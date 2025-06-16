@@ -1,4 +1,4 @@
-FROM alpine:edge
+FROM alpine:edge AS base
 
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
@@ -65,3 +65,45 @@ RUN mkdir /swarm-pieces \
 CMD [ "./openemr.sh" ]
 
 EXPOSE 80 443
+
+
+# kcov coverage build target
+FROM base AS kcov
+
+# Install kcov dependencies
+RUN apk add --no-cache bash \
+                       cmake \
+                       binutils-dev \
+                       curl-dev \
+                       elfutils \
+                       elfutils-dev \
+                       g++ \
+                       libcurl \
+                       libdwarf-dev \
+                       libelf-static \
+                       pkgconfig \
+                       python3
+
+# Install kcov from source
+RUN cd /tmp && \
+    git clone https://github.com/SimonKagstrom/kcov && \
+    cd kcov && \
+    mkdir build && \
+    cd build && \
+    cmake .. && \
+    make && \
+    make install
+
+# Create kcov wrapper script
+COPY kcov-wrapper.sh /var/www/localhost/htdocs/
+RUN chmod 500 /var/www/localhost/htdocs/kcov-wrapper.sh
+
+# Create directory for coverage reports
+RUN mkdir -p /var/www/localhost/htdocs/coverage
+
+# Use kcov wrapper as entrypoint
+CMD [ "./kcov-wrapper.sh" ]
+
+
+# Put this last because we don't want kcov in the default.
+FROM base AS final

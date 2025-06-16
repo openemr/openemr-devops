@@ -59,9 +59,9 @@ jobs:
       run:
         working-directory: openemr-devops/docker/openemr
     env:
-      COMPOSE_PROFILES: "${{ startsWith(matrix.docker-dir, 'flex-') && 'flex' || 'prod' }}"
+      COMPOSE_PROFILES: "${{ startsWith(matrix.docker-dir, 'flex-') && (matrix.docker-dir == 'flex-edge' && 'kcov' || 'flex') || 'prod' }}"
       DOCKER_CONTEXT_PATH: "${{ matrix.docker-dir }}"
-      OPENEMR_SERVICE_NAME: "${{ startsWith(matrix.docker-dir, 'flex-') && 'openemr-flex' || 'openemr' }}"
+      OPENEMR_SERVICE_NAME: "${{ startsWith(matrix.docker-dir, 'flex-') && (matrix.docker-dir == 'flex-edge' && 'openemr-kcov' || 'openemr-flex') || 'openemr' }}"
 
     steps:
     - name: Checkout
@@ -78,6 +78,10 @@ jobs:
 
     - name: Verify Docker Compose Configuration
       run: docker compose config
+
+    - name: Create coverage directory
+      if: ${{ matrix.docker-dir == 'flex-edge' }}
+      run: mkdir -p coverage-reports
 
     - name: Build the Docker image
       run: docker compose build
@@ -158,6 +162,14 @@ jobs:
       run: |
         docker compose exec --workdir /var/www/localhost/htdocs/openemr "${OPENEMR_SERVICE_NAME}" \
           php -d memory_limit=8G ./vendor/bin/phpunit --colors=always --testdox --stop-on-failure --testsuite common
+
+    - name: Upload coverage reports
+      if: ${{ matrix.docker-dir == 'flex-edge' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: kcov-coverage-reports
+        path: openemr-devops/docker/openemr/coverage-reports/
+        retention-days: 7
 
     - name: Cleanup
       if: always()
