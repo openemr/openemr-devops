@@ -28,6 +28,9 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+    entrypoint:
+    - /bin/sh
+    - -x
     environment:
       MANUAL_SETUP: 'no'
       MYSQL_HOST: mysql
