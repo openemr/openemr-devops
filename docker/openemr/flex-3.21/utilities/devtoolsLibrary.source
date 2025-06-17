@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 prepareVariables() {
     CONFIGURATION="server=${MYSQL_HOST} rootpass=${MYSQL_ROOT_PASS} loginhost=%"

@@ -9,7 +9,8 @@
 # TODO: xdebug options should be given here
 set -e
 
-source /root/devtoolsLibrary.source
+# shellcheck source=SCRIPTDIR/utilities/devtoolsLibrary.source
+. /root/devtoolsLibrary.source
 
 swarm_wait() {
     if [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
