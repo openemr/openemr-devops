@@ -520,10 +520,9 @@ echo "Love OpenEMR? You can now support the project via the open collective:"
 echo " > https://opencollective.com/openemr/donate"
 echo ""
 
-if [ "${OPERATOR}" = "yes" ]; then
-    echo "Starting apache!"
-    /usr/sbin/httpd -D FOREGROUND
-else
-    echo "OpenEMR configuration tasks have concluded."
-    exit 0
+if [ "${OPERATOR}" = yes ]; then
+    echo 'Starting apache!'
+    exec /usr/sbin/httpd -D FOREGROUND
 fi
+
+echo 'OpenEMR configuration tasks have concluded.'

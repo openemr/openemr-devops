@@ -76,7 +76,7 @@ if [ "$SWARM_MODE" == "yes" ]; then
     set -o noclobber
     { > /var/www/localhost/htdocs/openemr/sites/docker-leader ; } &> /dev/null || AUTHORITY=no
     set +o noclobber
-    
+
     if [ "$AUTHORITY" == "no" ] &&
        [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
         while swarm_wait; do
@@ -85,7 +85,7 @@ if [ "$SWARM_MODE" == "yes" ]; then
         done
     fi
 
-    if [ "$AUTHORITY" == "yes" ]; then       
+    if [ "$AUTHORITY" == "yes" ]; then
         touch /var/www/localhost/htdocs/openemr/sites/docker-initiated
         if [ ! -f /etc/ssl/openssl.cnf ]; then
             # Restore the emptied /etc/ssl directory
@@ -232,7 +232,7 @@ if [ "$AUTHORITY" == "yes" ]; then
     fi
 fi
 
-if 
+if
    [ "$AUTHORITY" == "yes" ] &&
    [ "$CONFIG" == "1" ] &&
    [ "$MANUAL_SETUP" != "yes" ]; then
@@ -447,10 +447,9 @@ echo "Love OpenEMR? You can now support the project via the open collective:"
 echo " > https://opencollective.com/openemr/donate"
 echo ""
 
-if [ "$OPERATOR" == "yes" ]; then
-    echo "Starting apache!"
-    /usr/sbin/httpd -D FOREGROUND
-else
-    echo "OpenEMR configuration tasks have concluded."
-    exit 0
+if [ "${OPERATOR}" = yes ]; then
+    echo 'Starting apache!'
+    exec /usr/sbin/httpd -D FOREGROUND
 fi
+
+echo 'OpenEMR configuration tasks have concluded.'

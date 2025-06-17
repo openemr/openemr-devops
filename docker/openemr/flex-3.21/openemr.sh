@@ -96,7 +96,7 @@ if [ "$SWARM_MODE" == "yes" ]; then
     set -o noclobber
     { > /var/www/localhost/htdocs/openemr/sites/docker-leader ; } &> /dev/null || AUTHORITY=no
     set +o noclobber
-    
+
     if [ "$AUTHORITY" == "no" ] &&
        [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
         while swarm_wait; do
@@ -105,7 +105,7 @@ if [ "$SWARM_MODE" == "yes" ]; then
         done
     fi
 
-    if [ "$AUTHORITY" == "yes" ]; then       
+    if [ "$AUTHORITY" == "yes" ]; then
         touch /var/www/localhost/htdocs/openemr/sites/docker-initiated
         if [ ! -f /etc/ssl/openssl.cnf ]; then
             # Restore the emptied /etc/ssl directory
@@ -380,14 +380,14 @@ if [ "$AUTHORITY" == "yes" ]; then
     fi
 fi
 
-if 
+if
    [ "$AUTHORITY" == "yes" ] &&
    [ "$CONFIG" == "1" ] &&
    [ "$MANUAL_SETUP" != "yes" ] &&
    [ "$EASY_DEV_MODE" != "yes" ] &&
    [ "$EMPTY" != "yes" ]; then
     # OpenEMR has been configured
-    
+
     if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
         cd /var/www/localhost/htdocs/openemr/
         # This section only runs once after above configuration since auto_configure.php gets removed after this script
@@ -410,7 +410,7 @@ if
         rm -f setup.php
         rm -f sql_patch.php
         rm -f sql_upgrade.php
-        rm -f ippf_upgrade.php        
+        rm -f ippf_upgrade.php
         echo "Setup scripts removed, we should be ready to go now!"
         cd /var/www/localhost/htdocs/
     fi
@@ -509,10 +509,9 @@ echo "Love OpenEMR? You can now support the project via the open collective:"
 echo " > https://opencollective.com/openemr/donate"
 echo ""
 
-if [ "$OPERATOR" == "yes" ]; then
-    echo "Starting apache!"
-    /usr/sbin/httpd -D FOREGROUND
-else
-    echo "OpenEMR configuration tasks have concluded."
-    exit 0
+if [ "${OPERATOR}" = yes ]; then
+    echo 'Starting apache!'
+    exec /usr/sbin/httpd -D FOREGROUND
 fi
+
+echo 'OpenEMR configuration tasks have concluded.'
