@@ -3,7 +3,7 @@
 ROOTDIR=/mnt/backups/bkps
 WORKDIR=/mnt/backups/recovery
 
-cd $ROOTDIR
+cd ${ROOTDIR}
 
 USE_MEMORY=1G
 CURLOG=$(ls -1 *-info.log | tail -n 1 | sed -e 's/\(.*\)-info.log/\1/')
@@ -21,12 +21,12 @@ EOF
 }
 
 while  getopts "f:m:" OPTION; do
-    case $OPTION in
+    case ${OPTION} in
         f)
-            CURLOG=$OPTARG
+            CURLOG=${OPTARG}
             ;;
         m)
-            USE_MEMORY=$OPTARG
+            USE_MEMORY=${OPTARG}
             ;;
         ?)
         usage
@@ -35,41 +35,41 @@ while  getopts "f:m:" OPTION; do
     esac
 done
 
-rm -rf $WORKDIR chain-search.txt chain.txt
+rm -rf ${WORKDIR} chain-search.txt chain.txt
 
-if [ ! -f $CURLOG.tar.gz ]; then
-  echo recovery: invalid starting point $CURLOG.tar.gz
+if [ ! -f ${CURLOG}.tar.gz ]; then
+  echo recovery: invalid starting point ${CURLOG}.tar.gz
   exit 1
 fi
 
 # do-while
 while : ; do
-  if [ ! -f $CURLOG-info.log ]; then
-    echo recovery: cannot find target log $CURLOG-info.log
+  if [ ! -f ${CURLOG}-info.log ]; then
+    echo recovery: cannot find target log ${CURLOG}-info.log
     exit 1
   fi
-  if [ ! -f $CURLOG.tar.gz ]; then
-    echo recovery: cannot find target archive $CURLOG.tar.gz
+  if [ ! -f ${CURLOG}.tar.gz ]; then
+    echo recovery: cannot find target archive ${CURLOG}.tar.gz
     exit 1
   fi
   # identify the type of log
-  CURTYPE=$(grep 'xbackup INFO: Backup type:' $CURLOG-info.log | cut -f 6 -d " ")
+  CURTYPE=$(grep 'xbackup INFO: Backup type:' ${CURLOG}-info.log | cut -f 6 -d " ")
   if [[ -z "${CURTYPE// }" ]]; then
     # not sure I get how this is happening
     CURTYPE=full
   fi
-  echo recovery: found $CURLOG, $CURTYPE
-  echo $CURLOG >> chain-search.txt
+  echo recovery: found ${CURLOG}, ${CURTYPE}
+  echo ${CURLOG} >> chain-search.txt
   # are we done?
-  [[ $CURTYPE == full ]] && break
+  [[ ${CURTYPE} == full ]] && break
   echo recovery: following chain...
   # parse the current log to find the parent
-  NEWLOG=$(grep -- --incremental-basedir $CURLOG-info.log | perl -pe 's~.*incremental-basedir /[^[:space:]]*/([^[:space:]]*).*?~\1~')
-  if [[ $CURLOG == $NEWLOG || "$NEWLOG" == "" ]]; then
+  NEWLOG=$(grep -- --incremental-basedir ${CURLOG}-info.log | perl -pe 's~.*incremental-basedir /[^[:space:]]*/([^[:space:]]*).*?~\1~')
+  if [[ ${CURLOG} == ${NEWLOG} || "${NEWLOG}" == "" ]]; then
     echo recovery: could not parse next target, failure
     exit 1
   else
-    CURLOG=$NEWLOG
+    CURLOG=${NEWLOG}
   fi
 done
 
@@ -82,42 +82,42 @@ echo recovery: recovery plan ready!
 CURLINE=1
 MAXLINE=$(cat chain.txt | wc -l)
 while read line; do
-  rm -rf $line
-  tar -zxf $line.tar.gz
-  if [ $MAXLINE -eq 1 ]; then
-    echo recovery: process single backup $line
-    xtrabackup --use-memory $USE_MEMORY --prepare --target-dir=$line
+  rm -rf ${line}
+  tar -zxf ${line}.tar.gz
+  if [ ${MAXLINE} -eq 1 ]; then
+    echo recovery: process single backup ${line}
+    xtrabackup --use-memory ${USE_MEMORY} --prepare --target-dir=${line}
     if [ $? -ne 0 ]; then
       echo recovery: backup preparation failed! not deleting workdir
       exit 1
     fi
-    mv $line $WORKDIR
-  elif [ $CURLINE -eq 1 ]; then
-    echo recovery: obtain full backup $line
-    xtrabackup --use-memory $USE_MEMORY --prepare --apply-log-only --target-dir=$line
+    mv ${line} ${WORKDIR}
+  elif [ ${CURLINE} -eq 1 ]; then
+    echo recovery: obtain full backup ${line}
+    xtrabackup --use-memory ${USE_MEMORY} --prepare --apply-log-only --target-dir=${line}
     if [ $? -ne 0 ]; then
       echo recovery: initial backup preparation failed! not deleting workdir
       exit 1
     fi
-    mv $line $WORKDIR
-  elif [ $CURLINE -lt $MAXLINE ]; then
-    echo recovery: apply intermediate incremental $line
-    xtrabackup --use-memory $USE_MEMORY --prepare --apply-log-only --target-dir=$WORKDIR --incremental-dir=`pwd`/$line
+    mv ${line} ${WORKDIR}
+  elif [ ${CURLINE} -lt ${MAXLINE} ]; then
+    echo recovery: apply intermediate incremental ${line}
+    xtrabackup --use-memory ${USE_MEMORY} --prepare --apply-log-only --target-dir=${WORKDIR} --incremental-dir=`pwd`/${line}
     if [ $? -ne 0 ]; then
       echo recovery: intermediate recovery failed! not deleting workdir
       exit 1
     fi
-    rm -rf $line
+    rm -rf ${line}
   else
-    echo recovery: apply final incremental $line
-    xtrabackup --use-memory $USE_MEMORY --prepare --target-dir=$WORKDIR --incremental-dir=$line
+    echo recovery: apply final incremental ${line}
+    xtrabackup --use-memory ${USE_MEMORY} --prepare --target-dir=${WORKDIR} --incremental-dir=${line}
     if [ $? -ne 0 ]; then
       echo recovery: final incremental failed! not deleting workdir
       exit 1
     fi
-    rm -rf $line
+    rm -rf ${line}
   fi
-  CURLINE=$(($CURLINE+1))
+  CURLINE=$((${CURLINE}+1))
 done < chain.txt
 
 rm chain.txt

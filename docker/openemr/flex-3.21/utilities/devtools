@@ -200,7 +200,7 @@ if [ "$1" == "set-swagger-to-multisite" ]; then
     # first reset the openemr-api.yaml to go back to default
     php /var/www/localhost/htdocs/openemr/bin/command-runner -c CreateAPIDocumentation
     # now make the needed changes if site is not default (since already set to default in above line)
-    if [ "$site" != "default" ]; then
+    if [ "${site}" != "default" ]; then
         sed -i "s@/apis/default/@/apis/${site}/@" /var/www/localhost/htdocs/openemr/swagger/openemr-api.yaml
         sed -i "s@/oauth2/default/authorize@/oauth2/${site}/authorize@" /var/www/localhost/htdocs/openemr/swagger/openemr-api.yaml
         sed -i "s@/oauth2/default/token@/oauth2/${site}/token@" /var/www/localhost/htdocs/openemr/swagger/openemr-api.yaml
@@ -263,7 +263,7 @@ if [ "$1" == "list-snapshots" ]; then
     echo "Listing snapshots:"
     cd /snapshots
     for f in *; do
-        if [ -f "$f" ]; then
+        if [ -f "${f}" ]; then
             echo "  ${f%.*}"
         fi
     done
@@ -273,8 +273,8 @@ if [ "$1" == "list-capsules" ]; then
     echo "Listing capsules:"
     cd /snapshots
     for f in *; do
-        if [ -f "$f" ]; then
-            echo "  $f"
+        if [ -f "${f}" ]; then
+            echo "  ${f}"
         fi
     done
 fi
@@ -306,7 +306,7 @@ if [ "$1" == "list-client-certs" ]; then
     echo "Listing client certs packages:"
     cd /certs
     for f in *; do
-        if [ -f "$f" ]; then
+        if [ -f "${f}" ]; then
             echo "  ${f%.*}"
         fi
     done
@@ -328,7 +328,7 @@ fi
 
 if [ "$1" == "sql-ssl" ]; then
     echo "Copying the testing sql SSL CA cert"
-    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+    if [ "${OPENEMR_DOCKER_ENV_TAG}" == "insane-dev-docker" ]; then
         #using insane dev docker env
         cp /var/www/localhost/htdocs/openemr/docker/library/sql-ssl-certs-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
     else
@@ -344,7 +344,7 @@ fi
 
 if [ "$1" == "sql-ssl-client" ]; then
     echo "Copying the testing sql SSL CA cert and testing client certs"
-    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+    if [ "${OPENEMR_DOCKER_ENV_TAG}" == "insane-dev-docker" ]; then
         #using insane dev docker env
         cp /var/www/localhost/htdocs/openemr/docker/library/sql-ssl-certs-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
         cp /var/www/localhost/htdocs/openemr/docker/library/sql-ssl-certs-keys/insane/client-cert.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
@@ -366,7 +366,7 @@ fi
 
 if [ "$1" == "couchdb-ssl" ]; then
     echo "Copying the testing couchdb SSL CA cert"
-    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+    if [ "${OPENEMR_DOCKER_ENV_TAG}" == "insane-dev-docker" ]; then
         #using insane dev docker env
         cp /var/www/localhost/htdocs/openemr/docker/library/couchdb-config-ssl-cert-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
     else
@@ -382,7 +382,7 @@ fi
 
 if [ "$1" == "couchdb-ssl-client" ]; then
     echo "Copying the testing couchdb SSL CA cert and testing client certs"
-    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+    if [ "${OPENEMR_DOCKER_ENV_TAG}" == "insane-dev-docker" ]; then
         #using insane dev docker env
         cp /var/www/localhost/htdocs/openemr/docker/library/couchdb-config-ssl-cert-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
         cp /var/www/localhost/htdocs/openemr/docker/library/couchdb-config-ssl-cert-keys/insane/client-cert.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert
@@ -404,7 +404,7 @@ fi
 
 if [ "$1" == "ldap-ssl" ]; then
     echo "Copying the testing ldap SSL CA cert"
-    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+    if [ "${OPENEMR_DOCKER_ENV_TAG}" == "insane-dev-docker" ]; then
         #using insane dev docker env
         cp /var/www/localhost/htdocs/openemr/docker/library/ldap-ssl-certs-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
     else
@@ -420,7 +420,7 @@ fi
 
 if [ "$1" == "ldap-ssl-client" ]; then
     echo "Copying the testing ldap SSL CA cert and testing client certs"
-    if [ "$OPENEMR_DOCKER_ENV_TAG" == "insane-dev-docker" ]; then
+    if [ "${OPENEMR_DOCKER_ENV_TAG}" == "insane-dev-docker" ]; then
         #using insane dev docker env
         cp /var/www/localhost/htdocs/openemr/docker/library/ldap-ssl-certs-keys/insane/ca.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
         cp /var/www/localhost/htdocs/openemr/docker/library/ldap-ssl-certs-keys/insane/client-cert.pem /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert
@@ -443,13 +443,13 @@ fi
 if [ "$1" == "enable-ldap" ]; then
     echo "Enabling LDAP authentication - login credentials are admin:admin"
     prepareVariables
-    mariadb --skip-ssl -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 1 WHERE gl_name = 'gbl_ldap_enabled'" "$CUSTOM_DATABASE"
+    mariadb --skip-ssl -u root --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -e "UPDATE globals SET gl_value = 1 WHERE gl_name = 'gbl_ldap_enabled'" "${CUSTOM_DATABASE}"
 fi
 
 if [ "$1" == "disable-ldap" ]; then
     echo "Disabling LDAP authentication - use standard login credentials"
     prepareVariables
-    mariadb --skip-ssl -u root --password="$MYSQL_ROOT_PASS" -h "$MYSQL_HOST" -e "UPDATE globals SET gl_value = 0 WHERE gl_name = 'gbl_ldap_enabled'" "$CUSTOM_DATABASE"
+    mariadb --skip-ssl -u root --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -e "UPDATE globals SET gl_value = 0 WHERE gl_name = 'gbl_ldap_enabled'" "${CUSTOM_DATABASE}"
 fi
 
 if [ "$1" == "xdebug-log" ]; then
@@ -496,8 +496,8 @@ if [ "$1" == "register-oauth2-client" ]; then
        \"contacts\": [\"me@example.org\", \"them@example.org\"],
        \"scope\": \"${scopes}\"
       }"`
-    clientId=`echo $returnJson | jq '.client_id'`
-    clientSecret=`echo $returnJson | jq '.client_secret'`
+    clientId=`echo ${returnJson} | jq '.client_id'`
+    clientSecret=`echo ${returnJson} | jq '.client_secret'`
     echo "client id: ${clientId}"
     echo "client secret: ${clientSecret}"
 fi
@@ -515,8 +515,8 @@ if [ "$1" == "register-oauth2-client-demo" ] && [ ! -z "$2" ]; then
        \"contacts\": [\"me@example.org\", \"them@example.org\"],
        \"scope\": \"${scopes}\"
       }"`
-    clientId=`echo $returnJson | jq '.client_id'`
-    clientSecret=`echo $returnJson | jq '.client_secret'`
+    clientId=`echo ${returnJson} | jq '.client_id'`
+    clientSecret=`echo ${returnJson} | jq '.client_secret'`
     echo "client id: ${clientId}"
     echo "client secret: ${clientSecret}"
 fi

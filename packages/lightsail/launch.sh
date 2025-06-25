@@ -14,34 +14,34 @@ SWAPAMT=1
 SWAPPATHNAME=/mnt/auto.swap
 
 CURRENTDOCKER=openemr:7.0.3
-OVERRIDEDOCKER=$CURRENTDOCKER
+OVERRIDEDOCKER=${CURRENTDOCKER}
 
 DEVELOPERMODE=0
 EMPTYSHELLMODE=0
 REPOBRANCH=master
 CURRENTBUILD=7.0.3
-OVERRIDEBUILD=$CURRENTBUILD
+OVERRIDEBUILD=${CURRENTBUILD}
 
 while getopts "es:b:t:d:" opt; do
-  case $opt in
+  case ${opt} in
     e)
       EMPTYSHELLMODE=1
       ;;
     s)
-      SWAPAMT=$OPTARG
+      SWAPAMT=${OPTARG}
       ;;
     b)
-      REPOBRANCH=$OPTARG
+      REPOBRANCH=${OPTARG}
       ;;
     d)
-      OVERRIDEBUILD=$OPTARG
+      OVERRIDEBUILD=${OPTARG}
       DEVELOPERMODE=1
       ;;
     t)
-      OVERRIDEDOCKER=$OPTARG
+      OVERRIDEDOCKER=${OPTARG}
       ;;      
     \?)
-      echo "Invalid option: -$opt" >&2
+      echo "Invalid option: -${opt}" >&2
       exit 1
       ;;
   esac
@@ -51,13 +51,13 @@ f () {
   cd /root
 
   # bad news for EC2, *necessary* for Lightsail nano
-  if [[ $SWAPAMT != 0 ]]; then
+  if [[ ${SWAPAMT} != 0 ]]; then
     echo Allocating ${SWAPAMT}G swap...
-    fallocate -l ${SWAPAMT}G $SWAPPATHNAME
-    mkswap $SWAPPATHNAME
-    chmod 600 $SWAPPATHNAME
-    swapon $SWAPPATHNAME
-    echo "$SWAPPATHNAME  none  swap  sw 0  0" >> /etc/fstab
+    fallocate -l ${SWAPAMT}G ${SWAPPATHNAME}
+    mkswap ${SWAPPATHNAME}
+    chmod 600 ${SWAPPATHNAME}
+    swapon ${SWAPPATHNAME}
+    echo "${SWAPPATHNAME}  none  swap  sw 0  0" >> /etc/fstab
   else
     echo Skipping swap allocation...
   fi
@@ -72,41 +72,41 @@ f () {
 
   mkdir backups
 
-  if [[ $REPOBRANCH == master ]]; then
+  if [[ ${REPOBRANCH} == master ]]; then
     git clone --single-branch https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
   else
-    git clone --single-branch --branch $REPOBRANCH https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
+    git clone --single-branch --branch ${REPOBRANCH} https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
   fi
 
-  if [[ $EMPTYSHELLMODE == 1 ]]; then
+  if [[ ${EMPTYSHELLMODE} == 1 ]]; then
     ln -s docker-compose.shell.yml docker-compose.yml
-    if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
-      echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
-      sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+    if [[ ${CURRENTDOCKER} != ${OVERRIDEDOCKER} ]]; then
+      echo launch.sh: switching to docker image ${OVERRIDEDOCKER}, from ${CURRENTDOCKER}
+      sed -i "s^openemr/${CURRENTDOCKER}^openemr/${OVERRIDEDOCKER}^" docker-compose.yml
     fi
-  elif [[ $(dpkg --print-architecture) =~ arm && $DEVELOPERMODE == 0 ]]; then
+  elif [[ $(dpkg --print-architecture) =~ arm && ${DEVELOPERMODE} == 0 ]]; then
     ln -s docker-compose.arm.yml docker-compose.yml
-    if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
-      echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
-      sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+    if [[ ${CURRENTDOCKER} != ${OVERRIDEDOCKER} ]]; then
+      echo launch.sh: switching to docker image ${OVERRIDEDOCKER}, from ${CURRENTDOCKER}
+      sed -i "s^openemr/${CURRENTDOCKER}^openemr/${OVERRIDEDOCKER}^" docker-compose.yml
     fi      
   elif [[ $(dpkg --print-architecture) =~ arm ]]; then
     ln -s docker-compose.arm.dev.yml docker-compose.yml
-    if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
-      echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
-      sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+    if [[ ${CURRENTDOCKER} != ${OVERRIDEDOCKER} ]]; then
+      echo launch.sh: switching to docker image ${OVERRIDEDOCKER}, from ${CURRENTDOCKER}
+      sed -i "s^openemr/${CURRENTDOCKER}^openemr/${OVERRIDEDOCKER}^" docker-compose.yml
     fi    
-  elif [[ $DEVELOPERMODE == 0 ]]; then
+  elif [[ ${DEVELOPERMODE} == 0 ]]; then
     ln -s docker-compose.prod.yml docker-compose.yml
-    if [[ $CURRENTDOCKER != $OVERRIDEDOCKER ]]; then
-      echo launch.sh: switching to docker image $OVERRIDEDOCKER, from $CURRENTDOCKER
-      sed -i "s^openemr/$CURRENTDOCKER^openemr/$OVERRIDEDOCKER^" docker-compose.yml
+    if [[ ${CURRENTDOCKER} != ${OVERRIDEDOCKER} ]]; then
+      echo launch.sh: switching to docker image ${OVERRIDEDOCKER}, from ${CURRENTDOCKER}
+      sed -i "s^openemr/${CURRENTDOCKER}^openemr/${OVERRIDEDOCKER}^" docker-compose.yml
     fi
   else
     ln -s docker-compose.dev.yml docker-compose.yml
-    if [[ $CURRENTBUILD != $OVERRIDEBUILD ]]; then
-      echo launch.sh: switching to developer build $OVERRIDEBUILD, from $CURRENTBUILD
-      sed -i "s^../../docker/openemr/$CURRENTBUILD^../../docker/openemr/$OVERRIDEBUILD^" docker-compose.yml
+    if [[ ${CURRENTBUILD} != ${OVERRIDEBUILD} ]]; then
+      echo launch.sh: switching to developer build ${OVERRIDEBUILD}, from ${CURRENTBUILD}
+      sed -i "s^../../docker/openemr/${CURRENTBUILD}^../../docker/openemr/${OVERRIDEBUILD}^" docker-compose.yml
     fi
   fi
   docker compose up -d --build

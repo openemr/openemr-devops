@@ -24,19 +24,19 @@ if [ ! -f /etc/ssl/docker-selfsigned-configured ]; then
     touch /etc/ssl/docker-selfsigned-configured
 fi
 
-if [ "$DOMAIN" != "" ]; then
-        if [ "$EMAIL" != "" ]; then
-        EMAIL="-m $EMAIL"
+if [ "${DOMAIN}" != "" ]; then
+        if [ "${EMAIL}" != "" ]; then
+        EMAIL="-m ${EMAIL}"
     else
         echo "WARNING: SETTING AN EMAIL VIA \$EMAIL is HIGHLY RECOMMENDED IN ORDER TO"
         echo "         RECEIVE ALERTS FROM LETSENCRYPT ABOUT YOUR SSL CERTIFICATE."
     fi
     # if a domain has been set, set up LE and target those certs
 
-    if ! [ -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem ]; then
+    if ! [ -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
         /usr/sbin/httpd -k start
         sleep 2
-        certbot certonly --webroot -n -w /var/www/localhost/htdocs/openemr/ -d $DOMAIN $EMAIL --agree-tos
+        certbot certonly --webroot -n -w /var/www/localhost/htdocs/openemr/ -d ${DOMAIN} ${EMAIL} --agree-tos
         /usr/sbin/httpd -k stop
         echo "1 23  *   *   *   certbot renew -q --post-hook \"httpd -k graceful\"" >> /etc/crontabs/root
     fi
@@ -45,13 +45,13 @@ if [ "$DOMAIN" != "" ]; then
     if [ ! -f /etc/ssl/docker-letsencrypt-configured ]; then
         rm -f /etc/ssl/certs/webserver.cert.pem
         rm -f /etc/ssl/private/webserver.key.pem
-        ln -s /etc/letsencrypt/live/$DOMAIN/fullchain.pem /etc/ssl/certs/webserver.cert.pem
-        ln -s /etc/letsencrypt/live/$DOMAIN/privkey.pem /etc/ssl/private/webserver.key.pem
+        ln -s /etc/letsencrypt/live/${DOMAIN}/fullchain.pem /etc/ssl/certs/webserver.cert.pem
+        ln -s /etc/letsencrypt/live/${DOMAIN}/privkey.pem /etc/ssl/private/webserver.key.pem
         touch /etc/ssl/docker-letsencrypt-configured
     fi
 
     # run cron to service LE renewals
-    if [ "$OPERATOR" == "yes" ]; then
+    if [ "${OPERATOR}" == "yes" ]; then
         crond
     fi
 fi

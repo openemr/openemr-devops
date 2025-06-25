@@ -6,15 +6,15 @@ REPOBRANCH=master
 DOCKERLABEL=:7.0.3
 
 while getopts "b:d:" opt; do
-  case $opt in
+  case ${opt} in
     b)
-      REPOBRANCH=$OPTARG
+      REPOBRANCH=${OPTARG}
       ;;
     d)
-      DOCKERLABEL=$OPTARG
+      DOCKERLABEL=${OPTARG}
       ;;
     \?)
-      echo "Invalid option: -$opt" >&2
+      echo "Invalid option: -${opt}" >&2
       exit 1
       ;;
   esac
@@ -36,10 +36,10 @@ docker pull openemr/openemr${DOCKERLABEL}
 
 # get the rest of the devops repo and docker-tools
 cd /root
-if [[ $REPOBRANCH == master ]]; then
+if [[ ${REPOBRANCH} == master ]]; then
   git clone --single-branch https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
 else
-  git clone --single-branch --branch $REPOBRANCH https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
+  git clone --single-branch --branch ${REPOBRANCH} https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
 fi
 chmod +x ami/*.sh scripts/*.sh
 

@@ -14,15 +14,15 @@ DOCKER_COMPOSE_CODE=12
 if ! which docker &>/dev/null
 then
 	echo "Please check docker and docker-compose install or not." 
-	exit $DOCKER_CODE
+	exit ${DOCKER_CODE}
 elif ! which docker-compose &>/dev/null
 then 
     echo "Please check docker-compose install or not."
-    exit $DOCKER_COMPOSE_CODE
+    exit ${DOCKER_COMPOSE_CODE}
 elif [ `ps aux|grep dockerd|grep -v grep|wc -l` -ne 1 ]
 then
     echo "Please check doceker start or not." 
-    exit $DOCKER_START
+    exit ${DOCKER_START}
 fi
 
 # Modify the ip and mail setting for the yml files
@@ -32,24 +32,24 @@ then
 	echo "Usage: bash `basename $0` <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>" 
 	echo 'e.g.'
 	echo "bash `basename $0` /home/openemr-monitor 192.168.2.111 smtp.gmail.com:587 monitor@gmail.com pass12 test@gmail.com"
-	exit $ARG_CODE
+	exit ${ARG_CODE}
 fi
 
 # Install location
-[ ! -d "$installDir" ] && mkdir $installDir/grafana/provisioning/{dashboards,datasources} -p
-mkdir $installDir/prometheus -p
+[ ! -d "${installDir}" ] && mkdir ${installDir}/grafana/provisioning/{dashboards,datasources} -p
+mkdir ${installDir}/prometheus -p
 echo '    '
 
 # Download the yml files
 echo 'Downloading the configuration files...'
 echo '    '
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/prometheus.yml  > $installDir/prometheus/prometheus.yml
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/alert-rules.yml > $installDir/prometheus/alert-rules.yml 
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/alertmanager.yml           > $installDir/alertmanager.yml 
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/docker-compose.yml         > $installDir/docker-compose.yml 
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard-193.json > $installDir/grafana/provisioning/dashboards/dashboard-193.json
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard.yml > $installDir/grafana/provisioning/dashboards/dashboard.yml
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/datasources/datasource.yml > $installDir/grafana/provisioning/datasources/datasource.yml
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/prometheus.yml  > ${installDir}/prometheus/prometheus.yml
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/alert-rules.yml > ${installDir}/prometheus/alert-rules.yml 
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/alertmanager.yml           > ${installDir}/alertmanager.yml 
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/docker-compose.yml         > ${installDir}/docker-compose.yml 
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard-193.json > ${installDir}/grafana/provisioning/dashboards/dashboard-193.json
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard.yml > ${installDir}/grafana/provisioning/dashboards/dashboard.yml
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/datasources/datasource.yml > ${installDir}/grafana/provisioning/datasources/datasource.yml
 echo '    '
 
 # Input Host ip
@@ -57,17 +57,17 @@ sed -i "s/hostIp/${hostIp}/g" ${installDir}/prometheus/prometheus.yml
 sed -i "s/hostIp/${hostIp}/g" ${installDir}/grafana/provisioning/datasources/datasource.yml
 
 # Input Smtp Server
-sed -i "s/smtpServer/$smtpServer/g" ${installDir}/alertmanager.yml
+sed -i "s/smtpServer/${smtpServer}/g" ${installDir}/alertmanager.yml
 
 # Input the sender email
-sed -i "s/senderEmail/$senderEmail/g" ${installDir}/alertmanager.yml
-sed -i "s/senderUsername/$senderEmail/g" ${installDir}/alertmanager.yml
+sed -i "s/senderEmail/${senderEmail}/g" ${installDir}/alertmanager.yml
+sed -i "s/senderUsername/${senderEmail}/g" ${installDir}/alertmanager.yml
 
 # Input the sender email password
-sed -i "s/senderLoginPassword/$emailPassword/g" ${installDir}/alertmanager.yml
+sed -i "s/senderLoginPassword/${emailPassword}/g" ${installDir}/alertmanager.yml
 
 # Input the receiver email
-sed -i "s/receiverEmail/$receiverEmail/g" ${installDir}/alertmanager.yml
+sed -i "s/receiverEmail/${receiverEmail}/g" ${installDir}/alertmanager.yml
 echo '******************************Check the Modification******************************'
 echo "Setting in ${installDir}/prometheus/prometheus.yml file."
 egrep "3001|3002|3003" ${installDir}/prometheus/prometheus.yml

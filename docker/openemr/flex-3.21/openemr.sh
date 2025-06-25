@@ -35,19 +35,19 @@ swarm_wait() {
 auto_setup() {
     prepareVariables
 
-    if [ "$EASY_DEV_MODE" != "yes" ]; then
+    if [ "${EASY_DEV_MODE}" != "yes" ]; then
         find /var/www/localhost/htdocs/openemr -not -perm 600 -exec chmod 600 {} \+
     fi
 
     #create temporary file cache directory for auto_configure.php to use
     TMP_FILE_CACHE_LOCATION="/tmp/php-file-cache"
-    mkdir $TMP_FILE_CACHE_LOCATION
+    mkdir ${TMP_FILE_CACHE_LOCATION}
 
     #create auto_configure.ini to be able to leverage opcache for operations
     touch auto_configure.ini
     echo "opcache.enable=1" >> auto_configure.ini
     echo "opcache.enable_cli=1" >> auto_configure.ini
-    echo "opcache.file_cache=$TMP_FILE_CACHE_LOCATION" >> auto_configure.ini
+    echo "opcache.file_cache=${TMP_FILE_CACHE_LOCATION}" >> auto_configure.ini
     echo "opcache.file_cache_only=1" >> auto_configure.ini
     echo "opcache.file_cache_consistency_checks=1" >> auto_configure.ini
     echo "opcache.enable_file_override=1" >> auto_configure.ini
@@ -57,21 +57,21 @@ auto_setup() {
     php /var/www/localhost/htdocs/auto_configure.php -c auto_configure.ini -f ${CONFIGURATION} || return 1
 
     #remove temporary file cache directory and auto_configure.ini
-    rm -r $TMP_FILE_CACHE_LOCATION
+    rm -r ${TMP_FILE_CACHE_LOCATION}
     rm auto_configure.ini
 
     echo "OpenEMR configured."
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-    if [ "$CONFIG" == "0" ]; then
+    if [ "${CONFIG}" == "0" ]; then
         echo "Error in auto-config. Configuration failed."
         exit 2
     fi
 
-    if [ "$DEMO_MODE" == "standard" ]; then
+    if [ "${DEMO_MODE}" == "standard" ]; then
         demoData
     fi
 
-    if [ "$SQL_DATA_DRIVE" != "" ]; then
+    if [ "${SQL_DATA_DRIVE}" != "" ]; then
         sqlDataDrive
     fi
 
@@ -86,19 +86,19 @@ auto_setup() {
 # - false for the Kubernetes startup job and manual image runs
 AUTHORITY=yes
 OPERATOR=yes
-if [ "$K8S" == "admin" ]; then
+if [ "${K8S}" == "admin" ]; then
     OPERATOR=no
-elif [ "$K8S" == "worker" ]; then
+elif [ "${K8S}" == "worker" ]; then
     AUTHORITY=no
 fi
 
-if [ "$SWARM_MODE" == "yes" ]; then
+if [ "${SWARM_MODE}" == "yes" ]; then
     # atomically test for leadership
     set -o noclobber
     { > /var/www/localhost/htdocs/openemr/sites/docker-leader ; } &> /dev/null || AUTHORITY=no
     set +o noclobber
 
-    if [ "$AUTHORITY" == "no" ] &&
+    if [ "${AUTHORITY}" == "no" ] &&
        [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
         while swarm_wait; do
             echo "Waiting for the docker-leader to finish configuration before proceeding."
@@ -106,7 +106,7 @@ if [ "$SWARM_MODE" == "yes" ]; then
         done
     fi
 
-    if [ "$AUTHORITY" == "yes" ]; then
+    if [ "${AUTHORITY}" == "yes" ]; then
         touch /var/www/localhost/htdocs/openemr/sites/docker-initiated
         if [ ! -f /etc/ssl/openssl.cnf ]; then
             # Restore the emptied /etc/ssl directory
@@ -116,43 +116,43 @@ if [ "$SWARM_MODE" == "yes" ]; then
     fi
 fi
 
-if [ "$AUTHORITY" == "yes" ]; then
+if [ "${AUTHORITY}" == "yes" ]; then
     sh ssl.sh
 fi
 
 # this is the primary flex orchestration block
 if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
-   [ "$EMPTY" != "yes" ] &&
-   [ "$EASY_DEV_MODE_NEW" != "yes" ]; then
+   [ "${EMPTY}" != "yes" ] &&
+   [ "${EASY_DEV_MODE_NEW}" != "yes" ]; then
     echo "Configuring a new flex openemr docker"
-    if [ "$FLEX_REPOSITORY" == "" ]; then
+    if [ "${FLEX_REPOSITORY}" == "" ]; then
         echo "Missing FLEX_REPOSITORY environment setting, so using https://github.com/openemr/openemr.git"
         FLEX_REPOSITORY="https://github.com/openemr/openemr.git"
     fi
-    if [ "$FLEX_REPOSITORY_BRANCH" == "" ] &&
-       [ "$FLEX_REPOSITORY_TAG" == "" ]; then
+    if [ "${FLEX_REPOSITORY_BRANCH}" == "" ] &&
+       [ "${FLEX_REPOSITORY_TAG}" == "" ]; then
         echo "Missing FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG environment setting, so using FLEX_REPOSITORY_BRANCH setting of master"
         FLEX_REPOSITORY_BRANCH="master"
     fi
 
     cd /
 
-    if [ "$FLEX_REPOSITORY_BRANCH" != "" ]; then
-        echo "Collecting $FLEX_REPOSITORY_BRANCH branch from $FLEX_REPOSITORY repository"
-        git clone "$FLEX_REPOSITORY" --branch "$FLEX_REPOSITORY_BRANCH" --depth 1
+    if [ "${FLEX_REPOSITORY_BRANCH}" != "" ]; then
+        echo "Collecting ${FLEX_REPOSITORY_BRANCH} branch from ${FLEX_REPOSITORY} repository"
+        git clone "${FLEX_REPOSITORY}" --branch "${FLEX_REPOSITORY_BRANCH}" --depth 1
     else
-        echo "Collecting $FLEX_REPOSITORY_TAG tag from $FLEX_REPOSITORY repository"
-        git clone "$FLEX_REPOSITORY"
+        echo "Collecting ${FLEX_REPOSITORY_TAG} tag from ${FLEX_REPOSITORY} repository"
+        git clone "${FLEX_REPOSITORY}"
         cd openemr
-        git checkout "$FLEX_REPOSITORY_TAG"
+        git checkout "${FLEX_REPOSITORY_TAG}"
         cd ../
     fi
-    if [ "$AUTHORITY" == "yes" ] &&
-       [ "$SWARM_MODE" == "yes" ]; then
+    if [ "${AUTHORITY}" == "yes" ] &&
+       [ "${SWARM_MODE}" == "yes" ]; then
         touch openemr/sites/default/docker-initiated
     fi
-    if [ "$AUTHORITY" == "no" ] &&
-       [ "$SWARM_MODE" == "yes" ]; then
+    if [ "${AUTHORITY}" == "no" ] &&
+       [ "${SWARM_MODE}" == "yes" ]; then
         # non-leader is building so remove the openemr/sites directory to avoid breaking anything in leader's build
         rm -fr openemr/sites
     fi
@@ -161,33 +161,33 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     cd /var/www/localhost/htdocs/
 fi
 
-if [ "$EASY_DEV_MODE_NEW" == "yes" ]; then
+if [ "${EASY_DEV_MODE_NEW}" == "yes" ]; then
     # trickery for the easy dev environment
     rsync --ignore-existing --recursive --links --exclude .git /openemr /var/www/localhost/htdocs/
 fi
 
 if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
    [[ ! -d /var/www/localhost/htdocs/openemr/vendor || \( -d /var/www/localhost/htdocs/openemr/vendor &&  -z "$(ls -A /var/www/localhost/htdocs/openemr/vendor)" \) ]]  &&
-   [ "$FORCE_NO_BUILD_MODE" != "yes" ]; then
+   [ "${FORCE_NO_BUILD_MODE}" != "yes" ]; then
     cd /var/www/localhost/htdocs/openemr
 
     # if there is a raw github composer token supplied, then try to use it
-    if [ "$GITHUB_COMPOSER_TOKEN" != "" ]; then
+    if [ "${GITHUB_COMPOSER_TOKEN}" != "" ]; then
         echo "trying raw github composer token"
-        githubTokenRateLimitRequest=`curl -H "Authorization: token $GITHUB_COMPOSER_TOKEN" https://api.github.com/rate_limit`
-        githubTokenRateLimit=`echo $githubTokenRateLimitRequest | jq '.rate.remaining'`
-        githubTokenRateLimitMessage=`echo $githubTokenRateLimitRequest | jq '.message'`
-        echo "Number of github api requests remaining is $githubTokenRateLimit";
-        echo "Message received from api request is \"$githubTokenRateLimitMessage\"";
-        if [ "$githubTokenRateLimit" -gt 100 ]; then
-            if `composer config --global --auth github-oauth.github.com "$GITHUB_COMPOSER_TOKEN"`; then
+        githubTokenRateLimitRequest=`curl -H "Authorization: token ${GITHUB_COMPOSER_TOKEN}" https://api.github.com/rate_limit`
+        githubTokenRateLimit=`echo ${githubTokenRateLimitRequest} | jq '.rate.remaining'`
+        githubTokenRateLimitMessage=`echo ${githubTokenRateLimitRequest} | jq '.message'`
+        echo "Number of github api requests remaining is ${githubTokenRateLimit}";
+        echo "Message received from api request is \"${githubTokenRateLimitMessage}\"";
+        if [ "${githubTokenRateLimit}" -gt 100 ]; then
+            if `composer config --global --auth github-oauth.github.com "${GITHUB_COMPOSER_TOKEN}"`; then
                 echo "raw github composer token worked"
                 rawToken="pass"
             else
                 echo "raw github composer token did not work"
             fi
         else
-            if [ "$githubTokenRateLimitMessage" == "\"Bad credentials\"" ]; then
+            if [ "${githubTokenRateLimitMessage}" == "\"Bad credentials\"" ]; then
                 echo "raw github composer token is bad, so did not work"
             else
                 echo "raw github composer token rate limit is now < 100, so did not work"
@@ -195,23 +195,23 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
         fi
     fi
     # if there is no raw github composer token supplied or it was invalid, try a base64 encoded one (if it was supplied)
-    if [ "$GITHUB_COMPOSER_TOKEN_ENCODED" != "" ]; then
-        if [ "$rawToken" != "pass" ]; then
+    if [ "${GITHUB_COMPOSER_TOKEN_ENCODED}" != "" ]; then
+        if [ "${rawToken}" != "pass" ]; then
             echo "trying encoded github composer token"
-            githubToken=`echo $GITHUB_COMPOSER_TOKEN_ENCODED | base64 -d`
-            githubTokenRateLimitRequest=`curl -H "Authorization: token $githubToken" https://api.github.com/rate_limit`
-            githubTokenRateLimit=`echo $githubTokenRateLimitRequest | jq '.rate.remaining'`
-            githubTokenRateLimitMessage=`echo $githubTokenRateLimitRequest | jq '.message'`
-            echo "Number of github api requests remaining is $githubTokenRateLimit";
-            echo "Message received from api request is \"$githubTokenRateLimitMessage\"";
-            if [ "$githubTokenRateLimit" -gt 100 ]; then
-                if `composer config --global --auth github-oauth.github.com "$githubToken"`; then
+            githubToken=`echo ${GITHUB_COMPOSER_TOKEN_ENCODED} | base64 -d`
+            githubTokenRateLimitRequest=`curl -H "Authorization: token ${githubToken}" https://api.github.com/rate_limit`
+            githubTokenRateLimit=`echo ${githubTokenRateLimitRequest} | jq '.rate.remaining'`
+            githubTokenRateLimitMessage=`echo ${githubTokenRateLimitRequest} | jq '.message'`
+            echo "Number of github api requests remaining is ${githubTokenRateLimit}";
+            echo "Message received from api request is \"${githubTokenRateLimitMessage}\"";
+            if [ "${githubTokenRateLimit}" -gt 100 ]; then
+                if `composer config --global --auth github-oauth.github.com "${githubToken}"`; then
                     echo "encoded github composer token worked"
                 else
                     echo "encoded github composer token did not work"
                 fi
             else
-                if [ "$githubTokenRateLimitMessage" == "\"Bad credentials\"" ]; then
+                if [ "${githubTokenRateLimitMessage}" == "\"Bad credentials\"" ]; then
                     echo "encoded github composer token is bad, so did not work"
                 else
                     echo "encoded github composer token rate limit is now < 100, so did not work"
@@ -220,7 +220,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
         fi
     fi
     # install php dependencies
-    if [ "$DEVELOPER_TOOLS" == "yes" ]; then
+    if [ "${DEVELOPER_TOOLS}" == "yes" ]; then
         composer install
         composer global require "squizlabs/php_codesniffer=3.*"
         # install support for the e2e testing
@@ -273,10 +273,10 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     cd /var/www/localhost/htdocs
 fi
 
-if [ "$AUTHORITY" == "yes" ] ||
-   [ "$SWARM_MODE" != "yes" ]; then
+if [ "${AUTHORITY}" == "yes" ] ||
+   [ "${SWARM_MODE}" != "yes" ]; then
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
-       [ "$EASY_DEV_MODE" != "yes" ]; then
+       [ "${EASY_DEV_MODE}" != "yes" ]; then
         chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     fi
 fi
@@ -286,8 +286,8 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
 fi
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-if [ "$AUTHORITY" == "no" ] &&
-    [ "$CONFIG" == "0" ]; then
+if [ "${AUTHORITY}" == "no" ] &&
+    [ "${CONFIG}" == "0" ]; then
     echo "Critical failure! An OpenEMR worker is trying to run on a missing configuration."
     echo " - Is this due to a Kubernetes grant hiccup?"
     echo "The worker will now terminate."
@@ -362,12 +362,12 @@ if [ -f /root/certs/ldap/ldap-key ] &&
     cp /root/certs/ldap/ldap-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
 fi
 
-if [ "$AUTHORITY" == "yes" ]; then
-    if [ "$CONFIG" == "0" ] &&
-       [ "$MYSQL_HOST" != "" ] &&
-       [ "$MYSQL_ROOT_PASS" != "" ] &&
-       [ "$EMPTY" != "yes" ] &&
-       [ "$MANUAL_SETUP" != "yes" ]; then
+if [ "${AUTHORITY}" == "yes" ]; then
+    if [ "${CONFIG}" == "0" ] &&
+       [ "${MYSQL_HOST}" != "" ] &&
+       [ "${MYSQL_ROOT_PASS}" != "" ] &&
+       [ "${EMPTY}" != "yes" ] &&
+       [ "${MANUAL_SETUP}" != "yes" ]; then
 
         echo "Running quick setup!"
         while ! auto_setup; do
@@ -382,11 +382,11 @@ if [ "$AUTHORITY" == "yes" ]; then
 fi
 
 if
-   [ "$AUTHORITY" == "yes" ] &&
-   [ "$CONFIG" == "1" ] &&
-   [ "$MANUAL_SETUP" != "yes" ] &&
-   [ "$EASY_DEV_MODE" != "yes" ] &&
-   [ "$EMPTY" != "yes" ]; then
+   [ "${AUTHORITY}" == "yes" ] &&
+   [ "${CONFIG}" == "1" ] &&
+   [ "${MANUAL_SETUP}" != "yes" ] &&
+   [ "${EASY_DEV_MODE}" != "yes" ] &&
+   [ "${EMPTY}" != "yes" ]; then
     # OpenEMR has been configured
 
     if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
@@ -418,37 +418,37 @@ if
 fi
 
 if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
-    if [ "$EASY_DEV_MODE_NEW" == "yes" ] || [ "$INSANE_DEV_MODE" == "yes" ]; then
+    if [ "${EASY_DEV_MODE_NEW}" == "yes" ] || [ "${INSANE_DEV_MODE}" == "yes" ]; then
         # need to copy this script somewhere so the easy/insane dev environment can use it
         cp /var/www/localhost/htdocs/auto_configure.php /root/
         # save couchdb initial data folder to support devtools snapshots
         rsync --recursive --links /couchdb/data /couchdb/original/
     fi
     # trickery to support devtools in insane dev environment (note the easy dev does this with a shared volume)
-    if [ "$INSANE_DEV_MODE" == "yes" ]; then
+    if [ "${INSANE_DEV_MODE}" == "yes" ]; then
         mkdir /openemr
         rsync --recursive --links /var/www/localhost/htdocs/openemr/sites /openemr/
     fi
 fi
 
-if $MYSQLCA ; then
+if ${MYSQLCA} ; then
     # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     echo "adjusted permissions for mysql-ca"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
 fi
-if $MYSQLCERT ; then
+if ${MYSQLCERT} ; then
     # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     echo "adjusted permissions for mysql-cert"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
 fi
-if $MYSQLKEY ; then
+if ${MYSQLKEY} ; then
     # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     echo "adjusted permissions for mysql-key"
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
 fi
 
-if [ "$AUTHORITY" == "yes" ] &&
-   [ "$SWARM_MODE" == "yes" ] &&
+if [ "${AUTHORITY}" == "yes" ] &&
+   [ "${SWARM_MODE}" == "yes" ] &&
    [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
     # Set flag that the docker-leader configuration is complete
     touch /var/www/localhost/htdocs/openemr/sites/docker-completed
@@ -458,7 +458,7 @@ fi
 # ensure the auto_configure.php script has been removed
 rm -f /var/www/localhost/htdocs/auto_configure.php
 
-if [ "$REDIS_SERVER" != "" ] &&
+if [ "${REDIS_SERVER}" != "" ] &&
    [ ! -f /etc/php-redis-configured ]; then
 
     # Support the following redis auth:
@@ -467,15 +467,15 @@ if [ "$REDIS_SERVER" != "" ] &&
     #   Only password set (using redis default user and pertinent password)
     #   NOTE that only username set is not supported (in this case will ignore the username
     #      and use no username and no password set mode)
-    REDIS_PATH="tcp://$REDIS_SERVER:6379"
-    if [ "$REDIS_USERNAME" != "" ] &&
-       [ "$REDIS_PASSWORD" != "" ]; then
+    REDIS_PATH="tcp://${REDIS_SERVER}:6379"
+    if [ "${REDIS_USERNAME}" != "" ] &&
+       [ "${REDIS_PASSWORD}" != "" ]; then
         echo "redis setup with username and password"
-        REDIS_PATH="$REDIS_PATH?auth[user]=$REDIS_USERNAME\&auth[pass]=$REDIS_PASSWORD"
-    elif [ "$REDIS_PASSWORD" != "" ]; then
+        REDIS_PATH="${REDIS_PATH}?auth[user]=${REDIS_USERNAME}\&auth[pass]=${REDIS_PASSWORD}"
+    elif [ "${REDIS_PASSWORD}" != "" ]; then
         echo "redis setup with password"
         # only a password, thus using the default user which redis has set a password for
-        REDIS_PATH="$REDIS_PATH?auth[pass]=$REDIS_PASSWORD"
+        REDIS_PATH="${REDIS_PATH}?auth[pass]=${REDIS_PASSWORD}"
     else
         # no user or password, thus using the default user which is set to nopass in redis
         # so just keeping original REDIS_PATH: REDIS_PATH="$REDIS_PATH"
@@ -483,13 +483,13 @@ if [ "$REDIS_SERVER" != "" ] &&
     fi
 
     sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php84/php.ini
-    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"$REDIS_PATH\"@" /etc/php84/php.ini
+    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"${REDIS_PATH}\"@" /etc/php84/php.ini
     # Ensure only configure this one time
     touch /etc/php-redis-configured
 fi
 
-if [ "$XDEBUG_IDE_KEY" != "" ] ||
-   [ "$XDEBUG_ON" == 1 ]; then
+if [ "${XDEBUG_IDE_KEY}" != "" ] ||
+   [ "${XDEBUG_ON}" == 1 ]; then
    sh xdebug.sh
    #also need to turn off opcache since it can not be turned on with xdebug
    if [ ! -f /etc/php-opcache-jit-configured ]; then

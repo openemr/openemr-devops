@@ -7,7 +7,7 @@ first_arg=$1
 target_dir_local_check() {
 		migrate_target_dir=$1
 		echo -e "\033[30m===>\033[0m \033[32mChecking the target dir... \033[0m"
-		[ ! -d "$migrate_target_dir" ] && mkdir $migrate_target_dir -p
+		[ ! -d "${migrate_target_dir}" ] && mkdir ${migrate_target_dir} -p
 		echo ''
 }
 
@@ -18,7 +18,7 @@ target_dir_remote_check() {
 		migrate_target_dir=$3
 		echo -e "\033[30m===>\033[0m \033[32mChecking the target dir... \033[0m"
 		echo ''
-		ssh ${target_ssh_user}@${target_ip} "mkdir $migrate_target_dir -p"
+		ssh ${target_ssh_user}@${target_ip} "mkdir ${migrate_target_dir} -p"
 		echo ''
 }
 
@@ -26,9 +26,9 @@ target_dir_remote_check() {
 stop_all_containers() {
 	echo -e "\033[30m===>\033[0m \033[32mStopping the running containers... \033[0m"
 	container_name=$(docker ps -a | awk '{print $NF}'|grep -v NAMES)
-	for cn in "$container_name"
+	for cn in "${container_name}"
 	do
-		docker stop $cn
+		docker stop ${cn}
 	done
 	echo ''
 }
@@ -47,7 +47,7 @@ sync_data_dir_in_local() {
 	# For the local env
 	migrate_source_dir=$1
 	migrate_target_dir=$2
-	rsync -avz $migrate_source_dir $migrate_target_dir
+	rsync -avz ${migrate_source_dir} ${migrate_target_dir}
 	echo ''
 }
 
@@ -58,7 +58,7 @@ sync_data_dir_to_remote() {
 	target_ssh_user=$2
 	target_ip=$3
 	migrate_target_dir=$4
-	rsync -avz ${migrate_source_dir} ${target_ssh_user}@${target_ip}:$migrate_target_dir
+	rsync -avz ${migrate_source_dir} ${target_ssh_user}@${target_ip}:${migrate_target_dir}
 	echo ''
 }
 
@@ -71,7 +71,7 @@ if [ ! -f /etc/docker/daemon.json ]
 then
 cat << EOF > /etc/docker/daemon.json
 {
-    "data-root": "$migrate_target_dir"
+    "data-root": "${migrate_target_dir}"
 }
 EOF
 else
@@ -80,10 +80,10 @@ else
     then
         sed -i '$d' /etc/docker/daemon.json
         echo '    "data-root": "migrate"' >> /etc/docker/daemon.json
-        sed -i "s#\"data-root\"\:\ \"migrate\"#\"data-root\"\: \"$migrate_target_dir\"#g" /etc/docker/daemon.json
+        sed -i "s#\"data-root\"\:\ \"migrate\"#\"data-root\"\: \"${migrate_target_dir}\"#g" /etc/docker/daemon.json
         echo '}' >> /etc/docker/daemon.json
     else
-        sed -i "s#\"data-root\"\:\ \".*\"#\"data-root\"\: \"$migrate_target_dir\"#g" /etc/docker/daemon.json
+        sed -i "s#\"data-root\"\:\ \".*\"#\"data-root\"\: \"${migrate_target_dir}\"#g" /etc/docker/daemon.json
     fi
 fi
 }
@@ -94,9 +94,9 @@ sudo systemctl restart docker
 container_name=$(docker ps -a | awk '{print $NF}'|grep -v NAMES)
 echo -e "\033[30m===>\033[0m \033[32mStarting the container... \033[0m"
 echo ''
-for cn in "$container_name"
+for cn in "${container_name}"
 do
-	docker start $cn
+	docker start ${cn}
 done
 echo ''
 }
@@ -155,7 +155,7 @@ script_usage() {
 	exit
 }
 
-if [ "$first_arg" != "-t" ]
+if [ "${first_arg}" != "-t" ]
 then
 	script_usage
 fi
@@ -163,37 +163,37 @@ fi
 # Define the options
 while getopts ":d:u:h:s:m:n:t:" opt
 do
-    case "$opt" in
+    case "${opt}" in
         d)
 		# The dir that migrate to
-		migrate_target_dir=$OPTARG
+		migrate_target_dir=${OPTARG}
 		;;
 		u)
 		# The ssh user in remote host
-		target_ssh_user=$OPTARG
+		target_ssh_user=${OPTARG}
 		;;
 		h)
 		# The remote host
-		target_ip=$OPTARG
+		target_ip=${OPTARG}
 		;;
 		s)
 		# The dir that migrate from
-		migrate_source_dir=$OPTARG
+		migrate_source_dir=${OPTARG}
 		;;
 		m)
 		# The container that migrates from
-		migrate_container_name=$OPTARG
+		migrate_container_name=${OPTARG}
 		;;
 		n)
 		# The new container name
-		container_name=$OPTARG
+		container_name=${OPTARG}
 		;;
 		t)
 		# The migrate type, e.g. local, remote, set, single
-		migrate_type=$OPTARG
+		migrate_type=${OPTARG}
 		;;
 		\?)
-		opt=$OPTARG
+		opt=${OPTARG}
 		echo -e "\033[0m\033[31mInvalid option: -${opt}.\033[0m"
 		echo ''
 		script_usage
@@ -204,28 +204,28 @@ done
 
 # Main logic
 # Migrate from one data dir to another dir in local
-if [ "$migrate_type" == 'local' ]
+if [ "${migrate_type}" == 'local' ]
 then
-	target_dir_local_check $migrate_target_dir
+	target_dir_local_check ${migrate_target_dir}
 	stop_all_containers
-	sync_data_dir_in_local $migrate_source_dir $migrate_target_dir
-	set_daemon_json_file $migrate_target_dir
+	sync_data_dir_in_local ${migrate_source_dir} ${migrate_target_dir}
+	set_daemon_json_file ${migrate_target_dir}
 	start_all_containers
 # Migrate data dir from one host to remote host(first step)
-elif [ "$migrate_type" == 'remote' ]
+elif [ "${migrate_type}" == 'remote' ]
 then
-	target_dir_remote_check $target_ssh_user $target_ip $migrate_target_dir
+	target_dir_remote_check ${target_ssh_user} ${target_ip} ${migrate_target_dir}
 	stop_all_containers
-	sync_data_dir_to_remote $migrate_source_dir $target_ssh_user $target_ip $migrate_target_dir
+	sync_data_dir_to_remote ${migrate_source_dir} ${target_ssh_user} ${target_ip} ${migrate_target_dir}
 # Second step
-elif [ "$migrate_type" == 'set' ]
+elif [ "${migrate_type}" == 'set' ]
 then
-	set_daemon_json_file $migrate_target_dir
+	set_daemon_json_file ${migrate_target_dir}
 	start_all_containers
 # Migrate the single container
-elif [ "$migrate_type" == 'single' ]
+elif [ "${migrate_type}" == 'single' ]
 then
-	commit_and_save_container $migrate_container_name $container_name $target_ssh_user $target_ip
+	commit_and_save_container ${migrate_container_name} ${container_name} ${target_ssh_user} ${target_ip}
 else
 	echo -e "\033[0m\033[31mInvalid migrate type, e.g. local, remote, set, single. \033[0m"
 	echo ''

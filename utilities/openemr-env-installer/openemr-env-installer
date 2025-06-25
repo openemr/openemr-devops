@@ -14,7 +14,7 @@ github_account=$2       # github account
 # Installation: git --> docker --> docker-compose --> openemr-cmd --> minikube
 # Run as root for centos/rhel/fedora
 script_run_as_root(){
-if [ "$UID" -ne 0 ]
+if [ "${UID}" -ne 0 ]
 then
 	echo 'Please run with the root user.'
 	exit
@@ -30,7 +30,7 @@ if [ $? -ne 0 ]
 then
 	echo -e "\033[30m===>\033[0m \033[32mInstalling git... \033[0m"
 	echo ''
-	case "$os_distribution" in
+	case "${os_distribution}" in
 		ubuntu|debian)
 			sudo apt-get update -y
     		sudo apt-get install git -y
@@ -66,7 +66,7 @@ installer_script_usage() {
     echo -e "\033[33m       * Internet connection\033[0m"
     echo -e "\033[33m       * Container or virtual machine manager,\033[0m"
     echo -e "\033[33m         such as: Docker, Hyperkit, Hyper-V, KVM, Parallels, Podman, VirtualBox, or VMWare\033[0m"
-    exit $EXIT_CODE
+    exit ${EXIT_CODE}
 }
 
 # Clone the code from github to local
@@ -140,17 +140,17 @@ rhel_register_check_and_enable_repo() {
 register_lock=/tmp/openemr-register-lock
 repo_lock=/tmp/openemr-repo-lock
 # Due to subscription-manager check very slow, so add a lock file to check
-if [ ! -f $register_lock ]
+if [ ! -f ${register_lock} ]
 then
 	subscription-manager status | grep Current &>/dev/null
 	if [ $? -eq 0 ]
 	then
-		echo 0 > $register_lock
+		echo 0 > ${register_lock}
 	else
-		echo 1 > $register_lock
+		echo 1 > ${register_lock}
 		register_note
 	fi
-elif [ -f $register_lock ]
+elif [ -f ${register_lock} ]
 then
 	if [ "$(cat /tmp/openemr-register-lock)" == "1" ]
 	then
@@ -159,15 +159,15 @@ then
 fi
 
 # Attach the necessary repo
-if [ ! -f $repo_lock ]
+if [ ! -f ${repo_lock} ]
 then
 	echo -e "\033[30m===>\033[0m \033[32mEnabling base and extras repo... \033[0m"
 	echo ''
 	subscription-manager repos --enable rhel-7-server-rpms &>/dev/null
-	[ $? -eq 0 ] && echo 1 >  $repo_lock
+	[ $? -eq 0 ] && echo 1 >  ${repo_lock}
 	subscription-manager repos --enable rhel-7-server-extras-rpms &>/dev/null
-	[ $? -eq 0 ] && echo 2 >> $repo_lock
-elif [ -f $repo_lock ]
+	[ $? -eq 0 ] && echo 2 >> ${repo_lock}
+elif [ -f ${repo_lock} ]
 then
 	if [ "$(cat /tmp/openemr-repo-lock|wc -l)" == "2" ]
 	then
@@ -190,7 +190,7 @@ os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}'
 sudo systemctl start docker &>/dev/null
 if [ $? -ne 0 ]
 then
-	case "$os_distribution" in
+	case "${os_distribution}" in
 		ubuntu|debian)
  				echo -e "\033[30m===>\033[0m \033[32mUpdate the apt package index and install packages to allow apt to use a repository over HTTPS... \033[0m"
 				echo ''
@@ -270,7 +270,7 @@ fi
 # Install openemr-cmd tool
 install_openemr_cmd() {
 os_type=$(uname)
-if [ "$os_type" == "Linux" ]
+if [ "${os_type}" == "Linux" ]
 then
 	os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
 else
@@ -282,7 +282,7 @@ if [ $? -ne 0 ]
 then
 	echo -e "\033[30m===>\033[0m \033[32mInstalling openemr-cmd... \033[0m"
     echo ''
-	case "$os_distribution" in
+	case "${os_distribution}" in
 	ubuntu|debian)
 		sudo curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
 		sudo chmod +x /usr/local/bin/openemr-cmd
@@ -323,7 +323,7 @@ run_cluster_tip() {
 # Install conntrack pkg
 install_conntrack() {
 os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
-case "$os_distribution" in
+case "${os_distribution}" in
 	ubuntu|debian)
  			echo -e "\033[30m===>\033[0m \033[32mInatalling conntrack package... \033[0m"
 			echo ''
@@ -343,10 +343,10 @@ esac
 # Install minikube and kubectl
 install_minikube_kubectl(){
 # Judge the os type e.g. Linux or MacOS
-if [ "$os_type" == "Linux" ]
+if [ "${os_type}" == "Linux" ]
 then
 	minikube_os=linux
-elif [ "$os_type" == "Darwin" ]
+elif [ "${os_type}" == "Darwin" ]
 then
 	minikube_os=darwin
 fi
@@ -428,13 +428,13 @@ startup_the_env() {
 
 # The main logic
 # Judge the os type e.g. Linux or MacOS
-if [ "$os_type" == "Linux" ]
+if [ "${os_type}" == "Linux" ]
 then
 	major_release=$(grep VERSION_ID /etc/os-release | awk -F'[.]' '{print $1}' | awk -F'["]' '{print $2}')
 	os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
-	case "$os_distribution" in
+	case "${os_distribution}" in
 		ubuntu)
-			if [ "$major_release" -lt  "16" ]
+			if [ "${major_release}" -lt  "16" ]
 			then
 				echo 'The script only supports ubuntu 16.04 or later.'
 				exit
@@ -442,7 +442,7 @@ then
 			[ $# -ne 2 ] && installer_script_usage
 			;;
 		debian)
-			if [ "$major_release" -lt  "9" ] || [ "$major_release" -gt  "10" ]
+			if [ "${major_release}" -lt  "9" ] || [ "${major_release}" -gt  "10" ]
 			then
 				echo 'The script only supports debian 9 or debian 10.'
 				exit
@@ -452,7 +452,7 @@ then
 		fedoraproject)
 			# Due to the different format, so get the keyword again in fedora
 		    major_release=$(grep VERSION_ID /etc/os-release| awk -F'=' '{print $2}')
-			if [ "$major_release" -lt "30" ] || [ "$major_release" -gt "31" ]
+			if [ "${major_release}" -lt "30" ] || [ "${major_release}" -gt "31" ]
 			then
 				echo 'The script only supports fedora30 and fedora31.'
 				exit
@@ -461,7 +461,7 @@ then
 			[ $# -ne 2 ] && installer_script_usage
 			;;
 		redhat)
-			if [ "$major_release" != "7" ]
+			if [ "${major_release}" != "7" ]
 			then
 				echo 'The script only supports rhel7.'
 				exit
@@ -471,7 +471,7 @@ then
 			rhel_register_check_and_enable_repo
 			;;
 		centos)
-			if [ "$major_release" != "7" ]
+			if [ "${major_release}" != "7" ]
 			then
 				echo 'The script only supports centos7.'
 				exit
@@ -489,20 +489,20 @@ then
 			install_minikube_kubectl
 			quick_check_result
 			startup_the_env $1
-elif [ "$os_type" == "Darwin" ]
+elif [ "${os_type}" == "Darwin" ]
 then
 	# For MacOS
 	# Check the macOS version
 	major_release=$(sw_vers -productVersion| awk -F'.' '{print $1}')
 
-	if [ "$major_release" -lt "10" ]
+	if [ "${major_release}" -lt "10" ]
 	then
 		echo 'The script only supports macOS10.13 and later.'
 		exit
-	elif [ "$major_release" -eq "10" ] 
+	elif [ "${major_release}" -eq "10" ] 
 	then
 		minor_release=$(sw_vers -productVersion| awk -F'.' '{print $2}')
-		if [ "$minor_release" -lt "13" ]
+		if [ "${minor_release}" -lt "13" ]
 		then
 			echo 'The script only supports macOS10.13 and later.'
 			exit
@@ -556,7 +556,7 @@ then
     	while true
     	do
         	read -p "Please enter [yes|y] to continue if you already permitted the docker access: " CONFIRM_PERMIT
-        	if [ "$CONFIRM_PERMIT" == "yes" ] || [ "$CONFIRM_PERMIT" == "y" ]
+        	if [ "${CONFIRM_PERMIT}" == "yes" ] || [ "${CONFIRM_PERMIT}" == "y" ]
         	then
             	break
         	fi
