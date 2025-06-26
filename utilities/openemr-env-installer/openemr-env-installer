@@ -53,10 +53,10 @@ fi
 
 # The script usage
 installer_script_usage() {
-    echo "Usage: bash `basename $0` <code location> <github account>"
+    echo "Usage: bash $(basename $0) <code location> <github account>"
 	echo ''
-    echo "  e.g. bash `basename $0` /home/test/code testuser"
-    echo "    or bash `basename $0` /Users/test/code testuser"
+    echo "  e.g. bash $(basename $0) /home/test/code testuser"
+    echo "    or bash $(basename $0) /Users/test/code testuser"
 	echo ''
     echo -e "\033[33mNOTE1: Please make sure you have created your own fork of OpenEMR and OpenEMR-devops at first.\033[0m"
     echo -e "\033[33mNOTE2: Please make sure you have the necessary environment if use minikube:\033[0m"
@@ -73,12 +73,12 @@ installer_script_usage() {
 git_clone_function(){
     code_location=$1
     github_account=$2
-    cd ${code_location} && [ `pwd` != "${code_location}" ] && cd ${code_location}
+    cd ${code_location} && [ $(pwd) != "${code_location}" ] && cd ${code_location}
     echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR repository... \033[0m"
     echo ''
 	# For openemr repos
     git clone https://github.com/${github_account}/openemr.git
-    cd ${code_location}/openemr && [ `pwd` != "${code_location}/openemr" ] && cd ${code_location}/openemr
+    cd ${code_location}/openemr && [ $(pwd) != "${code_location}/openemr" ] && cd ${code_location}/openemr
     git remote add upstream https://github.com/openemr/openemr.git
     git fetch upstream
     echo ''
@@ -88,11 +88,11 @@ git_clone_function(){
     echo ''
 
 	# For openemr-devops repos
-    cd ${code_location} && [ `pwd` != "${code_location}" ] && cd ${code_location}
+    cd ${code_location} && [ $(pwd) != "${code_location}" ] && cd ${code_location}
     echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR-devops repository... \033[0m"
     echo ''
     git clone https://github.com/${github_account}/openemr-devops.git
-    cd ${code_location}/openemr-devops && [ `pwd` != "${code_location}/openemr-devops" ] && cd ${code_location}/openemr-devops
+    cd ${code_location}/openemr-devops && [ $(pwd) != "${code_location}/openemr-devops" ] && cd ${code_location}/openemr-devops
     git remote add upstream https://github.com/openemr/openemr-devops.git
     git fetch upstream
     echo ''

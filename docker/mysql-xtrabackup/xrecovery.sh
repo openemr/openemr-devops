@@ -102,7 +102,7 @@ while read line; do
     mv ${line} ${WORKDIR}
   elif [ ${CURLINE} -lt ${MAXLINE} ]; then
     echo recovery: apply intermediate incremental ${line}
-    xtrabackup --use-memory ${USE_MEMORY} --prepare --apply-log-only --target-dir=${WORKDIR} --incremental-dir=`pwd`/${line}
+    xtrabackup --use-memory ${USE_MEMORY} --prepare --apply-log-only --target-dir=${WORKDIR} --incremental-dir=$(pwd)/${line}
     if [ $? -ne 0 ]; then
       echo recovery: intermediate recovery failed! not deleting workdir
       exit 1

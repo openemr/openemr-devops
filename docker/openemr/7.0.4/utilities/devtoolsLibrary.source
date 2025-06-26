@@ -42,14 +42,14 @@ prepareVariables() {
 
 setGlobalSettings() {
     # Set requested openemr settings
-    OPENEMR_SETTINGS=`printenv | grep '^OPENEMR_SETTING_'`
+    OPENEMR_SETTINGS=$(printenv | grep '^OPENEMR_SETTING_')
     if [ -n "${OPENEMR_SETTINGS}" ]; then
         echo "${OPENEMR_SETTINGS}" |
         while IFS= read -r line; do
-            SETTING_TEMP=`echo "${line}" | cut -d "=" -f 1`
+            SETTING_TEMP=$(echo "${line}" | cut -d "=" -f 1)
             # note am omitting the letter O on purpose
-            CORRECT_SETTING_TEMP=`echo "${SETTING_TEMP}" | awk -F 'PENEMR_SETTING_' '{print $2}'`
-            VALUE_TEMP=`echo "${line}" | awk -F "${CORRECT_SETTING_TEMP}=" '{print $2}'`
+            CORRECT_SETTING_TEMP=$(echo "${SETTING_TEMP}" | awk -F 'PENEMR_SETTING_' '{print $2}')
+            VALUE_TEMP=$(echo "${line}" | awk -F "${CORRECT_SETTING_TEMP}=" '{print $2}')
             echo "Set ${CORRECT_SETTING_TEMP} to ${VALUE_TEMP}"
             mariadb --skip-ssl -u "${CUSTOM_USER}" --password="${CUSTOM_PASSWORD}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e "UPDATE globals SET gl_value = '${VALUE_TEMP}' WHERE gl_name = '${CORRECT_SETTING_TEMP}'" "${CUSTOM_DATABASE}"
         done
@@ -125,7 +125,7 @@ restoreOpenemr() {
     mariadb-dump --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" --add-drop-table --no-data "${CUSTOM_DATABASE}" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" "${CUSTOM_DATABASE}"
     mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" "${CUSTOM_DATABASE}" < "/snapshots/${1}/backup.sql"
     # note keeping same sqlconf.php in case snapshot is from somewhere else (ie. such as the demo farm) with different credentials
-    sqlconf=`cat /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php`
+    sqlconf=$(cat /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php)
     rsync --delete --recursive --links "/snapshots/${1}/sites" /var/www/localhost/htdocs/openemr/
     echo "${sqlconf}" > /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     chown -R apache /var/www/localhost/htdocs/openemr/
@@ -252,7 +252,7 @@ generateMultisiteBank() {
         find /var/www/localhost/htdocs/openemr/sites/${run}/documents -type d -print0 | xargs -0 chmod 700
         find /var/www/localhost/htdocs/openemr/sites/${run}/documents -type f -print0 | xargs -0 chmod 700
         echo "completed adding ${run} multisite"
-        a=`expr ${a} + 1`
+        a=$(expr ${a} + 1)
     done
     sed -i "s@//exit;@exit;@" /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php
     echo "Completed setting up a multisite bank with following number of multisites (labeled run1, run2, run3, ...): run1...run${1}"

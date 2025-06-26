@@ -19,7 +19,7 @@ elif ! which docker-compose &>/dev/null
 then
     echo "Please check docker-compose install or not."
     exit ${DOCKER_COMPOSE_CODE}
-elif [ `ps aux|grep dockerd|grep -v grep|wc -l` -ne 1 ]
+elif [ $(ps aux|grep dockerd|grep -v grep|wc -l) -ne 1 ]
 then
     echo "Please check doceker start or not."
     exit ${DOCKER_START}
@@ -29,9 +29,9 @@ fi
 ARG_CODE=13
 if [ $# -ne 6 ]
 then
-	echo "Usage: bash `basename $0` <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>"
+	echo "Usage: bash $(basename $0) <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>"
 	echo 'e.g.'
-	echo "bash `basename $0` /home/openemr-monitor 192.168.2.111 smtp.gmail.com:587 monitor@gmail.com pass12 test@gmail.com"
+	echo "bash $(basename $0) /home/openemr-monitor 192.168.2.111 smtp.gmail.com:587 monitor@gmail.com pass12 test@gmail.com"
 	exit ${ARG_CODE}
 fi
 

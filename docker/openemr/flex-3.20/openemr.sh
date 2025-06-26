@@ -174,13 +174,13 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     # if there is a raw github composer token supplied, then try to use it
     if [ "${GITHUB_COMPOSER_TOKEN}" != "" ]; then
         echo "trying raw github composer token"
-        githubTokenRateLimitRequest=`curl -H "Authorization: token ${GITHUB_COMPOSER_TOKEN}" https://api.github.com/rate_limit`
-        githubTokenRateLimit=`echo ${githubTokenRateLimitRequest} | jq '.rate.remaining'`
-        githubTokenRateLimitMessage=`echo ${githubTokenRateLimitRequest} | jq '.message'`
+        githubTokenRateLimitRequest=$(curl -H "Authorization: token ${GITHUB_COMPOSER_TOKEN}" https://api.github.com/rate_limit)
+        githubTokenRateLimit=$(echo ${githubTokenRateLimitRequest} | jq '.rate.remaining')
+        githubTokenRateLimitMessage=$(echo ${githubTokenRateLimitRequest} | jq '.message')
         echo "Number of github api requests remaining is ${githubTokenRateLimit}";
         echo "Message received from api request is \"${githubTokenRateLimitMessage}\"";
         if [ "${githubTokenRateLimit}" -gt 100 ]; then
-            if `composer config --global --auth github-oauth.github.com "${GITHUB_COMPOSER_TOKEN}"`; then
+            if $(composer config --global --auth github-oauth.github.com "${GITHUB_COMPOSER_TOKEN}"); then
                 echo "raw github composer token worked"
                 rawToken="pass"
             else
@@ -198,14 +198,14 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     if [ "${GITHUB_COMPOSER_TOKEN_ENCODED}" != "" ]; then
         if [ "${rawToken}" != "pass" ]; then
             echo "trying encoded github composer token"
-            githubToken=`echo ${GITHUB_COMPOSER_TOKEN_ENCODED} | base64 -d`
-            githubTokenRateLimitRequest=`curl -H "Authorization: token ${githubToken}" https://api.github.com/rate_limit`
-            githubTokenRateLimit=`echo ${githubTokenRateLimitRequest} | jq '.rate.remaining'`
-            githubTokenRateLimitMessage=`echo ${githubTokenRateLimitRequest} | jq '.message'`
+            githubToken=$(echo ${GITHUB_COMPOSER_TOKEN_ENCODED} | base64 -d)
+            githubTokenRateLimitRequest=$(curl -H "Authorization: token ${githubToken}" https://api.github.com/rate_limit)
+            githubTokenRateLimit=$(echo ${githubTokenRateLimitRequest} | jq '.rate.remaining')
+            githubTokenRateLimitMessage=$(echo ${githubTokenRateLimitRequest} | jq '.message')
             echo "Number of github api requests remaining is ${githubTokenRateLimit}";
             echo "Message received from api request is \"${githubTokenRateLimitMessage}\"";
             if [ "${githubTokenRateLimit}" -gt 100 ]; then
-                if `composer config --global --auth github-oauth.github.com "${githubToken}"`; then
+                if $(composer config --global --auth github-oauth.github.com "${githubToken}"); then
                     echo "encoded github composer token worked"
                 else
                     echo "encoded github composer token did not work"

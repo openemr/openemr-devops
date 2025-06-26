@@ -142,15 +142,15 @@ script_usage() {
 	echo ''
 	echo -e "\033[0m\033[36mMigrate all the containers: \033[0m"
 	echo -e " \033[0m\033[33m Scenario one: Migrate in local.\033[0m"
-	echo "   e.g. `basename $0` -t local -s /var/lib/docker/ -d /data/docker/"
+	echo "   e.g. $(basename $0) -t local -s /var/lib/docker/ -d /data/docker/"
 	echo -e " \033[0m\033[33m Scenario two: Migrate to remote host.\033[0m"
-	echo -e "   \033[0m\033[32mFirst step in local:\033[0m    `basename $0` -t remote -s /var/lib/docker/ -u testuser -h 192.168.117.117 -d /data/docker/"
-	echo -e "   \033[0m\033[32mSecond step in remote:\033[0m  `basename $0` -t set -d /data/docker/"
+	echo -e "   \033[0m\033[32mFirst step in local:\033[0m    $(basename $0) -t remote -s /var/lib/docker/ -u testuser -h 192.168.117.117 -d /data/docker/"
+	echo -e "   \033[0m\033[32mSecond step in remote:\033[0m  $(basename $0) -t set -d /data/docker/"
 	echo -e "\033[0m\033[35m  **NOTE-1**: Do not forget the last slash of source dir, e.g. /var/lib/docker/ \033[0m"
 	echo -e "\033[0m\033[35m  **NOTE-2**: Please make sure there is the same source code dir in the remote host for easy or insane env and setup the base container services. \033[0m"
 	echo ''
 	echo -e "\033[0m\033[36mMigrate the single container: \033[0m"
-	echo "   e.g. `basename $0` -t single -m  brave_snyder -n http -u testuser -h 192.168.117.117"
+	echo "   e.g. $(basename $0) -t single -m  brave_snyder -n http -u testuser -h 192.168.117.117"
 	echo ''
 	exit
 }

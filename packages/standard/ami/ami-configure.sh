@@ -9,8 +9,8 @@ source /root/cloud-variables
 
 # prepare the encrypted volume CFN just added
 # this used to be in a weird ready-loop but that doesn't make any sense to me
-DVOL_SERIAL=`echo ${DVOL} | sed s/-//`
-DVOL_DEVICE=/dev/`lsblk -no +SERIAL | grep ${DVOL_SERIAL} | awk '{print $1}'`
+DVOL_SERIAL=$(echo ${DVOL} | sed s/-//)
+DVOL_DEVICE=/dev/$(lsblk -no +SERIAL | grep ${DVOL_SERIAL} | awk '{print $1}')
 mkfs -t ext4 ${DVOL_DEVICE}
 echo ${DVOL_DEVICE} /mnt/docker ext4 defaults,nofail 0 0 >> /etc/fstab
 mkdir /mnt/docker

@@ -436,13 +436,13 @@ mkdir -p "${WORK_DIR}/bkps" || \
    _d_inf "ERROR: ${WORK_DIR}/bkps does no exist and cannot be created \
       automatically!"
 
-_start_backup_date=`date`
+_start_backup_date=$(date)
 _s_inf "INFO: Backup job started: ${_start_backup_date}"
 
 DEFAULTS_FILE_FLAG=
 [ -n "${DEFAULTS_FILE}" ] && DEFAULTS_FILE_FLAG="--defaults-file=${DEFAULTS_FILE}"
 # Check for innobackupex
-_ibx=`which innobackupex`
+_ibx=$(which innobackupex)
 if [ "$?" -gt 0 ]; then _d_inf "ERROR: Could not find innobackupex binary!"; fi
 if [ -n ${DEFAULTS_FILE} ]; then _ibx="${_ibx} ${DEFAULTS_FILE_FLAG}"; fi
 if [ "x${GALERA_INFO}" = "x1" ]; then _ibx="${_ibx} --galera-info"; fi
@@ -504,7 +504,7 @@ if [ ! -d ${WORK_DIR} ]; then _d_inf "ERROR: XtraBackup work directory does not 
 
 DATASIZE=$(_du_r ${DATADIR})
 DISKSPCE=$(_df ${WORK_DIR})
-HASSPACE=`echo "${DATASIZE} ${DISKSPCE}"|awk '{if($1 < $2) {print 1} else {print 0}}'`
+HASSPACE=$(echo "${DATASIZE} ${DISKSPCE}"|awk '{if($1 < $2) {print 1} else {print 0}}')
 NOSPACE=0
 
 _echo "INFO: Checking disk space ... (data: ${DATASIZE}) (disk: ${DISKSPCE})"
@@ -512,7 +512,7 @@ _echo "INFO: Checking disk space ... (data: ${DATASIZE}) (disk: ${DISKSPCE})"
    _d_inf "ERROR: Insufficient space on backup directory!"
 
 echo
-_s_inf "INFO: Xtrabackup started: `date`"
+_s_inf "INFO: Xtrabackup started: $(date)"
 echo
 
 # Keep track if any errors happen
@@ -523,7 +523,7 @@ _s_inf "INFO: Backing up with: ${_ibx_bkp}"
 ${_ibx_bkp}
 RETVAR=$?
 
-_end_backup_date=`date`
+_end_backup_date=$(date)
 echo
 _s_inf "INFO: Xtrabackup finished: ${_end_backup_date}"
 echo
@@ -659,7 +659,7 @@ if [ "${APPLY_LOG}" = 1 ]; then
 if [ -n "${USE_MEMORY}" ]; then _ibx_prep="${_ibx} --use-memory=${USE_MEMORY}"; fi
 
 if [ "${status}" != 1 ]; then
-   _start_prepare_date=`date`
+   _start_prepare_date=$(date)
    _s_inf "INFO: Apply log started: ${_start_prepare_date}"
 
    if [ "${BKP_TYPE}" = "incr" ];
@@ -699,7 +699,7 @@ if [ "${status}" != 1 ]; then
    RETVAR=$?
 fi
 
-_end_prepare_date=`date`
+_end_prepare_date=$(date)
 echo
 _s_inf "INFO: Apply log finished: ${_end_prepare_date}"
 echo
@@ -719,9 +719,9 @@ fi
 
 _started_at="STR_TO_DATE('${CURDATE}','%Y-%m-%d_%H_%i_%s')"
 if [ "${APPLY_LOG}" = 1 ]; then
-   _ends_at=`date -d "${_end_prepare_date}" "+%Y-%m-%d %H:%M:%S"`
+   _ends_at=$(date -d "${_end_prepare_date}" "+%Y-%m-%d %H:%M:%S")
 else
-   _ends_at=`date -d "${_end_backup_date}" "+%Y-%m-%d %H:%M:%S"`
+   _ends_at=$(date -d "${_end_backup_date}" "+%Y-%m-%d %H:%M:%S")
 fi
 if [ "${BKP_TYPE}" = "incr" ]; then
    _incr_basedir="STR_TO_DATE('${_incr_basedir}','%Y-%m-%d_%H_%i_%s')"
@@ -750,7 +750,7 @@ fi
 _echo " ... done"
 echo
 
-_end_backup_date=`date`
+_end_backup_date=$(date)
 echo
 _s_inf "INFO: Backup job finished: ${_end_backup_date}"
 echo

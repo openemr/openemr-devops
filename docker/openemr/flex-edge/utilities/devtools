@@ -498,8 +498,8 @@ if [ "$1" = "register-oauth2-client" ]; then
     fi
     echo "Registering a oauth2 client to site ${site}"
     # collect scopes
-    scopes=`cat /var/www/localhost/htdocs/openemr/docker/library/api-scope-listing`
-    returnJson=`curl -X POST -k -H 'Content-Type: application/json' -s https://localhost/oauth2/${site}/registration --data "{
+    scopes=$(cat /var/www/localhost/htdocs/openemr/docker/library/api-scope-listing)
+    returnJson=$(curl -X POST -k -H 'Content-Type: application/json' -s https://localhost/oauth2/${site}/registration --data "{
        \"application_type\": \"private\",
        \"redirect_uris\":
          [\"https://localhost:9300/swagger/oauth2-redirect.html\"],
@@ -507,9 +507,9 @@ if [ "$1" = "register-oauth2-client" ]; then
        \"token_endpoint_auth_method\": \"client_secret_post\",
        \"contacts\": [\"me@example.org\", \"them@example.org\"],
        \"scope\": \"${scopes}\"
-      }"`
-    clientId=`echo ${returnJson} | jq '.client_id'`
-    clientSecret=`echo ${returnJson} | jq '.client_secret'`
+      }")
+    clientId=$(echo ${returnJson} | jq '.client_id')
+    clientSecret=$(echo ${returnJson} | jq '.client_secret')
     echo "client id: ${clientId}"
     echo "client secret: ${clientSecret}"
 fi
@@ -517,8 +517,8 @@ fi
 if [ "$1" = "register-oauth2-client-demo" ] && [ ! -z "$2" ]; then
     echo "Registering a oauth2 client on online demo at ${2}"
     # collect scopes
-    scopes=`cat /var/www/localhost/htdocs/openemr/docker/library/api-scope-listing`
-    returnJson=`curl -X POST -H 'Content-Type: application/json' -s "${2}/oauth2/default/registration" --data "{
+    scopes=$(cat /var/www/localhost/htdocs/openemr/docker/library/api-scope-listing)
+    returnJson=$(curl -X POST -H 'Content-Type: application/json' -s "${2}/oauth2/default/registration" --data "{
        \"application_type\": \"private\",
        \"redirect_uris\":
          [\"${2}/swagger/oauth2-redirect.html\"],
@@ -526,9 +526,9 @@ if [ "$1" = "register-oauth2-client-demo" ] && [ ! -z "$2" ]; then
        \"token_endpoint_auth_method\": \"client_secret_post\",
        \"contacts\": [\"me@example.org\", \"them@example.org\"],
        \"scope\": \"${scopes}\"
-      }"`
-    clientId=`echo ${returnJson} | jq '.client_id'`
-    clientSecret=`echo ${returnJson} | jq '.client_secret'`
+      }")
+    clientId=$(echo ${returnJson} | jq '.client_id')
+    clientSecret=$(echo ${returnJson} | jq '.client_secret')
     echo "client id: ${clientId}"
     echo "client secret: ${clientSecret}"
 fi
