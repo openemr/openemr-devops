@@ -1,4 +1,7 @@
+[![ShellCheck](https://github.com/openemr/openemr-devops/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/shellcheck.yml)
+
 # openemr-devops
+
 OpenEMR administration and deployment tooling
 
 ## Resource Index
@@ -10,7 +13,7 @@ OpenEMR administration and deployment tooling
 * [OpenEMR Cloud Express Plus](packages/express_plus): Self-contained OpenEMR instance with more complex features
 * [OpenEMR Cloud Full Stack](packages/full_stack): Multi-node CloudFormation OpenEMR cluster with tight AWS integration
 
-See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_Packages_Comparison) for more information on the costs and features of each offering. 
+See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_Packages_Comparison) for more information on the costs and features of each offering.
 
 ### Other Hosting
 
@@ -21,7 +24,7 @@ See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_P
 ### Components and Infrastructure
 
 * [Official OpenEMR Docker](docker/openemr): Source repository for the [Docker](https://hub.docker.com/r/openemr/openemr/) library
-* [mysql-xtrabackup Docker](docker/mysql-xtrabackup): MySQL 5.7 / Percona XtraBackup Docker container  
+* [mysql-xtrabackup Docker](docker/mysql-xtrabackup): MySQL 5.7 / Percona XtraBackup Docker container
 
 ### Management Utilities
 
