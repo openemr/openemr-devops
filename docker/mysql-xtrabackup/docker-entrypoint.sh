@@ -70,7 +70,7 @@ if [ "$1" = 'mysqld' -a -z "${wantHelp}" -a "$(id -u)" = '0' ]; then
 	chown -R mysql:mysql "${DATADIR}"
 
 	if [ -f /root/pending-restore ]; then
-	  /root/xrecovery-final.sh	  
+	  /root/xrecovery-final.sh
 	fi
 
 	exec gosu mysql "${BASH_SOURCE}" "$@"

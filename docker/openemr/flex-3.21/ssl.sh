@@ -51,7 +51,7 @@ if [ "${DOMAIN}" != "" ]; then
     fi
 
     # run cron to service LE renewals
-    if [ "${OPERATOR}" == "yes" ]; then
+    if [ "${OPERATOR}" = "yes" ]; then
         crond
     fi
 fi

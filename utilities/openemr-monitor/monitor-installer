@@ -13,15 +13,15 @@ DOCKER_START=11
 DOCKER_COMPOSE_CODE=12
 if ! which docker &>/dev/null
 then
-	echo "Please check docker and docker-compose install or not." 
+	echo "Please check docker and docker-compose install or not."
 	exit ${DOCKER_CODE}
 elif ! which docker-compose &>/dev/null
-then 
+then
     echo "Please check docker-compose install or not."
     exit ${DOCKER_COMPOSE_CODE}
 elif [ `ps aux|grep dockerd|grep -v grep|wc -l` -ne 1 ]
 then
-    echo "Please check doceker start or not." 
+    echo "Please check doceker start or not."
     exit ${DOCKER_START}
 fi
 
@@ -29,7 +29,7 @@ fi
 ARG_CODE=13
 if [ $# -ne 6 ]
 then
-	echo "Usage: bash `basename $0` <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>" 
+	echo "Usage: bash `basename $0` <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>"
 	echo 'e.g.'
 	echo "bash `basename $0` /home/openemr-monitor 192.168.2.111 smtp.gmail.com:587 monitor@gmail.com pass12 test@gmail.com"
 	exit ${ARG_CODE}
@@ -44,9 +44,9 @@ echo '    '
 echo 'Downloading the configuration files...'
 echo '    '
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/prometheus.yml  > ${installDir}/prometheus/prometheus.yml
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/alert-rules.yml > ${installDir}/prometheus/alert-rules.yml 
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/alertmanager.yml           > ${installDir}/alertmanager.yml 
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/docker-compose.yml         > ${installDir}/docker-compose.yml 
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/alert-rules.yml > ${installDir}/prometheus/alert-rules.yml
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/alertmanager.yml           > ${installDir}/alertmanager.yml
+curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/docker-compose.yml         > ${installDir}/docker-compose.yml
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard-193.json > ${installDir}/grafana/provisioning/dashboards/dashboard-193.json
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard.yml > ${installDir}/grafana/provisioning/dashboards/dashboard.yml
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/datasources/datasource.yml > ${installDir}/grafana/provisioning/datasources/datasource.yml

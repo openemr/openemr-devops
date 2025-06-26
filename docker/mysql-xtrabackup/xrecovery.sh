@@ -61,11 +61,11 @@ while : ; do
   echo recovery: found ${CURLOG}, ${CURTYPE}
   echo ${CURLOG} >> chain-search.txt
   # are we done?
-  [[ ${CURTYPE} == full ]] && break
+  [[ ${CURTYPE} = full ]] && break
   echo recovery: following chain...
   # parse the current log to find the parent
   NEWLOG=$(grep -- --incremental-basedir ${CURLOG}-info.log | perl -pe 's~.*incremental-basedir /[^[:space:]]*/([^[:space:]]*).*?~\1~')
-  if [[ ${CURLOG} == ${NEWLOG} || "${NEWLOG}" == "" ]]; then
+  if [[ ${CURLOG} = ${NEWLOG} || "${NEWLOG}" = "" ]]; then
     echo recovery: could not parse next target, failure
     exit 1
   else

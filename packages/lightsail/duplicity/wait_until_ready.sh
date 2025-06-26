@@ -2,7 +2,7 @@
 
 # This handy tool will idle until OpenEMR launches its httpd and is thus considered ready for business.
 
- # wait a while for services to build    
+ # wait a while for services to build
 until docker container ls | grep openemr/openemr >& /dev/null
 do
     echo "waiting for container start..."

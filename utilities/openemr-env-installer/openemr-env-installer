@@ -152,7 +152,7 @@ then
 	fi
 elif [ -f ${register_lock} ]
 then
-	if [ "$(cat /tmp/openemr-register-lock)" == "1" ]
+	if [ "$(cat /tmp/openemr-register-lock)" = "1" ]
 	then
 		register_note
 	fi
@@ -169,7 +169,7 @@ then
 	[ $? -eq 0 ] && echo 2 >> ${repo_lock}
 elif [ -f ${repo_lock} ]
 then
-	if [ "$(cat /tmp/openemr-repo-lock|wc -l)" == "2" ]
+	if [ "$(cat /tmp/openemr-repo-lock|wc -l)" = "2" ]
 	then
 		echo -e "\033[30m===>\033[0m \033[32mBoth of base and extras repo are already enabled. \033[0m"
 		echo ''
@@ -270,7 +270,7 @@ fi
 # Install openemr-cmd tool
 install_openemr_cmd() {
 os_type=$(uname)
-if [ "${os_type}" == "Linux" ]
+if [ "${os_type}" = "Linux" ]
 then
 	os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
 else
@@ -343,10 +343,10 @@ esac
 # Install minikube and kubectl
 install_minikube_kubectl(){
 # Judge the os type e.g. Linux or MacOS
-if [ "${os_type}" == "Linux" ]
+if [ "${os_type}" = "Linux" ]
 then
 	minikube_os=linux
-elif [ "${os_type}" == "Darwin" ]
+elif [ "${os_type}" = "Darwin" ]
 then
 	minikube_os=darwin
 fi
@@ -428,7 +428,7 @@ startup_the_env() {
 
 # The main logic
 # Judge the os type e.g. Linux or MacOS
-if [ "${os_type}" == "Linux" ]
+if [ "${os_type}" = "Linux" ]
 then
 	major_release=$(grep VERSION_ID /etc/os-release | awk -F'[.]' '{print $1}' | awk -F'["]' '{print $2}')
 	os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
@@ -489,7 +489,7 @@ then
 			install_minikube_kubectl
 			quick_check_result
 			startup_the_env $1
-elif [ "${os_type}" == "Darwin" ]
+elif [ "${os_type}" = "Darwin" ]
 then
 	# For MacOS
 	# Check the macOS version
@@ -499,7 +499,7 @@ then
 	then
 		echo 'The script only supports macOS10.13 and later.'
 		exit
-	elif [ "${major_release}" -eq "10" ] 
+	elif [ "${major_release}" -eq "10" ]
 	then
 		minor_release=$(sw_vers -productVersion| awk -F'.' '{print $2}')
 		if [ "${minor_release}" -lt "13" ]
@@ -556,7 +556,7 @@ then
     	while true
     	do
         	read -p "Please enter [yes|y] to continue if you already permitted the docker access: " CONFIRM_PERMIT
-        	if [ "${CONFIRM_PERMIT}" == "yes" ] || [ "${CONFIRM_PERMIT}" == "y" ]
+        	if [ "${CONFIRM_PERMIT}" = "yes" ] || [ "${CONFIRM_PERMIT}" = "y" ]
         	then
             	break
         	fi

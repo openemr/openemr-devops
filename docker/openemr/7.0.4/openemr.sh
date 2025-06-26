@@ -50,7 +50,7 @@ auto_setup() {
 
     echo "OpenEMR configured."
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-    if [ "${CONFIG}" == "0" ]; then
+    if [ "${CONFIG}" = "0" ]; then
         echo "Error in auto-config. Configuration failed."
         exit 2
     fi
@@ -66,19 +66,19 @@ auto_setup() {
 # - false for the Kubernetes startup job and manual image runs
 AUTHORITY=yes
 OPERATOR=yes
-if [ "${K8S}" == "admin" ]; then
+if [ "${K8S}" = "admin" ]; then
     OPERATOR=no
-elif [ "${K8S}" == "worker" ]; then
+elif [ "${K8S}" = "worker" ]; then
     AUTHORITY=no
 fi
 
-if [ "${SWARM_MODE}" == "yes" ]; then
+if [ "${SWARM_MODE}" = "yes" ]; then
     # atomically test for leadership
     set -o noclobber
     { > /var/www/localhost/htdocs/openemr/sites/docker-leader ; } &> /dev/null || AUTHORITY=no
     set +o noclobber
 
-    if [ "${AUTHORITY}" == "no" ] &&
+    if [ "${AUTHORITY}" = "no" ] &&
        [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
         while swarm_wait; do
             echo "Waiting for the docker-leader to finish configuration before proceeding."
@@ -86,7 +86,7 @@ if [ "${SWARM_MODE}" == "yes" ]; then
         done
     fi
 
-    if [ "${AUTHORITY}" == "yes" ]; then
+    if [ "${AUTHORITY}" = "yes" ]; then
         touch /var/www/localhost/htdocs/openemr/sites/docker-initiated
         if [ ! -f /etc/ssl/openssl.cnf ]; then
             # Restore the emptied /etc/ssl directory
@@ -101,12 +101,12 @@ if [ "${SWARM_MODE}" == "yes" ]; then
     fi
 fi
 
-if [ "${AUTHORITY}" == "yes" ]; then
+if [ "${AUTHORITY}" = "yes" ]; then
     sh ssl.sh
 fi
 
 UPGRADE_YES=false;
-if [ "${AUTHORITY}" == "yes" ]; then
+if [ "${AUTHORITY}" = "yes" ]; then
     # Figure out if need to do upgrade
     if [ -f /root/docker-version ]; then
         DOCKER_VERSION_ROOT=$(cat /root/docker-version)
@@ -125,7 +125,7 @@ if [ "${AUTHORITY}" == "yes" ]; then
     fi
 
     # Only perform upgrade if the sites dir is shared and not entire openemr directory
-    if [ "${DOCKER_VERSION_ROOT}" == "${DOCKER_VERSION_CODE}" ] &&
+    if [ "${DOCKER_VERSION_ROOT}" = "${DOCKER_VERSION_CODE}" ] &&
        [ "${DOCKER_VERSION_ROOT}" -gt "${DOCKER_VERSION_SITES}" ]; then
         echo "Plan to try an upgrade from ${DOCKER_VERSION_SITES} to ${DOCKER_VERSION_ROOT}"
         UPGRADE_YES=true;
@@ -133,8 +133,8 @@ if [ "${AUTHORITY}" == "yes" ]; then
 fi
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-if [ "${AUTHORITY}" == "no" ] &&
-    [ "${CONFIG}" == "0" ]; then
+if [ "${AUTHORITY}" = "no" ] &&
+    [ "${CONFIG}" = "0" ]; then
     echo "Critical failure! An OpenEMR worker is trying to run on a missing configuration."
     echo " - Is this due to a Kubernetes grant hiccup?"
     echo "The worker will now terminate."
@@ -215,8 +215,8 @@ if [ -f /root/certs/redis/redis-key ] &&
     cp /root/certs/redis/redis-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key
 fi
 
-if [ "${AUTHORITY}" == "yes" ]; then
-    if [ "${CONFIG}" == "0" ] &&
+if [ "${AUTHORITY}" = "yes" ]; then
+    if [ "${CONFIG}" = "0" ] &&
        [ "${MYSQL_HOST}" != "" ] &&
        [ "${MYSQL_ROOT_PASS}" != "" ] &&
        [ "${MANUAL_SETUP}" != "yes" ]; then
@@ -234,8 +234,8 @@ if [ "${AUTHORITY}" == "yes" ]; then
 fi
 
 if
-   [ "${AUTHORITY}" == "yes" ] &&
-   [ "${CONFIG}" == "1" ] &&
+   [ "${AUTHORITY}" = "yes" ] &&
+   [ "${CONFIG}" = "1" ] &&
    [ "${MANUAL_SETUP}" != "yes" ]; then
     # OpenEMR has been configured
 
@@ -314,10 +314,10 @@ if [ "${REDIS_SERVER}" != "" ] &&
         GET_CONNECTOR="?"
     fi
 
-    if [ "${REDIS_X509}" == "yes" ]; then
+    if [ "${REDIS_X509}" = "yes" ]; then
         echo "redis x509"
         REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[cafile]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca\&stream[local_cert]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert\&stream[local_pk]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key"
-    elif [ "${REDIS_TLS}" == "yes" ]; then
+    elif [ "${REDIS_TLS}" = "yes" ]; then
         echo "redis tls"
         REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[cafile]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca"
     else
@@ -332,10 +332,10 @@ if [ "${REDIS_SERVER}" != "" ] &&
 fi
 
 if
-   [ "${AUTHORITY}" == "yes" ] ||
-   [ "${SWARM_MODE}" == "yes" ]; then
+   [ "${AUTHORITY}" = "yes" ] ||
+   [ "${SWARM_MODE}" = "yes" ]; then
     if
-    [ "${CONFIG}" == "1" ] &&
+    [ "${CONFIG}" = "1" ] &&
     [ "${MANUAL_SETUP}" != "yes" ]; then
     # OpenEMR has been configured
 
@@ -412,7 +412,7 @@ if
 fi
 
 if [ "${XDEBUG_IDE_KEY}" != "" ] ||
-   [ "${XDEBUG_ON}" == 1 ]; then
+   [ "${XDEBUG_ON}" = 1 ]; then
    sh xdebug.sh
    #also need to turn off opcache since it can not be turned on with xdebug
    if [ ! -f /etc/php-opcache-jit-configured ]; then
@@ -428,14 +428,14 @@ else
    fi
 fi
 
-if [ "${AUTHORITY}" == "yes" ] &&
-   [ "${SWARM_MODE}" == "yes" ]; then
+if [ "${AUTHORITY}" = "yes" ] &&
+   [ "${SWARM_MODE}" = "yes" ]; then
     # Set flag that the docker-leader configuration is complete
     touch /var/www/localhost/htdocs/openemr/sites/docker-completed
     rm -f /var/www/localhost/htdocs/openemr/sites/docker-leader
 fi
 
-if [ "${SWARM_MODE}" == "yes" ]; then
+if [ "${SWARM_MODE}" = "yes" ]; then
     # Set flag that the instance is ready when in swarm mode
     echo ""
     echo "swarm mode on: this instance is ready"

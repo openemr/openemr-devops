@@ -62,12 +62,12 @@ auto_setup() {
 
     echo "OpenEMR configured."
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-    if [ "${CONFIG}" == "0" ]; then
+    if [ "${CONFIG}" = "0" ]; then
         echo "Error in auto-config. Configuration failed."
         exit 2
     fi
 
-    if [ "${DEMO_MODE}" == "standard" ]; then
+    if [ "${DEMO_MODE}" = "standard" ]; then
         demoData
     fi
 
@@ -86,19 +86,19 @@ auto_setup() {
 # - false for the Kubernetes startup job and manual image runs
 AUTHORITY=yes
 OPERATOR=yes
-if [ "${K8S}" == "admin" ]; then
+if [ "${K8S}" = "admin" ]; then
     OPERATOR=no
-elif [ "${K8S}" == "worker" ]; then
+elif [ "${K8S}" = "worker" ]; then
     AUTHORITY=no
 fi
 
-if [ "${SWARM_MODE}" == "yes" ]; then
+if [ "${SWARM_MODE}" = "yes" ]; then
     # atomically test for leadership
     set -o noclobber
     { > /var/www/localhost/htdocs/openemr/sites/docker-leader ; } &> /dev/null || AUTHORITY=no
     set +o noclobber
 
-    if [ "${AUTHORITY}" == "no" ] &&
+    if [ "${AUTHORITY}" = "no" ] &&
        [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
         while swarm_wait; do
             echo "Waiting for the docker-leader to finish configuration before proceeding."
@@ -106,7 +106,7 @@ if [ "${SWARM_MODE}" == "yes" ]; then
         done
     fi
 
-    if [ "${AUTHORITY}" == "yes" ]; then
+    if [ "${AUTHORITY}" = "yes" ]; then
         touch /var/www/localhost/htdocs/openemr/sites/docker-initiated
         if [ ! -f /etc/ssl/openssl.cnf ]; then
             # Restore the emptied /etc/ssl directory
@@ -116,7 +116,7 @@ if [ "${SWARM_MODE}" == "yes" ]; then
     fi
 fi
 
-if [ "${AUTHORITY}" == "yes" ]; then
+if [ "${AUTHORITY}" = "yes" ]; then
     sh ssl.sh
 fi
 
@@ -125,12 +125,12 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
    [ "${EMPTY}" != "yes" ] &&
    [ "${EASY_DEV_MODE_NEW}" != "yes" ]; then
     echo "Configuring a new flex openemr docker"
-    if [ "${FLEX_REPOSITORY}" == "" ]; then
+    if [ "${FLEX_REPOSITORY}" = "" ]; then
         echo "Missing FLEX_REPOSITORY environment setting, so using https://github.com/openemr/openemr.git"
         FLEX_REPOSITORY="https://github.com/openemr/openemr.git"
     fi
-    if [ "${FLEX_REPOSITORY_BRANCH}" == "" ] &&
-       [ "${FLEX_REPOSITORY_TAG}" == "" ]; then
+    if [ "${FLEX_REPOSITORY_BRANCH}" = "" ] &&
+       [ "${FLEX_REPOSITORY_TAG}" = "" ]; then
         echo "Missing FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG environment setting, so using FLEX_REPOSITORY_BRANCH setting of master"
         FLEX_REPOSITORY_BRANCH="master"
     fi
@@ -147,12 +147,12 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
         git checkout "${FLEX_REPOSITORY_TAG}"
         cd ../
     fi
-    if [ "${AUTHORITY}" == "yes" ] &&
-       [ "${SWARM_MODE}" == "yes" ]; then
+    if [ "${AUTHORITY}" = "yes" ] &&
+       [ "${SWARM_MODE}" = "yes" ]; then
         touch openemr/sites/default/docker-initiated
     fi
-    if [ "${AUTHORITY}" == "no" ] &&
-       [ "${SWARM_MODE}" == "yes" ]; then
+    if [ "${AUTHORITY}" = "no" ] &&
+       [ "${SWARM_MODE}" = "yes" ]; then
         # non-leader is building so remove the openemr/sites directory to avoid breaking anything in leader's build
         rm -fr openemr/sites
     fi
@@ -161,7 +161,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     cd /var/www/localhost/htdocs/
 fi
 
-if [ "${EASY_DEV_MODE_NEW}" == "yes" ]; then
+if [ "${EASY_DEV_MODE_NEW}" = "yes" ]; then
     # trickery for the easy dev environment
     rsync --ignore-existing --recursive --links --exclude .git /openemr /var/www/localhost/htdocs/
 fi
@@ -187,7 +187,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
                 echo "raw github composer token did not work"
             fi
         else
-            if [ "${githubTokenRateLimitMessage}" == "\"Bad credentials\"" ]; then
+            if [ "${githubTokenRateLimitMessage}" = "\"Bad credentials\"" ]; then
                 echo "raw github composer token is bad, so did not work"
             else
                 echo "raw github composer token rate limit is now < 100, so did not work"
@@ -211,7 +211,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
                     echo "encoded github composer token did not work"
                 fi
             else
-                if [ "${githubTokenRateLimitMessage}" == "\"Bad credentials\"" ]; then
+                if [ "${githubTokenRateLimitMessage}" = "\"Bad credentials\"" ]; then
                     echo "encoded github composer token is bad, so did not work"
                 else
                     echo "encoded github composer token rate limit is now < 100, so did not work"
@@ -220,7 +220,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
         fi
     fi
     # install php dependencies
-    if [ "${DEVELOPER_TOOLS}" == "yes" ]; then
+    if [ "${DEVELOPER_TOOLS}" = "yes" ]; then
         composer install
         composer global require "squizlabs/php_codesniffer=3.*"
         # install support for the e2e testing
@@ -273,7 +273,7 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
     cd /var/www/localhost/htdocs
 fi
 
-if [ "${AUTHORITY}" == "yes" ] ||
+if [ "${AUTHORITY}" = "yes" ] ||
    [ "${SWARM_MODE}" != "yes" ]; then
     if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
        [ "${EASY_DEV_MODE}" != "yes" ]; then
@@ -286,8 +286,8 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
 fi
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-if [ "${AUTHORITY}" == "no" ] &&
-    [ "${CONFIG}" == "0" ]; then
+if [ "${AUTHORITY}" = "no" ] &&
+    [ "${CONFIG}" = "0" ]; then
     echo "Critical failure! An OpenEMR worker is trying to run on a missing configuration."
     echo " - Is this due to a Kubernetes grant hiccup?"
     echo "The worker will now terminate."
@@ -362,8 +362,8 @@ if [ -f /root/certs/ldap/ldap-key ] &&
     cp /root/certs/ldap/ldap-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
 fi
 
-if [ "${AUTHORITY}" == "yes" ]; then
-    if [ "${CONFIG}" == "0" ] &&
+if [ "${AUTHORITY}" = "yes" ]; then
+    if [ "${CONFIG}" = "0" ] &&
        [ "${MYSQL_HOST}" != "" ] &&
        [ "${MYSQL_ROOT_PASS}" != "" ] &&
        [ "${EMPTY}" != "yes" ] &&
@@ -382,8 +382,8 @@ if [ "${AUTHORITY}" == "yes" ]; then
 fi
 
 if
-   [ "${AUTHORITY}" == "yes" ] &&
-   [ "${CONFIG}" == "1" ] &&
+   [ "${AUTHORITY}" = "yes" ] &&
+   [ "${CONFIG}" = "1" ] &&
    [ "${MANUAL_SETUP}" != "yes" ] &&
    [ "${EASY_DEV_MODE}" != "yes" ] &&
    [ "${EMPTY}" != "yes" ]; then
@@ -418,14 +418,14 @@ if
 fi
 
 if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
-    if [ "${EASY_DEV_MODE_NEW}" == "yes" ] || [ "${INSANE_DEV_MODE}" == "yes" ]; then
+    if [ "${EASY_DEV_MODE_NEW}" = "yes" ] || [ "${INSANE_DEV_MODE}" = "yes" ]; then
         # need to copy this script somewhere so the easy/insane dev environment can use it
         cp /var/www/localhost/htdocs/auto_configure.php /root/
         # save couchdb initial data folder to support devtools snapshots
         rsync --recursive --links /couchdb/data /couchdb/original/
     fi
     # trickery to support devtools in insane dev environment (note the easy dev does this with a shared volume)
-    if [ "${INSANE_DEV_MODE}" == "yes" ]; then
+    if [ "${INSANE_DEV_MODE}" = "yes" ]; then
         mkdir /openemr
         rsync --recursive --links /var/www/localhost/htdocs/openemr/sites /openemr/
     fi
@@ -447,8 +447,8 @@ if ${MYSQLKEY} ; then
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
 fi
 
-if [ "${AUTHORITY}" == "yes" ] &&
-   [ "${SWARM_MODE}" == "yes" ] &&
+if [ "${AUTHORITY}" = "yes" ] &&
+   [ "${SWARM_MODE}" = "yes" ] &&
    [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
     # Set flag that the docker-leader configuration is complete
     touch /var/www/localhost/htdocs/openemr/sites/docker-completed
@@ -489,7 +489,7 @@ if [ "${REDIS_SERVER}" != "" ] &&
 fi
 
 if [ "${XDEBUG_IDE_KEY}" != "" ] ||
-   [ "${XDEBUG_ON}" == 1 ]; then
+   [ "${XDEBUG_ON}" = 1 ]; then
    sh xdebug.sh
    #also need to turn off opcache since it can not be turned on with xdebug
    if [ ! -f /etc/php-opcache-jit-configured ]; then

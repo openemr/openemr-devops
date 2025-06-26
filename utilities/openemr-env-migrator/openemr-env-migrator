@@ -133,12 +133,12 @@ commit_and_save_container(){
 script_usage() {
 	echo "Usage:"
 	echo "    -t,      Specify the migration type e.g. local, remote, set, single."
-	echo "    -s,      Specify the migration container source directory." 
-	echo "    -d,      Specify the migration container target directory." 
-	echo "    -u,      Specify the target host ssh user." 
-	echo "    -h,      Specify the target host ip." 
-	echo "    -m,      Specify the migration source container." 
-	echo "    -n,      Specify the migration new container name." 
+	echo "    -s,      Specify the migration container source directory."
+	echo "    -d,      Specify the migration container target directory."
+	echo "    -u,      Specify the target host ssh user."
+	echo "    -h,      Specify the target host ip."
+	echo "    -m,      Specify the migration source container."
+	echo "    -n,      Specify the migration new container name."
 	echo ''
 	echo -e "\033[0m\033[36mMigrate all the containers: \033[0m"
 	echo -e " \033[0m\033[33m Scenario one: Migrate in local.\033[0m"
@@ -204,7 +204,7 @@ done
 
 # Main logic
 # Migrate from one data dir to another dir in local
-if [ "${migrate_type}" == 'local' ]
+if [ "${migrate_type}" = 'local' ]
 then
 	target_dir_local_check ${migrate_target_dir}
 	stop_all_containers
@@ -212,18 +212,18 @@ then
 	set_daemon_json_file ${migrate_target_dir}
 	start_all_containers
 # Migrate data dir from one host to remote host(first step)
-elif [ "${migrate_type}" == 'remote' ]
+elif [ "${migrate_type}" = 'remote' ]
 then
 	target_dir_remote_check ${target_ssh_user} ${target_ip} ${migrate_target_dir}
 	stop_all_containers
 	sync_data_dir_to_remote ${migrate_source_dir} ${target_ssh_user} ${target_ip} ${migrate_target_dir}
 # Second step
-elif [ "${migrate_type}" == 'set' ]
+elif [ "${migrate_type}" = 'set' ]
 then
 	set_daemon_json_file ${migrate_target_dir}
 	start_all_containers
 # Migrate the single container
-elif [ "${migrate_type}" == 'single' ]
+elif [ "${migrate_type}" = 'single' ]
 then
 	commit_and_save_container ${migrate_container_name} ${container_name} ${target_ssh_user} ${target_ip}
 else

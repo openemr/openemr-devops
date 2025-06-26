@@ -39,7 +39,7 @@ while getopts "es:b:t:d:" opt; do
       ;;
     t)
       OVERRIDEDOCKER=${OPTARG}
-      ;;      
+      ;;
     \?)
       echo "Invalid option: -${opt}" >&2
       exit 1
@@ -61,7 +61,7 @@ f () {
   else
     echo Skipping swap allocation...
   fi
-  
+
   # Make sure we don't fail out if there is an interactive prompt... go with defaults
   export DEBIAN_FRONTEND=noninteractive
 
@@ -72,31 +72,31 @@ f () {
 
   mkdir backups
 
-  if [[ ${REPOBRANCH} == master ]]; then
+  if [[ ${REPOBRANCH} = master ]]; then
     git clone --single-branch https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
   else
     git clone --single-branch --branch ${REPOBRANCH} https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/lightsail
   fi
 
-  if [[ ${EMPTYSHELLMODE} == 1 ]]; then
+  if [[ ${EMPTYSHELLMODE} = 1 ]]; then
     ln -s docker-compose.shell.yml docker-compose.yml
     if [[ ${CURRENTDOCKER} != ${OVERRIDEDOCKER} ]]; then
       echo launch.sh: switching to docker image ${OVERRIDEDOCKER}, from ${CURRENTDOCKER}
       sed -i "s^openemr/${CURRENTDOCKER}^openemr/${OVERRIDEDOCKER}^" docker-compose.yml
     fi
-  elif [[ $(dpkg --print-architecture) =~ arm && ${DEVELOPERMODE} == 0 ]]; then
+  elif [[ $(dpkg --print-architecture) =~ arm && ${DEVELOPERMODE} = 0 ]]; then
     ln -s docker-compose.arm.yml docker-compose.yml
     if [[ ${CURRENTDOCKER} != ${OVERRIDEDOCKER} ]]; then
       echo launch.sh: switching to docker image ${OVERRIDEDOCKER}, from ${CURRENTDOCKER}
       sed -i "s^openemr/${CURRENTDOCKER}^openemr/${OVERRIDEDOCKER}^" docker-compose.yml
-    fi      
+    fi
   elif [[ $(dpkg --print-architecture) =~ arm ]]; then
     ln -s docker-compose.arm.dev.yml docker-compose.yml
     if [[ ${CURRENTDOCKER} != ${OVERRIDEDOCKER} ]]; then
       echo launch.sh: switching to docker image ${OVERRIDEDOCKER}, from ${CURRENTDOCKER}
       sed -i "s^openemr/${CURRENTDOCKER}^openemr/${OVERRIDEDOCKER}^" docker-compose.yml
-    fi    
-  elif [[ ${DEVELOPERMODE} == 0 ]]; then
+    fi
+  elif [[ ${DEVELOPERMODE} = 0 ]]; then
     ln -s docker-compose.prod.yml docker-compose.yml
     if [[ ${CURRENTDOCKER} != ${OVERRIDEDOCKER} ]]; then
       echo launch.sh: switching to docker image ${OVERRIDEDOCKER}, from ${CURRENTDOCKER}
@@ -111,12 +111,12 @@ f () {
   fi
   docker compose up -d --build
 
-  chmod a+x duplicity/*.sh  
+  chmod a+x duplicity/*.sh
   cp duplicity/restore.sh duplicity/wait_until_ready.sh /root
 
   echo launch.sh: waiting for init...
   duplicity/wait_until_ready.sh
-  
+
   cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
 
   echo "launch.sh: done"

@@ -29,7 +29,7 @@ if [ -f /root/recovery-restore-required ]; then
   KMS=${RECOVERYKMS}
   PASSPHRASE=$(aws s3 cp s3://${S3}/Backup/passphrase.txt - --sse aws:kms --sse-kms-key-id ${KMS})
   export PASSPHRASE
-  duplicity --force boto3+s3://${S3}/Backup /  
+  duplicity --force boto3+s3://${S3}/Backup /
 elif [ -f /root/cloud-backups-enabled ]; then
   S3=$(cat /root/.cloud-s3.txt)
   KMS=$(cat /root/.cloud-kms.txt)

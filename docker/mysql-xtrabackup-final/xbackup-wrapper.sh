@@ -10,7 +10,7 @@ if [ -f restore-process-complete ]; then
     echo openemr > xtrabackup.database.txt
     chmod 600 xtrabackup.database.txt
   fi
-  touch allsetup.ok  
+  touch allsetup.ok
   rm restore-process-complete
 fi
 
@@ -27,7 +27,7 @@ fi
 
 # I don't like forcing it like this, but if the backup fails one day, we need to try it the next
 # here's the problem: manual run during an automated run will cause destruction and havoc and woe
-if [ $(date +%u) == 7 ]; then
+if [ $(date +%u) = 7 ]; then
   ./xbackup.sh -t full -f
 else
   ./xbackup.sh -t incr -f

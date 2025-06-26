@@ -3,7 +3,7 @@
 set -e
 
 if [ ! "${XDEBUG_IDE_KEY}" != "" ] &&
-   [ ! "${XDEBUG_ON}" == 1 ]; then
+   [ ! "${XDEBUG_ON}" = 1 ]; then
    echo bad context for xdebug.sh launch
    exit 1
 fi
@@ -21,7 +21,7 @@ if [ ! -f /etc/php-xdebug-configured ]; then
     echo "xdebug.remote_handler=dbgp" >> /etc/php83/php.ini
     echo "xdebug.log=/tmp/xdebug.log" >> /etc/php83/php.ini
     echo "xdebug.discover_client_host=1" >> /etc/php83/php.ini
-    if [ "${XDEBUG_PROFILER_ON}" == 1 ]; then
+    if [ "${XDEBUG_PROFILER_ON}" = 1 ]; then
         # set up xdebug profiler
         echo "xdebug.mode=debug,profile" >> /etc/php83/php.ini
         echo "xdebug.profiler_output_name=cachegrind.out.%s" >> /etc/php83/php.ini

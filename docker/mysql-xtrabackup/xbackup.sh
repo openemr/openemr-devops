@@ -155,7 +155,7 @@ DEFAULTS_FILE=/root/innobackupex.cnf
 # holds name of DB for xtradb_backups table
 DATABASE_FILE=/root/xtrabackup.database.txt
 
-if [ "x${RESETDATABASE}" == "x1" ]; then
+if [ "x${RESETDATABASE}" = "x1" ]; then
   # write the file containing the name of the DB xtrabackup should store data in
   echo ${NEWDATABASENAME} > ${DATABASE_FILE}
   chmod 600 ${DATABASE_FILE}
@@ -399,7 +399,7 @@ trap '_error_handler' TERM
 XBACKUP_PID=$$
 
 # do we need to do first-time table creation?
-if [ "x${CREATETABLE}" == "x1" ]; then
+if [ "x${CREATETABLE}" = "x1" ]; then
   echo attempting schema creation...
   _sql_query "${TBL}"
   echo schema creation success!
@@ -422,7 +422,7 @@ _s_inf "INFO: Backup type: ${BKP_TYPE}"
    _d_inf "ERROR: WORK_DIR ${WORK_DIR} does not exist, \
       I will not create this automatically!"
 
-if [ "x${COPY_BINLOGS}" == "x1" ]; then
+if [ "x${COPY_BINLOGS}" = "x1" ]; then
    mkdir -p "${STOR_DIR}/bnlg" || \
       _d_inf "ERROR: ${STOR_DIR}/bnlg does no exist and cannot be created \
          automatically!"
@@ -445,11 +445,11 @@ DEFAULTS_FILE_FLAG=
 _ibx=`which innobackupex`
 if [ "$?" -gt 0 ]; then _d_inf "ERROR: Could not find innobackupex binary!"; fi
 if [ -n ${DEFAULTS_FILE} ]; then _ibx="${_ibx} ${DEFAULTS_FILE_FLAG}"; fi
-if [ "x${GALERA_INFO}" == "x1" ]; then _ibx="${_ibx} --galera-info"; fi
+if [ "x${GALERA_INFO}" = "x1" ]; then _ibx="${_ibx} --galera-info"; fi
 
 _ibx_bkp="${_ibx} --no-timestamp"
 _this_bkp="${WORK_DIR}/bkps/${CURDATE}"
-[ "x${STOR_CMP}" == "x1" ] && _this_bkp_stored="${STOR_DIR}/bkps/${CURDATE}.tar.gz" || \
+[ "x${STOR_CMP}" = "x1" ] && _this_bkp_stored="${STOR_DIR}/bkps/${CURDATE}.tar.gz" || \
    _this_bkp_stored="${STOR_DIR}/bkps/${CURDATE}"
 set -- $(_sql_last_backup)
 _last_bkp=$1
@@ -463,7 +463,7 @@ fi
 #
 # Determine what will be our --incremental-basedir
 #
-if [ "${BKP_TYPE}" == "incr" ];
+if [ "${BKP_TYPE}" = "incr" ];
 then
    if [ -n "${INC_BSEDIR}" ];
    then
@@ -482,7 +482,7 @@ then
       _d_inf "ERROR: No valid incremental basedir found!";
    fi
 
-   ( [ "x${APPLY_LOG}" == "x1" ] || [ "x${STOR_CMP}" == "x1" ] ) && \
+   ( [ "x${APPLY_LOG}" = "x1" ] || [ "x${STOR_CMP}" = "x1" ] ) && \
       _inc_basedir_path="${WORK_DIR}/bkps/${_inc_basedir}" || \
       _inc_basedir_path="${STOR_DIR}/bkps/${_inc_basedir}"
 
@@ -547,7 +547,7 @@ if [ -n "${_last_bkp}" ]; then
       echo $(basename ${f}) >> ${WORK_DIR}/bkps/binlog.index
    done
 
-   if [ "${STOR_CMP}" == 1 ]; then
+   if [ "${STOR_CMP}" = 1 ]; then
       if [ -f "${STOR_DIR}/bkps/${_last_bkp}-xtrabackup_binlog_info.log" ]; then
          _xbinlog_info=${STOR_DIR}/bkps/${_last_bkp}-xtrabackup_binlog_info.log
       elif [ -f "${STOR_DIR}/bkps/${_last_bkp}/xtrabackup_binlog_info" ]; then
@@ -571,7 +571,7 @@ if [ -n "${_last_bkp}" ]; then
       cd ${BNLGDIR}
 
       for f in $(grep -A $(cat ${WORK_DIR}/bkps/binlog.index|wc -l) "${_last_binlog}" ${WORK_DIR}/bkps/binlog.index); do
-         if [ "${STOR_CMP}" == 1 ]; then
+         if [ "${STOR_CMP}" = 1 ]; then
             [ -f "${_this_stor}/bnlg/${f}.tar.gz" ] && rm -rf "${_this_stor}/bnlg/${f}.tar.gz"
             tar czvf "${_this_stor}/bnlg/${f}.tar.gz" ${f}
          else
@@ -599,7 +599,7 @@ fi
 if [ -n "${STOR_DIR}" ]; then
    echo
    _echo "INFO: Copying to immediate storage ${STOR_DIR}/bkps/"
-   if [ "${STOR_CMP}" == 1 ]; then
+   if [ "${STOR_CMP}" = 1 ]; then
       tar czvf ${STOR_DIR}/bkps/${CURDATE}.tar.gz ${CURDATE}
       ret=$?
       [ -f ${_this_bkp}/xtrabackup_binlog_info ] \
@@ -613,7 +613,7 @@ if [ -n "${STOR_DIR}" ]; then
       _s_inf "WARNING: Failed to copy ${_this_bkp} to ${STOR_DIR}/bkps/"
       _s_inf "   I will not be able to delete old backups from your WORK_DIR";
    # Delete backup on work dir if no apply log is needed
-   elif [ "x${APPLY_LOG}" == "x0" ]; then
+   elif [ "x${APPLY_LOG}" = "x0" ]; then
       _echo "INFO: Cleaning up ${WORK_DIR}/bkps/"
       cd ${WORK_DIR}/bkps/
       if [ "x${STOR_CMP}" != "x1" ]; then
@@ -625,10 +625,10 @@ if [ -n "${STOR_DIR}" ]; then
       ls | grep -Ev "${_rxp}"
       for f in $(ls | grep -Ev ${_rxp}); do rm -rf ${f}; done
    # We also delete the previous incremental if the backup has been successful
-   elif [ "${BKP_TYPE}" == "incr" ]; then
+   elif [ "${BKP_TYPE}" = "incr" ]; then
       _echo "INFO: Deleting previous incremental ${WORK_DIR}/bkps/${_inc_basedir}"
       rm -rf ${WORK_DIR}/bkps/${_inc_basedir}*;
-   elif [ "${BKP_TYPE}" == "full" ]; then
+   elif [ "${BKP_TYPE}" = "full" ]; then
       _echo "INFO: Deleting previous work backups $(find ${WORK_DIR}/bkps/ -maxdepth 1 -mindepth 1|grep -v ${CURDATE}|xargs)"
       rm -rf $(find ${WORK_DIR}/bkps/ -maxdepth 1 -mindepth 1|grep -v ${CURDATE}|xargs)
    fi
@@ -643,7 +643,7 @@ if [[ -n "${RMTE_DIR}" && -n "${RMTE_SSH}" ]]; then
    _echo " ... done"
 fi
 
-if [ "${BKP_TYPE}" == "incr" ]; then
+if [ "${BKP_TYPE}" = "incr" ]; then
    set -- $(_sql_incr_bsedir ${_week_no})
    _incr_base=$1
    _incr_baseid=$2
@@ -654,7 +654,7 @@ else
 fi
 
 # Start, whether apply log is enabled
-if [ "${APPLY_LOG}" == 1 ]; then
+if [ "${APPLY_LOG}" = 1 ]; then
 
 if [ -n "${USE_MEMORY}" ]; then _ibx_prep="${_ibx} --use-memory=${USE_MEMORY}"; fi
 
@@ -662,7 +662,7 @@ if [ "${status}" != 1 ]; then
    _start_prepare_date=`date`
    _s_inf "INFO: Apply log started: ${_start_prepare_date}"
 
-   if [ "${BKP_TYPE}" == "incr" ];
+   if [ "${BKP_TYPE}" = "incr" ];
    then
       if [ ! -n "${_incr_base}" ];
       then
@@ -718,12 +718,12 @@ fi
 fi
 
 _started_at="STR_TO_DATE('${CURDATE}','%Y-%m-%d_%H_%i_%s')"
-if [ "${APPLY_LOG}" == 1 ]; then
+if [ "${APPLY_LOG}" = 1 ]; then
    _ends_at=`date -d "${_end_prepare_date}" "+%Y-%m-%d %H:%M:%S"`
 else
    _ends_at=`date -d "${_end_backup_date}" "+%Y-%m-%d %H:%M:%S"`
 fi
-if [ "${BKP_TYPE}" == "incr" ]; then
+if [ "${BKP_TYPE}" = "incr" ]; then
    _incr_basedir="STR_TO_DATE('${_incr_basedir}','%Y-%m-%d_%H_%i_%s')"
 else
    _incr_basedir="NULL"
@@ -758,7 +758,7 @@ echo
 _s_inf "INFO: Backup size: ${_bu_size}"
 _s_inf "INFO: Remaining space available on backup device: ${_du_left}"
 _s_inf "INFO: Logfile: ${LOG_FILE}"
-[ "x${APPLY_LOG}" == "x1" ] && \
+[ "x${APPLY_LOG}" = "x1" ] && \
    _s_inf "INFO: Last full backup fully prepared (including incrementals): ${_last_full_prep}"
 cp ${INF_FILE_WORK} ${INF_FILE_STOR}
 echo

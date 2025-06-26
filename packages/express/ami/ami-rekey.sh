@@ -32,9 +32,9 @@ if [ -f /etc/appliance-unlocked ]; then
   exit 0
 fi
 
-# wait a while for services to start  
+# wait a while for services to start
 until docker container ls | grep openemr/openemr >& /dev/null
-do      
+do
     sleep 5
 done
 

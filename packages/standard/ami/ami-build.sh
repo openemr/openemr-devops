@@ -36,7 +36,7 @@ docker pull openemr/openemr${DOCKERLABEL}
 
 # get the rest of the devops repo and docker-tools
 cd /root
-if [[ ${REPOBRANCH} == master ]]; then
+if [[ ${REPOBRANCH} = master ]]; then
   git clone --single-branch https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
 else
   git clone --single-branch --branch ${REPOBRANCH} https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
