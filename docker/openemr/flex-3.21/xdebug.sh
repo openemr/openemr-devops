@@ -2,8 +2,7 @@
 
 set -e
 
-if [ ! "${XDEBUG_IDE_KEY}" != "" ] &&
-   [ ! "${XDEBUG_ON}" = 1 ]; then
+if [ "${XDEBUG_IDE_KEY}" = "" ] && [ "${XDEBUG_ON}" != 1 ]; then
    echo bad context for xdebug.sh launch
    exit 1
 fi
