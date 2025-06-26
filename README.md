@@ -24,6 +24,8 @@ See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_P
 ### Components and Infrastructure
 
 * [Official OpenEMR Docker](docker/openemr): Source repository for the [Docker](https://hub.docker.com/r/openemr/openemr/) library
+  * **Production Docker Testing**: Automated workflow verifies production OpenEMR Docker images (versioned releases like 7.0.4) can build correctly and function with database connections. Tests include unit, fixtures, services, validators, and controllers suites.
+  * **Flex Docker Testing**: Automated workflow tests development-oriented "flex" Docker images designed for development where OpenEMR code is mounted separately rather than embedded in the image.
 * [mysql-xtrabackup Docker](docker/mysql-xtrabackup): MySQL 5.7 / Percona XtraBackup Docker container
 
 ### Management Utilities
