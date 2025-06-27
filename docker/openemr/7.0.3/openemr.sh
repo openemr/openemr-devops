@@ -437,16 +437,16 @@ fi
 
 if [ "${SWARM_MODE}" = "yes" ]; then
     # Set flag that the instance is ready when in swarm mode
-    echo ""
+    echo
     echo "swarm mode on: this instance is ready"
-    echo ""
+    echo
     touch /root/instance-swarm-ready
 fi
 
-echo ""
+echo
 echo "Love OpenEMR? You can now support the project via the open collective:"
 echo " > https://opencollective.com/openemr/donate"
-echo ""
+echo
 
 if [ "${OPERATOR}" = yes ]; then
     echo 'Starting apache!'

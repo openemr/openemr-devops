@@ -353,7 +353,7 @@ fi
 
 # Script usage.
 if [[ $# -eq 0 || "${FIRST_ARG}" = '--help' || "${FIRST_ARG}" = '-h' ]]; then
-    echo ""
+    echo
     echo "Usage: ${0##*/} COMMAND [ARGS]"
     echo "Usage: ${0##*/} -d <docker name> COMMAND [ARGS]"
     echo "Options:"

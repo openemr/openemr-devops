@@ -35,11 +35,11 @@ fi
 # Install location
 [ ! -d "${installDir}" ] && mkdir ${installDir}/grafana/provisioning/{dashboards,datasources} -p
 mkdir ${installDir}/prometheus -p
-echo '    '
+echo
 
 # Download the yml files
 echo 'Downloading the configuration files...'
-echo '    '
+echo
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/prometheus.yml  > ${installDir}/prometheus/prometheus.yml
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/prometheus/alert-rules.yml > ${installDir}/prometheus/alert-rules.yml
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/alertmanager.yml           > ${installDir}/alertmanager.yml
@@ -47,7 +47,7 @@ curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilitie
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard-193.json > ${installDir}/grafana/provisioning/dashboards/dashboard-193.json
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/dashboards/dashboard.yml > ${installDir}/grafana/provisioning/dashboards/dashboard.yml
 curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-monitor/grafana/provisioning/datasources/datasource.yml > ${installDir}/grafana/provisioning/datasources/datasource.yml
-echo '    '
+echo
 
 # Input Host ip
 sed -i "s/hostIp/${hostIp}/g" ${installDir}/prometheus/prometheus.yml
@@ -68,14 +68,14 @@ sed -i "s/receiverEmail/${receiverEmail}/g" ${installDir}/alertmanager.yml
 echo '******************************Check the Modification******************************'
 echo "Setting in ${installDir}/prometheus/prometheus.yml file."
 egrep "3001|3002|3003" ${installDir}/prometheus/prometheus.yml
-echo '    '
+echo
 echo "Setting in ${installDir}/grafana/provisioning/datasources/datasource.yml file."
 grep url ${installDir}/grafana/provisioning/datasources/datasource.yml
-echo '    '
+echo
 echo "Setting in ${installDir}/alertmanager.yml file."
 egrep 'smtp|to' ${installDir}/alertmanager.yml
 echo '**********************************************************************************'
-echo ''
+echo
 echo '=======================Startup========================'
 echo 'Please run below commands to startup the monitor env:'
 echo "cd ${installDir} && docker-compose up"

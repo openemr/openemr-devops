@@ -505,10 +505,10 @@ else
    fi
 fi
 
-echo ""
+echo
 echo "Love OpenEMR? You can now support the project via the open collective:"
 echo " > https://opencollective.com/openemr/donate"
-echo ""
+echo
 
 if [ "${OPERATOR}" = yes ]; then
     echo 'Starting apache!'
