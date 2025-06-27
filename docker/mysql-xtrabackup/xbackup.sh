@@ -442,8 +442,9 @@ _s_inf "INFO: Backup job started: ${_start_backup_date}"
 DEFAULTS_FILE_FLAG=
 [ -n "${DEFAULTS_FILE}" ] && DEFAULTS_FILE_FLAG="--defaults-file=${DEFAULTS_FILE}"
 # Check for innobackupex
-_ibx=$(which innobackupex)
-if [ "$?" -gt 0 ]; then _d_inf "ERROR: Could not find innobackupex binary!"; fi
+if ! _ibx=$(command -v innobackupex); then
+    _d_inf 'ERROR: Could not find innobackupex binary!'
+fi
 if [ -n ${DEFAULTS_FILE} ]; then _ibx="${_ibx} ${DEFAULTS_FILE_FLAG}"; fi
 if [ "x${GALERA_INFO}" = "x1" ]; then _ibx="${_ibx} --galera-info"; fi
 

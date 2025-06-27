@@ -37,8 +37,9 @@ stop_all_containers() {
 rsync_check() {
     echo -e "\033[30m===>\033[0m \033[32mSyncing data to target dir... \033[0m"
     echo ''
-    which rsync &>/dev/null
-    [ $? -ne 0 ] && echo "Please install rsync first." && exit
+    command -v rsync &>/dev/null && return
+    echo 'Please install rsync first.'
+    exit
 }
 
 # Sync the data local
@@ -115,8 +116,10 @@ commit_and_save_container(){
     echo -e "\033[30m===>\033[0m \033[32mMoving to the target host... \033[0m"
     echo ''
     # Move the tar file to remote host
-    which scp &>/dev/null
-    [ $? -ne 0 ] && echo "Please check openssh-clients install or not." && exit
+    if ! command -v scp &>/dev/null; then
+        echo 'Please check openssh-clients install or not.'
+        exit 1
+    fi
     scp /tmp/${container_name}.tar ${ssh_user}@${target_host}:/tmp
     echo ''
     # Load an image from a tar archive in the remote host

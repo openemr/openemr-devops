@@ -14,8 +14,7 @@ github_account=$2       # github account
 # Installation: git --> docker --> docker-compose --> openemr-cmd --> minikube
 # Run as root for centos/rhel/fedora
 script_run_as_root(){
-    if [ "${UID}" -ne 0 ]
-    then
+    if [ "${UID}" -ne 0 ]; then
         echo 'Please run with the root user.'
         exit
     fi
@@ -25,30 +24,28 @@ script_run_as_root(){
 install_git() {
     # Check the os distribution ubuntu/debian/rhel/fedora/centos
     os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
-    which git &>/dev/null
-    if [ $? -ne 0 ]
-    then
-        echo -e "\033[30m===>\033[0m \033[32mInstalling git... \033[0m"
-        echo ''
-        case "${os_distribution}" in
-            ubuntu|debian)
-                sudo apt-get update -y
-                sudo apt-get install git -y
-                ;;
-            redhat|centos)
-                yum install git -y
-                ;;
-            fedoraproject)
-                dnf update -y
-                dnf install git -y
-                ;;
-        esac
-        [ $? -ne 0 ] && echo '' && echo -e "\e[31mInstalled failed, please check the repo list and the network.\e[0m" && exit
-        echo ''
-    else
+    if command -v git &>/dev/null; then
         echo -e "\033[30m===>\033[0m \033[32mGit is already installed. \033[0m"
         echo ''
+        return
     fi
+    echo -e "\033[30m===>\033[0m \033[32mInstalling git... \033[0m"
+    echo ''
+    case "${os_distribution}" in
+        ubuntu|debian)
+            sudo apt-get update -y
+            sudo apt-get install git -y
+            ;;
+        redhat|centos)
+            yum install git -y
+            ;;
+        fedoraproject)
+            dnf update -y
+            dnf install git -y
+            ;;
+    esac
+    [ $? -ne 0 ] && echo '' && echo -e "\e[31mInstalled failed, please check the repo list and the network.\e[0m" && exit
+    echo ''
 }
 
 # The script usage
@@ -107,16 +104,13 @@ code_dir_exist_or_not() {
     code_location=$1
     github_account=$2
     # Create the code location if not exist
-    if [ ! -d ${code_location} ]
-    then
+    if [ ! -d ${code_location} ]; then
         mkdir -p ${code_location}
         git_clone_function $1 $2
         # It already downloaded if openemr dir exsit
-    elif [ ! -d ${code_location}/openemr ]
-    then
+    elif [ ! -d ${code_location}/openemr ]; then
         git_clone_function $1 $2
-    elif [ ! -d ${code_location}/openemr-devops ]
-    then
+    elif [ ! -d ${code_location}/openemr-devops ]; then
         git_clone_function $1 $2
     else
         echo -e "\033[30m===>\033[0m \033[32mOpenEMR repos are already downloaded. \033[0m"
@@ -140,37 +134,30 @@ rhel_register_check_and_enable_repo() {
     register_lock=/tmp/openemr-register-lock
     repo_lock=/tmp/openemr-repo-lock
     # Due to subscription-manager check very slow, so add a lock file to check
-    if [ ! -f ${register_lock} ]
-    then
+    if [ ! -f ${register_lock} ]; then
         subscription-manager status | grep Current &>/dev/null
-        if [ $? -eq 0 ]
-        then
+        if [ $? -eq 0 ]; then
             echo 0 > ${register_lock}
         else
             echo 1 > ${register_lock}
             register_note
         fi
-    elif [ -f ${register_lock} ]
-    then
-        if [ "$(cat /tmp/openemr-register-lock)" = "1" ]
-        then
+    elif [ -f ${register_lock} ]; then
+        if [ "$(cat /tmp/openemr-register-lock)" = "1" ]; then
             register_note
         fi
     fi
 
     # Attach the necessary repo
-    if [ ! -f ${repo_lock} ]
-    then
+    if [ ! -f ${repo_lock} ]; then
         echo -e "\033[30m===>\033[0m \033[32mEnabling base and extras repo... \033[0m"
         echo ''
         subscription-manager repos --enable rhel-7-server-rpms &>/dev/null
         [ $? -eq 0 ] && echo 1 >  ${repo_lock}
         subscription-manager repos --enable rhel-7-server-extras-rpms &>/dev/null
         [ $? -eq 0 ] && echo 2 >> ${repo_lock}
-    elif [ -f ${repo_lock} ]
-    then
-        if [ "$(cat /tmp/openemr-repo-lock|wc -l)" = "2" ]
-        then
+    elif [ -f ${repo_lock} ]; then
+        if [ "$(cat /tmp/openemr-repo-lock|wc -l)" = "2" ]; then
             echo -e "\033[30m===>\033[0m \033[32mBoth of base and extras repo are already enabled. \033[0m"
             echo ''
         fi
@@ -188,8 +175,7 @@ install_docker() {
     os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
     # Check docker service status if do not install or not startup
     sudo systemctl start docker &>/dev/null
-    if [ $? -ne 0 ]
-    then
+    if [ $? -ne 0 ]; then
         case "${os_distribution}" in
             ubuntu|debian)
                 echo -e "\033[30m===>\033[0m \033[32mUpdate the apt package index and install packages to allow apt to use a repository over HTTPS... \033[0m"
@@ -252,64 +238,56 @@ install_docker() {
 
 # install docker-compose tool
 install_docker_compose() {
-    which docker-compose &>/dev/null
-    if [ $? -ne 0 ]
-    then
-        echo -e "\033[30m===>\033[0m \033[32mInstalling docker-compose... \033[0m"
-        echo ''
-        # Run sudo under root mode that is also fine e.g. rhel/fedora/centos
-        sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-        echo ''
-    else
+    if command -v docker-compose &>/dev/null; then
         echo -e "\033[30m===>\033[0m \033[32mDocker-compose is already installed. \033[0m"
         echo ''
+        return
     fi
+    echo -e "\033[30m===>\033[0m \033[32mInstalling docker-compose... \033[0m"
+    echo ''
+    # Run sudo under root mode that is also fine e.g. rhel/fedora/centos
+    sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+    echo ''
 }
 
 # Install openemr-cmd tool
 install_openemr_cmd() {
     os_type=$(uname)
-    if [ "${os_type}" = "Linux" ]
-    then
+    if [ "${os_type}" = "Linux" ]; then
         os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
     else
         os_distribution=$(uname)
     fi
 
-    which openemr-cmd &>/dev/null
-    if [ $? -ne 0 ]
-    then
-        echo -e "\033[30m===>\033[0m \033[32mInstalling openemr-cmd... \033[0m"
-        echo ''
-        case "${os_distribution}" in
-            ubuntu|debian)
-                sudo curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
-                sudo chmod +x /usr/local/bin/openemr-cmd
-                echo ''
-                ;;
-            *)
-                # It requests a password if run sudo in macOS, so try without sudo
-                curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
-                chmod +x /usr/local/bin/openemr-cmd
-                echo ''
-                ;;
-        esac
-        echo ''
-    else
+    if command -v openemr-cmd &>/dev/null; then
         echo -e "\033[30m===>\033[0m \033[32mOpenEMR-cmd is already installed. \033[0m"
         echo ''
+        return
     fi
+    echo -e "\033[30m===>\033[0m \033[32mInstalling openemr-cmd... \033[0m"
+    echo ''
+    case "${os_distribution}" in
+        ubuntu|debian)
+            sudo curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
+            sudo chmod +x /usr/local/bin/openemr-cmd
+            echo ''
+            ;;
+        *)
+            # It requests a password if run sudo in macOS, so try without sudo
+            curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-cmd/openemr-cmd -o /usr/local/bin/openemr-cmd
+            chmod +x /usr/local/bin/openemr-cmd
+            echo ''
+            ;;
+    esac
+    echo ''
 }
 
 # Install command check
 install_cmd_chk(){
-    which install &>/dev/null
-    if [ $? -ne 0 ]
-    then
-        echo -e "\033[33mNOTE: Please make sure you have installed coreutils package at first.\033[0m"
-        exit
-    fi
+    command -v install &>/dev/null && return
+    echo -e "\033[33mNOTE: Please make sure you have installed coreutils package at first.\033[0m"
+    exit
 }
 
 # Run minikube cmd to startup cluster tip
@@ -343,17 +321,18 @@ install_conntrack() {
 # Install minikube and kubectl
 install_minikube_kubectl(){
     # Judge the os type e.g. Linux or MacOS
-    if [ "${os_type}" = "Linux" ]
-    then
+    if [ "${os_type}" = "Linux" ]; then
         minikube_os=linux
-    elif [ "${os_type}" = "Darwin" ]
-    then
+    elif [ "${os_type}" = "Darwin" ]; then
         minikube_os=darwin
     fi
     # Install minikube
-    which minikube &>/dev/null
-    if [ $? -ne 0 ]
-    then
+    if command -v minikube &>/dev/null; then
+        echo -e "\033[30m===>\033[0m \033[32mMinikube is already installed. \033[0m"
+        echo ''
+        run_cluster_tip
+        echo ''
+    else
         echo -e "\033[30m===>\033[0m \033[32mInstalling minikube... \033[0m"
         echo ''
         sudo curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-${minikube_os}-amd64
@@ -364,23 +343,16 @@ install_minikube_kubectl(){
         echo ''
         run_cluster_tip
         echo ''
-    else
-        echo -e "\033[30m===>\033[0m \033[32mMinikube is already installed. \033[0m"
-        echo ''
-        run_cluster_tip
-        echo ''
     fi
     # Install kubectl
-    which kubectl &>/dev/null
-    if [ $? -ne 0 ]
-    then
+    if command -v kubectl &>/dev/null; then
+        echo -e "\033[30m===>\033[0m \033[32mKubectl is already installed. \033[0m"
+        echo ''
+    else
         echo -e "\033[30m===>\033[0m \033[32mInstalling kubectl... \033[0m"
         echo ''
         sudo curl -L https://storage.googleapis.com/kubernetes-release/release/v1.19.0/bin/${minikube_os}/amd64/kubectl -o /usr/local/bin/kubectl
         sudo chmod +x /usr/local/bin/kubectl
-        echo ''
-    else
-        echo -e "\033[30m===>\033[0m \033[32mKubectl is already installed. \033[0m"
         echo ''
     fi
 }
@@ -428,22 +400,19 @@ startup_the_env() {
 
 # The main logic
 # Judge the os type e.g. Linux or MacOS
-if [ "${os_type}" = "Linux" ]
-then
+if [ "${os_type}" = "Linux" ]; then
     major_release=$(grep VERSION_ID /etc/os-release | awk -F'[.]' '{print $1}' | awk -F'["]' '{print $2}')
     os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
     case "${os_distribution}" in
         ubuntu)
-            if [ "${major_release}" -lt  "16" ]
-            then
+            if [ "${major_release}" -lt  "16" ]; then
                 echo 'The script only supports ubuntu 16.04 or later.'
                 exit
             fi
             [ $# -ne 2 ] && installer_script_usage
             ;;
         debian)
-            if [ "${major_release}" -lt  "9" ] || [ "${major_release}" -gt  "10" ]
-            then
+            if [ "${major_release}" -lt  "9" ] || [ "${major_release}" -gt  "10" ]; then
                 echo 'The script only supports debian 9 or debian 10.'
                 exit
             fi
@@ -452,8 +421,7 @@ then
         fedoraproject)
             # Due to the different format, so get the keyword again in fedora
             major_release=$(grep VERSION_ID /etc/os-release| awk -F'=' '{print $2}')
-            if [ "${major_release}" -lt "30" ] || [ "${major_release}" -gt "31" ]
-            then
+            if [ "${major_release}" -lt "30" ] || [ "${major_release}" -gt "31" ]; then
                 echo 'The script only supports fedora30 and fedora31.'
                 exit
             fi
@@ -461,8 +429,7 @@ then
             [ $# -ne 2 ] && installer_script_usage
             ;;
         redhat)
-            if [ "${major_release}" != "7" ]
-            then
+            if [ "${major_release}" != "7" ]; then
                 echo 'The script only supports rhel7.'
                 exit
             fi
@@ -471,8 +438,7 @@ then
             rhel_register_check_and_enable_repo
             ;;
         centos)
-            if [ "${major_release}" != "7" ]
-            then
+            if [ "${major_release}" != "7" ]; then
                 echo 'The script only supports centos7.'
                 exit
             fi
@@ -489,21 +455,17 @@ then
     install_minikube_kubectl
     quick_check_result
     startup_the_env $1
-elif [ "${os_type}" = "Darwin" ]
-then
+elif [ "${os_type}" = "Darwin" ]; then
     # For MacOS
     # Check the macOS version
     major_release=$(sw_vers -productVersion| awk -F'.' '{print $1}')
 
-    if [ "${major_release}" -lt "10" ]
-    then
+    if [ "${major_release}" -lt "10" ]; then
         echo 'The script only supports macOS10.13 and later.'
         exit
-    elif [ "${major_release}" -eq "10" ]
-    then
+    elif [ "${major_release}" -eq "10" ]; then
         minor_release=$(sw_vers -productVersion| awk -F'.' '{print $2}')
-        if [ "${minor_release}" -lt "13" ]
-        then
+        if [ "${minor_release}" -lt "13" ]; then
             echo 'The script only supports macOS10.13 and later.'
             exit
         fi
@@ -515,27 +477,23 @@ then
 
         # Install brew
         # Homebrew info: https://brew.sh
-        which brew &>/dev/null
-        if [ $? -ne 0 ]
-        then
-            echo -e "\033[30m===>\033[0m \033[32mInstalling Homebrew... \033[0m"
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+        if command -v brew &>/dev/null; then
+            echo -e "\033[30m===>\033[0m \033[32mHomebrew is already installed. \033[0m"
             echo ''
         else
-            echo -e "\033[30m===>\033[0m \033[32mHomebrew is already installed. \033[0m"
+            echo -e "\033[30m===>\033[0m \033[32mInstalling Homebrew... \033[0m"
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
             echo ''
         fi
 
         # Install git
-        which git &>/dev/null
-        if [ $? -ne 0 ]
-        then
+        if command -v git &>/dev/null; then
+            echo -e "\033[30m===>\033[0m \033[32mGit is already installed. \033[0m"
+            echo ''
+        else
             echo -e "\033[30m===>\033[0m \033[32mInstalling git... \033[0m"
             brew install git
             [ $? -ne 0 ] && echo '' && echo -e "\e[31mInstalled failed, please check the network.\e[0m" && exit
-            echo ''
-        else
-            echo -e "\033[30m===>\033[0m \033[32mGit is already installed. \033[0m"
             echo ''
         fi
 
@@ -543,9 +501,10 @@ then
         code_dir_exist_or_not $1 $2
 
         # Install docker
-        which docker &>/dev/null
-        if [ $? -ne 0 ]
-        then
+        if command -v docker &>/dev/null; then
+            echo -e "\033[30m===>\033[0m \033[32mDocker is already installed. \033[0m"
+            echo ''
+        else
             echo -e "\033[30m===>\033[0m \033[32mInstalling docker... \033[0m"
             echo ''
             brew cask install docker
@@ -556,14 +515,10 @@ then
             while true
             do
                 read -p "Please enter [yes|y] to continue if you already permitted the docker access: " CONFIRM_PERMIT
-                if [ "${CONFIRM_PERMIT}" = "yes" ] || [ "${CONFIRM_PERMIT}" = "y" ]
-                then
+                if [ "${CONFIRM_PERMIT}" = "yes" ] || [ "${CONFIRM_PERMIT}" = "y" ]; then
                     break
                 fi
             done
-            echo ''
-        else
-            echo -e "\033[30m===>\033[0m \033[32mDocker is already installed. \033[0m"
             echo ''
         fi
 
