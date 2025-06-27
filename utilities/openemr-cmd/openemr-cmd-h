@@ -12,8 +12,7 @@ filter_help_output(){
 }
 
 # Use (( )) for numeric comparisons
-if (( $# == 0 ))
-then
+if (( $# == 0 )); then
     echo "To search the keyword from openemr-cmd -h output quickly
     Usage: openemr-cmd-h keyword
     e.g.   openemr-cmd-h ssl

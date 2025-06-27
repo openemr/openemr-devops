@@ -24,8 +24,7 @@ fi
 
 # Modify the ip and mail setting for the yml files
 ARG_CODE=13
-if [ $# -ne 6 ]
-then
+if [ $# -ne 6 ]; then
     echo "Usage: bash $(basename $0) <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>"
     echo 'e.g.'
     echo "bash $(basename $0) /home/openemr-monitor 192.168.2.111 smtp.gmail.com:587 monitor@gmail.com pass12 test@gmail.com"

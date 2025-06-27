@@ -464,12 +464,9 @@ fi
 #
 # Determine what will be our --incremental-basedir
 #
-if [ "${BKP_TYPE}" = "incr" ];
-then
-   if [ -n "${INC_BSEDIR}" ];
-   then
-      if [ ! -d ${WORK_DIR}/bkps/${INC_BSEDIR} ];
-      then
+if [ "${BKP_TYPE}" = "incr" ]; then
+   if [ -n "${INC_BSEDIR}" ]; then
+      if [ ! -d ${WORK_DIR}/bkps/${INC_BSEDIR} ]; then
          _d_inf "ERROR: Specified incremental basedir ${WORK_DIR}/bkps/${_inc_basedir} does not exist.";
       fi
 
@@ -478,8 +475,7 @@ then
       _inc_basedir=${_last_bkp}
    fi
 
-   if [ ! -n "${_inc_basedir}" ];
-   then
+   if [ ! -n "${_inc_basedir}" ]; then
       _d_inf "ERROR: No valid incremental basedir found!";
    fi
 
@@ -487,8 +483,7 @@ then
       _inc_basedir_path="${WORK_DIR}/bkps/${_inc_basedir}" || \
       _inc_basedir_path="${STOR_DIR}/bkps/${_inc_basedir}"
 
-   if [ ! -d "${_inc_basedir_path}" ];
-   then
+   if [ ! -d "${_inc_basedir_path}" ]; then
       _d_inf "ERROR: Incremental basedir ${_inc_basedir_path} does not exist.";
    fi
 
@@ -663,17 +658,14 @@ if [ "${status}" != 1 ]; then
    _start_prepare_date=$(date)
    _s_inf "INFO: Apply log started: ${_start_prepare_date}"
 
-   if [ "${BKP_TYPE}" = "incr" ];
-   then
-      if [ ! -n "${_incr_base}" ];
-      then
+   if [ "${BKP_TYPE}" = "incr" ]; then
+      if [ ! -n "${_incr_base}" ]; then
          _d_inf "ERROR: No valid base backup found!";
       fi
 
       _incr_base=P_${_incr_base}
 
-      if [ ! -d "${WORK_DIR}/bkps/${_incr_base}" ];
-      then
+      if [ ! -d "${WORK_DIR}/bkps/${_incr_base}" ]; then
          _d_inf "ERROR: Base backup ${WORK_DIR}/bkps/${_incr_base} does not exist.";
       fi
       _ibx_prep="${_ibx_prep} --apply-log --redo-only ${WORK_DIR}/bkps/${_incr_base} --incremental-dir ${_this_bkp}"
