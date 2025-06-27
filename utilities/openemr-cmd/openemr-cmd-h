@@ -5,80 +5,80 @@ set -euo pipefail # Exit on error, unset var, pipe failure
 FIRST_ARG="${1:-}" # Use parameter expansion default
 
 filter_help_output(){
-	local FILTER_ARG="$1"
-	local LINE_COUNT="$2"
-	# Quoted variables
-	openemr-cmd -h | grep "${FILTER_ARG}" -A "${LINE_COUNT}"
+    local FILTER_ARG="$1"
+    local LINE_COUNT="$2"
+    # Quoted variables
+    openemr-cmd -h | grep "${FILTER_ARG}" -A "${LINE_COUNT}"
 }
 
 # Use (( )) for numeric comparisons
 if (( $# == 0 ))
 then
-	echo "To search the keyword from openemr-cmd -h output quickly
-  Usage: openemr-cmd-h keyword
-  e.g.   openemr-cmd-h ssl
-  h                         openemr-cmd -h
-  docker                    docker-management
-  php                       php-management
-  test                      test-management
-  sweep                     sweep-management
-  reset                     reset-management
-  backup                    backup-management
-  ssl                       ssl-management
-  mul                       multisite-management
-  api                       api-management
-  com                       computational-health-informatics
-  webroot                   webroot-management
-  others                    others
-  keyword                   grep from openemr-cmd -h"
-	exit 0 # Explicit success exit
+    echo "To search the keyword from openemr-cmd -h output quickly
+    Usage: openemr-cmd-h keyword
+    e.g.   openemr-cmd-h ssl
+    h                         openemr-cmd -h
+    docker                    docker-management
+    php                       php-management
+    test                      test-management
+    sweep                     sweep-management
+    reset                     reset-management
+    backup                    backup-management
+    ssl                       ssl-management
+    mul                       multisite-management
+    api                       api-management
+    com                       computational-health-informatics
+    webroot                   webroot-management
+    others                    others
+    keyword                   grep from openemr-cmd -h"
+    exit 0 # Explicit success exit
 fi
 
 # Use ${FIRST_ARG}
 case "${FIRST_ARG}" in
-          docker)
-		filter_help_output docker-management 8
-		;;
-	   php)
-		filter_help_output php-management 9
-		;;
-	    test)
-		filter_help_output test-management 8
-		;;
-	    sweep)
-		filter_help_output sweep-management 2
-		;;
-	    reset)
-		filter_help_output reset-management 4
-		;;
-	    backup)
-		filter_help_output backup-management 6
-		;;
-	    ssl)
-		filter_help_output ssl-management 18
-		;;
-	    mul)
-		filter_help_output multisite-management 5
-		;;
-	    api)
-		filter_help_output api-management 4
-		;;
-	    com)
-		filter_help_output computational-health-informatics 2
-		;;
-	    webroot)
-		filter_help_output webroot-management 2
-		;;
-	    others)
-		filter_help_output others: 5
-		;;
-		h)
-		openemr-cmd -h
-		;;
-		*)
-		# Quoted variable
-		openemr-cmd -h | grep -i "${FIRST_ARG}"
-		;;
+    docker)
+        filter_help_output docker-management 8
+        ;;
+    php)
+        filter_help_output php-management 9
+        ;;
+    test)
+        filter_help_output test-management 8
+        ;;
+    sweep)
+        filter_help_output sweep-management 2
+        ;;
+    reset)
+        filter_help_output reset-management 4
+        ;;
+    backup)
+        filter_help_output backup-management 6
+        ;;
+    ssl)
+        filter_help_output ssl-management 18
+        ;;
+    mul)
+        filter_help_output multisite-management 5
+        ;;
+    api)
+        filter_help_output api-management 4
+        ;;
+    com)
+        filter_help_output computational-health-informatics 2
+        ;;
+    webroot)
+        filter_help_output webroot-management 2
+        ;;
+    others)
+        filter_help_output others: 5
+        ;;
+    h)
+        openemr-cmd -h
+        ;;
+    *)
+        # Quoted variable
+        openemr-cmd -h | grep -i "${FIRST_ARG}"
+        ;;
 esac
 
 exit 0 # Explicit success exit at end of script

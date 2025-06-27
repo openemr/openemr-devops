@@ -13,8 +13,8 @@ DOCKER_START=11
 DOCKER_COMPOSE_CODE=12
 if ! which docker &>/dev/null
 then
-	echo "Please check docker and docker-compose install or not."
-	exit ${DOCKER_CODE}
+    echo "Please check docker and docker-compose install or not."
+    exit ${DOCKER_CODE}
 elif ! which docker-compose &>/dev/null
 then
     echo "Please check docker-compose install or not."
@@ -29,10 +29,10 @@ fi
 ARG_CODE=13
 if [ $# -ne 6 ]
 then
-	echo "Usage: bash $(basename $0) <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>"
-	echo 'e.g.'
-	echo "bash $(basename $0) /home/openemr-monitor 192.168.2.111 smtp.gmail.com:587 monitor@gmail.com pass12 test@gmail.com"
-	exit ${ARG_CODE}
+    echo "Usage: bash $(basename $0) <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>"
+    echo 'e.g.'
+    echo "bash $(basename $0) /home/openemr-monitor 192.168.2.111 smtp.gmail.com:587 monitor@gmail.com pass12 test@gmail.com"
+    exit ${ARG_CODE}
 fi
 
 # Install location
