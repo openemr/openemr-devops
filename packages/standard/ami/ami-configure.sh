@@ -34,7 +34,7 @@ rm /tmp/mypass
 ln -s /root/openemr-devops/packages/standard/scripts/restore.sh /root/restore.sh
 
 cd /root/openemr-devops/packages/standard
-if [ -z "${RECOVERYS3}" ]; then
+if [[ -z "${RECOVERYS3}" ]]; then
   # configure, but do not launch, OpenEMR docker
   docker-compose create
   # now we'll install the AWS certs we got when I built the instance

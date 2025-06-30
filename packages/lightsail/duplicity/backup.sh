@@ -4,7 +4,7 @@ if [[ $(dpkg --print-architecture) != arm64 ]]; then
   docker exec $(docker ps | grep mysql | cut -f 1 -d " ") /root/xbackup-wrapper.sh
 fi
 
-if [ -f /root/cloud-backups-enabled ]; then
+if [[ -f /root/cloud-backups-enabled ]]; then
   S3=$(cat /root/.cloud-s3.txt)
   KMS=$(cat /root/.cloud-kms.txt)
   SQLMOUNT=$(docker volume inspect lightsail_sqlbackup | jq -r ".[0].Mountpoint")

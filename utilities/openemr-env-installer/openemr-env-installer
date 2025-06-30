@@ -14,7 +14,7 @@ github_account=$2       # github account
 # Installation: git --> docker --> docker-compose --> openemr-cmd --> minikube
 # Run as root for centos/rhel/fedora
 script_run_as_root(){
-    if [ "${UID}" -ne 0 ]; then
+    if [[ "${UID}" -ne 0 ]]; then
         echo 'Please run with the root user.'
         exit
     fi
@@ -44,7 +44,7 @@ install_git() {
             dnf install git -y
             ;;
     esac
-    [ $? -ne 0 ] && echo && echo -e "\e[31mInstalled failed, please check the repo list and the network.\e[0m" && exit
+    [[ $? -ne 0 ]] && echo && echo -e "\e[31mInstalled failed, please check the repo list and the network.\e[0m" && exit
     echo
 }
 
@@ -70,12 +70,12 @@ installer_script_usage() {
 git_clone_function(){
     code_location=$1
     github_account=$2
-    cd ${code_location} && [ $(pwd) != "${code_location}" ] && cd ${code_location}
+    cd ${code_location} && [[ $(pwd) != "${code_location}" ]] && cd ${code_location}
     echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR repository... \033[0m"
     echo
     # For openemr repos
     git clone https://github.com/${github_account}/openemr.git
-    cd ${code_location}/openemr && [ $(pwd) != "${code_location}/openemr" ] && cd ${code_location}/openemr
+    cd ${code_location}/openemr && [[ $(pwd) != "${code_location}/openemr" ]] && cd ${code_location}/openemr
     git remote add upstream https://github.com/openemr/openemr.git
     git fetch upstream
     echo
@@ -85,11 +85,11 @@ git_clone_function(){
     echo
 
     # For openemr-devops repos
-    cd ${code_location} && [ $(pwd) != "${code_location}" ] && cd ${code_location}
+    cd ${code_location} && [[ $(pwd) != "${code_location}" ]] && cd ${code_location}
     echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR-devops repository... \033[0m"
     echo
     git clone https://github.com/${github_account}/openemr-devops.git
-    cd ${code_location}/openemr-devops && [ $(pwd) != "${code_location}/openemr-devops" ] && cd ${code_location}/openemr-devops
+    cd ${code_location}/openemr-devops && [[ $(pwd) != "${code_location}/openemr-devops" ]] && cd ${code_location}/openemr-devops
     git remote add upstream https://github.com/openemr/openemr-devops.git
     git fetch upstream
     echo
@@ -104,13 +104,13 @@ code_dir_exist_or_not() {
     code_location=$1
     github_account=$2
     # Create the code location if not exist
-    if [ ! -d ${code_location} ]; then
+    if [[ ! -d ${code_location} ]]; then
         mkdir -p ${code_location}
         git_clone_function $1 $2
         # It already downloaded if openemr dir exsit
-    elif [ ! -d ${code_location}/openemr ]; then
+    elif [[ ! -d ${code_location}/openemr ]]; then
         git_clone_function $1 $2
-    elif [ ! -d ${code_location}/openemr-devops ]; then
+    elif [[ ! -d ${code_location}/openemr-devops ]]; then
         git_clone_function $1 $2
     else
         echo -e "\033[30m===>\033[0m \033[32mOpenEMR repos are already downloaded. \033[0m"
@@ -134,30 +134,30 @@ rhel_register_check_and_enable_repo() {
     register_lock=/tmp/openemr-register-lock
     repo_lock=/tmp/openemr-repo-lock
     # Due to subscription-manager check very slow, so add a lock file to check
-    if [ ! -f ${register_lock} ]; then
+    if [[ ! -f ${register_lock} ]]; then
         subscription-manager status | grep Current &>/dev/null
-        if [ $? -eq 0 ]; then
+        if [[ $? -eq 0 ]]; then
             echo 0 > ${register_lock}
         else
             echo 1 > ${register_lock}
             register_note
         fi
-    elif [ -f ${register_lock} ]; then
-        if [ "$(cat /tmp/openemr-register-lock)" = "1" ]; then
+    elif [[ -f ${register_lock} ]]; then
+        if [[ "$(cat /tmp/openemr-register-lock)" = "1" ]]; then
             register_note
         fi
     fi
 
     # Attach the necessary repo
-    if [ ! -f ${repo_lock} ]; then
+    if [[ ! -f ${repo_lock} ]]; then
         echo -e "\033[30m===>\033[0m \033[32mEnabling base and extras repo... \033[0m"
         echo
         subscription-manager repos --enable rhel-7-server-rpms &>/dev/null
-        [ $? -eq 0 ] && echo 1 >  ${repo_lock}
+        [[ $? -eq 0 ]] && echo 1 >  ${repo_lock}
         subscription-manager repos --enable rhel-7-server-extras-rpms &>/dev/null
-        [ $? -eq 0 ] && echo 2 >> ${repo_lock}
-    elif [ -f ${repo_lock} ]; then
-        if [ "$(cat /tmp/openemr-repo-lock|wc -l)" = "2" ]; then
+        [[ $? -eq 0 ]] && echo 2 >> ${repo_lock}
+    elif [[ -f ${repo_lock} ]]; then
+        if [[ "$(cat /tmp/openemr-repo-lock|wc -l)" = "2" ]]; then
             echo -e "\033[30m===>\033[0m \033[32mBoth of base and extras repo are already enabled. \033[0m"
             echo
         fi
@@ -175,7 +175,7 @@ install_docker() {
     os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
     # Check docker service status if do not install or not startup
     sudo systemctl start docker &>/dev/null
-    if [ $? -ne 0 ]; then
+    if [[ $? -ne 0 ]]; then
         case "${os_distribution}" in
             ubuntu|debian)
                 echo -e "\033[30m===>\033[0m \033[32mUpdate the apt package index and install packages to allow apt to use a repository over HTTPS... \033[0m"
@@ -254,7 +254,7 @@ install_docker_compose() {
 # Install openemr-cmd tool
 install_openemr_cmd() {
     os_type=$(uname)
-    if [ "${os_type}" = "Linux" ]; then
+    if [[ "${os_type}" = "Linux" ]]; then
         os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
     else
         os_distribution=$(uname)
@@ -321,9 +321,9 @@ install_conntrack() {
 # Install minikube and kubectl
 install_minikube_kubectl(){
     # Judge the os type e.g. Linux or MacOS
-    if [ "${os_type}" = "Linux" ]; then
+    if [[ "${os_type}" = "Linux" ]]; then
         minikube_os=linux
-    elif [ "${os_type}" = "Darwin" ]; then
+    elif [[ "${os_type}" = "Darwin" ]]; then
         minikube_os=darwin
     fi
     # Install minikube
@@ -400,50 +400,50 @@ startup_the_env() {
 
 # The main logic
 # Judge the os type e.g. Linux or MacOS
-if [ "${os_type}" = "Linux" ]; then
+if [[ "${os_type}" = "Linux" ]]; then
     major_release=$(grep VERSION_ID /etc/os-release | awk -F'[.]' '{print $1}' | awk -F'["]' '{print $2}')
     os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
     case "${os_distribution}" in
         ubuntu)
-            if [ "${major_release}" -lt  "16" ]; then
+            if [[ "${major_release}" -lt  "16" ]]; then
                 echo 'The script only supports ubuntu 16.04 or later.'
                 exit
             fi
-            [ $# -ne 2 ] && installer_script_usage
+            [[ $# -ne 2 ]] && installer_script_usage
             ;;
         debian)
-            if [ "${major_release}" -lt  "9" ] || [ "${major_release}" -gt  "10" ]; then
+            if [[ "${major_release}" -lt  "9" ]] || [[ "${major_release}" -gt  "10" ]]; then
                 echo 'The script only supports debian 9 or debian 10.'
                 exit
             fi
-            [ $# -ne 2 ] && installer_script_usage
+            [[ $# -ne 2 ]] && installer_script_usage
             ;;
         fedoraproject)
             # Due to the different format, so get the keyword again in fedora
             major_release=$(grep VERSION_ID /etc/os-release| awk -F'=' '{print $2}')
-            if [ "${major_release}" -lt "30" ] || [ "${major_release}" -gt "31" ]; then
+            if [[ "${major_release}" -lt "30" ]] || [[ "${major_release}" -gt "31" ]]; then
                 echo 'The script only supports fedora30 and fedora31.'
                 exit
             fi
             script_run_as_root
-            [ $# -ne 2 ] && installer_script_usage
+            [[ $# -ne 2 ]] && installer_script_usage
             ;;
         redhat)
-            if [ "${major_release}" != "7" ]; then
+            if [[ "${major_release}" != "7" ]]; then
                 echo 'The script only supports rhel7.'
                 exit
             fi
             script_run_as_root
-            [ $# -ne 2 ] && installer_script_usage
+            [[ $# -ne 2 ]] && installer_script_usage
             rhel_register_check_and_enable_repo
             ;;
         centos)
-            if [ "${major_release}" != "7" ]; then
+            if [[ "${major_release}" != "7" ]]; then
                 echo 'The script only supports centos7.'
                 exit
             fi
             script_run_as_root
-            [ $# -ne 2 ] && installer_script_usage
+            [[ $# -ne 2 ]] && installer_script_usage
             ;;
     esac
     install_git
@@ -455,17 +455,17 @@ if [ "${os_type}" = "Linux" ]; then
     install_minikube_kubectl
     quick_check_result
     startup_the_env $1
-elif [ "${os_type}" = "Darwin" ]; then
+elif [[ "${os_type}" = "Darwin" ]]; then
     # For MacOS
     # Check the macOS version
     major_release=$(sw_vers -productVersion| awk -F'.' '{print $1}')
 
-    if [ "${major_release}" -lt "10" ]; then
+    if [[ "${major_release}" -lt "10" ]]; then
         echo 'The script only supports macOS10.13 and later.'
         exit
-    elif [ "${major_release}" -eq "10" ]; then
+    elif [[ "${major_release}" -eq "10" ]]; then
         minor_release=$(sw_vers -productVersion| awk -F'.' '{print $2}')
-        if [ "${minor_release}" -lt "13" ]; then
+        if [[ "${minor_release}" -lt "13" ]]; then
             echo 'The script only supports macOS10.13 and later.'
             exit
         fi
@@ -473,7 +473,7 @@ elif [ "${os_type}" = "Darwin" ]; then
 
 
         # Script usage
-        [ $# -ne 2 ] && installer_script_usage
+        [[ $# -ne 2 ]] && installer_script_usage
 
         # Install brew
         # Homebrew info: https://brew.sh
@@ -493,7 +493,7 @@ elif [ "${os_type}" = "Darwin" ]; then
         else
             echo -e "\033[30m===>\033[0m \033[32mInstalling git... \033[0m"
             brew install git
-            [ $? -ne 0 ] && echo && echo -e "\e[31mInstalled failed, please check the network.\e[0m" && exit
+            [[ $? -ne 0 ]] && echo && echo -e "\e[31mInstalled failed, please check the network.\e[0m" && exit
             echo
         fi
 
@@ -515,7 +515,7 @@ elif [ "${os_type}" = "Darwin" ]; then
             while true
             do
                 read -p "Please enter [yes|y] to continue if you already permitted the docker access: " CONFIRM_PERMIT
-                if [ "${CONFIRM_PERMIT}" = "yes" ] || [ "${CONFIRM_PERMIT}" = "y" ]; then
+                if [[ "${CONFIRM_PERMIT}" = "yes" ]] || [[ "${CONFIRM_PERMIT}" = "y" ]]; then
                     break
                 fi
             done

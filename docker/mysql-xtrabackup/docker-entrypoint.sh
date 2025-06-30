@@ -3,7 +3,7 @@ set -eo pipefail
 shopt -s nullglob
 
 # if command starts with an option, prepend mysqld
-if [ "${1:0:1}" = '-' ]; then
+if [[ "${1:0:1}" = '-' ]]; then
     set -- mysqld "$@"
 fi
 
@@ -26,14 +26,14 @@ file_env() {
     local var="$1"
     local fileVar="${var}_FILE"
     local def="${2:-}"
-    if [ "${!var:-}" ] && [ "${!fileVar:-}" ]; then
+    if [[ "${!var:-}" ]] && [[ "${!fileVar:-}" ]]; then
         echo >&2 "error: both ${var} and ${fileVar} are set (but are exclusive)"
         exit 1
     fi
     local val="${def}"
-    if [ "${!var:-}" ]; then
+    if [[ "${!var:-}" ]]; then
         val="${!var}"
-    elif [ "${!fileVar:-}" ]; then
+    elif [[ "${!fileVar:-}" ]]; then
         val="$(< "${!fileVar}")"
     fi
     export "${var}"="${val}"
@@ -65,7 +65,7 @@ if [ "$1" = 'mysqld' -a -z "${wantHelp}" -a "$(id -u)" = '0' ]; then
     mkdir -p "${DATADIR}"
     chown -R mysql:mysql "${DATADIR}"
 
-    if [ -f /root/pending-restore ]; then
+    if [[ -f /root/pending-restore ]]; then
         /root/xrecovery-final.sh
     fi
 
@@ -78,7 +78,7 @@ if [ "$1" = 'mysqld' -a -z "${wantHelp}" ]; then
     # Get config
     DATADIR="$(_get_config 'datadir' "$@")"
 
-    if [ ! -d "${DATADIR}/mysql" ]; then
+    if [[ ! -d "${DATADIR}/mysql" ]]; then
         file_env 'MYSQL_ROOT_PASSWORD'
         if [ -z "${MYSQL_ROOT_PASSWORD}" -a -z "${MYSQL_ALLOW_EMPTY_PASSWORD}" -a -z "${MYSQL_RANDOM_ROOT_PASSWORD}" ]; then
             echo >&2 'error: database is uninitialized and password option is not specified '
@@ -92,7 +92,7 @@ if [ "$1" = 'mysqld' -a -z "${wantHelp}" ]; then
         "$@" --initialize-insecure
         echo 'Database initialized'
 
-        if command -v mysql_ssl_rsa_setup > /dev/null && [ ! -e "${DATADIR}/server-key.pem" ]; then
+        if command -v mysql_ssl_rsa_setup > /dev/null && [[ ! -e "${DATADIR}/server-key.pem" ]]; then
             # https://github.com/mysql/mysql-server/blob/23032807537d8dd8ee4ec1c4d40f0633cd4e12f9/packaging/deb-in/extra/mysql-systemd-start#L81-L84
             echo 'Initializing certificates'
             mysql_ssl_rsa_setup --datadir="${DATADIR}"
@@ -112,17 +112,17 @@ if [ "$1" = 'mysqld' -a -z "${wantHelp}" ]; then
             echo 'MySQL init process in progress...'
             sleep 1
         done
-        if [ "${i}" = 0 ]; then
+        if [[ "${i}" = 0 ]]; then
             echo >&2 'MySQL init process failed.'
             exit 1
         fi
 
-        if [ -z "${MYSQL_INITDB_SKIP_TZINFO}" ]; then
+        if [[ -z "${MYSQL_INITDB_SKIP_TZINFO}" ]]; then
             # sed is for https://bugs.mysql.com/bug.php?id=20545
             mysql_tzinfo_to_sql /usr/share/zoneinfo | sed 's/Local time zone must be set--see zic manual page/FCTY/' | "${mysql[@]}" mysql
         fi
 
-        if [ ! -z "${MYSQL_RANDOM_ROOT_PASSWORD}" ]; then
+        if [[ ! -z "${MYSQL_RANDOM_ROOT_PASSWORD}" ]]; then
             export MYSQL_ROOT_PASSWORD="$(pwgen -1 32)"
             echo "GENERATED ROOT PASSWORD: ${MYSQL_ROOT_PASSWORD}"
         fi
@@ -151,12 +151,12 @@ if [ "$1" = 'mysqld' -a -z "${wantHelp}" ]; then
 
         printf '%s\n' "${sql[@]}" | "${mysql[@]}"
 
-        if [ ! -z "${MYSQL_ROOT_PASSWORD}" ]; then
+        if [[ ! -z "${MYSQL_ROOT_PASSWORD}" ]]; then
             mysql+=( -p"${MYSQL_ROOT_PASSWORD}" )
         fi
 
         file_env 'MYSQL_DATABASE'
-        if [ "${MYSQL_DATABASE}" ]; then
+        if [[ "${MYSQL_DATABASE}" ]]; then
             echo "CREATE DATABASE IF NOT EXISTS \`${MYSQL_DATABASE}\` ;" | "${mysql[@]}"
             mysql+=( "${MYSQL_DATABASE}" )
         fi
@@ -166,7 +166,7 @@ if [ "$1" = 'mysqld' -a -z "${wantHelp}" ]; then
         if [ "${MYSQL_USER}" -a "${MYSQL_PASSWORD}" ]; then
             echo "CREATE USER '${MYSQL_USER}'@'%' IDENTIFIED BY '${MYSQL_PASSWORD}' ;" | "${mysql[@]}"
 
-            if [ "${MYSQL_DATABASE}" ]; then
+            if [[ "${MYSQL_DATABASE}" ]]; then
                 echo "GRANT ALL ON \`${MYSQL_DATABASE}\`.* TO '${MYSQL_USER}'@'%' ;" | "${mysql[@]}"
             fi
 
@@ -184,7 +184,7 @@ if [ "$1" = 'mysqld' -a -z "${wantHelp}" ]; then
             echo
         done
 
-        if [ ! -z "${MYSQL_ONETIME_PASSWORD}" ]; then
+        if [[ ! -z "${MYSQL_ONETIME_PASSWORD}" ]]; then
             "${mysql[@]}" <<< "ALTER USER 'root'@'%' PASSWORD EXPIRE;"
         fi
         if ! kill -s TERM "${pid}" || ! wait "${pid}"; then
@@ -198,7 +198,7 @@ if [ "$1" = 'mysqld' -a -z "${wantHelp}" ]; then
     fi
 fi
 
-if [ -f /root/pending-restore ]; then
+if [[ -f /root/pending-restore ]]; then
     /root/xrecovery-final.sh
 fi
 

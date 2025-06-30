@@ -37,18 +37,18 @@ done
 
 rm -rf ${WORKDIR} chain-search.txt chain.txt
 
-if [ ! -f ${CURLOG}.tar.gz ]; then
+if [[ ! -f ${CURLOG}.tar.gz ]]; then
   echo recovery: invalid starting point ${CURLOG}.tar.gz
   exit 1
 fi
 
 # do-while
 while : ; do
-  if [ ! -f ${CURLOG}-info.log ]; then
+  if [[ ! -f ${CURLOG}-info.log ]]; then
     echo recovery: cannot find target log ${CURLOG}-info.log
     exit 1
   fi
-  if [ ! -f ${CURLOG}.tar.gz ]; then
+  if [[ ! -f ${CURLOG}.tar.gz ]]; then
     echo recovery: cannot find target archive ${CURLOG}.tar.gz
     exit 1
   fi
@@ -84,26 +84,26 @@ MAXLINE=$(cat chain.txt | wc -l)
 while read line; do
   rm -rf ${line}
   tar -zxf ${line}.tar.gz
-  if [ ${MAXLINE} -eq 1 ]; then
+  if [[ ${MAXLINE} -eq 1 ]]; then
     echo recovery: process single backup ${line}
     xtrabackup --use-memory ${USE_MEMORY} --prepare --target-dir=${line}
-    if [ $? -ne 0 ]; then
+    if [[ $? -ne 0 ]]; then
       echo recovery: backup preparation failed! not deleting workdir
       exit 1
     fi
     mv ${line} ${WORKDIR}
-  elif [ ${CURLINE} -eq 1 ]; then
+  elif [[ ${CURLINE} -eq 1 ]]; then
     echo recovery: obtain full backup ${line}
     xtrabackup --use-memory ${USE_MEMORY} --prepare --apply-log-only --target-dir=${line}
-    if [ $? -ne 0 ]; then
+    if [[ $? -ne 0 ]]; then
       echo recovery: initial backup preparation failed! not deleting workdir
       exit 1
     fi
     mv ${line} ${WORKDIR}
-  elif [ ${CURLINE} -lt ${MAXLINE} ]; then
+  elif [[ ${CURLINE} -lt ${MAXLINE} ]]; then
     echo recovery: apply intermediate incremental ${line}
     xtrabackup --use-memory ${USE_MEMORY} --prepare --apply-log-only --target-dir=${WORKDIR} --incremental-dir=$(pwd)/${line}
-    if [ $? -ne 0 ]; then
+    if [[ $? -ne 0 ]]; then
       echo recovery: intermediate recovery failed! not deleting workdir
       exit 1
     fi
@@ -111,7 +111,7 @@ while read line; do
   else
     echo recovery: apply final incremental ${line}
     xtrabackup --use-memory ${USE_MEMORY} --prepare --target-dir=${WORKDIR} --incremental-dir=${line}
-    if [ $? -ne 0 ]; then
+    if [[ $? -ne 0 ]]; then
       echo recovery: final incremental failed! not deleting workdir
       exit 1
     fi

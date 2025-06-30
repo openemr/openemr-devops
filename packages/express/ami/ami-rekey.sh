@@ -27,7 +27,7 @@ case "$1" in
   ;;
 esac
 
-if [ -f /etc/appliance-unlocked ]; then
+if [[ -f /etc/appliance-unlocked ]]; then
   # only once
   exit 0
 fi

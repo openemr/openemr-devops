@@ -17,14 +17,14 @@ if ! command -v docker &>/dev/null; then
 elif ! command -v docker-compose &>/dev/null; then
     echo 'Please check docker-compose install or not.'
     exit ${DOCKER_COMPOSE_CODE}
-elif [ $(ps aux|grep dockerd|grep -v grep|wc -l) -ne 1 ]; then
+elif [[ $(ps aux|grep dockerd|grep -v grep|wc -l) -ne 1 ]]; then
     echo "Please check doceker start or not."
     exit ${DOCKER_START}
 fi
 
 # Modify the ip and mail setting for the yml files
 ARG_CODE=13
-if [ $# -ne 6 ]; then
+if [[ $# -ne 6 ]]; then
     echo "Usage: bash $(basename $0) <install dir> <host ip> <smtp server:port> <mail sender> <sender password> <receiver>"
     echo 'e.g.'
     echo "bash $(basename $0) /home/openemr-monitor 192.168.2.111 smtp.gmail.com:587 monitor@gmail.com pass12 test@gmail.com"
@@ -32,7 +32,7 @@ if [ $# -ne 6 ]; then
 fi
 
 # Install location
-[ ! -d "${installDir}" ] && mkdir ${installDir}/grafana/provisioning/{dashboards,datasources} -p
+[[ ! -d "${installDir}" ]] && mkdir ${installDir}/grafana/provisioning/{dashboards,datasources} -p
 mkdir ${installDir}/prometheus -p
 echo
 

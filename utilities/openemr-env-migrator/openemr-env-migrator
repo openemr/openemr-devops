@@ -7,7 +7,7 @@ first_arg=$1
 target_dir_local_check() {
     migrate_target_dir=$1
     echo -e "\033[30m===>\033[0m \033[32mChecking the target dir... \033[0m"
-    [ ! -d "${migrate_target_dir}" ] && mkdir ${migrate_target_dir} -p
+    [[ ! -d "${migrate_target_dir}" ]] && mkdir ${migrate_target_dir} -p
     echo
 }
 
@@ -68,7 +68,7 @@ set_daemon_json_file() {
     migrate_target_dir=$1
     echo -e "\033[30m===>\033[0m \033[32mSetting daemon.json file... \033[0m"
     echo
-    if [ ! -f /etc/docker/daemon.json ]; then
+    if [[ ! -f /etc/docker/daemon.json ]]; then
         cat << EOF > /etc/docker/daemon.json
 {
     "data-root": "${migrate_target_dir}"
@@ -76,7 +76,7 @@ set_daemon_json_file() {
 EOF
 else
     grep data-root /etc/docker/daemon.json &>/dev/null
-    if [ $? -ne 0 ]; then
+    if [[ $? -ne 0 ]]; then
         sed -i '$d' /etc/docker/daemon.json
         echo '    "data-root": "migrate"' >> /etc/docker/daemon.json
         sed -i "s#\"data-root\"\:\ \"migrate\"#\"data-root\"\: \"${migrate_target_dir}\"#g" /etc/docker/daemon.json
@@ -156,7 +156,7 @@ script_usage() {
     exit
 }
 
-if [ "${first_arg}" != "-t" ]; then
+if [[ "${first_arg}" != "-t" ]]; then
     script_usage
 fi
 
@@ -204,23 +204,23 @@ done
 
 # Main logic
 # Migrate from one data dir to another dir in local
-if [ "${migrate_type}" = 'local' ]; then
+if [[ "${migrate_type}" = 'local' ]]; then
     target_dir_local_check ${migrate_target_dir}
     stop_all_containers
     sync_data_dir_in_local ${migrate_source_dir} ${migrate_target_dir}
     set_daemon_json_file ${migrate_target_dir}
     start_all_containers
     # Migrate data dir from one host to remote host(first step)
-elif [ "${migrate_type}" = 'remote' ]; then
+elif [[ "${migrate_type}" = 'remote' ]]; then
     target_dir_remote_check ${target_ssh_user} ${target_ip} ${migrate_target_dir}
     stop_all_containers
     sync_data_dir_to_remote ${migrate_source_dir} ${target_ssh_user} ${target_ip} ${migrate_target_dir}
     # Second step
-elif [ "${migrate_type}" = 'set' ]; then
+elif [[ "${migrate_type}" = 'set' ]]; then
     set_daemon_json_file ${migrate_target_dir}
     start_all_containers
     # Migrate the single container
-elif [ "${migrate_type}" = 'single' ]; then
+elif [[ "${migrate_type}" = 'single' ]]; then
     commit_and_save_container ${migrate_container_name} ${container_name} ${target_ssh_user} ${target_ip}
 else
     echo -e "\033[0m\033[31mInvalid migrate type, e.g. local, remote, set, single. \033[0m"
