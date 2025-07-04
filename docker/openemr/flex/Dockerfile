@@ -122,6 +122,8 @@ COPY utilities/devtoolsLibrary.source /root/
 RUN mkdir /snapshots
 RUN mkdir /certs
 RUN mkdir -p /couchdb/original
+#Copy auto_configure so we can do backup/restore with dev tools
+COPY auto_configure.php /root/
 #Copy demo data to root
 COPY utilities/demo_5_0_0_5.sql /root/
 RUN chmod 500 /root/devtools
