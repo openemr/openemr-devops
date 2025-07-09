@@ -25,11 +25,7 @@ target_dir_remote_check() {
 # Stop the container at first
 stop_all_containers() {
     echo -e "\033[30m===>\033[0m \033[32mStopping the running containers... \033[0m"
-    container_name=$(docker ps -a | awk '{print $NF}'|grep -v NAMES)
-    for cn in "${container_name}"
-    do
-        docker stop ${cn}
-    done
+    { docker ps -aq || true; } | xargs docker stop
     echo
 }
 
@@ -90,13 +86,9 @@ else
 # Start the container after the migration
 start_all_containers() {
     sudo systemctl restart docker
-    container_name=$(docker ps -a | awk '{print $NF}'|grep -v NAMES)
     echo -e "\033[30m===>\033[0m \033[32mStarting the container... \033[0m"
     echo
-    for cn in "${container_name}"
-    do
-        docker start ${cn}
-    done
+    { docker ps -aq || true; } | xargs docker start
     echo
 }
 
