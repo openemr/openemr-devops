@@ -1,6 +1,18 @@
 #!/bin/sh
 
 prepareVariables() {
+    # Set default values for environment variables if not provided
+    : "${MYSQL_DATABASE:=''}" \
+      "${MYSQL_HOST:=localhost}" \
+      "${MYSQL_PASS:=''}" \
+      "${MYSQL_PORT:=''}" \
+      "${MYSQL_ROOT_PASS:=''}" \
+      "${MYSQL_ROOT_USER:=''}" \
+      "${MYSQL_USER:=''}" \
+      "${OE_PASS:=''}" \
+      "${OE_USER:=''}" \
+      "${SQL_DATA_DRIVE:=''}"
+
     CONFIGURATION="server=${MYSQL_HOST} rootpass=${MYSQL_ROOT_PASS} loginhost=%"
     if [ "${MYSQL_ROOT_USER}" != "" ]; then
         CONFIGURATION="${CONFIGURATION} root=${MYSQL_ROOT_USER}"
@@ -96,10 +108,11 @@ upgradeOpenEMR() {
 
 sqlDataDrive() {
     echo "Installing sql data from drive"
-    if [ "${SQL_DATA_DRIVE}" != "" ]; then
-        cd "${SQL_DATA_DRIVE}"
-        #Loop over all sql files inside of the current directory
-        for f in *.sql ; do
+    if [ -d "${SQL_DATA_DRIVE}" ]; then
+        cd "${SQL_DATA_DRIVE}" || exit
+        # Loop over all sql files inside of the current directory
+        for f in *.sql; do
+            [ -f "${f}" ] || continue
             echo "Loading sql data from ${f}"
             mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" "${CUSTOM_DATABASE}" < "${f}"
         done
@@ -112,14 +125,14 @@ backupOpenemr() {
     mariadb-dump --skip-ssl --ignore-table="${CUSTOM_DATABASE}".onsite_activity_view --hex-blob -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" "${CUSTOM_DATABASE}" > "/snapshots/${1}/backup.sql"
     rsync --delete --recursive --links /var/www/localhost/htdocs/openemr/sites "/snapshots/${1}/"
     rsync --delete --recursive --links /couchdb/data "/snapshots/${1}/"
-    cd /snapshots
+    cd /snapshots || exit
     tar -czf "${1}.tgz" "${1}"
     rm -fr "/snapshots/${1}"
 }
 
 # parameter 1 is identifier
 restoreOpenemr() {
-    cd /snapshots
+    cd /snapshots || exit
     tar -xzf "${1}.tgz"
     # need to empty the database before the restore database import
     mariadb-dump --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" --add-drop-table --no-data "${CUSTOM_DATABASE}" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" "${CUSTOM_DATABASE}"
@@ -138,19 +151,27 @@ restoreOpenemr() {
 # parameter 1 is character set
 # parameter 2 is collation
 changeEncodingCollation() {
-    mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' | egrep '^ALTER' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}"
-    mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' | egrep '^ALTER' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}"
+    # Single quotes intentionally used for SQL syntax - variables expand on server side
+    # shellcheck disable=SC2016
+    mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' | grep -E '^ALTER' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}"
+    # Single quotes intentionally used for SQL syntax - variables expand on server side
+    # shellcheck disable=SC2016
+    mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' | grep -E '^ALTER' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}"
 }
 
 forceHttps() {
     sed -i 's@#RewriteEngine On@ RewriteEngine On@' /etc/apache2/conf.d/openemr.conf
     sed -i 's@#RewriteCond %{HTTPS} off@ RewriteCond %{HTTPS} off@' /etc/apache2/conf.d/openemr.conf
+    # Single quotes intentionally used for sed replacement - $1 is a sed backreference
+    # shellcheck disable=SC2016
     sed -i 's@#RewriteRule (\.\*) https://%{HTTP_HOST}/\$1 \[R,L\]@ RewriteRule (.*) https://%{HTTP_HOST}/$1 [R,L]@' /etc/apache2/conf.d/openemr.conf
 }
 
 unForceHttps() {
     sed -i 's@[^#]RewriteEngine On@#RewriteEngine On@' /etc/apache2/conf.d/openemr.conf
     sed -i 's@[^#]RewriteCond %{HTTPS} off@#RewriteCond %{HTTPS} off@' /etc/apache2/conf.d/openemr.conf
+    # Single quotes intentionally used for sed replacement - $1 is a sed backreference
+    # shellcheck disable=SC2016
     sed -i 's@[^#]RewriteRule (\.\*) https://%{HTTP_HOST}/\$1 \[R,L\]@#RewriteRule (.*) https://%{HTTP_HOST}/$1 [R,L]@' /etc/apache2/conf.d/openemr.conf
 }
 
@@ -160,7 +181,7 @@ setupClientCert() {
         mkdir -p "/certs/${1}"
     fi
     cp "/certs/${1}.zip" "/certs/${1}/"
-    cd "/certs/${1}"
+    cd "/certs/${1}" || exit
     unzip "${1}.zip"
     # server certificate
     cp "/certs/${1}/Server.crt" /etc/ssl/certs/customclientbased.cert.pem
@@ -219,11 +240,11 @@ importRandomPatients() {
         apk update
         apk add openjdk11-jre
         mkdir /root/synthea
-        cd /root/synthea
+        cd /root/synthea || exit
         wget https://github.com/synthetichealth/synthea/releases/download/master-branch-latest/synthea-with-dependencies.jar
     fi
     rm -fr /root/synthea/output
-    cd /root/synthea
+    cd /root/synthea || exit
     java -jar synthea-with-dependencies.jar --exporter.fhir.export false --exporter.ccda.export true --generate.only_alive_patients true -p "$1"
     sed -i "s@exit;@//exit;@" /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php
     php /var/www/localhost/htdocs/openemr/contrib/util/ccda_import/import_ccda.php --sourcePath=/root/synthea/output/ccda --site=default --openemrPath=/var/www/localhost/htdocs/openemr --isDev="$2"
@@ -252,7 +273,7 @@ generateMultisiteBank() {
         find /var/www/localhost/htdocs/openemr/sites/${run}/documents -type d -print0 | xargs -0 chmod 700
         find /var/www/localhost/htdocs/openemr/sites/${run}/documents -type f -print0 | xargs -0 chmod 700
         echo "completed adding ${run} multisite"
-        a=$(expr ${a} + 1)
+        a=$((a + 1))
     done
     sed -i "s@//exit;@exit;@" /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php
     echo "Completed setting up a multisite bank with following number of multisites (labeled run1, run2, run3, ...): run1...run${1}"

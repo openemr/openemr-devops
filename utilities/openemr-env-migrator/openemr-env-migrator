@@ -18,7 +18,9 @@ target_dir_remote_check() {
     migrate_target_dir=$3
     echo -e "\033[30m===>\033[0m \033[32mChecking the target dir... \033[0m"
     echo
-    ssh ${target_ssh_user}@${target_ip} "mkdir ${migrate_target_dir} -p"
+    # Variable should expand on client side to pass local value to remote command
+    # shellcheck disable=SC2029
+    ssh "${target_ssh_user}@${target_ip}" "mkdir -p '${migrate_target_dir}'"
     echo
 }
 
@@ -71,8 +73,7 @@ set_daemon_json_file() {
 }
 EOF
 else
-    grep data-root /etc/docker/daemon.json &>/dev/null
-    if [[ $? -ne 0 ]]; then
+    if ! grep data-root /etc/docker/daemon.json &>/dev/null; then
         sed -i '$d' /etc/docker/daemon.json
         echo '    "data-root": "migrate"' >> /etc/docker/daemon.json
         sed -i "s#\"data-root\"\:\ \"migrate\"#\"data-root\"\: \"${migrate_target_dir}\"#g" /etc/docker/daemon.json
@@ -115,7 +116,9 @@ commit_and_save_container(){
     # Load an image from a tar archive in the remote host
     echo -e "\033[30m===>\033[0m \033[32mLoaing the image... \033[0m"
     echo
-    ssh ${ssh_user}@${target_host} "docker load -i /tmp/${container_name}.tar"
+    # Variable should expand on client side to pass local value to remote command
+    # shellcheck disable=SC2029
+    ssh "${ssh_user}@${target_host}" "docker load -i '/tmp/${container_name}.tar'"
     echo
     echo "Please try to run the image in target host."
     # Clean the tar file after scp
@@ -189,7 +192,10 @@ do
             echo -e "\033[0m\033[31mInvalid option: -${opt}.\033[0m"
             echo
             script_usage
-            exit
+            ;;
+        *)
+            echo -e "\033[0m\033[31mUnexpected option: -${opt}.\033[0m"
+            script_usage
             ;;
     esac
 done
@@ -218,5 +224,4 @@ else
     echo -e "\033[0m\033[31mInvalid migrate type, e.g. local, remote, set, single. \033[0m"
     echo
     script_usage
-    exit
 fi

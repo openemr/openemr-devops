@@ -20,6 +20,13 @@ script_run_as_root(){
     fi
 }
 
+# Handle installation failure
+install_failed() {
+    echo
+    echo -e "\e[31mInstalled failed, please check the repo list and the network.\e[0m"
+    exit 1
+}
+
 # Install git
 install_git() {
     # Check the os distribution ubuntu/debian/rhel/fedora/centos
@@ -33,18 +40,25 @@ install_git() {
     echo
     case "${os_distribution}" in
         ubuntu|debian)
-            sudo apt-get update -y
-            sudo apt-get install git -y
+            if ! { sudo apt-get update -y && sudo apt-get install git -y; }; then
+                install_failed
+            fi
             ;;
         redhat|centos)
-            yum install git -y
+            if ! yum install git -y; then
+                install_failed
+            fi
             ;;
         fedoraproject)
-            dnf update -y
-            dnf install git -y
+            if ! { dnf update -y && dnf install git -y; }; then
+                install_failed
+            fi
+            ;;
+        *)
+            echo "Unsupported distribution: ${os_distribution}"
+            exit 1
             ;;
     esac
-    [[ $? -ne 0 ]] && echo && echo -e "\e[31mInstalled failed, please check the repo list and the network.\e[0m" && exit
     echo
 }
 
@@ -63,40 +77,36 @@ installer_script_usage() {
     echo -e "\033[33m       * Internet connection\033[0m"
     echo -e "\033[33m       * Container or virtual machine manager,\033[0m"
     echo -e "\033[33m         such as: Docker, Hyperkit, Hyper-V, KVM, Parallels, Podman, VirtualBox, or VMWare\033[0m"
-    exit ${EXIT_CODE}
+    exit 1
 }
 
 # Clone the code from github to local
 git_clone_function(){
     code_location=$1
     github_account=$2
-    (
-        set -euo pipefail
-        cd -P "${code_location}"
-        echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR repository... \033[0m"
-        echo
-        # For openemr repos
-        git clone https://github.com/${github_account}/openemr.git
-        git -C openemr remote add upstream https://github.com/openemr/openemr.git
-        git -C openemr fetch upstream
-        echo
-        echo -e "\033[30m===>\033[0m \033[32mPulling the latest data... \033[0m"
-        echo
-        git -C openemr pull upstream master
-        echo
+    echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR repository... \033[0m"
+    echo
+    # For openemr repos
+    git clone "https://github.com/${github_account}/openemr.git" "${code_location}/openemr"
+    git -C "${code_location}/openemr" remote add upstream https://github.com/openemr/openemr.git
+    git -C "${code_location}/openemr" fetch upstream
+    echo
+    echo -e "\033[30m===>\033[0m \033[32mPulling the latest data... \033[0m"
+    echo
+    git -C "${code_location}/openemr" pull upstream master
+    echo
 
-        # For openemr-devops repos
-        echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR-devops repository... \033[0m"
-        echo
-        git clone https://github.com/${github_account}/openemr-devops.git
-        git -C openemr-devops remote add upstream https://github.com/openemr/openemr-devops.git
-        git -C openemr-devops fetch upstream
-        echo
-        echo -e "\033[30m===>\033[0m \033[32mPulling the latest data... \033[0m"
-        echo
-        git -C openemr-devops pull upstream master
-        echo
-    )
+    # For openemr-devops repos
+    echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR-devops repository... \033[0m"
+    echo
+    git clone "https://github.com/${github_account}/openemr-devops.git" "${code_location}/openemr-devops"
+    git -C "${code_location}/openemr-devops" remote add upstream https://github.com/openemr/openemr-devops.git
+    git -C "${code_location}/openemr-devops" fetch upstream
+    echo
+    echo -e "\033[30m===>\033[0m \033[32mPulling the latest data... \033[0m"
+    echo
+    git -C "${code_location}/openemr-devops" pull upstream master
+    echo
 }
 
 # Check the code clone or not
@@ -135,8 +145,8 @@ rhel_register_check_and_enable_repo() {
     repo_lock=/tmp/openemr-repo-lock
     # Due to subscription-manager check very slow, so add a lock file to check
     if [[ ! -f ${register_lock} ]]; then
-        subscription-manager status | grep Current &>/dev/null
-        if [[ $? -eq 0 ]]; then
+        subscription_status=$(subscription-manager status)
+        if grep -qF Current <<< "${subscription_status}"; then
             echo 0 > ${register_lock}
         else
             echo 1 > ${register_lock}
@@ -152,13 +162,15 @@ rhel_register_check_and_enable_repo() {
     if [[ ! -f ${repo_lock} ]]; then
         echo -e "\033[30m===>\033[0m \033[32mEnabling base and extras repo... \033[0m"
         echo
-        subscription-manager repos --enable rhel-7-server-rpms &>/dev/null
-        [[ $? -eq 0 ]] && echo 1 >  ${repo_lock}
-        subscription-manager repos --enable rhel-7-server-extras-rpms &>/dev/null
-        [[ $? -eq 0 ]] && echo 2 >> ${repo_lock}
+        if subscription-manager repos --enable rhel-7-server-rpms &>/dev/null; then
+            echo 1 > "${repo_lock}"
+        fi
+        if subscription-manager repos --enable rhel-7-server-extras-rpms &>/dev/null; then
+            echo 2 >> "${repo_lock}"
+        fi
     elif [[ -f ${repo_lock} ]]; then
         line_count=$(wc -l </tmp/openemr-repo-lock)
-        if [[ "${line_count}" = "2" ]]; then
+        if (( line_count == 2 )); then
             echo -e "\033[30m===>\033[0m \033[32mBoth of base and extras repo are already enabled. \033[0m"
             echo
         fi
@@ -173,10 +185,9 @@ start_enable_docker(){
 
 # Install docker service
 install_docker() {
-    os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
+    os_distribution=$(awk -F'[/.]' '/^HOME_URL/ {print $(NF-2)}' /etc/os-release)
     # Check docker service status if do not install or not startup
-    sudo systemctl start docker &>/dev/null
-    if [[ $? -ne 0 ]]; then
+    if ! sudo systemctl start docker &>/dev/null; then
         case "${os_distribution}" in
             ubuntu|debian)
                 echo -e "\033[30m===>\033[0m \033[32mUpdate the apt package index and install packages to allow apt to use a repository over HTTPS... \033[0m"
@@ -185,7 +196,8 @@ install_docker() {
                 sudo apt-get install apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y
                 echo
                 echo -e "\033[30m===>\033[0m \033[32mAdding the Docker official GPG key... \033[0m"
-                sudo curl -fsSL https://download.docker.com/linux/${os_distribution}/gpg | sudo apt-key add -
+                gpg=$(curl -fsSL https://download.docker.com/linux/${os_distribution}/gpg)
+                sudo apt-key add - <<< "${gpg}"
                 echo
                 echo -e "\033[30m===>\033[0m \033[32mSetting up the stable repository... \033[0m"
                 codename=$(lsb_release -cs)
@@ -230,6 +242,10 @@ install_docker() {
                 start_enable_docker
                 echo
                 ;;
+            *)
+                echo "Unsupported distribution for docker installation: ${os_distribution}"
+                exit 1
+                ;;
         esac
     else
         echo -e "\033[30m===>\033[0m \033[32mDocker is already installed. \033[0m"
@@ -259,7 +275,7 @@ install_docker_compose() {
 install_openemr_cmd() {
     os_type=$(uname)
     if [[ "${os_type}" = "Linux" ]]; then
-        os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
+        os_distribution=$(awk -F'[/.]' '/^HOME_URL/ {print $(NF-2)}' /etc/os-release)
     else
         os_distribution=$(uname)
     fi
@@ -304,7 +320,7 @@ run_cluster_tip() {
 
 # Install conntrack pkg
 install_conntrack() {
-    os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
+    os_distribution=$(awk -F'[/.]' '/^HOME_URL/ {print $(NF-2)}' /etc/os-release)
     case "${os_distribution}" in
         ubuntu|debian)
             echo -e "\033[30m===>\033[0m \033[32mInatalling conntrack package... \033[0m"
@@ -318,6 +334,10 @@ install_conntrack() {
             echo
             yum install conntrack -y
             echo
+            ;;
+        *)
+            echo "Unsupported distribution for conntrack installation: ${os_distribution}"
+            echo "Please install conntrack manually"
             ;;
     esac
 }
@@ -367,7 +387,8 @@ quick_check_command() {
     docker --version
     docker-compose --version
     openemr-cmd --version
-    minikube version | grep version
+    minikube_version=$(minikube version)
+    grep version <<< "${minikube_version}" 
     echo -e "\033[36mKubectl check:\033[0m"
     kubectl version --client
 }
@@ -405,8 +426,8 @@ startup_the_env() {
 # The main logic
 # Judge the os type e.g. Linux or MacOS
 if [[ "${os_type}" = "Linux" ]]; then
-    major_release=$(grep VERSION_ID /etc/os-release | awk -F'[.]' '{print $1}' | awk -F'["]' '{print $2}')
-    os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
+    major_release=$(awk -F'[."]' '/VERSION_ID/ {print $2}' /etc/os-release)
+    os_distribution=$(awk -F'[/.]' '/^HOME_URL/ {print $(NF-2)}' /etc/os-release)
     case "${os_distribution}" in
         ubuntu)
             if [[ "${major_release}" -lt  "16" ]]; then
@@ -424,7 +445,7 @@ if [[ "${os_type}" = "Linux" ]]; then
             ;;
         fedoraproject)
             # Due to the different format, so get the keyword again in fedora
-            major_release=$(grep VERSION_ID /etc/os-release| awk -F'=' '{print $2}')
+            major_release=$(awk -F'=' '/VERSION_ID/ {print $2}' /etc/os-release)
             if [[ "${major_release}" -lt "30" ]] || [[ "${major_release}" -gt "31" ]]; then
                 echo 'The script only supports fedora30 and fedora31.'
                 exit
@@ -449,6 +470,11 @@ if [[ "${os_type}" = "Linux" ]]; then
             script_run_as_root
             [[ $# -ne 2 ]] && installer_script_usage
             ;;
+        *)
+            echo "Unsupported Linux distribution: ${os_distribution}"
+            echo "Supported distributions: ubuntu, debian, fedora, redhat, centos"
+            exit 1
+            ;;
     esac
     install_git
     code_dir_exist_or_not $1 $2
@@ -462,13 +488,14 @@ if [[ "${os_type}" = "Linux" ]]; then
 elif [[ "${os_type}" = "Darwin" ]]; then
     # For MacOS
     # Check the macOS version
-    major_release=$(sw_vers -productVersion| awk -F'.' '{print $1}')
+    prod_version=$(sw_vers -productVersion)
+    major_release=$(awk -F'.' '{print $1}' <<< "${prod_version}")
 
     if [[ "${major_release}" -lt "10" ]]; then
         echo 'The script only supports macOS10.13 and later.'
         exit
     elif [[ "${major_release}" -eq "10" ]]; then
-        minor_release=$(sw_vers -productVersion| awk -F'.' '{print $2}')
+        minor_release=$(awk -F'.' '{print $2}' <<< "${prod_version}")
         if [[ "${minor_release}" -lt "13" ]]; then
             echo 'The script only supports macOS10.13 and later.'
             exit
@@ -499,8 +526,11 @@ elif [[ "${os_type}" = "Darwin" ]]; then
             echo
         else
             echo -e "\033[30m===>\033[0m \033[32mInstalling git... \033[0m"
-            brew install git
-            [[ $? -ne 0 ]] && echo && echo -e "\e[31mInstalled failed, please check the network.\e[0m" && exit
+            if ! brew install git; then
+                echo
+                echo -e "\e[31mInstalled failed, please check the network.\e[0m"
+                exit 1
+            fi
             echo
         fi
 
@@ -519,12 +549,9 @@ elif [[ "${os_type}" = "Darwin" ]]; then
             open /Applications/Docker.app
             echo -e "\033[30m===>\033[0m \033[33mPlease click open for docker prompt window. \033[0m"
             echo -e "\033[30m===>\033[0m \033[33mPlease click ok and provide your login password for docker privileged access prompt window. \033[0m"
-            while true
-            do
-                read -p "Please enter [yes|y] to continue if you already permitted the docker access: " CONFIRM_PERMIT
-                if [[ "${CONFIRM_PERMIT}" = "yes" ]] || [[ "${CONFIRM_PERMIT}" = "y" ]]; then
-                    break
-                fi
+            CONFIRM_PERMIT=
+            until [[ "${CONFIRM_PERMIT}" = [Yy]* ]]; do
+                read -r -p "Please enter [yes|y] to continue if you already permitted the docker access: " CONFIRM_PERMIT
             done
             echo
         fi
