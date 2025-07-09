@@ -7,19 +7,15 @@ senderEmail=$4
 emailPassword=$5
 receiverEmail=$6
 
-# Check docker and dock-compose exist
+# Check docker
 DOCKER_CODE=10
 DOCKER_START=11
-DOCKER_COMPOSE_CODE=12
 if ! command -v docker &>/dev/null; then
-    echo 'Please check docker and docker-compose install or not.'
-    exit ${DOCKER_CODE}
-elif ! command -v docker-compose &>/dev/null; then
-    echo 'Please check docker-compose install or not.'
-    exit ${DOCKER_COMPOSE_CODE}
-elif [[ $(ps aux|grep dockerd|grep -v grep|wc -l) -ne 1 ]]; then
-    echo "Please check doceker start or not."
-    exit ${DOCKER_START}
+    echo 'Please ensure docker is installed.'
+    exit "${DOCKER_CODE}"
+elif ! docker info &> /dev/null; then
+    echo 'Please ensure docker is started and properly configured.'
+    exit "${DOCKER_START}"
 fi
 
 # Modify the ip and mail setting for the yml files
