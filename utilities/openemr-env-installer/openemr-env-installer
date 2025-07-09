@@ -23,7 +23,7 @@ script_run_as_root(){
 # Install git
 install_git() {
     # Check the os distribution ubuntu/debian/rhel/fedora/centos
-    os_distribution=$(grep ^HOME_URL /etc/os-release| awk -F'[/.]' '{print $(NF-2)}')
+    os_distribution=$(awk -F'[/.]' '/^HOME_URL/ {print $(NF-2)}' /etc/os-release)
     if command -v git &>/dev/null; then
         echo -e "\033[30m===>\033[0m \033[32mGit is already installed. \033[0m"
         echo
@@ -70,33 +70,33 @@ installer_script_usage() {
 git_clone_function(){
     code_location=$1
     github_account=$2
-    cd ${code_location} && [[ $(pwd) != "${code_location}" ]] && cd ${code_location}
-    echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR repository... \033[0m"
-    echo
-    # For openemr repos
-    git clone https://github.com/${github_account}/openemr.git
-    cd ${code_location}/openemr && [[ $(pwd) != "${code_location}/openemr" ]] && cd ${code_location}/openemr
-    git remote add upstream https://github.com/openemr/openemr.git
-    git fetch upstream
-    echo
-    echo -e "\033[30m===>\033[0m \033[32mPulling the latest data... \033[0m"
-    echo
-    git pull upstream master
-    echo
+    (
+        set -euo pipefail
+        cd -P "${code_location}"
+        echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR repository... \033[0m"
+        echo
+        # For openemr repos
+        git clone https://github.com/${github_account}/openemr.git
+        git -C openemr remote add upstream https://github.com/openemr/openemr.git
+        git -C openemr fetch upstream
+        echo
+        echo -e "\033[30m===>\033[0m \033[32mPulling the latest data... \033[0m"
+        echo
+        git -C openemr pull upstream master
+        echo
 
-    # For openemr-devops repos
-    cd ${code_location} && [[ $(pwd) != "${code_location}" ]] && cd ${code_location}
-    echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR-devops repository... \033[0m"
-    echo
-    git clone https://github.com/${github_account}/openemr-devops.git
-    cd ${code_location}/openemr-devops && [[ $(pwd) != "${code_location}/openemr-devops" ]] && cd ${code_location}/openemr-devops
-    git remote add upstream https://github.com/openemr/openemr-devops.git
-    git fetch upstream
-    echo
-    echo -e "\033[30m===>\033[0m \033[32mPulling the latest data... \033[0m"
-    echo
-    git pull upstream master
-    echo
+        # For openemr-devops repos
+        echo -e "\033[30m===>\033[0m \033[32mDownloading OpenEMR-devops repository... \033[0m"
+        echo
+        git clone https://github.com/${github_account}/openemr-devops.git
+        git -C openemr-devops remote add upstream https://github.com/openemr/openemr-devops.git
+        git -C openemr-devops fetch upstream
+        echo
+        echo -e "\033[30m===>\033[0m \033[32mPulling the latest data... \033[0m"
+        echo
+        git -C openemr-devops pull upstream master
+        echo
+    )
 }
 
 # Check the code clone or not
@@ -143,7 +143,7 @@ rhel_register_check_and_enable_repo() {
             register_note
         fi
     elif [[ -f ${register_lock} ]]; then
-        if [[ "$(cat /tmp/openemr-register-lock)" = "1" ]]; then
+        if [[ "$(</tmp/openemr-register-lock)" = "1" ]]; then
             register_note
         fi
     fi
@@ -157,7 +157,8 @@ rhel_register_check_and_enable_repo() {
         subscription-manager repos --enable rhel-7-server-extras-rpms &>/dev/null
         [[ $? -eq 0 ]] && echo 2 >> ${repo_lock}
     elif [[ -f ${repo_lock} ]]; then
-        if [[ "$(cat /tmp/openemr-repo-lock|wc -l)" = "2" ]]; then
+        line_count=$(wc -l </tmp/openemr-repo-lock)
+        if [[ "${line_count}" = "2" ]]; then
             echo -e "\033[30m===>\033[0m \033[32mBoth of base and extras repo are already enabled. \033[0m"
             echo
         fi
@@ -187,7 +188,8 @@ install_docker() {
                 sudo curl -fsSL https://download.docker.com/linux/${os_distribution}/gpg | sudo apt-key add -
                 echo
                 echo -e "\033[30m===>\033[0m \033[32mSetting up the stable repository... \033[0m"
-                sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/${os_distribution} $(lsb_release -cs) stable"
+                codename=$(lsb_release -cs)
+                sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/${os_distribution} ${codename} stable"
                 echo
                 echo -e "\033[30m===>\033[0m \033[32mInstalling docker engine... \033[0m"
                 echo
@@ -246,7 +248,9 @@ install_docker_compose() {
     echo -e "\033[30m===>\033[0m \033[32mInstalling docker-compose... \033[0m"
     echo
     # Run sudo under root mode that is also fine e.g. rhel/fedora/centos
-    sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    os_name=$(uname -s)
+    arch=$(uname -m)
+    sudo curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-${os_name}-${arch}" -o /usr/local/bin/docker-compose
     sudo chmod +x /usr/local/bin/docker-compose
     echo
 }
@@ -482,7 +486,10 @@ elif [[ "${os_type}" = "Darwin" ]]; then
             echo
         else
             echo -e "\033[30m===>\033[0m \033[32mInstalling Homebrew... \033[0m"
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+            brew_installer=$(mktemp -d)
+            curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh > "${brew_installer}"/install.sh
+            chmod +x "${brew_installer}"/install.sh
+            "${brew_installer}/install.sh"
             echo
         fi
 
