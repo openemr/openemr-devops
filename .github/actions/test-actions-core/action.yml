@@ -79,7 +79,9 @@ runs:
 
     - name: Install
       run: |
-        docker compose exec --workdir /var/www/localhost/htdocs/openemr/contrib/util/installScripts \
+        docker compose exec \
+          --env OPENEMR_ENABLE_INSTALLER_AUTO=1 \
+          --workdir /var/www/localhost/htdocs/openemr/contrib/util/installScripts \
           "${OPENEMR_SERVICE_NAME}" sh -c 'sed -e "s@^exit;@ @" InstallerAuto.php |
                                            php -- rootpass=root server=mysql loginhost=%'
       shell: bash

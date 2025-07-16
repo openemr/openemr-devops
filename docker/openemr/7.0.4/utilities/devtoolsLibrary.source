@@ -234,6 +234,9 @@ importRandomPatients() {
 # parameter 1 is number of multisites to create
 generateMultisiteBank() {
     echo "Setting up a multisite bank with following number of multisites (labeled run1, run2, run3, ...): run1...run${1}"
+    # Activate newer versions of InstallerAuto that support environment variable activation.
+    export OPENEMR_ENABLE_INSTALLER_AUTO=1
+    # Activate older versions of InstallerAuto that require `sed` activation.
     sed -i "s@exit;@//exit;@" /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php
     a=1
     while [ ${a} -le "$1" ]
