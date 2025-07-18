@@ -39,6 +39,9 @@ prepareVariables() {
     if [ -n "${OE_PASS:-}" ]; then
         CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
     fi
+    if [ -n "${ENCRYPTION_STRATEGY:-}" ]; then
+        CONFIGURATION="${CONFIGURATION} encryption_strategy=${ENCRYPTION_STRATEGY}"
+    fi
 }
 
 setGlobalSettings() {

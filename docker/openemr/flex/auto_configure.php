@@ -24,6 +24,8 @@ $installSettings['source_site_id']           = 'BLANK';
 $installSettings['clone_database']           = 'BLANK';
 $installSettings['no_root_db_access']        = 'BLANK';
 $installSettings['development_translations'] = 'BLANK';
+$installSettings['encryption_strategy']      = 'cryptogen';
+
 // Collect parameters(if exist) for installation configuration settings
 for ($i=1; $i < count($argv); $i++) {
     if ($argv[$i] == '-f' && isset($argv[$i+1])) {
