@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 
 ARG ALPINE_VERSION=3.22
 FROM alpine:${ALPINE_VERSION} AS base

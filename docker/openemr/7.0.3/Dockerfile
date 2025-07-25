@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 FROM alpine:3.20
 
 #Install dependencies and fix issue in apache

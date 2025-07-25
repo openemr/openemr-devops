@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 FROM openemr/mysql-xtrabackup:1.0.7
 
 RUN rm /root/xbackup-wrapper.sh /root/xrecovery-final.sh

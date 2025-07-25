@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 
 # Below allows easy centralized setting of alpine version
 #  (note NOT meant to use this has an actually argument in building docker like the flex series does)
