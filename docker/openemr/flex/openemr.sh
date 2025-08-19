@@ -289,7 +289,7 @@ if [ "${AUTHORITY}" = "yes" ] ||
 fi
 
 if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
-    chown -R apache /var/www/localhost/htdocs/openemr/
+    find /var/www/localhost/htdocs/openemr/ -name ".git" -prune -o -exec chown apache {} \+
 fi
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
