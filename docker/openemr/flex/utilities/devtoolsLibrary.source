@@ -115,6 +115,7 @@ backupOpenemr() {
     mariadb-dump --skip-ssl --ignore-table="${CUSTOM_DATABASE}".onsite_activity_view --hex-blob -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" "${CUSTOM_DATABASE}" > "/snapshots/${1}/backup.sql"
     rsync --delete --recursive --links /var/www/localhost/htdocs/openemr/sites "/snapshots/${1}/"
     rsync --delete --recursive --links /couchdb/data "/snapshots/${1}/"
+    cd /snapshots || exit    
     tar -C /snapshots -czf "${1}.tgz" "${1}"
     rm -fr "/snapshots/${1}"
 }
