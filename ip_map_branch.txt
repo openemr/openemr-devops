@@ -15,7 +15,7 @@ three	https://github.com/openemr/openemr.git	rel-703	0	0	1	0	0	0	1	three.openemr
 three_a	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	demo_5_0_0_5.sql	0	1	three.openemr.io/a	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.3 Development Demo With Demo Data on Ubuntu 24.04 (with nodejs 20)
 four	https://github.com/stephenwaite/openemr.git	rel-703-p5a	0	0	0	0	0	0	1	four.openemr.io	hey	branch	0	0	0	0	UP FOR GRABS Public OpenEMR Demo - Alpha
 four_a	https://github.com/ophthal/openemr.git	GFS8	0	0	0	0	demo_5_0_0_5.sql	0	1	four.openemr.io/a	hey	branch	5.0.0	0	0	0	UP FOR GRABS Public OpenEMR Demo - Beta With Demo Data
-four_b	https://github.com/openemr/openemr.git	master	0	0	0	0	0	0	1	four.openemr.io/b	hey	branch	0	0	0	0	UP FOR GRABS Public OpenEMR Demo - Gamma
+four_b	https://github.com/psoas/openemr.git	patient-finder-update-2	0	0	0	0	demo_5_0_0_5.sql	0	1	four.openemr.io/b	hey	branch	0	0	0	0	UP FOR GRABS Public OpenEMR Demo -Patient Finder Update  With Demo Data
 five	https://github.com/openemr/openemr.git	v7_0_3_4	0	0	0	0	demo_5_0_0_5.sql	0	1	demo.openemr.io	hey	tag	5.0.0	0	4	0	Public OpenEMR 7.0.3 Production Demo
 five_a	https://github.com/openemr/openemr.git	v7_0_3_4	0	0	0	0	demo_5_0_0_5.sql	0	1	demo.openemr.io/a	hey	tag	5.0.0	0	4	0	Alternate Public OpenEMR 7.0.3 Production Demo
 five_b	https://github.com/openemr/openemr.git	v7_0_3_4	0	0	0	0	demo_5_0_0_5.sql	0	1	demo.openemr.io/b	hey	tag	5.0.0	0	4	0	Another Alternate Public OpenEMR 7.0.3 Production Demo
