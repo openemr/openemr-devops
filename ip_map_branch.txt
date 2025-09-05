@@ -1,0 +1,47 @@
+docker_number	openemr_repo	branch	serve_development_translations	use_development_translations	serve_packages	legacy_patching	demo_data	demo_ssh	patient_portals_and_api	external_link	root_sql_pass	branch_tag	demo_data_upgrade_from	fun_stuff	pass_reset	capsule	description
+one	https://github.com/openemr/openemr.git	master	0	1	0	0	0	0	1	one.openemr.io	hey	branch	0	2	0	0	Public OpenEMR Development Demo on Alpine 3.20 (with PHP 8.3)
+one_a	https://github.com/openemr/openemr.git	master	0	1	0	0	demo_5_0_0_5.sql	0	1	one.openemr.io/a	hey	branch	5.0.0	2	0	0	Public OpenEMR Development Demo With Demo Data On Alpine 3.20 (with PHP 8.3)
+one_b	https://github.com/openemr/openemr.git	rel-702	0	0	0	0	0	0	1	one.openemr.io/b	hey	branch	0	0	0	0	Public OpenEMR 7.0.2 Development Demo on Alpine 3.20 (with PHP 8.3)
+one_c	https://github.com/openemr/openemr.git	rel-702	0	0	0	0	demo_5_0_0_5.sql	0	1	one.openemr.io/c	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.2 Development Demo With Demo Data On Alpine 3.20 (with PHP 8.3)
+one_d	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	0	0	1	one.openemr.io/d	hey	branch	0	0	0	0	Public OpenEMR 7.0.3 Development Demo on Alpine 3.20 (with PHP 8.3)
+one_e	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	demo_5_0_0_5.sql	0	1	one.openemr.io/e	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.3 Development Demo With Demo Data On Alpine 3.20 (with PHP 8.3)
+two	https://github.com/openemr/openemr.git	master	0	1	0	0	0	0	1	two.openemr.io	hey	branch	0	2	0	0	Public OpenEMR Development Demo on Alpine 3.18 (with PHP 8.2)
+two_a	https://github.com/openemr/openemr.git	master	0	1	0	0	demo_5_0_0_5.sql	0	1	two.openemr.io/a	hey	branch	5.0.0	2	0	0	Public OpenEMR Development Demo With Demo Data on Alpine 3.18 (with PHP 8.2)
+two_b	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	0	0	1	two.openemr.io/b	hey	branch	0	0	0	0	Public OpenEMR 7.0.3 Development Demo on Alpine 3.18 (with PHP 8.2)
+two_c	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	demo_5_0_0_5.sql	0	1	two.openemr.io/c	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.3 Development Demo With Demo Data on Alpine 3.18 (with PHP 8.2)
+two_d	https://github.com/openemr/openemr.git	rel-702	0	0	0	0	0	0	1	two.openemr.io/d	hey	branch	0	0	0	0	Public OpenEMR 7.0.2 Development Demo on Alpine 3.18 (with PHP 8.2)
+two_e	https://github.com/openemr/openemr.git	rel-702	0	0	0	0	demo_5_0_0_5.sql	0	1	two.openemr.io/e	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.2 Development Demo With Demo Data on Alpine 3.18 (with PHP 8.2)
+three	https://github.com/openemr/openemr.git	rel-703	0	0	1	0	0	0	1	three.openemr.io	hey	branch	0	0	0	0	Public OpenEMR 7.0.3 Development Demo on Ubuntu 24.04 (with nodejs 20)
+three_a	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	demo_5_0_0_5.sql	0	1	three.openemr.io/a	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.3 Development Demo With Demo Data on Ubuntu 24.04 (with nodejs 20)
+four	https://github.com/stephenwaite/openemr.git	rel-703-p5a	0	0	0	0	0	0	1	four.openemr.io	hey	branch	0	0	0	0	UP FOR GRABS Public OpenEMR Demo - Alpha
+four_a	https://github.com/ophthal/openemr.git	GFS8	0	0	0	0	demo_5_0_0_5.sql	0	1	four.openemr.io/a	hey	branch	5.0.0	0	0	0	UP FOR GRABS Public OpenEMR Demo - Beta With Demo Data
+four_b	https://github.com/openemr/openemr.git	master	0	0	0	0	0	0	1	four.openemr.io/b	hey	branch	0	0	0	0	UP FOR GRABS Public OpenEMR Demo - Gamma
+five	https://github.com/openemr/openemr.git	v7_0_3_4	0	0	0	0	demo_5_0_0_5.sql	0	1	demo.openemr.io	hey	tag	5.0.0	0	4	0	Public OpenEMR 7.0.3 Production Demo
+five_a	https://github.com/openemr/openemr.git	v7_0_3_4	0	0	0	0	demo_5_0_0_5.sql	0	1	demo.openemr.io/a	hey	tag	5.0.0	0	4	0	Alternate Public OpenEMR 7.0.3 Production Demo
+five_b	https://github.com/openemr/openemr.git	v7_0_3_4	0	0	0	0	demo_5_0_0_5.sql	0	1	demo.openemr.io/b	hey	tag	5.0.0	0	4	0	Another Alternate Public OpenEMR 7.0.3 Production Demo
+six	https://github.com/openemr/openemr.git	master	0	1	0	0	0	0	1	six.openemr.io	hey	branch	0	2	0	0	NOT USED - PRIOR Public OpenEMR Development Demo on Ubuntu 22.04 (with nodejs 18)
+six_a	https://github.com/openemr/openemr.git	master	0	1	0	0	demo_5_0_0_5.sql	0	1	six.openemr.io/a	hey	branch	5.0.0	2	0	0	NOT USED - PRIOR Public OpenEMR Development Demo With Demo Data on Ubuntu 22.04 (with nodejs 18)
+six_b	https://github.com/openemr/openemr.git	rel-701	0	0	1	0	0	0	1	six.openemr.io/b	hey	branch	0	0	0	0	Public OpenEMR 7.0.1 Development Demo on Ubuntu 22.04 (with nodejs 18)
+six_c	https://github.com/openemr/openemr.git	rel-701	0	0	0	0	demo_5_0_0_5.sql	0	1	six.openemr.io/c	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.1 Development Demo With Demo Data on Ubuntu 22.04 (with nodejs 18)
+six_d	https://github.com/openemr/openemr.git	rel-702	0	0	1	0	0	0	1	six.openemr.io/d	hey	branch	0	0	0	0	Public OpenEMR 7.0.2 Development Demo on Ubuntu 22.04 (with nodejs 18)
+six_e	https://github.com/openemr/openemr.git	rel-702	0	0	0	0	demo_5_0_0_5.sql	0	1	six.openemr.io/e	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.2 Development Demo With Demo Data on Ubuntu 22.04 (with nodejs 18)
+seven	https://github.com/openemr/openemr.git	master	0	1	0	0	0	0	1	seven.openemr.io	hey	branch	0	2	0	0	Public OpenEMR Development Demo on Alpine 3.22 (with PHP 8.4)
+seven_a	https://github.com/openemr/openemr.git	master	0	1	0	0	demo_5_0_0_5.sql	0	1	seven.openemr.io/a	hey	branch	5.0.0	2	0	0	Public OpenEMR Development Demo With Demo Data On Alpine 3.22 (with PHP 8.4)
+seven_b	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	0	0	1	seven.openemr.io/b	hey	branch	0	0	0	0	Public OpenEMR 7.0.3 Development Demo on Alpine 3.22 (with PHP 8.4)
+seven_c	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	demo_5_0_0_5.sql	0	1	seven.openemr.io/c	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.3 Development Demo With Demo Data On Alpine 3.22 (with PHP 8.4)
+eight	https://github.com/openemr/openemr.git	master	0	1	1	0	0	0	1	eight.openemr.io	hey	branch	0	2	0	0	Public OpenEMR Development Demo on Ubuntu 24.04 (with nodejs 22)
+eight_a	https://github.com/openemr/openemr.git	master	0	1	0	0	demo_5_0_0_5.sql	0	1	eight.openemr.io/a	hey	branch	5.0.0	2	0	0	Public OpenEMR Development Demo With Demo Data on Ubuntu 24.04 (with nodejs 22)
+ten	https://github.com/openemr/openemr.git	master	0	1	0	0	0	0	1	ten.openemr.io	hey	branch	0	2	0	0	Public OpenEMR Development Demo on Alpine 3.17
+ten_a	https://github.com/openemr/openemr.git	master	0	1	0	0	demo_5_0_0_5.sql	0	1	ten.openemr.io/a	hey	branch	5.0.0	2	0	0	Public OpenEMR Development Demo on Alpine 3.17 With Demo Data
+ten_b	https://github.com/openemr/openemr.git	rel-701	0	0	0	0	0	0	1	ten.openemr.io/b	hey	branch	0	0	0	0	Public OpenEMR 7.0.1 Development Demo on Alpine 3.17
+ten_c	https://github.com/openemr/openemr.git	rel-701	0	0	0	0	demo_5_0_0_5.sql	0	1	ten.openemr.io/c	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.1 Development Demo on Alpine 3.17 With Demo Data
+ten_d	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	0	0	1	ten.openemr.io/d	hey	branch	0	0	0	0	Public OpenEMR 7.0.3 Development Demo on Alpine 3.17 (with PHP 8.1)
+ten_e	https://github.com/openemr/openemr.git	rel-703	0	0	0	0	demo_5_0_0_5.sql	0	1	ten.openemr.io/e	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.3 Development Demo on Alpine 3.17 With Demo Data (with PHP 8.1)
+eleven	https://github.com/openemr/openemr.git	master	0	1	0	0	0	0	1	eleven.openemr.io	hey	branch	0	2	0	0	Public OpenEMR Development Demo on Alpine 3.15 (with PHP 8)
+eleven_a	https://github.com/openemr/openemr.git	master	0	1	0	0	demo_5_0_0_5.sql	0	1	eleven.openemr.io/a	hey	branch	5.0.0	2	0	0	Public OpenEMR Development Demo on Alpine 3.15 (with PHP8) With Demo Data
+eleven_b	https://github.com/openemr/openemr.git	rel-610	0	1	0	0	0	0	1	eleven.openemr.io/b	hey	branch	0	0	0	0	Public OpenEMR 6.1.0 Development Demo on Alpine 3.15 (with PHP 8)
+eleven_c	https://github.com/openemr/openemr.git	rel-610	0	1	0	0	demo_5_0_0_5.sql	0	1	eleven.openemr.io/c	hey	branch	5.0.0	0	0	0	Public OpenEMR 6.1.0 Development Demo on Alpine 3.15 (with PHP8) With Demo Data
+eleven_d	https://github.com/openemr/openemr.git	rel-701	0	0	0	0	0	0	1	eleven.openemr.io/d	hey	branch	0	0	0	0	Public OpenEMR 7.0.1 Development Demo on Alpine 3.15 (with PHP 8)
+eleven_e	https://github.com/openemr/openemr.git	rel-701	0	0	0	0	demo_5_0_0_5.sql	0	1	eleven.openemr.io/e	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.1 Development Demo on Alpine 3.15 (with PHP8) With Demo Data
+edu	https://github.com/openemr/openemr.git	rel-700	0	0	0	0	0	0	1	edu.openemr.io	hey	branch	0	0	0	0	Public OpenEMR 7.0.0 Development Demo on Alpine 3.15 (with PHP8)
+edu_a	https://github.com/openemr/openemr.git	rel-700	0	0	0	0	demo_5_0_0_5.sql	0	1	edu.openemr.io/a	hey	branch	5.0.0	0	0	0	Public OpenEMR 7.0.0 Development Demo With Demo Data On Alpine 3.15 (with PHP8)
