@@ -13,7 +13,7 @@ f () {
         sleep 5
     done
 
-    until docker top $(docker ps | grep -- -openemr | cut -f 1 -d " ") | grep httpd &> /dev/null
+    until docker top $(docker ps | awk '/-openemr/{ print $1 }') | grep -qF httpd
     do
         echo "waiting for service start..."
         sleep 20
