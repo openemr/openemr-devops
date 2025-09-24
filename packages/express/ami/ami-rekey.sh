@@ -44,10 +44,10 @@ do
 done
 
 # reset password
-docker exec $(docker ps | grep -- -openemr | cut -f 1 -d " ") /root/unlock_admin.sh $(curl http://169.254.169.254/latest/meta-data/instance-id)
+docker compose exec openemr /root/unlock_admin.sh $(curl http://169.254.169.254/latest/meta-data/instance-id)
 
 # reset SSL
-docker exec $(docker ps | grep -- -openemr | cut -f 1 -d " ") /bin/sh -c 'rm -f /etc/ssl/private/* /etc/ssl/docker-selfsigned-configured'
+docker compose exec openemr /bin/sh -c 'rm -f /etc/ssl/private/* /etc/ssl/docker-selfsigned-configured'
 docker restart lightsail_openemr_1
 
 # let's never speak of this again
