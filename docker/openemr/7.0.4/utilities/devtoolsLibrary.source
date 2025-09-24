@@ -2,16 +2,16 @@
 
 prepareVariables() {
     # Set default values for environment variables if not provided
-    : "${MYSQL_DATABASE:=''}" \
-      "${MYSQL_HOST:=localhost}" \
-      "${MYSQL_PASS:=''}" \
-      "${MYSQL_PORT:=''}" \
-      "${MYSQL_ROOT_PASS:=''}" \
-      "${MYSQL_ROOT_USER:=''}" \
-      "${MYSQL_USER:=''}" \
-      "${OE_PASS:=''}" \
-      "${OE_USER:=''}" \
-      "${SQL_DATA_DRIVE:=''}"
+    : "${MYSQL_DATABASE:=}" \
+        "${MYSQL_HOST:=localhost}" \
+        "${MYSQL_PASS:=}" \
+        "${MYSQL_PORT:=}" \
+        "${MYSQL_ROOT_PASS:=}" \
+        "${MYSQL_ROOT_USER:=}" \
+        "${MYSQL_USER:=}" \
+        "${OE_PASS:=}" \
+        "${OE_USER:=}" \
+        "${SQL_DATA_DRIVE:=}"
 
     CONFIGURATION="server=${MYSQL_HOST} rootpass=${MYSQL_ROOT_PASS} loginhost=%"
     if [ "${MYSQL_ROOT_USER}" != "" ]; then
