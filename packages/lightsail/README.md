@@ -50,7 +50,7 @@ To install, run the same launch script, make sure you're provided inbound access
   * You will need network access, don't try to build from a private IP without NAT egress.
   * Check the process list, make sure `auto_configure.php` isn't running before you attempt to log in.
 * Need access to the containers? Log into root, and...
-  * Apache: `docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
+  * Apache: `docker exec -it $(docker ps | grep -- -openemr | cut -f 1 -d " ") /bin/sh`
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 * Run a quick backup? `/etc/cron.daily/duplicity-backups` as root.
@@ -103,7 +103,7 @@ If you're seeking to install a feature release (to upgrade from `5.0.0` to `5.0.
 #!/bin/sh
 
 PATCHFILE=5-0-1-Patch-4.zip
-OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
+OE_INSTANCE=$(docker ps | grep -- -openemr | cut -f 1 -d " ")
 
 /etc/cron.daily/duplicity-backups
 # running OpenEMR Standard? don't forget to make an RDS snapshot

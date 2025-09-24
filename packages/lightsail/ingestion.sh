@@ -11,7 +11,7 @@ mkdir /tmp/backup-ingestion
 cd /tmp/backup-ingestion
 tar -xf $1 -C /tmp/backup-ingestion/ --no-same-owner
 
-DOCKERID=$(docker ps | grep _openemr | cut -f 1 -d " ")
+DOCKERID=$(docker ps | grep -- -openemr | cut -f 1 -d " ")
 
 # retrieve site
 mkdir webroot
@@ -22,7 +22,7 @@ docker cp ${DOCKERID}:/var/www/localhost/htdocs/openemr/sites/default/sqlconf.ph
 docker cp webroot ${DOCKERID}:/tmp/oe-recovery
 
 # straighten out internal permissions
-docker exec -i $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh -s << "EOF"
+docker exec -i $(docker ps | grep -- -openemr | cut -f 1 -d " ") /bin/sh -s << "EOF"
 cd /var/www/localhost/htdocs/openemr/sites
 chown -R apache:root default-recovery
 chmod -R 400 default-recovery

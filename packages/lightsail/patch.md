@@ -45,7 +45,7 @@ Script to be run:
 # Note that you may be copying over your own custom files so BEWARE!
 # For multi-site also uncomment the 3 commented docker exec lines below. 
  
-OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
+OE_INSTANCE=$(docker ps | grep -- -openemr | cut -f 1 -d " ")
 #docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v7_0_0_2/admin.php > /var/www/localhost/htdocs/openemr/admin.php'
 docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v7_0_0_2/sql_patch.php > /var/www/localhost/htdocs/openemr/sql_patch.php'
 docker exec -it "$OE_INSTANCE" sh -c 'curl -L https://www.open-emr.org/patch/7-0-0-Patch-2.zip > /var/www/localhost/htdocs/openemr/7-0-0-Patch-2.zip'
@@ -81,7 +81,7 @@ Create a cleanup script to delete sensitive scripts.
 /etc/cron.daily/duplicity-backups
 
 #delete upgrade files that have served their purpose
-OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
+OE_INSTANCE=$(docker ps | grep -- -openemr | cut -f 1 -d " ")
 docker exec "$OE_INSTANCE" rm -f /var/www/localhost/htdocs/openemr/admin.php /var/www/localhost/htdocs/openemr/sql_patch.php /var/www/localhost/htdocs/openemr/7-0-0-Patch-2.zip
 
 # comment below line to avoid deleting the patch script created above

@@ -75,7 +75,7 @@ sed -i 's/5.0.0/5.0.1/' docker-compose.yml
 #!/bin/sh
 
 # retrieve files deleted for security
-OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
+OE_INSTANCE=$(docker ps | grep -- -openemr | cut -f 1 -d " ")
 docker exec -it $OE_INSTANCE sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v5_0_1/sql_upgrade.php > /var/www/localhost/htdocs/openemr/sql_upgrade.php'
 docker exec -it $OE_INSTANCE sh -c 'curl -L https://raw.githubusercontent.com/openemr/openemr/v5_0_1/acl_upgrade.php > /var/www/localhost/htdocs/openemr/acl_upgrade.php'
 docker exec $OE_INSTANCE chown apache:root /var/www/localhost/htdocs/openemr/sql_upgrade.php /var/www/localhost/htdocs/openemr/acl_upgrade.php
@@ -97,6 +97,6 @@ Navigate to `http://<your-instance>/sql_upgrade.php` and select `5.0.0`.
 /etc/cron.daily/duplicity-backups
 
 #delete upgrade files that have served their purpose
-OE_INSTANCE=$(docker ps | grep _openemr | cut -f 1 -d " ")
+OE_INSTANCE=$(docker ps | grep -- -openemr | cut -f 1 -d " ")
 docker exec $OE_INSTANCE rm -f /var/www/localhost/htdocs/openemr/sql_upgrade.php /var/www/localhost/htdocs/openemr/acl_upgrade.php
 ```

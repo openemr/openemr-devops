@@ -38,16 +38,16 @@ do
     sleep 5
 done
 
-until docker top $(docker ps | grep _openemr | cut -f 1 -d " ") | grep httpd &> /dev/null
+until docker top $(docker ps | grep -- -openemr | cut -f 1 -d " ") | grep httpd &> /dev/null
 do
     sleep 3
 done
 
 # reset password
-docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") /root/unlock_admin.sh $(curl http://169.254.169.254/latest/meta-data/instance-id)
+docker exec $(docker ps | grep -- -openemr | cut -f 1 -d " ") /root/unlock_admin.sh $(curl http://169.254.169.254/latest/meta-data/instance-id)
 
 # reset SSL
-docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh -c 'rm -f /etc/ssl/private/* /etc/ssl/docker-selfsigned-configured'
+docker exec $(docker ps | grep -- -openemr | cut -f 1 -d " ") /bin/sh -c 'rm -f /etc/ssl/private/* /etc/ssl/docker-selfsigned-configured'
 docker restart lightsail_openemr_1
 
 # let's never speak of this again

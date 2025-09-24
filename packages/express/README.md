@@ -31,7 +31,7 @@ In a couple of minutes, once OpenEMR has finished the final setup procedures, it
 ### General
 
 * Need access to the containers? Connect to user `ubuntu`, sudo to root, and...
-  * Apache: `docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
+  * Apache: `docker exec -it $(docker ps | grep -- -openemr | cut -f 1 -d " ") /bin/sh`
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 
@@ -39,8 +39,8 @@ In a couple of minutes, once OpenEMR has finished the final setup procedures, it
 
 1. See http://php.net/manual/en/timezones.php for the PHP timezone for your region.
 2. `sudo bash`
-3. `docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") sed -i 's^;date.timezone\ =^date.timezone = <your timezone>^' /etc/php7/php.ini`
-4. `docker restart $(docker ps | grep _openemr | cut -f 1 -d " ")`
+3. `docker exec $(docker ps | grep -- -openemr | cut -f 1 -d " ") sed -i 's^;date.timezone\ =^date.timezone = <your timezone>^' /etc/php7/php.ini`
+4. `docker restart $(docker ps | grep -- -openemr | cut -f 1 -d " ")`
 
 ### HIPAA Compliance
 

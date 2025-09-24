@@ -17,7 +17,7 @@ Follow our [Getting Started Guide](https://www.open-emr.org/wiki/index.php/Googl
 ### General
 
 * Need access to the containers? Connect to user `ubuntu`, sudo to root, and...
-  * Apache: `docker exec -it $(docker ps | grep _openemr | cut -f 1 -d " ") /bin/sh`
+  * Apache: `docker exec -it $(docker ps | grep -- -openemr | cut -f 1 -d " ") /bin/sh`
   * MySQL: `docker exec -it $(docker ps | grep mysql | cut -f 1 -d " ") /bin/bash`
 * Visit container volume: `docker volume ls`, `cd $(docker volume inspect <volume_name> | jq -r ".[0].Mountpoint")`
 
@@ -25,8 +25,8 @@ Follow our [Getting Started Guide](https://www.open-emr.org/wiki/index.php/Googl
 
 1. See http://php.net/manual/en/timezones.php for the PHP timezone for your region.
 2. `sudo bash`
-3. `docker exec $(docker ps | grep _openemr | cut -f 1 -d " ") sed -i 's^;date.timezone\ =^date.timezone = <your timezone>^' /etc/php7/php.ini`
-4. `docker restart $(docker ps | grep _openemr | cut -f 1 -d " ")`
+3. `docker exec $(docker ps | grep -- -openemr | cut -f 1 -d " ") sed -i 's^;date.timezone\ =^date.timezone = <your timezone>^' /etc/php7/php.ini`
+4. `docker restart $(docker ps | grep -- -openemr | cut -f 1 -d " ")`
 
 ### HIPAA Compliance
 
