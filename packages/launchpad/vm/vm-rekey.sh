@@ -36,7 +36,8 @@ fi
 sleep 15
 
 # reset password
-docker compose exec openemr /root/unlock_admin.sh $(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/openemr_admin_password)
+# shellcheck disable=SC2312
+docker compose exec openemr /root/unlock_admin.sh "$(curl -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/attributes/openemr_admin_password)"
 
 # reset SSL
 docker compose exec openemr /bin/sh -c 'rm -rf /etc/ssl/private/*'

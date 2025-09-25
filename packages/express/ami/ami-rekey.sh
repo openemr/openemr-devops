@@ -38,7 +38,7 @@ do
     sleep 5
 done
 
-# shellcheck: disable=SC2312
+# shellcheck disable=SC2312
 until docker top "$(docker ps | grep -- -openemr | cut -f 1 -d " ")" | grep -q httpd
     sleep 3
 done
