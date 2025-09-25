@@ -14,6 +14,7 @@ f () {
         sleep 5
     done
 
+    # shellcheck disable=SC2312
     until docker top "$(docker ps | grep -openemr | cut -f 1 -d " ")" | grep httpd -q
     do
         echo "waiting for service start..."
