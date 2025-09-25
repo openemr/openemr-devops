@@ -9,8 +9,9 @@
 
 mkdir /tmp/backup-ingestion
 cd /tmp/backup-ingestion || exit 1
-tar -xf $1 -C /tmp/backup-ingestion/ --no-same-owner
+tar -xf "$1" -C /tmp/backup-ingestion/ --no-same-owner
 
+# shellcheck disable=2312
 DOCKERID=$(docker ps | grep -- -openemr | cut -f 1 -d " ")
 
 # retrieve site
@@ -22,7 +23,7 @@ docker cp "${DOCKERID}:/var/www/localhost/htdocs/openemr/sites/default/sqlconf.p
 docker cp webroot "${DOCKERID}:/tmp/oe-recovery"
 
 # straighten out internal permissions
-docker exec -i ${DOCKERID} /bin/sh -s << "EOF"
+docker exec -i "${DOCKERID}" /bin/sh -s << "EOF"
 cd /var/www/localhost/htdocs/openemr/sites
 chown -R apache:root default-recovery
 chmod -R 400 default-recovery
@@ -35,6 +36,7 @@ EOF
 
 # restore database
 gzip -d openemr.sql.gz
+# shellcheck disable=2312
 echo 'USE openemr;' | cat - openemr.sql | docker exec -i "${DOCKERID}" /bin/sh -c 'mysql -h"$MYSQL_HOST" -u"$MYSQL_USER" -p"$MYSQL_PASS"'
 rm openemr.sql
 
