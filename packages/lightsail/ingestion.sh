@@ -41,7 +41,7 @@ echo 'USE openemr;' | cat - openemr.sql | docker exec -i "${DOCKERID}" /bin/sh -
 rm openemr.sql
 
 # swift kick to PHP
-docker restart ${DOCKERID}
+docker restart "${DOCKERID}"
 
 cd /root || exit 1
 rm -rf /tmp/backup-ingestion

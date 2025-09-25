@@ -33,6 +33,7 @@ if [[ -f /etc/appliance-unlocked ]]; then
 fi
 
 # wait a while for services to start
+# shellcheck disable=SC2312
 until docker container ls | grep openemr/openemr -q
 do
     sleep 5
@@ -45,6 +46,7 @@ do
 done
 
 # reset password
+# shellcheck disable=SC2312
 docker compose exec openemr /root/unlock_admin.sh "$(curl http://169.254.169.254/latest/meta-data/instance-id)"
 
 # reset SSL
