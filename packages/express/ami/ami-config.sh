@@ -14,7 +14,7 @@ f () {
         sleep 5
     done
 
-    until docker top $(docker ps | grep -openemr | cut -f 1 -d " ") | grep httpd &> /dev/null
+    until docker top "$(docker ps | grep -openemr | cut -f 1 -d " ")" | grep httpd -q
     do
         echo "waiting for service start..."
         sleep 20
@@ -32,5 +32,3 @@ f () {
 }
 
 f
-echo failure?
-exit 1
