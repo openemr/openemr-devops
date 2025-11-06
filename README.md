@@ -12,7 +12,7 @@ OpenEMR administration and deployment tooling
 * [OpenEMR Cloud Express](packages/express): AWS Marketplace-supplied preconfigured OpenEMR instance
 * [OpenEMR Cloud Express Plus](packages/express_plus): Self-contained OpenEMR instance with more complex features
 * [OpenEMR on ECS](https://github.com/openemr/openemr-on-ecs): Serverless, scaling OpenEMR, built in CDK and managed by AWS Elastic Container Service
-* [OpenEMR on EKS](https://github.com/openemr/openemr-on-ecs): OpenEMR on AWS Elastic Kubernetes Service, delievered through Terraform  
+* [OpenEMR on EKS](https://github.com/openemr/openemr-on-eks): OpenEMR on AWS Elastic Kubernetes Service, delievered through Terraform  
 
 See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_Packages_Comparison) for more information on the costs and features of each offering.
 
