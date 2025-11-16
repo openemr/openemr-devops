@@ -1,0 +1,29 @@
+services:
+  mysql:
+    restart: always
+    image: mariadb:11.8
+    command: ['mariadbd','--character-set-server=utf8mb4']
+    volumes:
+    - databasevolume:/var/lib/mysql
+    - databasebackupvolume:/opt/mysqlbak/host
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    healthcheck:
+      test:
+      - CMD
+      - /usr/local/bin/healthcheck.sh
+      - --su-mysql
+      - --connect
+      - --innodb_initialized
+      start_period: 1m
+      start_interval: 10s
+      interval: 1m
+      timeout: 5s
+      retries: 3
+volumes: 
+  databasevolume: 
+  databasebackupvolume:
+    driver_opts:
+      type: none
+      device: /opt/mysql-backup-out
+      o: bind
