@@ -1,3 +1,5 @@
 properties
-client/properties
-client/properties.secret
+backup-client/properties
+backup-client/properties.secret
+restore-client/properties
+

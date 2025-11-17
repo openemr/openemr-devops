@@ -26,8 +26,16 @@ considerState() {
     fi
 }
 
+# I can't believe we have to do this
+grabCurrentHealthcheck() {
+    if [[ -e /var/lib/mysql/.my-healthcheck.cnf ]]; then
+        cp /var/lib/mysql/.my-healthcheck.cnf ${BACKUPVOLUME_TARGET}/${TIMESTAMP}.my-healthcheck.cnf
+    fi
+}
+
 runFullBackup() {
     mkdir "${BACKUPVOLUME_TARGET}"/"${TIMESTAMP}"-lsn
+    grabCurrentHealthcheck
     mariadb-backup --defaults-extra-file=root-credentials.conf --backup --stream=xbstream \
         --extra-lsndir="${BACKUPVOLUME_TARGET}"/"${TIMESTAMP}"-lsn | gzip > "${BACKUPVOLUME_TARGET}"/"${TIMESTAMP}".gz
     if [[ $? == 0 ]]; then
@@ -42,6 +50,7 @@ runFullBackup() {
 
 runIncrementalBackup() {
     mkdir "${BACKUPVOLUME_TARGET}"/"${TIMESTAMP}"-lsn
+    grabCurrentHealthcheck
     mariadb-backup --defaults-extra-file=root-credentials.conf --backup --stream=xbstream \
         --incremental-basedir="${BACKUPVOLUME_TARGET}"/"${LASTBACKUP}-lsn" \
         --extra-lsndir="${BACKUPVOLUME_TARGET}"/"${TIMESTAMP}"-lsn | gzip > "${BACKUPVOLUME_TARGET}"/"${TIMESTAMP}".gz

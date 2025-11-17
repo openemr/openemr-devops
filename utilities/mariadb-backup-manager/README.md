@@ -17,8 +17,16 @@ Backup structure:
 
 * Manifest files are paired with their full backups, and contain the list (and order) of the backups that will need to be retrieved to invoke the recovery process.
 * Every backup run produces a gzipped xbstream artifact, which we'll load with `mbstream` during the restore operation.
+* The backup utility doesn't see the healthcheck file you might've created, so we snatch that up too.
 * The LSN directories are part of the ongoing backup creation process but are not themselves part of the backup once they've served their purpose for the next backup.
 
-Recovery proceure:
+Recovery procedure:
 
-* Oh boy.
+* Select the backup you want to restore, and locate the manifest that refers to it. 
+(You could execute a point-in-time recovery by trimming the manifest of everything after
+your last good state.)
+* If the backup's already been moved off the server into your own backup solution, restore
+it to the bind mount. 
+* Call `/recover.sh --manifest <your manifest file>`
+* Alternately, don't specify a manifest, and the recovery process will pick the newest backup it can find, handy if you made a backup just before you tried something that didn't work out.
+* MariaDB will be stopped, the full and incremental backups will be applied, and normal service will resume.

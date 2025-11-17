@@ -5,6 +5,9 @@ displayHelp () {
 cat <<EOF
 Usage: $0 [... options] [-h | --help]
 
+Initializes and installs the MariaDB incremental backup and recovery client to your
+MariaDB-based docker-compose project.
+
 Required:
     --database-volume NAME  name of volume assigned to the MariaDB data directory
     --backup-volume NAME    name of volume for backup workspace operations
@@ -132,37 +135,46 @@ BACKUPVOLUME_TARGET="${BACKUPVOLUME_TARGET}"
 EOF
 chmod 600 properties
 
-cat > client/properties <<EOF
+cat > backup-client/properties <<EOF
 CYCLES_TO_KEEP="${CYCLES_TO_KEEP}"
 INCREMENTALS="${INCREMENTALS}"
 BACKUPVOLUME_TARGET="${BACKUPVOLUME_TARGET}"
 EOF
-chmod 600 client/properties
+chmod 600 backup-client/properties
 
-touch client/properties.secret
+touch backup-client/properties.secret
 if [[ -n "${MARIADB_USER}" ]]; then
-cat >> client/properties.secret <<EOF
+cat >> backup-client/properties.secret <<EOF
 MARIADB_USER_FROMSCRIPT="${MARIADB_USER}"
 EOF
 fi
 if [[ -n "${MARIADB_PASSWORD}" ]]; then
-cat >> client/properties.secret <<EOF
+cat >> backup-client/properties.secret <<EOF
 MARIADB_PASSWORD_FROMSCRIPT="${MARIADB_PASSWORD}"
 EOF
 fi
-chmod 600 client/properties.secret
+chmod 600 backup-client/properties.secret
+
+cat > restore-client/properties <<EOF
+BACKUPVOLUME_TARGET="${BACKUPVOLUME_TARGET}"
+EOF
+chmod 600 restore-client/properties
+
 }
 
+
 installClient () {
-    (cd client && docker compose -p "${PROJECT}" cp ./ "${SERVICENAME}":"${CLIENTDIRECTORY}")
+    (cd backup-client && docker compose -p "${PROJECT}" cp ./ "${SERVICENAME}":"${CLIENTDIRECTORY}")
     if [[ ! $? == 0 ]]; then
         echo "failure, error writing client to container"
         exit 1
     fi
     docker compose -p "${PROJECT}" exec "${SERVICENAME}" sh -c 'chmod 400 '"${CLIENTDIRECTORY}"'/properties*'
-    rm -f client/properties client/properties.secret
+    rm -f backup-client/properties backup-client/properties.secret
     docker compose -p "${PROJECT}" exec "${SERVICENAME}" sh -c 'chmod 500 '"${CLIENTDIRECTORY}"'/*.sh'
     docker compose -p "${PROJECT}" exec -w "${CLIENTDIRECTORY}" "${SERVICENAME}" ./setup.sh  
+
+    chmod a+x restore-client/restore.sh
 }
 
 CYCLES_TO_KEEP=3
