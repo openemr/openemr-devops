@@ -81,7 +81,7 @@ pruneOldBackups() {
     # up until now I've avoided changing directories, but this is the last stop and where we're deleting files
     # so let's not make it harder
     cd "${BACKUPVOLUME_TARGET}" || exit 1
-    TARGET_MANIFEST=$(ls -r *.manifest | sed "$(($CYCLES_TO_KEEP+1))"'q;d' | sed -E "s/(.*)\..*/\1/")
+    TARGET_MANIFEST=$(ls -r *.manifest | sed "$((CYCLES_TO_KEEP+1))"'q;d' | sed -E "s/(.*)\..*/\1/")
     if [[ $? -ne 0 || -z "${TARGET_MANIFEST}" ]]; then
         return
     fi

@@ -40,13 +40,13 @@ validateManifest() {
 
 openFullBackup() {
     mkdir -p /tmp/work/full
-    gunzip -ck ${WORKINGTIMESTAMP}.gz | mbstream -x -C /tmp/work/full
+    gunzip -ck "${WORKINGTIMESTAMP}".gz | mbstream -x -C /tmp/work/full
     mariadb-backup --prepare --target-dir=/tmp/work/full
 }
 
 applyIncrementalBackup() {
     mkdir -p /tmp/work/partial
-    gunzip -ck ${WORKINGTIMESTAMP}.gz | mbstream -x -C /tmp/work/partial
+    gunzip -ck "${WORKINGTIMESTAMP}".gz | mbstream -x -C /tmp/work/partial
     mariadb-backup --prepare --target-dir=/tmp/work/full \
         --incremental-dir=/tmp/work/partial
     rm -rf /tmp/work/partial
