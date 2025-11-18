@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC2164,SC2312
 set -o pipefail
 
 displayHelp () {

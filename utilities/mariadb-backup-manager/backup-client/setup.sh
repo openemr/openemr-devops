@@ -1,7 +1,10 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC2164,SC2312
 set -o pipefail
 
+# shellcheck source=/dev/null
 source ./properties
+# shellcheck source=/dev/null
 source ./properties.secret
 
 echo "[client]" > root-credentials.conf
