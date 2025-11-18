@@ -65,6 +65,10 @@ processManifest() {
 }
 
 completeBackup() {
+    if [[ -n "${DRYRUN}" ]]; then
+        echo dry-run specified, halting before wipe
+        return
+    fi
     (cd /var/lib/mysql; rm -rf -- ..?* .[!.]* *)
     mariadb-backup --copy-back --target-dir=/tmp/work/full
     if [[ -f "${FINALTIMESTAMP}.my-healthcheck.cnf" ]]; then
@@ -74,7 +78,7 @@ completeBackup() {
 }
 
 ## Parse command-line options
-OPTS=$(getopt -o hm: --long manifest:,help -n 'restore.sh' -- "$@")
+OPTS=$(getopt -o hm: --long dry-run,manifest:,help -n 'restore.sh' -- "$@")
 if [ $? -ne 0 ]; then
     echo "failure: couldn't parse options?" >&2
     exit 1
@@ -86,6 +90,10 @@ eval set -- "$OPTS"
 ## Process the options
 while true; do
   case "$1" in
+    --dry-run)
+      DRYRUN=1
+      shift 1
+      ;;
     -m | --manifest)
       TIMESTAMP=$(echo "$2" | sed -n -E 's/(.+)\.manifest/\1/p')
       if [[ $? -ne 0 || -z "${TIMESTAMP}" ]]; then
