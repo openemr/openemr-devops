@@ -17,5 +17,5 @@ getContainerID
 docker compose -p "${PROJECT}" stop --timeout 60
 docker run --volumes-from "${CONTAINER}" -w ${CLIENTTARGET} \
     --rm --mount type=bind,src="./restore-client",target="${CLIENTTARGET}" \
-    "${IMAGE}" ./restore.sh $@
+    "${IMAGE}" ./restore.sh "$@"
 docker compose -p "${PROJECT}" start

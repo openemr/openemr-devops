@@ -1,18 +1,21 @@
 #!/bin/bash
 set -o pipefail
 
+# shellcheck source=/dev/null
 source ./properties
 
 TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 
 BACKUPCLASS=undecided
 considerState() {
+    # shellcheck disable=SC2154,SC2164
     LASTFULLBACKUP="$(cd "${BACKUPVOLUME_TARGET}"; ls -r *.manifest | head -n 1 | sed -E "s/(.*)\.manifest/\1/")"
     if [[ $? -ne 0 || -z "${LASTFULLBACKUP}" ]]; then
         echo "can't find valid manifest, was this expected?"
         BACKUPCLASS=full
         return
     fi
+    # shellcheck disable=SC2154,SC2312
     if [[ "$(wc -l "${BACKUPVOLUME_TARGET}"/"${LASTFULLBACKUP}".manifest | awk '{print $1}')" -gt "${INCREMENTALS}" ]]; then
         echo "incrementals have cycled, running full backup"
         BACKUPCLASS=full
@@ -29,7 +32,7 @@ considerState() {
 # I can't believe we have to do this
 grabCurrentHealthcheck() {
     if [[ -e /var/lib/mysql/.my-healthcheck.cnf ]]; then
-        cp /var/lib/mysql/.my-healthcheck.cnf ${BACKUPVOLUME_TARGET}/${TIMESTAMP}.my-healthcheck.cnf
+        cp /var/lib/mysql/.my-healthcheck.cnf "${BACKUPVOLUME_TARGET}"/"${TIMESTAMP}".my-healthcheck.cnf
     fi
 }
 
