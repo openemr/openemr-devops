@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC2164,SC2312
 set -o pipefail
 
 # shellcheck source=/dev/null
@@ -8,14 +9,12 @@ TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
 
 BACKUPCLASS=undecided
 considerState() {
-    # shellcheck disable=SC2154,SC2164
     LASTFULLBACKUP="$(cd "${BACKUPVOLUME_TARGET}"; ls -r *.manifest | head -n 1 | sed -E "s/(.*)\.manifest/\1/")"
     if [[ $? -ne 0 || -z "${LASTFULLBACKUP}" ]]; then
         echo "can't find valid manifest, was this expected?"
         BACKUPCLASS=full
         return
     fi
-    # shellcheck disable=SC2154,SC2312
     if [[ "$(wc -l "${BACKUPVOLUME_TARGET}"/"${LASTFULLBACKUP}".manifest | awk '{print $1}')" -gt "${INCREMENTALS}" ]]; then
         echo "incrementals have cycled, running full backup"
         BACKUPCLASS=full
