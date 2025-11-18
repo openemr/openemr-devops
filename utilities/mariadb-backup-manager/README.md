@@ -40,14 +40,14 @@ Note that *any* use of the restore agent, including `--dry-run`, will bounce you
 
 ## Implementation Details
 
-### Backup structure
+### Backup Structure
 
 * Manifest files are paired with their full backups, and contain the list (and order) of the backups that will need to be retrieved to invoke the recovery process.
 * Every backup run produces a gzipped xbstream artifact, which we'll load with `mbstream` during the restore operation.
 * The backup utility doesn't see the healthcheck file you might've created, so we snatch that up too.
 * The LSN directories are part of the ongoing backup creation process but are not themselves part of the backup once they've served their purpose for the next backup.
 
-### Container healthcheck
+### Container Healthcheck
 
 The handling of the healthcheck file is more fragile than I'd like, but MariaDB doesn't expose a good way to renew it. If, after a restore, Docker thinks your instance is unhealthy but it's doing fine, and the logs show somebody banging on the door every few seconds, the healthcheck may need manual remediation.
 
