@@ -175,69 +175,93 @@ if [ "${EASY_DEV_MODE_NEW}" = "yes" ]; then
     rsync --ignore-existing --recursive --links --exclude .git /openemr /var/www/localhost/htdocs/
 fi
 
-if [ -f /var/www/localhost/htdocs/auto_configure.php ] && [ ! -d /var/www/localhost/htdocs/openemr/vendor ] || { [ -d /var/www/localhost/htdocs/openemr/vendor ] && [ -z "$(ls -A /var/www/localhost/htdocs/openemr/vendor || true)" ]; } && [ "${FORCE_NO_BUILD_MODE}" != "yes" ]; then
+# Check if we need to build PHP dependencies or frontend assets
+# Separate checks allow npm builds even when vendor already exists
+NEED_COMPOSER_BUILD=false
+NEED_NPM_BUILD=false
+RAN_ANY_BUILD=false
+
+if [ -f /var/www/localhost/htdocs/auto_configure.php ] && [ "${FORCE_NO_BUILD_MODE}" != "yes" ]; then
+    # Check if composer/vendor build is needed
+    if [ ! -d /var/www/localhost/htdocs/openemr/vendor ] || { [ -d /var/www/localhost/htdocs/openemr/vendor ] && [ -z "$(ls -A /var/www/localhost/htdocs/openemr/vendor || true)" ]; }; then
+        NEED_COMPOSER_BUILD=true
+    fi
+
+    # Check if npm build is needed (node_modules missing/empty OR public missing/empty)
+    if [ ! -d /var/www/localhost/htdocs/openemr/node_modules ] || { [ -d /var/www/localhost/htdocs/openemr/node_modules ] && [ -z "$(ls -A /var/www/localhost/htdocs/openemr/node_modules || true)" ]; } ||
+       [ ! -d /var/www/localhost/htdocs/openemr/public ] || { [ -d /var/www/localhost/htdocs/openemr/public ] && [ -z "$(ls -A /var/www/localhost/htdocs/openemr/public || true)" ]; }; then
+        NEED_NPM_BUILD=true
+    fi
+fi
+
+if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; then
     cd /var/www/localhost/htdocs/openemr
 
-    # if there is a raw github composer token supplied, then try to use it
-    if [ "${GITHUB_COMPOSER_TOKEN}" != "" ]; then
-        echo "trying raw github composer token"
-        githubTokenRateLimitRequest=$(curl -H "Authorization: token ${GITHUB_COMPOSER_TOKEN}" https://api.github.com/rate_limit)
-        githubTokenRateLimit=$(echo "${githubTokenRateLimitRequest}" | jq '.rate.remaining')
-        githubTokenRateLimitMessage=$(echo "${githubTokenRateLimitRequest}" | jq '.message')
-        echo "Number of github api requests remaining is ${githubTokenRateLimit}";
-        printf 'Message received from api request is "%s"\n' "${githubTokenRateLimitMessage}"
-        if [ "${githubTokenRateLimit}" -gt 100 ]; then
-            if composer config --global --auth github-oauth.github.com "${GITHUB_COMPOSER_TOKEN}"; then
-                echo "raw github composer token worked"
-                rawToken="pass"
-            else
-                echo "raw github composer token did not work"
-            fi
-        else
-            if [ "${githubTokenRateLimitMessage}" = '"Bad credentials"' ]; then
-                echo "raw github composer token is bad, so did not work"
-            else
-                echo "raw github composer token rate limit is now < 100, so did not work"
-            fi
-        fi
-    fi
-    # if there is no raw github composer token supplied or it was invalid, try a base64 encoded one (if it was supplied)
-    if [ "${GITHUB_COMPOSER_TOKEN_ENCODED}" != "" ]; then
-        if [ "${rawToken}" != "pass" ]; then
-            echo "trying encoded github composer token"
-            githubToken=$(echo "${GITHUB_COMPOSER_TOKEN_ENCODED}" | base64 -d)
-            githubTokenRateLimitRequest=$(curl -H "Authorization: token ${githubToken}" https://api.github.com/rate_limit)
+    # Install PHP dependencies if needed
+    if [ "${NEED_COMPOSER_BUILD}" = "true" ]; then
+        # if there is a raw github composer token supplied, then try to use it
+        if [ "${GITHUB_COMPOSER_TOKEN}" != "" ]; then
+            echo "trying raw github composer token"
+            githubTokenRateLimitRequest=$(curl -H "Authorization: token ${GITHUB_COMPOSER_TOKEN}" https://api.github.com/rate_limit)
             githubTokenRateLimit=$(echo "${githubTokenRateLimitRequest}" | jq '.rate.remaining')
             githubTokenRateLimitMessage=$(echo "${githubTokenRateLimitRequest}" | jq '.message')
             echo "Number of github api requests remaining is ${githubTokenRateLimit}";
             printf 'Message received from api request is "%s"\n' "${githubTokenRateLimitMessage}"
             if [ "${githubTokenRateLimit}" -gt 100 ]; then
-                if composer config --global --auth github-oauth.github.com "${githubToken}"; then
-                    echo "encoded github composer token worked"
+                if composer config --global --auth github-oauth.github.com "${GITHUB_COMPOSER_TOKEN}"; then
+                    echo "raw github composer token worked"
+                    rawToken="pass"
                 else
-                    echo "encoded github composer token did not work"
+                    echo "raw github composer token did not work"
                 fi
             else
                 if [ "${githubTokenRateLimitMessage}" = '"Bad credentials"' ]; then
-                    echo "encoded github composer token is bad, so did not work"
+                    echo "raw github composer token is bad, so did not work"
                 else
-                    echo "encoded github composer token rate limit is now < 100, so did not work"
+                    echo "raw github composer token rate limit is now < 100, so did not work"
                 fi
             fi
         fi
-    fi
-    # install php dependencies
-    if [ "${DEVELOPER_TOOLS}" = "yes" ]; then
-        composer install
-        composer global require "squizlabs/php_codesniffer=3.*"
-        # install support for the e2e testing
-        apk update
-        apk add --no-cache chromium chromium-chromedriver
-    else
-        composer install --no-dev
+        # if there is no raw github composer token supplied or it was invalid, try a base64 encoded one (if it was supplied)
+        if [ "${GITHUB_COMPOSER_TOKEN_ENCODED}" != "" ]; then
+            if [ "${rawToken}" != "pass" ]; then
+                echo "trying encoded github composer token"
+                githubToken=$(echo "${GITHUB_COMPOSER_TOKEN_ENCODED}" | base64 -d)
+                githubTokenRateLimitRequest=$(curl -H "Authorization: token ${githubToken}" https://api.github.com/rate_limit)
+                githubTokenRateLimit=$(echo "${githubTokenRateLimitRequest}" | jq '.rate.remaining')
+                githubTokenRateLimitMessage=$(echo "${githubTokenRateLimitRequest}" | jq '.message')
+                echo "Number of github api requests remaining is ${githubTokenRateLimit}";
+                printf 'Message received from api request is "%s"\n' "${githubTokenRateLimitMessage}"
+                if [ "${githubTokenRateLimit}" -gt 100 ]; then
+                    if composer config --global --auth github-oauth.github.com "${githubToken}"; then
+                        echo "encoded github composer token worked"
+                    else
+                        echo "encoded github composer token did not work"
+                    fi
+                else
+                    if [ "${githubTokenRateLimitMessage}" = '"Bad credentials"' ]; then
+                        echo "encoded github composer token is bad, so did not work"
+                    else
+                        echo "encoded github composer token rate limit is now < 100, so did not work"
+                    fi
+                fi
+            fi
+        fi
+        # install php dependencies
+        if [ "${DEVELOPER_TOOLS}" = "yes" ]; then
+            composer install
+            composer global require "squizlabs/php_codesniffer=3.*"
+            # install support for the e2e testing
+            apk update
+            apk add --no-cache chromium chromium-chromedriver
+        else
+            composer install --no-dev
+        fi
+        RAN_ANY_BUILD=true
     fi
 
-    if [ -f /var/www/localhost/htdocs/openemr/package.json ]; then
+    # Install frontend dependencies and build if needed
+    if [ "${NEED_NPM_BUILD}" = "true" ] && [ -f /var/www/localhost/htdocs/openemr/package.json ]; then
         # install frontend dependencies (need unsafe-perm to run as root)
         # IN ALPINE 3.14+, there is an odd permission thing happening where need to give non-root ownership
         #  to several places ('node_modules' and 'public') in flex environment that npm is accessing via:
@@ -259,23 +283,27 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] && [ ! -d /var/www/localh
         npm install --unsafe-perm
         # build css
         npm run build
+        RAN_ANY_BUILD=true
     fi
 
-    if [ -f /var/www/localhost/htdocs/openemr/ccdaservice/package.json ]; then
+    if [ "${NEED_NPM_BUILD}" = "true" ] && [ -f /var/www/localhost/htdocs/openemr/ccdaservice/package.json ]; then
         # install ccdaservice
         cd /var/www/localhost/htdocs/openemr/ccdaservice
         npm install --unsafe-perm
         cd /var/www/localhost/htdocs/openemr
+        RAN_ANY_BUILD=true
     fi
 
-    # clean up
-    composer global require phing/phing
-    /root/.composer/vendor/bin/phing vendor-clean
-    /root/.composer/vendor/bin/phing assets-clean
-    composer global remove phing/phing
+    # clean up and optimize (only if we ran any builds)
+    if [ "${RAN_ANY_BUILD}" = "true" ]; then
+        composer global require phing/phing
+        /root/.composer/vendor/bin/phing vendor-clean
+        /root/.composer/vendor/bin/phing assets-clean
+        composer global remove phing/phing
 
-    # optimize
-    composer dump-autoload --optimize --apcu
+        # optimize
+        composer dump-autoload --optimize --apcu
+    fi
 
     cd /var/www/localhost/htdocs
 fi
