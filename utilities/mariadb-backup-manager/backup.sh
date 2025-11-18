@@ -5,4 +5,4 @@ set -o pipefail
 # shellcheck source=/dev/null
 source ./properties
 
-docker compose -p "${PROJECT}" exec -w "${CLIENTDIRECTORY}" ${SERVICENAME} ./backup.sh
+docker compose -p "${PROJECT}" exec -w "${CLIENTDIRECTORY}" "${SERVICENAME}" ./backup.sh

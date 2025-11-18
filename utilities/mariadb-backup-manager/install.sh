@@ -93,7 +93,7 @@ validateDatabaseVolume() {
         echo "failure: compose volume for database must be provided"
         exit 1
     fi
-    DATABASEVOLUME_CANONICAL="$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
+    DATABASEVOLUME_CANONICAL="$(docker volume inspect "$(docker volume ls | awk 'NR>1 {print $2}')" | \
         jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${DATABASEVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)"
     if [[ $? -ne 0 || -z "${DATABASEVOLUME_CANONICAL}" ]]; then
         echo "failure: could not locate canonical volume name for database volume"
@@ -106,7 +106,7 @@ validateBackupVolume() {
         echo "failure: compose volume for backup must be provided"
         exit 1
     fi
-    BACKUPVOLUME_CANONICAL="$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
+    BACKUPVOLUME_CANONICAL="$(docker volume inspect "$(docker volume ls | awk 'NR>1 {print $2}')" | \
         jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${BACKUPVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)"
     if [[ $? -ne 0 || -z "${BACKUPVOLUME_CANONICAL}" ]]; then
         echo "failure: could not locate canonical volume name for backup volume"
@@ -189,7 +189,7 @@ CLIENTDIRECTORY=/opt/mysqlbak/bin
 ## Parse command-line options
 OPTS=$(getopt -o p:i:c:s:h --long project:,image:,container:,service:,database-volume:,backup-volume:,cycles:,incrementals:,client-directory:,mariadb-user:,mariadb-password:,help -n 'install.sh' -- "$@")
 
-if [ $? -ne 0 ]; then
+if [[ $? -ne 0 ]]; then
     echo "failure: couldn't parse options?" >&2
     exit 1
 fi

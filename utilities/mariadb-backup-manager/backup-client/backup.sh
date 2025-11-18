@@ -5,7 +5,7 @@ set -o pipefail
 # shellcheck source=/dev/null
 source ./properties
 
-TIMESTAMP=$(date +%Y-%m-%d-%H-%M-%S)
+TIMESTAMP="$(date +%Y-%m-%d-%H-%M-%S)"
 
 BACKUPCLASS=undecided
 considerState() {
