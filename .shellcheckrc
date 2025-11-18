@@ -1,4 +1,5 @@
 # https://www.shellcheck.net/wiki/Directive
 # Enable all optional shellcheck checks
 enable=all
+disable=SC2181
 external-sources=true
