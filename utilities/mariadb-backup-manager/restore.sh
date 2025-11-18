@@ -17,7 +17,8 @@ getContainerID() {
 
 getContainerID
 docker compose -p "${PROJECT}" stop --timeout 60
-docker run --volumes-from "${CONTAINER}" -w ${CLIENTTARGET} \
+# shellcheck disable=SC2140
+docker run --volumes-from "${CONTAINER}" -w "${CLIENTTARGET}" \
     --rm --mount type=bind,src="./restore-client",target="${CLIENTTARGET}" \
     "${IMAGE}" ./restore.sh "$@"
 docker compose -p "${PROJECT}" start

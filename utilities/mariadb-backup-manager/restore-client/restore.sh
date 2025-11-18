@@ -55,7 +55,7 @@ applyIncrementalBackup() {
 processManifest() {
     set -e
     FULLBACKUPRUN=0
-    while read WORKINGTIMESTAMP; do
+    while read -r WORKINGTIMESTAMP; do
         if [[ $FULLBACKUPRUN -eq 0 ]]; then
             openFullBackup
             FULLBACKUPRUN=1
@@ -87,7 +87,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 ## Reset the positional parameters to the parsed options
-eval set -- "$OPTS"
+eval set -- "${OPTS}"
 
 ## Process the options
 while true; do

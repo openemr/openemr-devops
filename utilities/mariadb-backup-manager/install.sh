@@ -195,7 +195,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 ## Reset the positional parameters to the parsed options
-eval set -- "$OPTS"
+eval set -- "${OPTS}"
 
 ## Process the options
 while true; do
