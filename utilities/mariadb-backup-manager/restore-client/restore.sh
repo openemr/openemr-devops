@@ -81,7 +81,7 @@ completeBackup() {
 
 ## Parse command-line options
 OPTS=$(getopt -o hm: --long dry-run,manifest:,help -n 'restore.sh' -- "$@")
-if [ $? -ne 0 ]; then
+if [[ $? -ne 0 ]]; then
     echo "failure: couldn't parse options?" >&2
     exit 1
 fi

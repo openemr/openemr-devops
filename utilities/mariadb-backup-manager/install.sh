@@ -93,8 +93,8 @@ validateDatabaseVolume() {
         echo "failure: compose volume for database must be provided"
         exit 1
     fi
-    DATABASEVOLUME_CANONICAL=$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
-        jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${DATABASEVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)
+    DATABASEVOLUME_CANONICAL="$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
+        jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${DATABASEVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)"
     if [[ $? -ne 0 || -z "${DATABASEVOLUME_CANONICAL}" ]]; then
         echo "failure: could not locate canonical volume name for database volume"
         exit 1
@@ -106,8 +106,8 @@ validateBackupVolume() {
         echo "failure: compose volume for backup must be provided"
         exit 1
     fi
-    BACKUPVOLUME_CANONICAL=$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
-        jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${BACKUPVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)
+    BACKUPVOLUME_CANONICAL="$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
+        jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${BACKUPVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)"
     if [[ $? -ne 0 || -z "${BACKUPVOLUME_CANONICAL}" ]]; then
         echo "failure: could not locate canonical volume name for backup volume"
         exit 1
