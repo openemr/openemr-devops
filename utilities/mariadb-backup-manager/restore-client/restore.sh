@@ -56,14 +56,14 @@ processManifest() {
     set -e
     FULLBACKUPRUN=0
     while read -r WORKINGTIMESTAMP; do
-        if [[ $FULLBACKUPRUN -eq 0 ]]; then
+        if [[ "${FULLBACKUPRUN}" -eq 0 ]]; then
             openFullBackup
             FULLBACKUPRUN=1
         else
             applyIncrementalBackup
         fi
-        FINALTIMESTAMP=${WORKINGTIMESTAMP}
-    done <${TIMESTAMP}.manifest
+        FINALTIMESTAMP="${WORKINGTIMESTAMP}"
+    done <"${TIMESTAMP}".manifest
 }
 
 completeBackup() {
