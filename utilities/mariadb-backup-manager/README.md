@@ -8,7 +8,7 @@ A generalized backup agent for MariaDB containers running under Docker compose, 
 
 You'll need a Docker compose project running a MariaDB container. The enclosed `docker-compose.yml` illustrates several important features you'll need to make sure your project sets up ahead of time.
 
-* You'll need the MariaDB server's root password. If it isn't in the server environment, you'll need to provide it for later.
+* You'll need the MariaDB server's root password. If it isn't in the server environment, you'll need to provide it in the install step.
 * It names the MariaDB data directory as a volume, which we'll call the database volume.
 * It names an additional volume where we put our backup files, bind mounted for direct access from the hose. We'll call this the database backup volume.
 
@@ -28,7 +28,7 @@ The installer will save our current state, and install a small agent wrapper on 
 
 * Run `./backup.sh` in this directory to trigger a backup. 
 
-Depending on how you set the thresholds for your incremental backups and the current state of the export directory, the backup system will run a full or incremental backup using `mariadb-backup`, a fork of the venerable Percona XtraBackup tool and streams the results out to timestamped artifacts in your bind mount. You may cron this process or integrate it into an existing backup process. 
+Depending on how you set the thresholds for your incremental backups and the current state of the export directory, the backup system will run a full or incremental backup using `mariadb-backup`, a fork of the venerable Percona XtraBackup tool, and stream the results out to timestamped artifacts in your bind mount. You may cron this process or integrate it into an existing backup process. 
 
 After the backup runs, backups older than the number of cycles you specified will be pruned. If you specify two cycles to hold, there will never be more than three full backups on the volume.
 

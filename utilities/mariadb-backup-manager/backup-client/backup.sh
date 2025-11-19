@@ -9,7 +9,7 @@ TIMESTAMP="$(date +%Y-%m-%d-%H-%M-%S)"
 
 BACKUPCLASS=undecided
 considerState() {
-    LASTFULLBACKUP="$(find "${BACKUPVOLUME_TARGET}" -type f -name '*.manifest' -printf '%f\n' | \
+    LASTFULLBACKUP="$(find "${BACKUPVOLUME_TARGET}" -maxdepth 1 -type f -name '*.manifest' -printf '%f\n' | \
         sort -r | head -n 1 | sed -E "s/(.*)\.manifest/\1/")"
     if [[ $? -ne 0 || -z "${LASTFULLBACKUP}" ]]; then
         echo "can't find valid manifest, was this expected?"
@@ -82,7 +82,7 @@ pruneOldBackups() {
     # up until now I've avoided changing directories, but this is the last stop and where we're deleting files
     # so let's not make it harder
     cd "${BACKUPVOLUME_TARGET}" || exit 1
-    TARGET_MANIFEST=$(find . -type f -name '*.manifest' -printf '%f\n' | sort -r | \
+    TARGET_MANIFEST=$(find . -maxdepth 1 -type f -name '*.manifest' -printf '%f\n' | sort -r | \
         sed "$((CYCLES_TO_KEEP+1))"'q;d' | sed -E "s/(.*)\..*/\1/")
     if [[ $? -ne 0 || -z "${TARGET_MANIFEST}" ]]; then
         return
