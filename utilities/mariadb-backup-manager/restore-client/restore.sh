@@ -68,7 +68,7 @@ processManifest() {
 
 completeBackup() {
     if [[ -n "${DRYRUN}" ]]; then
-        echo dry-run specified, halting before wipe
+        echo "dry-run specified, halting before wipe"
         return
     fi
     (cd /var/lib/mysql; rm -rf -- ..?* .[!.]* *)

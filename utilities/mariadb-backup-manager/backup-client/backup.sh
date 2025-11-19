@@ -9,7 +9,8 @@ TIMESTAMP="$(date +%Y-%m-%d-%H-%M-%S)"
 
 BACKUPCLASS=undecided
 considerState() {
-    LASTFULLBACKUP="$(cd "${BACKUPVOLUME_TARGET}"; ls -r *.manifest | head -n 1 | sed -E "s/(.*)\.manifest/\1/")"
+    LASTFULLBACKUP="$(find "${BACKUPVOLUME_TARGET}" -type f -name '*.manifest' -printf '%f\n' | \
+        sort -r | head -n 1 | sed -E "s/(.*)\.manifest/\1/")"
     if [[ $? -ne 0 || -z "${LASTFULLBACKUP}" ]]; then
         echo "can't find valid manifest, was this expected?"
         BACKUPCLASS=full
