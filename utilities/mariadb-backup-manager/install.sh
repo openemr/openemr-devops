@@ -93,7 +93,7 @@ validateDatabaseVolume() {
         echo "failure: compose volume for database must be provided"
         exit 1
     fi
-    DATABASEVOLUME_CANONICAL="$(docker volume inspect "$(docker volume ls | awk 'NR>1 {print $2}')" | \
+    DATABASEVOLUME_CANONICAL="$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
         jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${DATABASEVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)"
     if [[ $? -ne 0 || -z "${DATABASEVOLUME_CANONICAL}" ]]; then
         echo "failure: could not locate canonical volume name for database volume"
@@ -106,7 +106,7 @@ validateBackupVolume() {
         echo "failure: compose volume for backup must be provided"
         exit 1
     fi
-    BACKUPVOLUME_CANONICAL="$(docker volume inspect "$(docker volume ls | awk 'NR>1 {print $2}')" | \
+    BACKUPVOLUME_CANONICAL="$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
         jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${BACKUPVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)"
     if [[ $? -ne 0 || -z "${BACKUPVOLUME_CANONICAL}" ]]; then
         echo "failure: could not locate canonical volume name for backup volume"
@@ -165,6 +165,7 @@ chmod 600 restore-client/properties
 
 
 installClient () {
+    
     (cd backup-client && docker compose -p "${PROJECT}" cp ./ "${SERVICENAME}":"${CLIENTDIRECTORY}")
     if [[ ! $? == 0 ]]; then
         echo "failure, error writing client to container"
@@ -175,7 +176,7 @@ installClient () {
     docker compose -p "${PROJECT}" exec "${SERVICENAME}" sh -c 'chmod 500 '"${CLIENTDIRECTORY}"'/*.sh'
     docker compose -p "${PROJECT}" exec -w "${CLIENTDIRECTORY}" "${SERVICENAME}" ./setup.sh  
 
-    chmod a+x restore-client/restore.sh
+    chmod a+x *.sh restore-client/restore.sh
 }
 
 CYCLES_TO_KEEP=3
