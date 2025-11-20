@@ -16,7 +16,7 @@ considerState() {
         BACKUPCLASS=full
         return
     fi
-    if [[ "$(wc -l "${BACKUPVOLUME_TARGET}"/"${LASTFULLBACKUP}".manifest | awk '{print $1}')" -gte "${INCREMENTALS}" ]]; then
+    if [[ "$(wc -l "${BACKUPVOLUME_TARGET}"/"${LASTFULLBACKUP}".manifest | awk '{print $1}')" -ge "${INCREMENTALS}" ]]; then
         echo "incrementals have cycled, running full backup"
         BACKUPCLASS=full
         return

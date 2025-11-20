@@ -93,6 +93,7 @@ validateDatabaseVolume() {
         echo "failure: compose volume for database must be provided"
         exit 1
     fi
+    # shellcheck disable=SC2046
     DATABASEVOLUME_CANONICAL="$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
         jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${DATABASEVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)"
     if [[ $? -ne 0 || -z "${DATABASEVOLUME_CANONICAL}" ]]; then
@@ -106,6 +107,7 @@ validateBackupVolume() {
         echo "failure: compose volume for backup must be provided"
         exit 1
     fi
+    # shellcheck disable=SC2046
     BACKUPVOLUME_CANONICAL="$(docker volume inspect $(docker volume ls | awk 'NR>1 {print $2}') | \
         jq '.[] | select(.Labels["com.docker.compose.volume"]=="'"${BACKUPVOLUME}"'" and .Labels["com.docker.compose.project"]=="'"${PROJECT}"'") | .Name' -r)"
     if [[ $? -ne 0 || -z "${BACKUPVOLUME_CANONICAL}" ]]; then
@@ -176,7 +178,7 @@ installClient () {
     docker compose -p "${PROJECT}" exec "${SERVICENAME}" sh -c 'chmod 500 '"${CLIENTDIRECTORY}"'/*.sh'
     docker compose -p "${PROJECT}" exec -w "${CLIENTDIRECTORY}" "${SERVICENAME}" ./setup.sh  
 
-    chmod a+x *.sh restore-client/restore.sh
+    chmod a+x -- *.sh restore-client/restore.sh
 }
 
 CYCLES_TO_KEEP=3
