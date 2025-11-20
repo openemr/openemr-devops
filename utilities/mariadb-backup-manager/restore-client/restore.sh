@@ -26,7 +26,7 @@ EOF
 
 pickLatestBackup() {
     TIMESTAMP=$(find . -maxdepth 1 -type f -name '*.manifest' -printf '%f\n' | \
-        sort | head -n 1 | sed -E 's/(.*)\.manifest/\1/')
+        sort -r | head -n 1 | sed -E 's/(.*)\.manifest/\1/')
     if [[ $? -ne 0 || -z "${TIMESTAMP}" ]]; then
         echo "failure, cannot autodetect manifest"
     fi
