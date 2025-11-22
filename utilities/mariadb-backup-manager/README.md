@@ -60,3 +60,11 @@ There's only three parts to this that matter.
 * The restore agent, which is passed into an anonymous container while MariaDB is down and does the surgery on the database volume mount, applying backups in order and getting the whole affair back where the permanent container can pick back up when it's turned back on.
 
 A good chunk of the complexity is because we've strived for a general solution, but it'd be entirely reasonable for an end-user to hardcode their own requirements (like different root-credential handling) or a more nuanced manifest format, or to send the backup files directly to a logging destination without requiring a bind mount. (Though please review MariaDB's notes on [LSN handling](https://mariadb.com/docs/server/server-usage/backup-and-restore/mariadb-backup/incremental-backup-and-restore-with-mariadb-backup) if you pursue this.)
+
+### On Version Upgrades
+
+If you upgrade the version of MariaDB you're using, my advice.
+
+* Rerun `install.sh` to pick up your new version from the compose file.
+* Force a full backup because we don't try to navigate version upgrades mid-recovery.
+* Let me know how it went for you.

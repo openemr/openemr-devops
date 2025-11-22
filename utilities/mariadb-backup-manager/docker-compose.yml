@@ -21,9 +21,10 @@ services:
       timeout: 5s
       retries: 3
 volumes: 
-  databasevolume: 
-  databasebackupvolume:
-    driver_opts:
-      type: none
-      device: /opt/mysql-backup-out
-      o: bind
+  databasevolume: {}
+  databasebackupvolume: {} 
+# databasebackupvolume:
+#    driver_opts:
+#      type: none
+#      device: /opt/mysql-backup-out
+#      o: bind
