@@ -11,8 +11,7 @@ This process will install a fully-functional, secured, preconfigured OpenEMR 7.0
 3. For *Instance Image*, select *OS Only*, then *Ubuntu 20.04 LTS*.
 4. Click the *+* to add a launch script, then paste the following.
 ```
-curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > ./launch.sh
-chmod +x ./launch.sh && sudo ./launch.sh
+curl -s https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/appliance/launch.sh | bash -s
 ```
 5. Select an instance size (minimum 'micro') that meets your budget.
 6. Name your instance and click *Create*.
