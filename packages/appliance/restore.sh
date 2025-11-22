@@ -26,8 +26,8 @@ fi
 allocateSwap() {
   DR_SETSWAP=0
   # Historically, XtraBackup's incremental recovery mode requires a gig of free memory
-  if [[ $(free --total --mega | grep Total | awk '{ print $4 }') -lt 1024 ]]; then
-  recovery: low free memory, temporarily allocating swap space
+  if [[ $(free --total --mega | grep Total | awk '{ print $7 }') -lt 1024 ]]; then
+    echo "recovery: low free memory, temporarily allocating swap space"
     if [[ $(swapon -s | grep 2GB.swap | wc -l) -eq 1 ]]; then
       # disaster, it's already on
     "warning: insufficent memory to proceed with restore, but swap is already allocated?"
@@ -46,7 +46,7 @@ allocateSwap() {
   fi
 }
 
-userWarning
+userWarning "$1"
 
 cd "$(dirname "$0")"
 docker compose stop

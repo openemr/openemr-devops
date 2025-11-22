@@ -1,6 +1,6 @@
 #!/bin/bash
 
-/root/openemr-devops/utilites/mariadb-backup-manager/backup.sh
+/root/openemr-devops/utilities/mariadb-backup-manager/backup.sh
 
 if [[ -f /root/cloud-backups-enabled ]]; then
   S3=$(cat /root/.cloud-s3.txt)

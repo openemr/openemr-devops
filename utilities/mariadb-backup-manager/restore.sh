@@ -10,7 +10,7 @@ source ./properties
 CLIENTTARGET=/var/maria-recovery
 
 getContainerID() {
-    CONTAINER=$(docker compose -p "${PROJECT}" ps -a --format json | jq ' select(.Service="'"${SERVICENAME}"'") | .ID' -r)
+    CONTAINER=$(docker compose -p "${PROJECT}" ps -a --format json | jq -s '.[] | select(.Service=="'"${SERVICENAME}"'") | .ID' -r)
     if [[ $? -ne 0 || -z "${CONTAINER}" ]]; then
         echo "failure, could not identify target container"
         exit 1
