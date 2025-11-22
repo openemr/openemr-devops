@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - master
-      - appliance
     # GitHub Actions do not support YAML anchors
     # There are five places in here we must keep
     # the paths in sync and the exclusion logic.
