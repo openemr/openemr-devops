@@ -2,6 +2,8 @@
 # shellcheck disable=SC2154,SC2164,SC2312
 set -o pipefail
 
+cd "$(dirname "$0")"
+
 # shellcheck source=/dev/null
 source ./properties
 
