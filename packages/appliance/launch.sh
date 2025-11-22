@@ -27,7 +27,7 @@ allocateSwap() {
 
 exec > /var/log/appliance-launch.log 2>&1
 
-SWAPAMT=1
+SWAPAMT=0
 REPOOWNER=openemr
 REPOBRANCH=master
 
@@ -92,9 +92,8 @@ f () {
   ./install.sh -p appliance --cycles 2 --incrementals 6
   popd
 
-  chmod a+x duplicity/*.sh
-  cp duplicity/restore.sh /root
-  cp duplicity/backup.sh /etc/cron.daily/duplicity-backups
+  chmod a+x backup.sh restore.sh
+  cp backup.sh /etc/cron.daily/duplicity-backups
 
   echo "launch.sh: done"
   exit 0

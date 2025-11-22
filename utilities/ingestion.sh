@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Protoype ingestion script to process an OpenEMR backup tarball into a containerized Docker.
+
 # Some notes.
 # One: We do not try to handle multisite, and we assume your openemr DB is named openemr. Will make that a parameter later.
 # Two: Current I target only the sites directory, which may leave customization behind. You'll want to extend this recovery to
