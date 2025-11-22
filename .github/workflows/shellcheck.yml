@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+      - appliance
     # GitHub Actions do not support YAML anchors
     # There are five places in here we must keep
     # the paths in sync and the exclusion logic.
@@ -23,6 +24,7 @@ on:
       # Exclude everything in obsolete.
       # This needs to be last.
       - '!docker/openemr/obsolete/**'
+      - '!docker/obsolete/**'
   pull_request:
     branches:
       - master
@@ -43,6 +45,7 @@ on:
       # Exclude everything in obsolete.
       # This needs to be last.
       - '!docker/openemr/obsolete/**'
+      - '!docker/obsolete/**'
 jobs:
   shellcheck:
     name: ShellCheck
@@ -124,6 +127,7 @@ jobs:
             [[ -f "$file" ]] || continue
             # Skip files in the obsolete directory
             [[ "$file" = docker/openemr/obsolete/* ]] && continue
+            [[ "$file" = docker/obsolete/* ]] && continue 
             # Get hash of file content
             hash=$(sha256sum "$file" | cut -d ' ' -f 1)
             # Check if we've seen this hash before
