@@ -6,6 +6,18 @@ OpenEMR administration and deployment tooling
 
 ## Resource Index
 
+### Components and Infrastructure
+
+* [Official OpenEMR Docker](docker/openemr): Source repository for the [Docker](https://hub.docker.com/r/openemr/openemr/) library
+  * **Production Docker Testing**: Automated workflow verifies production OpenEMR Docker images (versioned releases like 7.0.4) can build correctly and function with database connections. Tests include unit, fixtures, services, validators, and controllers suites.
+  * **Flex Docker Testing**: Automated workflow tests development-oriented "flex" Docker images designed for development where OpenEMR code is mounted separately rather than embedded in the image.
+
+### Deployment Options
+
+* [Ubuntu Installer](packages/appliance): Launch OpenEMR on any Ubuntu 24.04 instance
+* [Kubernetes](kubernetes): Two-worker OpenEMR Kubernetes orchestration on Minikube
+* [Raspberry Pi](raspberrypi): Install OpenEMR Docker on Raspberry Pi (supports ARMv8 infrastructure)
+
 ### Installations for Amazon Web Services
 
 * [OpenEMR Cloud Standard](packages/standard): OpenEMR webserver and separate, managed database instance
@@ -15,19 +27,6 @@ OpenEMR administration and deployment tooling
 * [OpenEMR on EKS](https://github.com/openemr/openemr-on-eks): OpenEMR on AWS Elastic Kubernetes Service, delievered through Terraform  
 
 See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_Packages_Comparison) for more information on the costs and features of each offering.
-
-### Other Hosting
-
-* [Ubuntu Installer](packages/lightsail): Launch OpenEMR on any Ubuntu 16.04 instance; examples given for AWS Lightsail hosting
-* [Kubernetes](kubernetes):  OpenEMR Kubernetes orchestration on Minikube. Creates 2 instances of OpenEMR with 1 instance of MariaDB, Redis, and phpMyAdmin.
-* [Raspberry Pi](raspberrypi): Install OpenEMR Docker on Raspberry Pi (supports ARMv8 infrastructure)
-
-### Components and Infrastructure
-
-* [Official OpenEMR Docker](docker/openemr): Source repository for the [Docker](https://hub.docker.com/r/openemr/openemr/) library
-  * **Production Docker Testing**: Automated workflow verifies production OpenEMR Docker images (versioned releases like 7.0.4) can build correctly and function with database connections. Tests include unit, fixtures, services, validators, and controllers suites.
-  * **Flex Docker Testing**: Automated workflow tests development-oriented "flex" Docker images designed for development where OpenEMR code is mounted separately rather than embedded in the image.
-* [mysql-xtrabackup Docker](docker/mysql-xtrabackup): MySQL 5.7 / Percona XtraBackup Docker container
 
 ### Management Utilities
 
