@@ -1,5 +1,5 @@
 #!/bin/bash
-# shellcheck disable=SC2154
+# shellcheck disable=SC2154,SC2312
 
 # TODO: add getopts support, passthrough options for things like duplicity --time
 
@@ -49,7 +49,7 @@ allocateSwap() {
 
 userWarning "$1"
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 docker compose stop
 
 find "/opt/appliance/backups/in/site" -mindepth 1 -delete
@@ -60,16 +60,16 @@ if [[ -f /root/recovery-restore-required ]]; then
   source /root/cloud-variables
   S3=${RECOVERYS3}
   KMS=${RECOVERYKMS}
-  PASSPHRASE=$(aws s3 cp s3://${S3}/Backup/passphrase.txt - --sse aws:kms --sse-kms-key-id ${KMS})
+  PASSPHRASE=$(aws s3 cp s3://"${S3}"/Backup/passphrase.txt - --sse aws:kms --sse-kms-key-id "${KMS}")
   export PASSPHRASE
-  duplicity --force boto3+s3://${S3}/Backup /opt/appliance/backups/in
+  duplicity --force boto3+s3://"${S3}"/Backup /opt/appliance/backups/in
   rm /root/recovery-restore-required
 elif [[ -f /root/cloud-backups-enabled ]]; then
   S3=$(cat /root/.cloud-s3.txt)
   KMS=$(cat /root/.cloud-kms.txt)
-  PASSPHRASE=$(aws s3 cp s3://${S3}/Backup/passphrase.txt - --sse aws:kms --sse-kms-key-id ${KMS})
+  PASSPHRASE=$(aws s3 cp s3://"${S3}"/Backup/passphrase.txt - --sse aws:kms --sse-kms-key-id "${KMS}")
   export PASSPHRASE
-  duplicity --force boto3+s3://${S3}/Backup /opt/appliance/backups/in
+  duplicity --force boto3+s3://"${S3}"/Backup /opt/appliance/backups/in
 else
   duplicity --no-encryption --force file:///opt/appliance/backups/out /opt/appliance/backups/in
 fi
