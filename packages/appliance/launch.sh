@@ -13,12 +13,12 @@ EOF
 
 allocateSwap() {
   SWAPPATHNAME=/mnt/auto.swap
-  if [[ ${SWAPAMT} != 0 ]]; then
-    echo Allocating ${SWAPAMT}G swap...
-    fallocate -l ${SWAPAMT}G ${SWAPPATHNAME}
-    mkswap ${SWAPPATHNAME}
-    chmod 600 ${SWAPPATHNAME}
-    swapon ${SWAPPATHNAME}
+  if [[ "${SWAPAMT}" != 0 ]]; then
+    echo"Allocating ${SWAPAMT}G swap..."
+    fallocate -l "${SWAPAMT}G" "${SWAPPATHNAME}"
+    mkswap "${SWAPPATHNAME}"
+    chmod 600 "${SWAPPATHNAME}"
+    swapon "${SWAPPATHNAME}"
     echo "${SWAPPATHNAME}  none  swap  sw 0  0" >> /etc/fstab
   else
     echo Skipping swap allocation...

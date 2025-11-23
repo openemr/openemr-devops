@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2154
 
 # TODO: add getopts support, passthrough options for things like duplicity --time
 
@@ -55,6 +56,7 @@ find "/opt/appliance/backups/in/site" -mindepth 1 -delete
 find "/opt/appliance/backups/in/mysql" -mindepth 1 -delete
 
 if [[ -f /root/recovery-restore-required ]]; then
+  # shellcheck source=/dev/null
   source /root/cloud-variables
   S3=${RECOVERYS3}
   KMS=${RECOVERYKMS}
