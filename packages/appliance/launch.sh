@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2312
 
 displayHelp () {
 cat <<EOF
@@ -14,7 +15,7 @@ EOF
 allocateSwap() {
   SWAPPATHNAME=/mnt/auto.swap
   if [[ "${SWAPAMT}" != 0 ]]; then
-    echo"Allocating ${SWAPAMT}G swap..."
+    echo "Allocating ${SWAPAMT}G swap..."
     fallocate -l "${SWAPAMT}G" "${SWAPPATHNAME}"
     mkswap "${SWAPPATHNAME}"
     chmod 600 "${SWAPPATHNAME}"
@@ -50,11 +51,15 @@ while getopts "hs:b:o:" opt; do
       echo "Invalid option: -${opt}" >&2
       exit 1
       ;;
+    *)
+      echo "unknown case in getopts parse?"
+      exit 1
+      ;;
   esac
 done
 
-f () {
-  cd /root
+main () {
+  cd /root || exit 1
 
   allocateSwap
 
@@ -69,8 +74,8 @@ f () {
   mkdir -p /opt/appliance/backups/in/site /opt/appliance/backups/in/mysql \
     /opt/appliance/backups/out
 
-  git clone --single-branch --branch ${REPOBRANCH} https://github.com/"${REPOOWNER}"/openemr-devops.git
-  cd openemr-devops/packages/appliance
+  git clone --single-branch --branch "${REPOBRANCH}" https://github.com/"${REPOOWNER}"/openemr-devops.git
+  cd openemr-devops/packages/appliance || exit 1
  
   docker compose up -d --build
 
@@ -87,18 +92,15 @@ f () {
       sleep 5
   done
 
-  pushd ../../utilities/mariadb-backup-manager
+  pushd ../../utilities/mariadb-backup-manager || exit 1
   chmod a+x ./install.sh
   ./install.sh -p appliance --cycles 2 --incrementals 6
-  popd
+  popd || exit 1
 
   chmod a+x backup.sh restore.sh
   cp backup.sh /etc/cron.daily/duplicity-backups
 
   echo "launch.sh: done"
-  exit 0
 }
 
-f
-echo failure?
-exit 1
+main

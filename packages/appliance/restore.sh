@@ -31,13 +31,13 @@ allocateSwap() {
     echo "recovery: low free memory, temporarily allocating swap space"
     if [[ $(swapon -s | grep 2GB.swap | wc -l) -eq 1 ]]; then
       # disaster, it's already on
-    "warning: insufficent memory to proceed with restore, but swap is already allocated?"
-    "         ... will attempt to proceed anyways, but success is unlikely"
+    echo "warning: insufficent memory to proceed with restore, but swap is already allocated?"
+    echo "         ... will attempt to proceed anyways, but success is unlikely"
     else
       DR_SETSWAP=1
       fallocate -l 2G /mnt/2GB.swap
       if [[ $? -ne 0 ]]; then
-      "warning: unable to allocate swap, backup may not succeed"
+      echo "warning: unable to allocate swap, backup may not succeed"
       else
         chmod 600 /mnt/2GB.swap
         mkswap /mnt/2GB.swap
