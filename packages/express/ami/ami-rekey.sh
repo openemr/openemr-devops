@@ -34,24 +34,25 @@ fi
 
 # wait a while for services to start
 # shellcheck disable=SC2312
-until docker container ls | grep openemr/openemr -q
+until docker container ls | grep openemr -q
 do
     sleep 5
 done
+CONTAINER="$(docker compose -p appliance ps --services openemr -qa)"
 
-# shellcheck disable=SC2312
-until docker top "$(docker ps | grep -- -openemr | cut -f 1 -d " ")" | grep -q httpd
-do
-    sleep 3
-done
+until [[ "$(docker container inspect "${CONTAINER}" | jq '.[].State.Health.Status' -r)" == "healthy" ]]
+  do
+      sleep 5
+  done
 
 # reset password
-# shellcheck disable=SC2312
-docker compose exec openemr /root/unlock_admin.sh "$(curl http://169.254.169.254/latest/meta-data/instance-id)"
+TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+INSTANCEID=$(curl -H "X-aws-ec2-metadata-token: ${TOKEN}" http://169.254.169.254/latest/meta-data/instance-id)
+docker compose -p appliance exec openemr /root/unlock_admin.sh "${INSTANCEID}"
 
 # reset SSL
-docker compose exec openemr /bin/sh -c 'rm -f /etc/ssl/private/* /etc/ssl/docker-selfsigned-configured'
-docker restart lightsail_openemr_1
+docker compose -p appliance exec openemr /bin/sh -c 'rm -f /etc/ssl/private/* /etc/ssl/docker-selfsigned-configured'
+docker compose -p appliance restart openemr
 
 # let's never speak of this again
 touch /etc/appliance-unlocked
