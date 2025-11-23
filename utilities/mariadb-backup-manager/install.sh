@@ -189,6 +189,8 @@ DATABASEVOLUME=databasevolume
 BACKUPVOLUME=databasebackupvolume
 CLIENTDIRECTORY=/opt/mysqlbak/bin
 
+cd "$(dirname "$0")"
+
 ## Parse command-line options
 OPTS=$(getopt -o p:i:c:s:h --long project:,image:,container:,service:,database-volume:,backup-volume:,cycles:,incrementals:,client-directory:,mariadb-user:,mariadb-password:,help -n 'install.sh' -- "$@")
 
