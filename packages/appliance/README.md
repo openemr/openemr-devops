@@ -85,11 +85,11 @@ It is recommended, in the strongest possible terms, that you familiarize yoursel
 5. The MariaDB recovery agent will launch, applying the most recent full backup and all the daily incrementals.
 6. Your appliance will restart into the restored state.
 
-See [/utilities/mariadb-backup-manager](the MariaDB backip manager) for more information about the database recovery process.
+See [../../utilities/mariadb-backup-manager](the MariaDB backup manager) for more information about the database recovery process.
 
-### Non-Lightsail Import
+### Non-Appliance Import
 
-The provided [/utilities/ingestion.sh](ingestion script) can import a manually-created OpenEMR backup, the `openemr.tar` file, destroying all current data in the instance without remedy. It's provided in order to ease transitions from Windows XAMPP installations or manual LAMP stacks to the dockerized environment, and although it can serve as part of a backup-and-restore regimen it's more a migration tool that may require remediation (non-LBF customization may be outright missed) before it can shoulder production loads.
+The provided [../../utilities/ingestion.sh](ingestion script) can import a manually-created OpenEMR backup, the `openemr.tar` file, destroying all current data in the instance without remedy. It's provided in order to ease transitions from Windows XAMPP installations or manual LAMP stacks to the dockerized environment, and although it can serve as part of a backup-and-restore regimen it's more a migration tool that may require remediation (non-LBF customization may be outright missed) before it can shoulder production loads.
 
 Launch it, preferably in a just-launched appliance, with `./ingestion.sh <backup-name>` after setting it executable.
 
