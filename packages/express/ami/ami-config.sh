@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
@@ -12,6 +12,7 @@ f () {
         CONTAINER="$(docker compose -p appliance ps --services openemr -qa)"
     done
 
+    # shellcheck disable=SC2312
     until [[ "$(docker container inspect "${CONTAINER}" | jq '.[].State.Health.Status' -r)" == "healthy" ]]
     do
         echo "waiting on service start..."

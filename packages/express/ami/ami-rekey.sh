@@ -40,6 +40,7 @@ do
 done
 CONTAINER="$(docker compose -p appliance ps --services openemr -qa)"
 
+# shellcheck disable=SC2312
 until [[ "$(docker container inspect "${CONTAINER}" | jq '.[].State.Health.Status' -r)" == "healthy" ]]
   do
       sleep 5
