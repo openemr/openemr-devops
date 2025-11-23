@@ -29,7 +29,7 @@ allocateSwap() {
   # Historically, XtraBackup's incremental recovery mode requires a gig of free memory
   if [[ $(free --total --mega | grep Mem | awk '{ print $7 }') -lt 1024 ]]; then
     echo "recovery: low free memory, temporarily allocating swap space"
-    if [[ $(swapon -s | grep 2GB.swap | wc -l) -eq 1 ]]; then
+    if [[ $(swapon -s | grep -c 2GB.swap) -eq 1 ]]; then
       # disaster, it's already on
     echo "warning: insufficent memory to proceed with restore, but swap is already allocated?"
     echo "         ... will attempt to proceed anyways, but success is unlikely"
