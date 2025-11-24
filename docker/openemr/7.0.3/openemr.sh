@@ -300,13 +300,13 @@ if [ "${REDIS_SERVER}" != "" ] &&
     if [ "${REDIS_USERNAME}" != "" ] &&
        [ "${REDIS_PASSWORD}" != "" ]; then
         echo "redis setup with username and password"
-        REDIS_PATH="${REDIS_PATH}?auth[user]=${REDIS_USERNAME}\&auth[pass]=${REDIS_PASSWORD}"
-        GET_CONNECTOR="\&"
+        REDIS_PATH="${REDIS_PATH}?auth[user]=${REDIS_USERNAME}&auth[pass]=${REDIS_PASSWORD}"
+        GET_CONNECTOR="&"
     elif [ "${REDIS_PASSWORD}" != "" ]; then
         echo "redis setup with password"
         # only a password, thus using the default user which redis has set a password for
         REDIS_PATH="${REDIS_PATH}?auth[pass]=${REDIS_PASSWORD}"
-        GET_CONNECTOR="\&"
+        GET_CONNECTOR="&"
     else
         # no user or password, thus using the default user which is set to nopass in redis
         # so just keeping original REDIS_PATH: REDIS_PATH="$REDIS_PATH"
@@ -316,7 +316,7 @@ if [ "${REDIS_SERVER}" != "" ] &&
 
     if [ "${REDIS_X509}" = "yes" ]; then
         echo "redis x509"
-        REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[cafile]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca\&stream[local_cert]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert\&stream[local_pk]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key"
+        REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[cafile]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca&stream[local_cert]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-cert&stream[local_pk]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-key"
     elif [ "${REDIS_TLS}" = "yes" ]; then
         echo "redis tls"
         REDIS_PATH="tls://${REDIS_PATH}${GET_CONNECTOR}stream[cafile]=file:///var/www/localhost/htdocs/openemr/sites/default/documents/certificates/redis-ca"
@@ -325,8 +325,28 @@ if [ "${REDIS_SERVER}" != "" ] &&
         REDIS_PATH="tcp://${REDIS_PATH}"
     fi
 
-    sed -i "s@session.save_handler = files@session.save_handler = redis@" /etc/php83/php.ini
-    sed -i "s@;session.save_path = \"/tmp\"@session.save_path = \"${REDIS_PATH}\"@" /etc/php83/php.ini
+    # Configure PHP to use Redis for sessions via conf.d include file
+    {
+        printf 'session.save_handler = redis\n'
+        printf 'session.save_path = "%s"\n' "${REDIS_PATH}"
+    } > "/etc/php83/conf.d/redis-session.ini"
+
+    # Verify configuration was applied correctly
+    ACTUAL_HANDLER=$(php -r "echo ini_get('session.save_handler');")
+    ACTUAL_PATH=$(php -r "echo ini_get('session.save_path');")
+
+    if [ "${ACTUAL_HANDLER}" != "redis" ]; then
+        echo "ERROR: Failed to configure session.save_handler. Expected 'redis', got '${ACTUAL_HANDLER}'"
+        exit 1
+    fi
+
+    if [ "${ACTUAL_PATH}" != "${REDIS_PATH}" ]; then
+        echo "ERROR: Failed to configure session.save_path. Expected '${REDIS_PATH}', got '${ACTUAL_PATH}'"
+        exit 1
+    fi
+
+    echo "Redis session configuration verified successfully"
+
     # Ensure only configure this one time
     touch /etc/php-redis-configured
 fi
