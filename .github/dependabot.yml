@@ -4,52 +4,52 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
 
   # Docker - docker/openemr/7.0.3
   - package-ecosystem: "docker"
     directory: "/docker/openemr/7.0.3"
     schedule:
-      interval: "weekly"
+      interval: "daily"
 
   # Docker - docker/openemr/7.0.4
   - package-ecosystem: "docker"
     directory: "/docker/openemr/7.0.4"
     schedule:
-      interval: "weekly"
+      interval: "daily"
 
   # Docker - docker/openemr/7.0.5
   - package-ecosystem: "docker"
     directory: "/docker/openemr/7.0.5"
     schedule:
-      interval: "weekly"
+      interval: "daily"
 
   # Docker - docker/openemr/flex
   - package-ecosystem: "docker"
     directory: "/docker/openemr/flex"
     schedule:
-      interval: "weekly"
+      interval: "daily"
 
   # Docker Compose - docker/openemr
   - package-ecosystem: "docker"
     directory: "/docker/openemr"
     schedule:
-      interval: "weekly"
+      interval: "daily"
 
   # Docker Compose - packages/appliance
   - package-ecosystem: "docker"
     directory: "/packages/appliance"
     schedule:
-      interval: "weekly"
+      interval: "daily"
 
   # Docker Compose - utilities/mariadb-backup-manager
   - package-ecosystem: "docker"
     directory: "/utilities/mariadb-backup-manager"
     schedule:
-      interval: "weekly"
+      interval: "daily"
 
   # Docker Compose - utilities/openemr-monitor
   - package-ecosystem: "docker"
     directory: "/utilities/openemr-monitor"
     schedule:
-      interval: "weekly"
+      interval: "daily"
