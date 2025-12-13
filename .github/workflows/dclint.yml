@@ -8,10 +8,16 @@ on:
       - 'docker-compose*.yaml'
       - '**/docker-compose*.yml'
       - '**/docker-compose*.yaml'
+      - 'compose.yml'
+      - 'compose.yaml'
+      - '**/compose.yml'
+      - '**/compose.yaml'
       - '.github/workflows/dclint.yml'
       # Exclude .github directory docker-compose files
       - '!.github/**/docker-compose*.yml'
       - '!.github/**/docker-compose*.yaml'
+      - '!.github/**/compose.yml'
+      - '!.github/**/compose.yaml'
   pull_request:
     branches:
       - master
@@ -20,10 +26,16 @@ on:
       - 'docker-compose*.yaml'
       - '**/docker-compose*.yml'
       - '**/docker-compose*.yaml'
+      - 'compose.yml'
+      - 'compose.yaml'
+      - '**/compose.yml'
+      - '**/compose.yaml'
       - '.github/workflows/dclint.yml'
       # Exclude .github directory docker-compose files
       - '!.github/**/docker-compose*.yml'
       - '!.github/**/docker-compose*.yaml'
+      - '!.github/**/compose.yml'
+      - '!.github/**/compose.yaml'
 jobs:
   dclint:
     name: DCLint
@@ -48,8 +60,14 @@ jobs:
             docker-compose*.yaml
             **/docker-compose*.yml
             **/docker-compose*.yaml
+            compose.yml
+            compose.yaml
+            **/compose.yml
+            **/compose.yaml
             !.github/**/docker-compose*.yml
             !.github/**/docker-compose*.yaml
+            !.github/**/compose.yml
+            !.github/**/compose.yaml
       - name: Create unique files list
         id: unique-files
         run: |
@@ -72,6 +90,10 @@ jobs:
               docker-compose*.yaml
               **/docker-compose*.yml
               **/docker-compose*.yaml
+              compose.yml
+              compose.yaml
+              **/compose.yml
+              **/compose.yaml
             )
           fi
 
