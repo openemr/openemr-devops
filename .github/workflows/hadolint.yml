@@ -99,7 +99,7 @@ jobs:
           # Run hadolint on each file and check for errors
           for file in ${{ steps.unique-files.outputs.files }}; do
             echo "Checking $file"
-            if ! docker run --rm -i -v "$(pwd)/.hadolint.yaml:/.config/hadolint.yaml" hadolint/hadolint < "$file"; then
+            if ! docker run --rm -i -v "${PWD}/.hadolint.yaml:/.config/hadolint.yaml" hadolint/hadolint < "$file"; then
               has_errors=1
             fi
           done
