@@ -1,4 +1,5 @@
 [![ShellCheck](https://github.com/openemr/openemr-devops/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/shellcheck.yml)
+[![Dockerfile Linting](https://github.com/openemr/openemr-devops/actions/workflows/hadolint.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/hadolint.yml)
 
 # openemr-devops
 
