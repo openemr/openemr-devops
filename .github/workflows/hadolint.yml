@@ -104,7 +104,7 @@ jobs:
             fi
           done
           # Exit with error if any file had issues
-          if [ $has_errors -eq 1 ]; then
+          if (( has_errors == 1 )); then
             echo "Hadolint found issues in one or more files"
             exit 1
           fi
