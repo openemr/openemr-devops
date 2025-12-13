@@ -1,4 +1,4 @@
-name: DCLint
+name: Docker Compose Linting
 on:
   push:
     branches:
