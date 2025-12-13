@@ -55,11 +55,8 @@ jobs:
           # Create a temp directory to store file hashes
           mkdir -p /tmp/dclint-hashes
 
-          # Initialize variable to hold unique files
-          unique_files=''
-
           # If the changed-files step failed or returned empty,
-          # use find to get all docker-compose files in the repo.
+          # use bash globbing to get all docker-compose files in the repo.
           if [[ "${{ steps.changed-files.outcome }}" = success && "${{ steps.changed-files.outputs.any_changed }}" = true ]]; then
             echo 'Changed files found, checking only those.'
             set -f  # disable glob expansion
