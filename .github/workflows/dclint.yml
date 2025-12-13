@@ -1,0 +1,120 @@
+name: Docker Compose Linting
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'docker-compose*.yml'
+      - 'docker-compose*.yaml'
+      - '**/docker-compose*.yml'
+      - '**/docker-compose*.yaml'
+      - 'compose.yml'
+      - 'compose.yaml'
+      - '**/compose.yml'
+      - '**/compose.yaml'
+      - '.github/workflows/dclint.yml'
+      # Exclude .github directory docker-compose files
+      - '!.github/**/docker-compose*.yml'
+      - '!.github/**/docker-compose*.yaml'
+      - '!.github/**/compose.yml'
+      - '!.github/**/compose.yaml'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'docker-compose*.yml'
+      - 'docker-compose*.yaml'
+      - '**/docker-compose*.yml'
+      - '**/docker-compose*.yaml'
+      - 'compose.yml'
+      - 'compose.yaml'
+      - '**/compose.yml'
+      - '**/compose.yaml'
+      - '.github/workflows/dclint.yml'
+      # Exclude .github directory docker-compose files
+      - '!.github/**/docker-compose*.yml'
+      - '!.github/**/docker-compose*.yaml'
+      - '!.github/**/compose.yml'
+      - '!.github/**/compose.yaml'
+jobs:
+  dclint:
+    name: DCLint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dclint
+        run: npm install -g dclint
+      - name: Get changed docker-compose files
+        id: changed-files
+        continue-on-error: true
+        uses: tj-actions/changed-files@v46
+        with:
+          files: |
+            docker-compose*.yml
+            docker-compose*.yaml
+            **/docker-compose*.yml
+            **/docker-compose*.yaml
+            compose.yml
+            compose.yaml
+            **/compose.yml
+            **/compose.yaml
+            !.github/**/docker-compose*.yml
+            !.github/**/docker-compose*.yaml
+            !.github/**/compose.yml
+            !.github/**/compose.yaml
+      - name: Create unique files list
+        id: unique-files
+        run: |
+          set -x
+          # Create a temp directory to store file hashes
+          mkdir -p /tmp/dclint-hashes
+
+          # If the changed-files step failed or returned empty,
+          # use bash globbing to get all docker-compose files in the repo.
+          if [[ "${{ steps.changed-files.outcome }}" = success && "${{ steps.changed-files.outputs.any_changed }}" = true ]]; then
+            echo 'Changed files found, checking only those.'
+            set -f  # disable glob expansion
+            files_to_check=( ${{ steps.changed-files.outputs.all_changed_files }} )
+            set +f  # re-enable glob expansion
+          else
+            echo 'No changed files found, checking all docker-compose files in the repo.'
+            shopt -s globstar nullglob dotglob
+            files_to_check=(
+              docker-compose*.yml
+              docker-compose*.yaml
+              **/docker-compose*.yml
+              **/docker-compose*.yaml
+              compose.yml
+              compose.yaml
+              **/compose.yml
+              **/compose.yaml
+            )
+          fi
+
+          unique_files=()
+          # Process each changed file
+          for file in "${files_to_check[@]}"; do
+            [[ -f "$file" ]] || continue
+            # Skip files in the .github directory
+            [[ "$file" = .github/* ]] && continue
+            # Get hash of file content
+            hash=$(sha256sum "$file" | cut -d ' ' -f 1)
+            # Check if we've seen this hash before
+            [[ -f "/tmp/dclint-hashes/$hash" ]] && continue
+            # New unique file
+            > "/tmp/dclint-hashes/$hash"
+            unique_files+=( "$file" )
+          done
+
+          # This relies on one space between each path name.
+          echo "files=${unique_files[*]}" >> "$GITHUB_OUTPUT"
+      - name: Run dclint on unique files
+        if: ${{ steps.unique-files.outputs.files != '' }}
+        run: |
+          dclint ${{ steps.unique-files.outputs.files }} --max-warnings -1
