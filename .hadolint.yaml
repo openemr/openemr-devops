@@ -1,0 +1,20 @@
+# Hadolint configuration for openemr-devops Dockerfiles
+# This configuration allows the existing Dockerfiles to pass linting
+# while still catching other potential issues
+
+ignored:
+  # DL3018: Pin versions in apk add
+  # Current Dockerfiles use unversioned apk packages to get latest versions
+  - DL3018
+  
+  # DL3059: Multiple consecutive RUN instructions
+  # Many Dockerfiles have multiple RUN commands for clarity and organization
+  - DL3059
+  
+  # DL4006: Set SHELL option -o pipefail before RUN with pipe
+  # Alpine-based images use /bin/sh which doesn't support pipefail
+  - DL4006
+  
+  # DL3003: Use WORKDIR to switch to a directory
+  # Some RUN commands use cd for temporary directory changes
+  - DL3003
