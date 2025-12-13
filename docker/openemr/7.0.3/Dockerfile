@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM alpine:3.20
+FROM alpine:3.23
 
 #Install dependencies and fix issue in apache
 RUN apk --no-cache upgrade
