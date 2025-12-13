@@ -116,6 +116,5 @@ jobs:
           echo "files=${unique_files[*]}" >> "$GITHUB_OUTPUT"
       - name: Run dclint on unique files
         if: ${{ steps.unique-files.outputs.files != '' }}
-        continue-on-error: true
         run: |
-          dclint --max-warnings -1 ${{ steps.unique-files.outputs.files }}
+          dclint ${{ steps.unique-files.outputs.files }} --max-warnings -1 --disable-rule no-unbound-port-interfaces --disable-rule service-image-require-explicit-tag
