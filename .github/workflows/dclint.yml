@@ -117,4 +117,4 @@ jobs:
       - name: Run dclint on unique files
         if: ${{ steps.unique-files.outputs.files != '' }}
         run: |
-          dclint ${{ steps.unique-files.outputs.files }} --max-warnings -1 --disable-rule no-unbound-port-interfaces --disable-rule service-image-require-explicit-tag
+          dclint ${{ steps.unique-files.outputs.files }} --max-warnings -1
