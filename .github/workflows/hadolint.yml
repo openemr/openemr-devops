@@ -31,6 +31,8 @@ jobs:
   hadolint:
     name: Hadolint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v3
       - name: Get changed Dockerfile files
