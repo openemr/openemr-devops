@@ -53,7 +53,7 @@ jobs:
       - name: Get changed docker-compose files
         id: changed-files
         continue-on-error: true
-        uses: tj-actions/changed-files@v46
+        uses: tj-actions/changed-files@v47
         with:
           files: |
             docker-compose*.yml
