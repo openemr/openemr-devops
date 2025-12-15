@@ -19,7 +19,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Build and push flex 3.17 docker
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v6
         with:
           context: "{{defaultContext}}:docker/openemr/obsolete/flex-3.17"
           tags: openemr/openemr:flex-3.17
