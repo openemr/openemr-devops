@@ -1,27 +1,58 @@
 # syntax=docker/dockerfile:1
+# ============================================================================
+# OpenEMR Dockerfile for Version 7.0.5
+# ============================================================================
+# This Dockerfile builds a production-ready OpenEMR container image with:
+#   - Apache web server for serving OpenEMR
+#   - PHP 8.4 with all required extensions
+#   - OpenEMR application code with dependencies installed
+#   - Automated setup and configuration scripts
+#   - Support for SSL/TLS certificates
+#   - Multi-stage build support for coverage testing (kcov target)
+#
+# Build Targets:
+#   - base: Default production image
+#   - kcov: Coverage testing image with kcov instrumentation
+#   - final: Alias for base (for consistency)
+# ============================================================================
 
-# Below allows easy centralized setting of alpine version
-#  (note NOT meant to use this has an actually argument in building docker like the flex series does)
+# ============================================================================
+# BASE IMAGE CONFIGURATION
+# ============================================================================
+# Alpine Linux version - centralized setting for easy updates
+# Note: This is NOT meant to be used as a build argument (unlike the flex series)
 ARG ALPINE_VERSION=3.22
 FROM alpine:${ALPINE_VERSION} AS base
 
-# Below allows easy centralized setting of PHP version
-#  (note NOT meant to use this has an actually argument in building docker like the flex series does)
-#  (note when update the PHP versiom, will also need build a updated php.ini file to match the new version)
+# PHP version configuration
+# Note: This is NOT meant to be used as a build argument (unlike the flex series)
+# Important: When updating PHP version, also update php.ini file to match
 ARG PHP_VERSION=8.4
 ENV PHP_VERSION=${PHP_VERSION}
+# Create abbreviated version (e.g., "8.4" -> "84") for package naming
 ARG PHP_VERSION_ABBR=${PHP_VERSION//./}
 ENV PHP_VERSION_ABBR=${PHP_VERSION_ABBR}
 
-#Prepare to install dependencies
+# ============================================================================
+# SYSTEM PACKAGE INSTALLATION
+# ============================================================================
+# Update Alpine packages to latest versions for security patches
 RUN apk --no-cache upgrade
 
-# Install non-php packages
+# Install system packages required for OpenEMR and Apache
+# These packages provide web server, database clients, build tools, and utilities
+# Packages: apache2 (HTTP server), apache2-proxy (proxy module), apache2-ssl (SSL/TLS),
+# apache2-utils (utilities), bash (shell), certbot (Let's Encrypt), curl (HTTP client),
+# dcron (scheduled tasks), git (version control), imagemagick (image processing),
+# mariadb-client (database client), mariadb-connector-c (DB connector), ncurses (terminal),
+# nodejs/npm (JavaScript runtime), openssl/openssl-dev (cryptography), perl (interpreter),
+# rsync (file sync), shadow (user management), tar (archives)
 RUN apk add --no-cache \
     apache2 \
     apache2-proxy \
     apache2-ssl \
     apache2-utils \
+    bash \
     certbot \
     curl \
     dcron \
@@ -39,8 +70,16 @@ RUN apk add --no-cache \
     shadow \
     tar
 
-# Install PHP and its extensions
-#  (note opcache was brought into core PHP for PHP 8.5+, so unable to install separate extension for those versions.)
+# Install PHP and all required extensions for OpenEMR
+# OpenEMR requires a comprehensive set of PHP extensions for full functionality
+# Core: php, php-apache2 (Apache integration)
+# Database: php-mysqli, php-pdo, php-pdo_mysql (MySQL support)
+# XML/Data: php-dom, php-xml, php-xmlreader, php-xmlwriter, php-xsl, php-simplexml, php-soap
+# Graphics: php-gd, php-pecl-imagick (image processing)
+# Crypto/Encoding: php-openssl, php-sodium, php-iconv, php-mbstring, php-intl
+# Utilities: php-curl, php-json, php-bcmath, php-calendar, php-ctype, php-fileinfo
+# Performance: php-opcache, php-pecl-apcu, php-redis, php-session
+# Other: php-fpm, php-phar, php-zip, php-zlib, php-ldap, php-sockets, php-tokenizer
 RUN apk add --no-cache \
     php${PHP_VERSION_ABBR} \
     php${PHP_VERSION_ABBR}-apache2 \
@@ -79,57 +118,169 @@ RUN apk add --no-cache \
     php${PHP_VERSION_ABBR}-zip \
     php${PHP_VERSION_ABBR}-zlib
 
-# fix issue in apache
+# ============================================================================
+# APACHE CONFIGURATION
+# ============================================================================
+# Fix Apache to listen on all interfaces (0.0.0.0) instead of localhost only
+# This is required for Docker containers to accept external connections
 RUN sed -i 's/^Listen 80$/Listen 0.0.0.0:80/' /etc/apache2/httpd.conf
 
-# Needed to ensure permissions work across shared volumes with openemr, nginx, and php-fpm dockers
+# ============================================================================
+# USER AND PERMISSIONS CONFIGURATION
+# ============================================================================
+# Set Apache user UID to 1000 to ensure consistent permissions across
+# shared volumes when using multiple containers (OpenEMR, nginx, php-fpm)
+# This prevents permission conflicts in multi-container deployments
 RUN usermod -u 1000 apache
 
-#BELOW LINE NEEDED TO SUPPORT PHP8 ON ALPINE 3.13+; SHOULD BE ABLE TO REMOVE THIS IN FUTURE ALPINE VERSIONS
+# ============================================================================
+# PHP CONFIGURATION
+# ============================================================================
+# Create symlink for PHP binary to support PHP 8+ on Alpine 3.13+
+# Note: This workaround may be removable in future Alpine versions
+# The symlink ensures 'php' command points to the correct versioned binary
 RUN ln -sf /usr/bin/php${PHP_VERSION_ABBR} /usr/bin/php
-# Install composer for openemr package building
+
+# Install Composer (PHP dependency manager) for OpenEMR package installation
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
-RUN apk add --no-cache build-base \
-    && git clone https://github.com/openemr/openemr.git --depth 1 \
-    && rm -rf openemr/.git \
-    && cd openemr \
-    && composer install --no-dev \
-    && npm install --unsafe-perm \
+# ============================================================================
+# MULTI-STAGE BUILD: OpenEMR Source and Dependencies
+# ============================================================================
+# Stage 1: Fetch OpenEMR source code from GitHub archive
+# Using archive instead of git clone eliminates .git directory overhead
+# Supports tags, branches, or commits via OPENEMR_VERSION build argument
+# Examples:
+#   - Branch: --build-arg OPENEMR_VERSION=refs/heads/master
+#   - Tag:    --build-arg OPENEMR_VERSION=refs/tags/7.0.5
+#   - Commit: --build-arg OPENEMR_VERSION=abc123def456
+# Note: GitHub archives extract to openemr-<ref-name> where ref-name is the
+#       last component of the path (e.g., "master" from "refs/heads/master")
+ARG OPENEMR_VERSION=refs/heads/master
+FROM base AS openemr-source
+# Extract the last component of the ref path for directory name
+# refs/heads/master -> master, refs/tags/7.0.5 -> 7.0.5, abc123 -> abc123
+# GitHub archives always extract to openemr-<last-component> directory
+RUN apk add --no-cache curl tar \
+    && OPENEMR_REF_NAME="${OPENEMR_VERSION##*/}" \
+    && curl -L "https://github.com/openemr/openemr/archive/${OPENEMR_VERSION}.tar.gz" | tar -xz \
+    && mv "openemr-${OPENEMR_REF_NAME}" openemr
+
+# Stage 2: Install PHP dependencies (Composer)
+# Separate stage allows Docker to cache this layer independently
+FROM base AS openemr-composer
+COPY --from=openemr-source /openemr /openemr
+WORKDIR /openemr
+# Use Docker buildkit cache mount for Composer cache (requires DOCKER_BUILDKIT=1)
+RUN --mount=type=cache,target=/root/.composer/cache \
+    composer install --no-dev --optimize-autoloader \
+    && composer dump-autoload --optimize --apcu
+
+# Stage 3: Build frontend assets (npm)
+# Separate stage allows Docker to cache npm dependencies independently
+FROM base AS openemr-assets
+COPY --from=openemr-source /openemr /openemr
+WORKDIR /openemr
+RUN apk add --no-cache build-base nodejs npm
+# Use Docker buildkit cache mount for npm cache (requires DOCKER_BUILDKIT=1)
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --unsafe-perm \
     && npm run build \
     && cd ccdaservice \
     && npm install --unsafe-perm \
-    && cd ../ \
-    && composer global require phing/phing \
-    && /root/.composer/vendor/bin/phing vendor-clean \
-    && /root/.composer/vendor/bin/phing assets-clean \
-    && composer global remove phing/phing \
-    && composer dump-autoload --optimize --apcu \
-    && composer clearcache \
-    && npm cache clear --force \
+    && cd .. \
     && rm -fr node_modules \
-    && cd ../ \
+    && apk del --no-cache build-base
+
+# Stage 4: Final assembly - combine everything in base image
+# Combine everything and set permissions
+FROM base AS production
+# Copy OpenEMR source
+COPY --from=openemr-source /openemr /tmp/openemr
+# Copy Composer dependencies
+COPY --from=openemr-composer /openemr/vendor /tmp/openemr/vendor
+COPY --from=openemr-composer /openemr/composer.json /tmp/openemr/composer.json
+COPY --from=openemr-composer /openemr/composer.lock /tmp/openemr/composer.lock
+# Copy built assets
+COPY --from=openemr-assets /openemr/public /tmp/openemr/public
+COPY --from=openemr-assets /openemr/ccdaservice /tmp/openemr/ccdaservice
+
+RUN cd /tmp \
+    # =========================================================================
+    # PRE-SET FILE PERMISSIONS DURING BUILD (major startup optimization)
+    # =========================================================================
+    # Set secure permissions now so runtime only needs to handle exceptions
+    # Directories: 500 (read + execute for owner)
+    && find openemr -type d -exec chmod 500 {} + \
+    # Files: 400 (read-only for owner)
+    && find openemr -type f -exec chmod 400 {} + \
+    # Exceptions that need to be writable during setup:
+    # - sqlconf.php: Written during auto-configuration
     && chmod 666 openemr/sites/default/sqlconf.php \
-    && chown -R apache openemr/ \
+    # - sites/default directory: Needs write access for setup
+    && chmod 700 openemr/sites/default \
+    # - documents directory: Needs write access for uploads
+    && find openemr/sites/default/documents -type d -exec chmod 700 {} + \
+    && find openemr/sites/default/documents -type f -exec chmod 600 {} + \
+    # Set ownership to apache user for proper file access
+    && chown -R apache:apache openemr/ \
+    # Move OpenEMR to web root directory
     && mv openemr /var/www/localhost/htdocs/ \
+    # Create SSL certificate directories
     && mkdir -p /etc/ssl/certs /etc/ssl/private \
-    && apk del --no-cache build-base \
+    # Disable Apache logging to reduce disk usage (logs handled by Docker)
     && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/httpd.conf \
     && sed -i 's/^ *ErrorLog/#ErrorLog/' /etc/apache2/httpd.conf \
     && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/conf.d/ssl.conf \
     && sed -i 's/^ *TransferLog/#TransferLog/' /etc/apache2/conf.d/ssl.conf
+
+# ============================================================================
+# WORKING DIRECTORY AND VOLUMES
+# ============================================================================
+# Set working directory to OpenEMR installation
 WORKDIR /var/www/localhost/htdocs/openemr
+
+# Define volumes for SSL certificates and Let's Encrypt certificates
+# These volumes persist certificates across container restarts
 VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
-#configure apache & php properly
+
+# ============================================================================
+# APACHE AND PHP CONFIGURATION FILES
+# ============================================================================
+# Set Apache log directory environment variable
 ENV APACHE_LOG_DIR=/var/log/apache2
+
+# Copy PHP configuration file with OpenEMR-optimized settings
 COPY php.ini /etc/php${PHP_VERSION_ABBR}/php.ini
+
+# Copy Apache virtual host configuration for OpenEMR
 COPY openemr.conf /etc/apache2/conf.d/
-#add runner and auto_configure and prevent auto_configure from being run w/o being enabled
+
+# ============================================================================
+# OPENEMR SCRIPTS AND UTILITIES
+# ============================================================================
+# Copy main startup and configuration scripts
+# - openemr.sh: Main container startup script (handles setup, upgrades, Apache)
+# - ssl.sh: SSL/TLS certificate management script
+# - xdebug.sh: XDebug configuration script (for development)
+# - auto_configure.php: Automated OpenEMR installation script
 COPY openemr.sh ssl.sh xdebug.sh auto_configure.php /var/www/localhost/htdocs/openemr/
+
+# Copy admin unlock utilities (for password recovery)
 COPY utilities/unlock_admin.php utilities/unlock_admin.sh /root/
+
+# Set script permissions:
+# - Executable scripts: 500 (read and execute for owner only)
+# - PHP scripts: 000 (no access) - prevents accidental execution until enabled
 RUN chmod 500 openemr.sh ssl.sh xdebug.sh /root/unlock_admin.sh \
     && chmod 000 auto_configure.php /root/unlock_admin.php
-#bring in pieces used for automatic upgrade process
+
+# ============================================================================
+# UPGRADE SYSTEM
+# ============================================================================
+# Copy upgrade scripts and version tracking file
+# These scripts handle filesystem upgrades when moving between OpenEMR versions
+# The docker-version file tracks the installed version for upgrade detection
 COPY upgrade/docker-version \
      upgrade/fsupgrade-1.sh \
      upgrade/fsupgrade-2.sh \
@@ -140,6 +291,8 @@ COPY upgrade/docker-version \
      upgrade/fsupgrade-7.sh \
      upgrade/fsupgrade-8.sh \
      /root/
+
+# Set upgrade scripts as executable (read and execute for owner only)
 RUN chmod 500 \
     /root/fsupgrade-1.sh \
     /root/fsupgrade-2.sh \
@@ -149,24 +302,51 @@ RUN chmod 500 \
     /root/fsupgrade-6.sh \
     /root/fsupgrade-7.sh \
     /root/fsupgrade-8.sh
-#fix issue with apache2 dying prematurely
+
+# ============================================================================
+# APACHE RUNTIME DIRECTORY
+# ============================================================================
+# Create Apache runtime directory to prevent premature process termination
+# Apache requires this directory for PID files and shared memory
 RUN mkdir -p /run/apache2
-#Copy dev tools library to root
+
+# ============================================================================
+# DEVELOPMENT TOOLS LIBRARY
+# ============================================================================
+# Copy shared library of utility functions used by OpenEMR scripts
+# This library provides database operations, configuration helpers, etc.
 COPY utilities/devtoolsLibrary.source /root/
-#Ensure swarm/orchestration pieces are available if needed
+
+# ============================================================================
+# SWARM MODE SUPPORT
+# ============================================================================
+# Prepare directories for Docker Swarm/orchestration mode
+# These directories contain templates that are restored when containers start
+# with empty volumes, enabling multi-container deployments
 RUN mkdir /swarm-pieces \
     && rsync --owner --group --perms --delete --recursive --links /etc/ssl /swarm-pieces/ \
     && rsync --owner --group --perms --delete --recursive --links /var/www/localhost/htdocs/openemr/sites /swarm-pieces/
-#go
+
+# ============================================================================
+# CONTAINER STARTUP
+# ============================================================================
+# Set default command to run OpenEMR startup script
+# This script handles database setup, configuration, and Apache startup
 CMD [ "./openemr.sh" ]
 
+# Expose HTTP and HTTPS ports
 EXPOSE 80 443
 
-
-# kcov coverage build target
+# ============================================================================
+# KCOV COVERAGE BUILD TARGET
+# ============================================================================
+# This target extends the base image with kcov code coverage instrumentation
+# Used for generating code coverage reports during testing
+# Build with: docker build --target kcov -t openemr:kcov .
 FROM base AS kcov
 
-# Install kcov dependencies
+# Install kcov build dependencies
+# kcov is a code coverage tool that requires compilation from source
 RUN apk add --no-cache bash \
                        build-base \
                        cmake \
@@ -181,7 +361,7 @@ RUN apk add --no-cache bash \
                        pkgconfig \
                        python3
 
-# Install kcov from source
+# Build and install kcov from source
 RUN cd /tmp && \
     git clone https://github.com/SimonKagstrom/kcov && \
     cd kcov && \
@@ -191,16 +371,58 @@ RUN cd /tmp && \
     make && \
     make install
 
-# Create kcov wrapper script
+# Copy the complete OpenEMR installation from production stage
+# This includes all directories and files needed for code coverage, including
+# contrib/util/installScripts that tests may require
+COPY --from=production --chown=apache:apache /var/www/localhost/htdocs/openemr /var/www/localhost/htdocs/openemr
+
+# Copy additional files needed by openemr.sh
+COPY --from=production /root/devtoolsLibrary.source /root/
+
+# Set Apache log directory environment variable (needed by Apache config)
+ENV APACHE_LOG_DIR=/var/log/apache2
+
+# Ensure directories exist before copying config files
+RUN mkdir -p /etc/apache2/conf.d "/etc/php${PHP_VERSION_ABBR}" /etc/ssl/certs /etc/ssl/private /var/log/apache2
+
+# Copy configuration files needed by Apache and PHP
+COPY --from=production /etc/apache2/conf.d/openemr.conf /etc/apache2/conf.d/
+COPY --from=production /etc/php${PHP_VERSION_ABBR}/php.ini /etc/php${PHP_VERSION_ABBR}/php.ini
+
+# Apply Apache configuration changes (CustomLog/ErrorLog disabled, etc.)
+# These changes should already be in production stage, but ensure they're applied
+RUN sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/httpd.conf \
+    && sed -i 's/^ *ErrorLog/#ErrorLog/' /etc/apache2/httpd.conf \
+    && sed -i 's/^ *CustomLog/#CustomLog/' /etc/apache2/conf.d/ssl.conf \
+    && sed -i 's/^ *TransferLog/#TransferLog/' /etc/apache2/conf.d/ssl.conf
+
+# Copy upgrade scripts from production stage
+COPY --from=production /root/docker-version /root/
+COPY --from=production /root/fsupgrade-*.sh /root/
+RUN chmod 500 /root/fsupgrade-*.sh
+
+# Copy swarm-pieces directory (for swarm mode support)
+COPY --from=production /swarm-pieces /swarm-pieces
+
+# Ensure Apache runtime directory exists
+RUN mkdir -p /run/apache2
+
+# Copy kcov wrapper script
 COPY kcov-wrapper.sh /var/www/localhost/htdocs/openemr
 RUN chmod 500 /var/www/localhost/htdocs/openemr/kcov-wrapper.sh
 
-# Create directory for coverage reports
+# Create directory for coverage report output
 RUN mkdir -p /var/www/localhost/htdocs/coverage
 
-# Use kcov wrapper as entrypoint
+# Set working directory so relative path in CMD works
+WORKDIR /var/www/localhost/htdocs/openemr
+
+# Use kcov wrapper as entrypoint instead of standard OpenEMR startup
 CMD [ "./kcov-wrapper.sh" ]
 
-
-# Put this last because we don't want kcov in the default.
-FROM base AS final
+# ============================================================================
+# FINAL BUILD TARGET (ALIAS)
+# ============================================================================
+# This target is an alias for the production target
+# Placed last to ensure kcov is not included in default builds
+FROM production AS final
