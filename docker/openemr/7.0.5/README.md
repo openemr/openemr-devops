@@ -3,6 +3,81 @@
 The docker image is maintained at https://hub.docker.com/r/openemr/openemr/
 (see there for more details)
 
+## Performance Optimizations
+
+This image includes significant performance optimizations that reduce startup time by **~5x** and memory usage by **~70%** compared to previous builds.
+
+### Benchmark Results (November 2025)
+
+| Metric | Optimized Image | Previous Build | Improvement |
+|--------|-----------------|----------------|-------------|
+| **Startup Time** | 15.0s | 73.1s | **4.9x faster** |
+| **Memory (Average)** | 92.8 MB | 304.2 MB | **69% reduction** |
+| **Memory (Peak)** | 117.1 MB | 326.6 MB | **64% reduction** |
+| **Performance** | 114.9 req/s | 117.2 req/s | Equivalent |
+
+*Measured using Docker's internal timestamps (`State.StartedAt` → first healthy `State.Health.Log`)*
+
+### Technical Explanation
+
+#### 1. Build-Time File Permissions (Primary Optimization)
+
+**Problem**: The original image set file permissions at runtime during container startup. This required scanning ~15,000+ files with `find` and `chmod`/`chown` commands, which took 40-60 seconds on each container start.
+
+**Solution**: File permissions are now set during the Docker image build process:
+
+```dockerfile
+# During build (Dockerfile)
+RUN ... \
+    && find openemr -type d -exec chmod 500 {} + \
+    && find openemr -type f -exec chmod 400 {} + \
+    && chmod 666 openemr/sites/default/sqlconf.php \
+    && chmod 700 openemr/sites/default \
+    && find openemr/sites/default/documents -type d -exec chmod 700 {} + \
+    && find openemr/sites/default/documents -type f -exec chmod 600 {} + \
+    && chown -R apache:apache openemr/
+```
+
+**Result**: Container startup no longer needs to scan and modify permissions for the entire codebase. Only files that change during setup (like `sqlconf.php`) need permission adjustments at runtime.
+
+#### 2. Memory Reduction via Linux Page Cache
+
+**Problem**: Runtime file scanning caused the Linux kernel to cache all scanned files in the page cache, inflating memory usage to 300+ MB even when the application wasn't using that memory.
+
+**Technical Detail**: When `find` traverses directories and `chmod`/`chown` access file metadata, the kernel loads file inodes and directory entries into the page cache. For ~15,000 files, this creates substantial memory overhead that persists for the container's lifetime.
+
+**Solution**: By moving file operations to build time, the page cache remains minimal at runtime. Only actively-used application files are cached.
+
+**Result**: ~70% reduction in memory footprint (305 MB → 92 MB average).
+
+#### 3. Simplified Runtime Entrypoint
+
+The `openemr.sh` entrypoint script was optimized to:
+- Skip redundant permission operations that are now handled at build time
+- Use efficient `find -exec {} +` syntax instead of `xargs` pipelines
+- Only modify permissions for files that actually change during setup
+
+### Permission Scheme
+
+| Path | Permissions | Rationale |
+|------|-------------|-----------|
+| Directories | `500` (r-x------) | Execute needed for traversal, no write |
+| Files | `400` (r--------) | Read-only for PHP execution |
+| `sites/default/` | `700` (rwx------) | Writable for site configuration |
+| `sites/default/documents/` | `700`/`600` | Writable for document uploads |
+| `sqlconf.php` | `666` | Writable during initial setup |
+
+### Reproducing the Benchmarks
+
+To verify these results on your system:
+
+```bash
+cd utilities/container_benchmarking
+./benchmark.sh
+```
+
+See [Container Benchmarking Utility](../../utilities/container_benchmarking/README.md) for detailed instructions.
+
 ## Tags
 
 See the https://hub.docker.com/r/openemr/openemr/ page for documentation of tags and their current aliases.
