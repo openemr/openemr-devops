@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # ============================================================================
 # OpenEMR Flex Container - Development Tools Library
 # ============================================================================
@@ -65,30 +65,30 @@ prepareVariables() {
     CUSTOM_PASSWORD=openemr
     CUSTOM_DATABASE=openemr
     CUSTOM_PORT=3306
-    if [ -n "${MYSQL_ROOT_USER:-}" ]; then
+    if [[ -n "${MYSQL_ROOT_USER:-}" ]]; then
         CONFIGURATION="${CONFIGURATION} root=${MYSQL_ROOT_USER}"
         CUSTOM_ROOT_USER="${MYSQL_ROOT_USER}"
     fi
-    if [ -n "${MYSQL_USER:-}" ]; then
+    if [[ -n "${MYSQL_USER:-}" ]]; then
         CONFIGURATION="${CONFIGURATION} login=${MYSQL_USER}"
         CUSTOM_USER="${MYSQL_USER}"
     fi
-    if [ -n "${MYSQL_PASS:-}" ]; then
+    if [[ -n "${MYSQL_PASS:-}" ]]; then
         CONFIGURATION="${CONFIGURATION} pass=${MYSQL_PASS}"
         CUSTOM_PASSWORD="${MYSQL_PASS}"
     fi
-    if [ -n "${MYSQL_DATABASE:-}" ]; then
+    if [[ -n "${MYSQL_DATABASE:-}" ]]; then
         CONFIGURATION="${CONFIGURATION} dbname=${MYSQL_DATABASE}"
         CUSTOM_DATABASE="${MYSQL_DATABASE}"
     fi
-    if [ -n "${MYSQL_PORT:-}" ]; then
+    if [[ -n "${MYSQL_PORT:-}" ]]; then
         CONFIGURATION="${CONFIGURATION} port=${MYSQL_PORT}"
         CUSTOM_PORT="${MYSQL_PORT}"
     fi
-    if [ -n "${OE_USER:-}" ]; then
+    if [[ -n "${OE_USER:-}" ]]; then
         CONFIGURATION="${CONFIGURATION} iuser=${OE_USER}"
     fi
-    if [ -n "${OE_PASS:-}" ]; then
+    if [[ -n "${OE_PASS:-}" ]]; then
         CONFIGURATION="${CONFIGURATION} iuserpass=${OE_PASS}"
     fi
 }
@@ -114,7 +114,7 @@ setGlobalSettings() {
     # Find all environment variables that start with OPENEMR_SETTING_
     OPENEMR_SETTINGS=$(printenv | grep '^OPENEMR_SETTING_')
     # Return early if no settings are provided
-    [ -z "${OPENEMR_SETTINGS}" ] && return
+    [[ -z "${OPENEMR_SETTINGS}" ]] && return
     echo "${OPENEMR_SETTINGS}" |
     while IFS= read -r line; do
         SETTING_TEMP=$(echo "${line}" | cut -d "=" -f 1)
@@ -245,7 +245,7 @@ upgradeOpenEMR() {
 sqlDataDrive() {
     echo "Installing sql data from drive"
     # Return early if SQL_DATA_DRIVE is not set
-    [ -n "${SQL_DATA_DRIVE}" ] || return 0
+    [[ -n "${SQL_DATA_DRIVE}" ]] || return 0
     (
         cd "${SQL_DATA_DRIVE}" || exit
         # Loop over all sql files inside of the current directory
@@ -317,7 +317,7 @@ restoreOpenemr() (
     rsync --delete --recursive --links "/snapshots/${1}/sites" /var/www/localhost/htdocs/openemr/
     echo "${sqlconf}" > /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     chown -R apache /var/www/localhost/htdocs/openemr/
-    if [ -d "/snapshots/${1}/data" ]; then
+    if [[ -d "/snapshots/${1}/data" ]]; then
         rsync --delete --recursive --links "/snapshots/${1}/data" /couchdb/
     fi
     rm -fr "/snapshots/${1}"
@@ -399,7 +399,7 @@ unForceHttps() {
 # Note: Requires Apache restart for changes to take effect.
 # Must call prepareVariables() before calling this function.
 setupClientCert() {
-    if [ ! -d "/certs/${1}" ]; then
+    if [[ ! -d "/certs/${1}" ]]; then
         mkdir -p "/certs/${1}"
     fi
     cp "/certs/${1}.zip" "/certs/${1}/"
@@ -490,7 +490,7 @@ importRandomPatients() {
     echo "Setting up for following number of random patients (each patient will take several seconds): ${1}"
     echo "Development mode: ${2}"
     (
-        if [ ! -d /root/synthea ]; then
+        if [[ ! -d /root/synthea ]]; then
             echo "Setting up synthea first"
             apk update
             apk add openjdk11-jre
@@ -535,7 +535,7 @@ generateMultisiteBank() {
     # Activate older versions of InstallerAuto that require `sed` activation.
     sed -i "s@exit;@//exit;@" /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php
     a=1
-    while [ "${a}" -le "${1}" ]; do
+    while [[ "${a}" -le "${1}" ]]; do
         run="run${a}"
         echo "dropping ${run} sql database, sql user, and directory if they already exist (just ignore any errors that are displayed)"
         mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e "DROP DATABASE ${run}"
