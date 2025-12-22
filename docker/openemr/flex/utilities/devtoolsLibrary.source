@@ -112,6 +112,7 @@ prepareVariables() {
 # without manual database configuration.
 setGlobalSettings() {
     # Find all environment variables that start with OPENEMR_SETTING_
+    # shellcheck disable=SC2312  # grep may return non-zero if no matches found, which is acceptable
     OPENEMR_SETTINGS=$(printenv | grep '^OPENEMR_SETTING_')
     # Return early if no settings are provided
     [[ -z "${OPENEMR_SETTINGS}" ]] && return
@@ -192,6 +193,7 @@ installOpenemr() {
 # Must call prepareVariables() before calling this function.
 demoData() {
     echo "Install demo data"
+    # shellcheck disable=SC2312  # Pipeline masking is intentional - grep/awk may return non-zero, but pipeline should continue
     mariadb-dump --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" --add-drop-table --no-data "${CUSTOM_DATABASE}" | grep ^DROP | awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" "${CUSTOM_DATABASE}"
     mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" "${CUSTOM_DATABASE}" < /root/demo_5_0_0_5.sql
     upgradeOpenEMR 5.0.0
@@ -307,6 +309,7 @@ restoreOpenemr() (
     cd /snapshots || exit
     tar -C /snapshots -xzf "${1}.tgz"
     # need to empty the database before the restore database import
+    # shellcheck disable=SC2312  # Pipeline masking is intentional - grep/awk may return non-zero, but pipeline should continue
     mariadb-dump --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" --add-drop-table --no-data "${CUSTOM_DATABASE}" |
         grep ^DROP |
         awk ' BEGIN { print "SET FOREIGN_KEY_CHECKS=0;" } { print $0 } END { print "SET FOREIGN_KEY_CHECKS=1;" } ' |
@@ -342,10 +345,12 @@ restoreOpenemr() (
 # Must call prepareVariables() before calling this function.
 changeEncodingCollation() {
     # shellcheck disable=SC2016  # SQL requires single quotes for string literals, variables intentionally not expanded in SQL
+    # shellcheck disable=SC2312  # Pipeline masking is intentional - grep may return non-zero, but pipeline should continue
     mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' |
         grep '^ALTER' |
         mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}"
     # shellcheck disable=SC2016  # SQL requires single quotes for string literals, variables intentionally not expanded in SQL
+    # shellcheck disable=SC2312  # Pipeline masking is intentional - grep may return non-zero, but pipeline should continue
     mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' |
         grep '^ALTER' |
         mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}"
@@ -545,9 +550,13 @@ generateMultisiteBank() {
         echo "adding ${run} multisite"
         php /var/www/localhost/htdocs/openemr/contrib/util/installScripts/InstallerAuto.php rootpass="${MYSQL_ROOT_PASS}" server="${MYSQL_HOST}" port="${CUSTOM_PORT}" loginhost=% "login=${run}" "pass=${run}" "dbname=${run}" "site=${run}" source_site_id=default clone_database=yes
         chown -R apache "/var/www/localhost/htdocs/openemr/sites/${run}"
+        # shellcheck disable=SC2312  # xargs may return non-zero if find produces no output, but that's acceptable
         find "/var/www/localhost/htdocs/openemr/sites/${run}" -type d -print0 | xargs -0 chmod 500
+        # shellcheck disable=SC2312  # xargs may return non-zero if find produces no output, but that's acceptable
         find "/var/www/localhost/htdocs/openemr/sites/${run}" -type f -print0 | xargs -0 chmod 400
+        # shellcheck disable=SC2312  # xargs may return non-zero if find produces no output, but that's acceptable
         find "/var/www/localhost/htdocs/openemr/sites/${run}/documents" -type d -print0 | xargs -0 chmod 700
+        # shellcheck disable=SC2312  # xargs may return non-zero if find produces no output, but that's acceptable
         find "/var/www/localhost/htdocs/openemr/sites/${run}/documents" -type f -print0 | xargs -0 chmod 700
         echo "completed adding ${run} multisite"
         a=$(( a + 1 ))
