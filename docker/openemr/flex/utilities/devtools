@@ -1,7 +1,122 @@
-#! /bin/sh
+#!/bin/sh
+# ============================================================================
+# OpenEMR Flex Container - Development Tools Script
+# ============================================================================
+# This script provides a command-line interface for common OpenEMR development,
+# testing, and maintenance tasks within the flex container.
+#
+# Usage:
+#   docker exec <container_name> /root/devtools <command> [arguments]
+#
+# Available Commands:
+#
+# LOGGING & MONITORING:
+#   php-log                - Display PHP error log
+#   xdebug-log             - Display XDebug log
+#   list-xdebug-profiles   - List XDebug profiling output files
+#
+# CODE QUALITY & STYLING:
+#   psr2-report / psr12-report  - Generate PSR-12 code style report
+#   psr12-src-report            - Generate strict PSR-12 report for src/
+#   psr2-fix / psr12-fix        - Automatically fix PSR-12 code style issues
+#   lint-themes-report          - Generate CSS/theme linting report
+#   lint-themes-fix             - Fix CSS/theme linting issues
+#   lint-javascript-report      - Generate JavaScript linting report
+#   lint-javascript-fix         - Fix JavaScript linting issues
+#   php-parserror               - Check for PHP parse errors
+#   rector-dry-run              - Preview PHP code modernization changes
+#   rector-process              - Apply PHP code modernization changes
+#   phpstan                     - Run PHPStan static analysis
+#
+# BUILD & ASSETS:
+#   build-themes            - Build OpenEMR CSS themes
+#   build-api-docs          - Generate API Swagger documentation
+#
+# TESTING:
+#   unit-test               - Run PHP unit tests
+#   javascript-unit-test    - Run JavaScript unit tests
+#   jut-reports-build       - Build JavaScript unit test coverage reports
+#   api-test                - Run API tests
+#   e2e-test                - Run end-to-end tests
+#   fixtures-test           - Run fixture tests
+#   services-test           - Run service tests
+#   validators-test         - Run validator tests
+#   controllers-test        - Run controller tests
+#   common-test             - Run common tests
+#   clean-sweep             - Run all code quality checks and tests
+#   clean-sweep-tests       - Run all tests only
+#
+# DEVELOPMENT SETUP:
+#   dev-reset                   - Reset OpenEMR to clean state
+#   dev-install                 - Install OpenEMR (assumes reset done)
+#   dev-reset-install           - Reset and install OpenEMR
+#   dev-reset-install-demodata  - Reset, install, and load demo data
+#   dev-sqldrive                - Import SQL data from SQL_DATA_DRIVE
+#   dev-reset-install-sqldrive  - Reset, install, and import SQL data
+#
+# MULTISITE MANAGEMENT:
+#   list-multisites                  - List all multisite instances
+#   enable-multisite                 - Enable multisite functionality
+#   disable-multisite                - Disable multisite functionality
+#   set-swagger-to-multisite <site>  - Configure Swagger for multisite
+#   generate-multisite-bank <count>  - Create multiple multisite instances
+#
+# BACKUP & RESTORE:
+#   backup <identifier>     - Create backup snapshot
+#   restore <identifier>    - Restore from backup snapshot
+#   list-snapshots          - List available backup snapshots
+#   list-capsules           - List backup files (alias for list-snapshots)
+#
+# UPGRADE & MAINTENANCE:
+#   upgrade <version>                                - Upgrade OpenEMR from specified version
+#   change-encoding-collation <charset> <collation>  - Change DB encoding
+#
+# SSL/TLS CERTIFICATES:
+#   force-https             - Enable HTTPS redirect
+#   un-force-https          - Disable HTTPS redirect
+#   setup-client-cert <id>  - Configure client certificate authentication
+#   on-self-signed-cert     - Revert to self-signed certificates
+#   list-client-certs       - List available client certificate packages
+#
+# DATABASE SSL:
+#   sql-ssl                 - Enable MySQL SSL with test CA certificate
+#   sql-ssl-off             - Disable MySQL SSL
+#   sql-ssl-client          - Enable MySQL SSL with client certificates
+#   sql-ssl-client-off      - Disable MySQL SSL client certificates
+#
+# COUCHDB SSL:
+#   couchdb-ssl             - Enable CouchDB SSL with test CA certificate
+#   couchdb-ssl-off         - Disable CouchDB SSL
+#   couchdb-ssl-client      - Enable CouchDB SSL with client certificates
+#   couchdb-ssl-client-off  - Disable CouchDB SSL client certificates
+#
+# LDAP:
+#   ldap-ssl                - Enable LDAP SSL with test CA certificate
+#   ldap-ssl-off            - Disable LDAP SSL
+#   ldap-ssl-client         - Enable LDAP SSL with client certificates
+#   ldap-ssl-client-off     - Disable LDAP SSL client certificates
+#   enable-ldap             - Enable LDAP authentication (admin:admin)
+#   disable-ldap            - Disable LDAP authentication
+#
+# DATA MANAGEMENT:
+#   import-random-patients <count> [false]  - Generate and import random patients
+#
+# OAUTH2:
+#   register-oauth2-client [site]      - Register OAuth2 client for default/multisite
+#   register-oauth2-client-demo <url>  - Register OAuth2 client for online demo
+#
+# Examples:
+#   docker exec openemr-flex /root/devtools php-log
+#   docker exec openemr-flex /root/devtools dev-reset-install-demodata
+#   docker exec openemr-flex /root/devtools backup my-backup-2024
+#   docker exec openemr-flex /root/devtools clean-sweep
+# ============================================================================
 
 source /root/devtoolsLibrary.source
 
+# ============================================================================
+# LOGGING COMMANDS
+# ============================================================================
 if [ "$1" = "php-log" ]; then
     echo "Generating PHP error log"
     if [[ $(ls -1tc /var/log/apache2/error.log* | wc -l) -gt 0 ]]; then
@@ -11,12 +126,18 @@ if [ "$1" = "php-log" ]; then
     fi
 fi
 
+# ============================================================================
+# BUILD COMMANDS
+# ============================================================================
 if [ "$1" = "build-themes" ]; then
     echo "Building OpenEMR Themes"
     cd /var/www/localhost/htdocs/openemr
     npm run build
 fi
 
+# ============================================================================
+# CODE QUALITY & STYLING COMMANDS
+# ============================================================================
 if [ "$1" = "psr2-report" ] || [ "$1" = "psr12-report" ]; then
     echo "Generating PSR12 code styling error report "
     cd /var/www/localhost/htdocs/openemr
@@ -85,6 +206,9 @@ if [ "$1" = phpstan ] || [ "$1" = "clean-sweep" ] || [ "$1" = "clean-sweep-tests
     php vendor/bin/phpstan --memory-limit=8G analyze
 fi
 
+# ============================================================================
+# TESTING COMMANDS
+# ============================================================================
 if [ "$1" = "unit-test" ] || [ "$1" = "clean-sweep" ] || [ "$1" = "clean-sweep-tests" ]; then
     echo "Running OpenEMR PHP Unit tests"
     cd /var/www/localhost/htdocs/openemr
@@ -149,6 +273,9 @@ if [ "$1" = "common-test" ] || [ "$1" = "clean-sweep" ] || [ "$1" = "clean-sweep
     vendor/bin/phpunit --testsuite common --testdox
 fi
 
+# ============================================================================
+# DEVELOPMENT SETUP COMMANDS
+# ============================================================================
 if [ "$1" = "dev-reset" ]; then
     echo "Resetting OpenEMR"
     prepareVariables
@@ -204,6 +331,9 @@ if [ "$1" = "dev-reset-install-demodata-sqldrive" ]; then
     setGlobalSettings
 fi
 
+# ============================================================================
+# MULTISITE MANAGEMENT COMMANDS
+# ============================================================================
 if [ "$1" = "list-multisites" ]; then
     echo "Listing multisites:"
     cd /var/www/localhost/htdocs/openemr/sites;
@@ -240,6 +370,9 @@ if [ "$1" = "disable-multisite" ]; then
     sed -i "s@\$allow_cloning_setup = true;@\$allow_cloning_setup = false;@" /var/www/localhost/htdocs/openemr/setup.php
 fi
 
+# ============================================================================
+# BACKUP & RESTORE COMMANDS
+# ============================================================================
 if [ "$1" = "backup" ]; then
     echo "Performing backup to ${2} snapshot"
         if [ "$2" = "" ]; then
@@ -298,6 +431,9 @@ if [ "$1" = "list-capsules" ]; then
     done
 fi
 
+# ============================================================================
+# UPGRADE & MAINTENANCE COMMANDS
+# ============================================================================
 if [ "$1" = "upgrade" ]; then
     echo "Performing upgrade from version ${2}"
     upgradeOpenEMR "$2"
@@ -309,6 +445,9 @@ if [ "$1" = "change-encoding-collation" ] && [ ! -z "$2" ] && [ ! -z "$3" ]; the
     changeEncodingCollation "$2" "$3"
 fi
 
+# ============================================================================
+# SSL/TLS CERTIFICATE COMMANDS
+# ============================================================================
 if [ "$1" = "force-https" ]; then
     echo "Force https"
     forceHttps
@@ -345,6 +484,9 @@ if [ "$1" = "on-self-signed-cert" ]; then
     echo "Completed. Need to stop/start docker for changes to take effect"
 fi
 
+# ============================================================================
+# DATABASE SSL COMMANDS
+# ============================================================================
 if [ "$1" = "sql-ssl" ]; then
     echo "Copying the testing sql SSL CA cert"
     if [ "${OPENEMR_DOCKER_ENV_TAG}" = "insane-dev-docker" ]; then
@@ -383,6 +525,9 @@ if [ "$1" = "sql-ssl-client-off" ]; then
     rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
 fi
 
+# ============================================================================
+# COUCHDB SSL COMMANDS
+# ============================================================================
 if [ "$1" = "couchdb-ssl" ]; then
     echo "Copying the testing couchdb SSL CA cert"
     if [ "${OPENEMR_DOCKER_ENV_TAG}" = "insane-dev-docker" ]; then
@@ -421,6 +566,9 @@ if [ "$1" = "couchdb-ssl-client-off" ]; then
     rm /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key
 fi
 
+# ============================================================================
+# LDAP COMMANDS
+# ============================================================================
 if [ "$1" = "ldap-ssl" ]; then
     echo "Copying the testing ldap SSL CA cert"
     if [ "${OPENEMR_DOCKER_ENV_TAG}" = "insane-dev-docker" ]; then
@@ -481,6 +629,9 @@ if [ "$1" = "list-xdebug-profiles" ]; then
     ls -al /tmp/cachegrind.out.* | awk '{print $6, $7, $8, $9}'
 fi
 
+# ============================================================================
+# DATA MANAGEMENT COMMANDS
+# ============================================================================
 if [ "$1" = "import-random-patients" ] && [ ! -z "$2" ]; then
     if [ ! -z "$3" ] && [ "$3" = "false" ]; then
         importRandomPatients "$2" false
@@ -493,11 +644,17 @@ if [ "$1" = "generate-multisite-bank" ] && [ ! -z "$2" ]; then
     generateMultisiteBank "$2"
 fi
 
+# ============================================================================
+# API DOCUMENTATION COMMANDS
+# ============================================================================
 if [ "$1" = "build-api-docs" ]; then
     echo "Building and placing api swagger docs"
     php /var/www/localhost/htdocs/openemr/bin/console openemr:create-api-documentation
 fi
 
+# ============================================================================
+# OAUTH2 COMMANDS
+# ============================================================================
 if [ "$1" = "register-oauth2-client" ]; then
     site="default"
     if [ ! -z "$2" ]; then

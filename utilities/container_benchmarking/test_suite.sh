@@ -23,11 +23,17 @@ RESULT_FILE="${RESULTS_DIR}/test_results_${TIMESTAMP}.txt"
 LOG_FILE="${RESULTS_DIR}/test_log_${TIMESTAMP}.txt"
 
 # Test configuration
-DOCKER_CONTEXT="${DOCKER_CONTEXT:-../../docker/openemr/7.0.5}"
+# Note: Using DOCKERFILE_CONTEXT instead of DOCKER_CONTEXT to avoid conflict with Docker CLI's context variable
+DOCKERFILE_CONTEXT="${DOCKERFILE_CONTEXT:-${DOCKER_CONTEXT:-../../docker/openemr/7.0.5}}"
 IMAGE_TAG="${IMAGE_TAG:-openemr:7.0.5-test}"
 KEEP_CONTAINERS="${KEEP_CONTAINERS:-no}"
 VERBOSE="${VERBOSE:-no}"
 VERSION="${VERSION:-7.0.5}"
+
+# Flex container repository configuration (defaults to official OpenEMR repo)
+# These can be overridden via environment variables when testing flex container
+FLEX_REPOSITORY="${FLEX_REPOSITORY:-https://github.com/openemr/openemr.git}"
+FLEX_REPOSITORY_BRANCH="${FLEX_REPOSITORY_BRANCH:-master}"
 
 # Test directories (relative to script directory)
 TESTS_DIR="${SCRIPT_DIR}/tests"
@@ -145,7 +151,25 @@ wait_for_healthy() {
         waited=$((waited + 2))
     done
     
-    log_error "Container ${container_name} did not become healthy within ${max_wait}s"
+    # Get final health status and detailed healthcheck info for diagnostics
+    local final_status
+    final_status=$(docker inspect "${container_name}" --format '{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
+    log_error "Container ${container_name} did not become healthy within ${max_wait}s (final status: ${final_status})"
+    
+    # Show healthcheck details if available
+    local health_log
+    health_log=$(docker inspect "${container_name}" --format '{{json .State.Health}}' 2>/dev/null || echo "")
+    if [[ -n "${health_log}" && "${health_log}" != "null" ]]; then
+        log_info "Healthcheck details: ${health_log}"
+        # Also show recent healthcheck log entries
+        local health_entries
+        health_entries=$(docker inspect "${container_name}" --format '{{range .State.Health.Log}}{{printf "ExitCode: %d, Output: %s\n" .ExitCode .Output}}{{end}}' 2>/dev/null | tail -5 || echo "")
+        if [[ -n "${health_entries}" ]]; then
+            log_info "Recent healthcheck attempts:"
+            echo "${health_entries}" | sed 's/^/  /' | tee -a "${LOG_FILE}"
+        fi
+    fi
+    
     docker logs "${container_name}" --tail 50 2>&1 | tee -a "${LOG_FILE}" || true
     return 1
 }
@@ -181,7 +205,12 @@ cleanup() {
     if [[ "${KEEP_CONTAINERS}" != "yes" ]]; then
         log_info "Cleaning up test containers and volumes..."
         # Clean up all test projects
+        # Note: We don't use run_docker_compose here because cleanup runs in a trap
+        # and we don't have the test directories available
         for project in fresh manual ssl redis swarm k8s xdebug docs upgrade; do
+            # Unset DOCKER_CONTEXT (Docker CLI variable) to avoid conflicts
+            # We don't restore it because we use DOCKERFILE_CONTEXT internally, not DOCKER_CONTEXT
+            unset DOCKER_CONTEXT
             docker compose -p "${PROJECT_NAME}-${project}" down --remove-orphans --volumes >/dev/null 2>&1 || true
         done
         # Also clean up any volumes that might have been created
@@ -198,12 +227,46 @@ trap cleanup EXIT
 # HELPER FUNCTIONS FOR TESTS
 # ============================================================================
 
-# Get absolute path for Docker context
+# Get absolute path for Dockerfile context (build directory)
 get_docker_context_abs() {
-    if [[ "${DOCKER_CONTEXT}" = /* ]]; then
-        echo "${DOCKER_CONTEXT}"
+    if [[ "${DOCKERFILE_CONTEXT}" = /* ]]; then
+        # Already absolute, resolve any .. components
+        (cd "${DOCKERFILE_CONTEXT}" && pwd) 2>/dev/null || echo "${DOCKERFILE_CONTEXT}"
     else
-        echo "${SCRIPT_DIR}/${DOCKER_CONTEXT}"
+        # Relative path, resolve from script directory
+        (cd "${SCRIPT_DIR}/${DOCKERFILE_CONTEXT}" && pwd) 2>/dev/null || echo "${SCRIPT_DIR}/${DOCKERFILE_CONTEXT}"
+    fi
+}
+
+# Helper function to run docker compose commands with DOCKER_CONTEXT unset
+# Docker Compose interprets DOCKER_CONTEXT env var as a Docker context name,
+# so we need to unset it and use the context from docker-compose.yml instead
+# shellcheck disable=SC2310  # Intentional: we handle errors explicitly in callers
+run_docker_compose() {
+    local project_name="$1"
+    shift
+    # Unset DOCKER_CONTEXT (Docker CLI variable) to avoid conflicts
+    # We don't restore it because we use DOCKERFILE_CONTEXT internally, not DOCKER_CONTEXT
+    unset DOCKER_CONTEXT
+    docker compose -p "${project_name}" "$@"
+    local exit_code=$?
+    return "${exit_code}"
+}
+
+# Get flex-specific environment variables if testing flex container
+# Uses FLEX_REPOSITORY and FLEX_REPOSITORY_BRANCH environment variables if set,
+# otherwise defaults to the official OpenEMR repository and master branch
+get_flex_env_vars() {
+    local docker_context_abs
+    docker_context_abs=$(get_docker_context_abs)
+    if [[ "${docker_context_abs}" == *"/flex"* ]]; then
+        local flex_repo="${FLEX_REPOSITORY:-https://github.com/openemr/openemr.git}"
+        local flex_branch="${FLEX_REPOSITORY_BRANCH:-master}"
+        echo "
+      FLEX_REPOSITORY: ${flex_repo}
+      FLEX_REPOSITORY_BRANCH: ${flex_branch}"
+    else
+        echo ""
     fi
 }
 
@@ -221,6 +284,8 @@ test_fresh_installation() {
 
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
+    local flex_env_vars
+    flex_env_vars=$(get_flex_env_vars)
 
     # Create docker-compose.yml for this test
     cat > "${test_dir}/docker-compose.yml" <<EOF
@@ -257,7 +322,7 @@ services:
       MYSQL_PASS: openemr
       MYSQL_DATABASE: openemr
       OE_USER: admin
-      OE_PASS: testpass123
+      OE_PASS: testpass123${flex_env_vars}
     ports:
       - "8080:80"
     healthcheck:
@@ -277,14 +342,23 @@ networks:
     driver: bridge
 EOF
 
+    # Change to test directory before running docker compose
+    # Docker Compose needs to be run from the directory containing docker-compose.yml
     cd "${test_dir}"
     
-    # Start services (stream build output)
+    # Start services (build first, then start to work around Docker Compose context issue)
     log_info "Building and starting containers..."
-    if ! docker compose -p "${PROJECT_NAME}-fresh" up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to start containers"
+    if ! run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to build containers"
+        cd - >/dev/null
         return 1
     fi
+    if ! run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to start containers"
+        cd - >/dev/null
+        return 1
+    fi
+    cd - >/dev/null
 
     local container_name="${PROJECT_NAME}-fresh-openemr-1"
 
@@ -292,8 +366,10 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
-        docker compose -p "${PROJECT_NAME}-fresh" logs openemr | tee -a "${LOG_FILE}" || true
-        docker compose -p "${PROJECT_NAME}-fresh" down --volumes >/dev/null 2>&1 || true
+        cd "${test_dir}"
+        run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml logs openemr | tee -a "${LOG_FILE}" || true
+        run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -306,7 +382,9 @@ EOF
     http_status=$(curl -sL -o /dev/null -w "%{http_code}" "http://localhost:8080/interface/login/login.php" || echo "000")
 
     # Cleanup
-    docker compose -p "${PROJECT_NAME}-fresh" down --volumes >/dev/null 2>&1 || true
+    cd "${test_dir}"
+    run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+    cd - >/dev/null
 
     if [[ "${config_status}" = "1" ]] && [[ "${http_status}" = "200" ]]; then
         log_test_result "${test_name}" "PASS" "OpenEMR configured and accessible"
@@ -327,6 +405,8 @@ test_manual_setup() {
 
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
+    local flex_env_vars
+    flex_env_vars=$(get_flex_env_vars)
 
     cat > "${test_dir}/docker-compose.yml" <<EOF
 
@@ -359,7 +439,7 @@ services:
     environment:
       MYSQL_HOST: mysql
       MYSQL_ROOT_PASS: root
-      MANUAL_SETUP: "yes"
+      MANUAL_SETUP: "yes"${flex_env_vars}
     ports:
       - "8081:80"
     healthcheck:
@@ -381,10 +461,16 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (stream build output)
+    # Start services (build first, then start)
     log_info "Building and starting containers..."
-    if ! docker compose -p "${PROJECT_NAME}-manual" up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
+    if ! run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to build containers"
+        cd - >/dev/null
+        return 1
+    fi
+    if ! run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
+        cd - >/dev/null
         return 1
     fi
 
@@ -394,20 +480,28 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
-        docker compose -p "${PROJECT_NAME}-manual" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
     # Check that auto_configure.php still exists (not removed)
+    # Flex containers have it at /var/www/localhost/htdocs/auto_configure.php
+    # Versioned containers have it at /var/www/localhost/htdocs/openemr/auto_configure.php
     local auto_config_exists
-    auto_config_exists=$(docker exec "${container_name}" test -f /var/www/localhost/htdocs/openemr/auto_configure.php && echo "1" || echo "0")
+    if [[ "${docker_context_abs}" == *"/flex"* ]]; then
+        auto_config_exists=$(docker exec "${container_name}" test -f /var/www/localhost/htdocs/auto_configure.php && echo "1" || echo "0")
+    else
+        auto_config_exists=$(docker exec "${container_name}" test -f /var/www/localhost/htdocs/openemr/auto_configure.php && echo "1" || echo "0")
+    fi
 
     # Check that OpenEMR is NOT configured
     local config_status
     config_status=$(check_openemr_configured "${container_name}")
 
     # Cleanup
-    docker compose -p "${PROJECT_NAME}-manual" down --volumes >/dev/null 2>&1 || true
+    run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+    cd - >/dev/null
 
     if [[ "${auto_config_exists}" = "1" ]] && [[ "${config_status}" = "0" ]]; then
         log_test_result "${test_name}" "PASS" "Manual setup mode working correctly"
@@ -428,6 +522,8 @@ test_ssl_configuration() {
     
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
+    local flex_env_vars
+    flex_env_vars=$(get_flex_env_vars)
     
     # Note: Container generates its own self-signed certificates
     # We don't mount /etc/ssl as read-only to allow container to create certs
@@ -466,7 +562,7 @@ services:
       MYSQL_PASS: openemr
       MYSQL_DATABASE: openemr
       OE_USER: admin
-      OE_PASS: testpass123
+      OE_PASS: testpass123${flex_env_vars}
     ports:
       - "8443:443"
     healthcheck:
@@ -488,9 +584,14 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (stream build output)
+    # Start services (build first, then start)
     log_info "Building and starting containers..."
-    if ! docker compose -p "${PROJECT_NAME}-ssl" up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
+    if ! run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to build containers"
+        cd - >/dev/null
+        return 1
+    fi
+    if ! run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         return 1
     fi
@@ -500,7 +601,8 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
-        docker compose -p "${PROJECT_NAME}-ssl" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -512,7 +614,8 @@ EOF
     local https_status
     https_status=$(curl -kfsL -o /dev/null -w "%{http_code}" "https://localhost:8443/" || echo "000")
 
-    docker compose -p "${PROJECT_NAME}-ssl" down --volumes >/dev/null 2>&1 || true
+    run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+    cd - >/dev/null
 
     if [[ "${ssl_configured}" = "1" ]] && [[ "${https_status}" = "200" ]] || [[ "${https_status}" = "302" ]]; then
         log_test_result "${test_name}" "PASS" "SSL configured and HTTPS accessible"
@@ -533,6 +636,8 @@ test_redis_sessions() {
     
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
+    local flex_env_vars
+    flex_env_vars=$(get_flex_env_vars)
     
     cat > "${test_dir}/docker-compose.yml" <<EOF
 
@@ -584,7 +689,7 @@ services:
       MYSQL_PASS: openemr
       MYSQL_DATABASE: openemr
       OE_USER: admin
-      OE_PASS: testpass123
+      OE_PASS: testpass123${flex_env_vars}
       REDIS_SERVER: redis:6379
     ports:
       - "8082:80"
@@ -608,10 +713,16 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (stream build output)
+    # Start services (build first, then start)
     log_info "Building and starting containers..."
-    if ! docker compose -p "${PROJECT_NAME}-redis" up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
+    if ! run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to build containers"
+        cd - >/dev/null
+        return 1
+    fi
+    if ! run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
+        cd - >/dev/null
         return 1
     fi
 
@@ -620,7 +731,8 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
-        docker compose -p "${PROJECT_NAME}-redis" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -633,7 +745,8 @@ EOF
     local redis_marker
     redis_marker=$(docker exec "${container_name}" test -f /etc/php-redis-configured && echo "1" || echo "0")
 
-    docker compose -p "${PROJECT_NAME}-redis" down --volumes >/dev/null 2>&1 || true
+    run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+    cd - >/dev/null
 
     if [[ "${redis_configured}" = "1" ]] && [[ "${redis_marker}" = "1" ]]; then
         log_test_result "${test_name}" "PASS" "Redis session handler configured"
@@ -654,6 +767,8 @@ test_swarm_mode() {
     
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
+    local flex_env_vars
+    flex_env_vars=$(get_flex_env_vars)
     
     cat > "${test_dir}/docker-compose.yml" <<EOF
 
@@ -690,7 +805,7 @@ services:
       MYSQL_PASS: openemr
       MYSQL_DATABASE: openemr
       OE_USER: admin
-      OE_PASS: testpass123
+      OE_PASS: testpass123${flex_env_vars}
       SWARM_MODE: "yes"
     ports:
       - "8083:80"
@@ -745,10 +860,16 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (stream build output)
+    # Start services (build first, then start)
     log_info "Building and starting containers..."
-    if ! docker compose -p "${PROJECT_NAME}-swarm" up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
+    if ! run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to build containers"
+        cd - >/dev/null
+        return 1
+    fi
+    if ! run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
+        cd - >/dev/null
         return 1
     fi
 
@@ -759,7 +880,8 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${leader_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Leader container did not become healthy"
-        docker compose -p "${PROJECT_NAME}-swarm" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -767,7 +889,8 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${follower_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Follower container did not become healthy"
-        docker compose -p "${PROJECT_NAME}-swarm" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -787,7 +910,8 @@ EOF
         leader_authority="0"
     fi
 
-    docker compose -p "${PROJECT_NAME}-swarm" down --volumes >/dev/null 2>&1 || true
+    run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+    cd - >/dev/null
 
     if [[ "${completed_marker}" = "1" ]] && [[ "${leader_authority}" = "1" ]]; then
         log_test_result "${test_name}" "PASS" "Swarm mode coordination working"
@@ -808,6 +932,8 @@ test_kubernetes_mode() {
     
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
+    local flex_env_vars
+    flex_env_vars=$(get_flex_env_vars)
     
     cat > "${test_dir}/docker-compose.yml" <<EOF
 
@@ -891,10 +1017,16 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (stream build output)
+    # Start services (build first, then start)
     log_info "Building and starting containers..."
-    if ! docker compose -p "${PROJECT_NAME}-k8s" up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
+    if ! run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to build containers"
+        cd - >/dev/null
+        return 1
+    fi
+    if ! run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
+        cd - >/dev/null
         return 1
     fi
 
@@ -921,7 +1053,8 @@ EOF
     if [[ "${admin_exit_code}" != "0" ]]; then
         log_test_result "${test_name}" "FAIL" "Admin container failed with exit code: ${admin_exit_code}"
         docker logs "${admin_name}" --tail 50 2>&1 | tee -a "${LOG_FILE}" || true
-        docker compose -p "${PROJECT_NAME}-k8s" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -934,7 +1067,8 @@ EOF
     if ! wait_for_healthy "${worker_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Worker container did not become healthy"
         docker logs "${worker_name}" --tail 50 2>&1 | tee -a "${LOG_FILE}" || true
-        docker compose -p "${PROJECT_NAME}-k8s" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -942,7 +1076,8 @@ EOF
     local config_status
     config_status=$(check_openemr_configured "${worker_name}")
 
-    docker compose -p "${PROJECT_NAME}-k8s" down --volumes >/dev/null 2>&1 || true
+    run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+    cd - >/dev/null
 
     if [[ "${admin_exit_code}" = "0" ]] && [[ "${config_status}" = "1" ]]; then
         log_test_result "${test_name}" "PASS" "Kubernetes mode working correctly"
@@ -963,6 +1098,8 @@ test_xdebug_configuration() {
     
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
+    local flex_env_vars
+    flex_env_vars=$(get_flex_env_vars)
     
     cat > "${test_dir}/docker-compose.yml" <<EOF
 
@@ -1023,10 +1160,16 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (stream build output)
+    # Start services (build first, then start)
     log_info "Building and starting containers..."
-    if ! docker compose -p "${PROJECT_NAME}-xdebug" up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
+    if ! run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to build containers"
+        cd - >/dev/null
+        return 1
+    fi
+    if ! run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
+        cd - >/dev/null
         return 1
     fi
 
@@ -1035,7 +1178,8 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
-        docker compose -p "${PROJECT_NAME}-xdebug" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -1047,7 +1191,8 @@ EOF
     local opcache_disabled
     opcache_disabled=$(docker exec "${container_name}" grep -q "opcache.enable=0" /etc/php84/php.ini 2>/dev/null && echo "1" || echo "0")
 
-    docker compose -p "${PROJECT_NAME}-xdebug" down --volumes >/dev/null 2>&1 || true
+    run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+    cd - >/dev/null
 
     if [[ "${xdebug_configured}" = "1" ]] && [[ "${opcache_disabled}" = "1" ]]; then
         log_test_result "${test_name}" "PASS" "XDebug configured and opcache disabled"
@@ -1068,6 +1213,8 @@ test_document_upload() {
     
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
+    local flex_env_vars
+    flex_env_vars=$(get_flex_env_vars)
     
     cat > "${test_dir}/docker-compose.yml" <<EOF
 
@@ -1104,7 +1251,7 @@ services:
       MYSQL_PASS: openemr
       MYSQL_DATABASE: openemr
       OE_USER: admin
-      OE_PASS: testpass123
+      OE_PASS: testpass123${flex_env_vars}
     ports:
       - "8087:80"
     volumes:
@@ -1129,10 +1276,16 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (stream build output)
+    # Start services (build first, then start)
     log_info "Building and starting containers..."
-    if ! docker compose -p "${PROJECT_NAME}-docs" up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
+    if ! run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to build containers"
+        cd - >/dev/null
+        return 1
+    fi
+    if ! run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
+        cd - >/dev/null
         return 1
     fi
 
@@ -1141,7 +1294,8 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
-        docker compose -p "${PROJECT_NAME}-docs" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -1153,7 +1307,8 @@ EOF
     local can_write
     can_write=$(docker exec "${container_name}" touch /var/www/localhost/htdocs/openemr/sites/default/documents/test.txt 2>/dev/null && echo "1" || echo "0")
 
-    docker compose -p "${PROJECT_NAME}-docs" down --volumes >/dev/null 2>&1 || true
+    run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+    cd - >/dev/null
 
     if [[ "${docs_dir_exists}" = "1" ]] && [[ "${can_write}" = "1" ]]; then
         log_test_result "${test_name}" "PASS" "Documents directory exists and is writable"
@@ -1169,11 +1324,18 @@ test_docker_upgrade() {
     local test_name="Docker Upgrade Process"
     log_test_start "${test_name}"
 
-    local test_dir="${TESTS_DIR}/docker_upgrade"
-    mkdir -p "${test_dir}"
-    
+    # Skip upgrade test for flex containers (they don't have upgrade scripts)
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
+    if [[ "${docker_context_abs}" == *"/flex"* ]]; then
+        log_test_result "${test_name}" "SKIP" "Flex containers do not have upgrade scripts"
+        return 0
+    fi
+
+    local test_dir="${TESTS_DIR}/docker_upgrade"
+    mkdir -p "${test_dir}"
+    local flex_env_vars
+    flex_env_vars=$(get_flex_env_vars)
     
     cat > "${test_dir}/docker-compose.yml" <<EOF
 
@@ -1210,7 +1372,7 @@ services:
       MYSQL_PASS: openemr
       MYSQL_DATABASE: openemr
       OE_USER: admin
-      OE_PASS: testpass123
+      OE_PASS: testpass123${flex_env_vars}
     ports:
       - "8088:80"
     volumes:
@@ -1237,7 +1399,12 @@ EOF
     
     # Step 1: Start fresh installation and wait for it to complete
     log_info "Step 1: Starting fresh installation..."
-    if ! docker compose -p "${PROJECT_NAME}-upgrade" up -d --build 2>&1 | tee -a "${LOG_FILE}"; then
+    if ! run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
+        log_test_result "${test_name}" "FAIL" "Failed to build containers"
+        cd - >/dev/null
+        return 1
+    fi
+    if ! run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         return 1
     fi
@@ -1248,7 +1415,8 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
-        docker compose -p "${PROJECT_NAME}-upgrade" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -1268,7 +1436,8 @@ EOF
 
     if [[ "${config_status}" != "1" ]]; then
         log_test_result "${test_name}" "FAIL" "OpenEMR was not configured"
-        docker compose -p "${PROJECT_NAME}-upgrade" down --volumes >/dev/null 2>&1 || true
+        run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -1301,7 +1470,9 @@ EOF
 
     if [[ "${old_version}" != "1" ]]; then
         log_test_result "${test_name}" "FAIL" "Failed to set old version marker"
-        docker compose -p "${PROJECT_NAME}-upgrade" down --volumes >/dev/null 2>&1 || true
+        cd "${test_dir}"
+        run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -1313,7 +1484,9 @@ EOF
     
     # Step 5: Restart container to trigger upgrade check
     log_info "Step 4: Restarting container to trigger upgrade..."
-    docker compose -p "${PROJECT_NAME}-upgrade" restart openemr 2>&1 | tee -a "${LOG_FILE}" || true
+    cd "${test_dir}"
+    run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml restart openemr 2>&1 | tee -a "${LOG_FILE}" || true
+    cd - >/dev/null
     
     # Wait a moment for container to restart
     sleep 5
@@ -1323,7 +1496,9 @@ EOF
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy after restart"
         docker logs "${container_name}" --tail 50 2>&1 | tee -a "${LOG_FILE}" || true
-        docker compose -p "${PROJECT_NAME}-upgrade" down --volumes >/dev/null 2>&1 || true
+        cd "${test_dir}"
+        run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
         return 1
     fi
 
@@ -1371,7 +1546,9 @@ EOF
         docker logs "${container_name}" --tail 100 2>&1 | grep -i "upgrade\|version\|docker-version" | tail -20 | tee -a "${LOG_FILE}" || true
     fi
 
-    docker compose -p "${PROJECT_NAME}-upgrade" down --volumes >/dev/null 2>&1 || true
+    cd "${test_dir}"
+    run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+    cd - >/dev/null
 
     # Evaluate test results
     # Upgrade is successful if:
@@ -1423,7 +1600,7 @@ main() {
                 ;;
             --version)
                 VERSION="${2:-7.0.5}"
-                DOCKER_CONTEXT="../../docker/openemr/${VERSION}"
+                DOCKERFILE_CONTEXT="../../docker/openemr/${VERSION}"
                 IMAGE_TAG="openemr:${VERSION}-test"
                 shift 2
                 ;;
@@ -1439,7 +1616,12 @@ main() {
 
     # Clean up any leftover containers/volumes from previous test runs
     log_info "Cleaning up any leftover test containers and volumes..."
+    # Note: We don't use run_docker_compose here because we're cleaning up at startup
+    # and don't have test directories available yet
     for project in fresh manual ssl redis swarm k8s xdebug docs upgrade; do
+        # Unset DOCKER_CONTEXT (Docker CLI variable) to avoid conflicts
+        # We don't restore it because we use DOCKERFILE_CONTEXT internally, not DOCKER_CONTEXT
+        unset DOCKER_CONTEXT
         docker compose -p "${PROJECT_NAME}-${project}" down --remove-orphans --volumes >/dev/null 2>&1 || true
     done
 
@@ -1452,7 +1634,7 @@ main() {
     {
         echo "OpenEMR Container Functional Test Results - ${result_date}"
         echo "Test Suite Version: 1.0"
-        echo "Docker Context: ${DOCKER_CONTEXT}"
+        echo "Docker Context: ${DOCKERFILE_CONTEXT}"
         echo "Image Tag: ${IMAGE_TAG}"
         echo "Version: ${VERSION}"
         echo ""

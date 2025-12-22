@@ -1,26 +1,94 @@
-#!/bin/sh
-# Allows customization of openemr credentials, preventing the need for manual setup
-#  (Note can force a manual setup by setting MANUAL_SETUP to 'yes')
-#  - Required settings for this special flex openemr docker are FLEX_REPOSITORY
-#    and (FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG). FLEX_REPOSITORY is the
-#    public git repository holding the openemr version that will be used. And
-#    FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG represent the branch or tag
-#    to use in this git repository, respectively.
-#  - Required settings for auto installation are MYSQL_HOST and MYSQL_ROOT_PASS
-#  -  (note that can force MYSQL_ROOT_PASS to be empty by passing as 'BLANK' variable)
-#  - Optional settings for auto installation are:
-#    - Setting db parameters MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE
-#    - Setting openemr parameters OE_USER, OE_PASS
-#    - TODO: xdebug options should be given here
-#    - EASY_DEV_MODE with value of 'yes' prevents issues with permissions when mounting volumes
-#    - EASY_DEV_MODE_NEW with value of 'yes' expands EASY_DEV_MODE by not requiring downloading
-#      code from github (uses local repo).
-#    - INSANE_DEV_MODE with value of 'yes' is to support devtools in insane dev environment
+#!/usr/bin/env bash
+# ============================================================================
+# OpenEMR Flex Container Startup Script
+# ============================================================================
+# This script runs when the flex container starts and handles all setup tasks
+# needed to get OpenEMR running. Unlike versioned containers, the flex container
+# fetches OpenEMR source code at runtime from a configurable git repository,
+# making it suitable for testing different branches, tags, or forks.
+#
+# Key Features:
+#   - Runtime OpenEMR source fetching (configurable via FLEX_REPOSITORY env vars)
+#   - Runtime dependency building (composer/npm can run at container startup)
+#   - Support for multiple development modes (EASY_DEV_MODE, EASY_DEV_MODE_NEW, etc.)
+#   - Automated database setup and configuration
+#   - Multi-container coordination (swarm mode)
+#   - SSL/TLS certificate management
+#   - Redis session configuration
+#   - File permissions management
+#
+# Environment Variables:
+#   Required for flex mode:
+#     - FLEX_REPOSITORY: Git repository URL (default: https://github.com/openemr/openemr.git)
+#     - FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG: Branch or tag to use
+#   Required for auto installation:
+#     - MYSQL_HOST: Database server hostname
+#     - MYSQL_ROOT_PASS: Database root password (use 'BLANK' for empty password)
+#   Optional:
+#     - MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE: Database credentials
+#     - OE_USER, OE_PASS: OpenEMR admin credentials
+#     - EASY_DEV_MODE: 'yes' to skip permission changes (for volume mounts)
+#     - EASY_DEV_MODE_NEW: 'yes' to use local repo instead of downloading
+#     - INSANE_DEV_MODE: 'yes' for devtools support
+#     - FORCE_NO_BUILD_MODE: 'yes' to skip composer/npm builds
+#     - DEVELOPER_TOOLS: 'yes' to install development tools
+#     - GITHUB_COMPOSER_TOKEN: GitHub token for composer
+#     - REDIS_SERVER: Redis server address
+#     - XDEBUG_ON: Enable XDebug
+#
+# Usage:
+#   Called automatically by Docker CMD, but can be run manually for testing
+# ============================================================================
 
-set -e
+set -euo pipefail
 
+# ============================================================================
+# SHELL LIBRARY SOURCING
+# ============================================================================
+# Load helper functions from devtoolsLibrary.source
+# This provides utility functions for database operations, configuration, etc.
 # shellcheck source=SCRIPTDIR/utilities/devtoolsLibrary.source
 . /root/devtoolsLibrary.source
+
+# ============================================================================
+# PATH CONFIGURATION
+# ============================================================================
+# Define paths used throughout the script for OpenEMR installation and configuration
+OE_ROOT="/var/www/localhost/htdocs/openemr"
+# shellcheck disable=SC2034  # AUTO_CONFIG is defined for consistency with 7.0.5, may be used in future
+AUTO_CONFIG="/var/www/localhost/htdocs/openemr/auto_configure.php"
+SQLCONF_FILE="${OE_ROOT}/sites/default/sqlconf.php"
+
+# ============================================================================
+# DATABASE CONFIGURATION
+# ============================================================================
+# OpenEMR requires a MySQL/MariaDB database. These variables control the
+# database connection and credentials. Defaults are provided for development.
+MYSQL_HOST="${MYSQL_HOST:-mysql}"
+MYSQL_PORT="${MYSQL_PORT:-3306}"
+MYSQL_ROOT_USER="${MYSQL_ROOT_USER:-root}"
+MYSQL_ROOT_PASS="${MYSQL_ROOT_PASS:-root}"
+MYSQL_USER="${MYSQL_USER:-openemr}"
+MYSQL_PASS="${MYSQL_PASS:-openemr}"
+MYSQL_DATABASE="${MYSQL_DATABASE:-openemr}"
+MYSQL_COLLATION="${MYSQL_COLLATION:-utf8mb4_general_ci}"
+
+# ============================================================================
+# OPENEMR ADMIN USER CONFIGURATION
+# ============================================================================
+# Initial administrator account created during first-time setup.
+# IMPORTANT: Change these defaults in production!
+OE_USER="${OE_USER:-admin}"
+OE_USER_NAME="${OE_USER_NAME:-Administrator}"
+OE_PASS="${OE_PASS:-pass}"
+
+# ============================================================================
+# OPERATION MODE SETTINGS
+# ============================================================================
+# Control container behavior for different deployment scenarios
+MANUAL_SETUP="${MANUAL_SETUP:-no}"
+K8S="${K8S:-}"
+SWARM_MODE="${SWARM_MODE:-no}"
 
 # defaults
 : "${DEMO_MODE:=no}" \
@@ -45,15 +113,21 @@ set -e
 auto_setup() {
     prepareVariables
 
-    if [ "${EASY_DEV_MODE}" != "yes" ]; then
-        find /var/www/localhost/htdocs/openemr -not -perm 600 -exec chmod 600 {} \+
+    # Update heartbeat before starting setup (if in swarm mode)
+    [[ "${AUTHORITY}" = "yes" ]] && update_leader_heartbeat
+
+    # Only set permissions if not in EASY_DEV_MODE (optimized: use -exec {} + instead of \; for better performance)
+    if [[ "${EASY_DEV_MODE}" != "yes" ]]; then
+        # Use {} + instead of {} \; to batch file operations and reduce process overhead
+        find /var/www/localhost/htdocs/openemr -type f -not -perm 600 -exec chmod 600 {} + 2>/dev/null || true
     fi
 
-    #create temporary file cache directory for auto_configure.php to use
+    # Create temporary file cache directory for auto_configure.php to use
+    # This enables opcache file caching for faster PHP execution during installation
     TMP_FILE_CACHE_LOCATION="/tmp/php-file-cache"
-    mkdir "${TMP_FILE_CACHE_LOCATION}"
+    mkdir -p "${TMP_FILE_CACHE_LOCATION}"
 
-    #create auto_configure.ini to be able to leverage opcache for operations
+    # Create auto_configure.ini to leverage opcache for faster installation
     {
         echo "opcache.enable=1"
         echo "opcache.enable_cli=1"
@@ -64,89 +138,352 @@ auto_setup() {
         echo "opcache.max_accelerated_files=1000000"
     } > auto_configure.ini
 
-    #run auto_configure
+    # Update heartbeat right before long-running PHP command
+    [[ "${AUTHORITY}" = "yes" ]] && update_leader_heartbeat
+
+    # Run auto_configure with optimized PHP settings
     php /var/www/localhost/htdocs/auto_configure.php -c auto_configure.ini -f "${CONFIGURATION}" || return 1
 
-    #remove temporary file cache directory and auto_configure.ini
-    rm -r "${TMP_FILE_CACHE_LOCATION}"
-    rm auto_configure.ini
+    # Update heartbeat after PHP execution completes
+    [[ "${AUTHORITY}" = "yes" ]] && update_leader_heartbeat
+
+    # Remove temporary file cache directory and auto_configure.ini
+    rm -rf "${TMP_FILE_CACHE_LOCATION}"
+    rm -f auto_configure.ini
 
     echo "OpenEMR configured."
     CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-    if [ "${CONFIG}" = "0" ]; then
+    if [[ "${CONFIG}" = "0" ]]; then
         echo "Error in auto-config. Configuration failed."
         exit 2
     fi
 
-    if [ "${DEMO_MODE}" = standard ]; then
+    # Update heartbeat after configuration verification
+    [[ "${AUTHORITY}" = "yes" ]] && update_leader_heartbeat
+
+    if [[ "${DEMO_MODE}" = "standard" ]]; then
         demoData
+        [[ "${AUTHORITY}" = "yes" ]] && update_leader_heartbeat
     fi
 
-    if [ "${SQL_DATA_DRIVE}" != "" ]; then
+    if [[ "${SQL_DATA_DRIVE}" != "" ]]; then
         sqlDataDrive
+        [[ "${AUTHORITY}" = "yes" ]] && update_leader_heartbeat
     fi
 
     setGlobalSettings
+    # Final heartbeat update after setup completion
+    [[ "${AUTHORITY}" = "yes" ]] && update_leader_heartbeat
 }
 
-# AUTHORITY is the right to change OpenEMR's configured state
-# - true for singletons, swarm leaders, and the Kubernetes startup job
-# - false for swarm members and Kubernetes workers
-# OPERATOR is the right to launch Apache and serve OpenEMR
-# - true for singletons, swarm members (leader or otherwise), and Kubernetes workers
-# - false for the Kubernetes startup job and manual image runs
+# ============================================================================
+# DATABASE WAITING FUNCTIONS
+# ============================================================================
+
+# Waits for MySQL/MariaDB to be ready to accept connections.
+# This is critical because the database container may start simultaneously
+# with this container, and databases need time to initialize.
+#
+# Uses mysqladmin ping for efficient health checking and implements
+# exponential backoff to reduce unnecessary connection attempts.
+wait_for_mysql() {
+    local -i retries=60
+    local -i initial_delay=1
+    local -i max_delay=5
+    local -i current_delay=${initial_delay}
+    echo "Waiting for MySQL at ${MYSQL_HOST}:${MYSQL_PORT}..."
+
+    # Try immediate connection first (MySQL might already be ready)
+    # Use mysqladmin ping for more efficient health check
+    if mysqladmin ping \
+        --host="${MYSQL_HOST}" \
+        --port="${MYSQL_PORT}" \
+        --user="${MYSQL_ROOT_USER}" \
+        --password="${MYSQL_ROOT_PASS}" \
+        --silent >/dev/null 2>&1; then
+        echo "MySQL is ready!"
+        return 0
+    fi
+
+    while (( retries-- > 0 )); do
+        # Test database connectivity using mysqladmin ping
+        if mysqladmin ping \
+            --host="${MYSQL_HOST}" \
+            --port="${MYSQL_PORT}" \
+            --user="${MYSQL_ROOT_USER}" \
+            --password="${MYSQL_ROOT_PASS}" \
+            --silent >/dev/null 2>&1; then
+            echo "MySQL is ready!"
+            return 0
+        fi
+
+        # Exponential backoff: start with shorter delays, increase gradually
+        # Only print message every 5 retries to reduce log noise
+        if (( retries % 5 == 0 || current_delay <= 2 )); then
+            echo "MySQL not ready yet, retrying in ${current_delay} seconds... (${retries} attempts remaining)"
+        fi
+        sleep "${current_delay}"
+
+        # Increase delay gradually (exponential backoff), but cap at max_delay
+        if (( ++current_delay > max_delay )); then
+            current_delay=${max_delay}
+        fi
+    done
+
+    echo "ERROR: Timed out waiting for MySQL at ${MYSQL_HOST}:${MYSQL_PORT}" >&2
+    return 1
+}
+
+# Waits for Redis to be available (if Redis is configured).
+# Redis is optional but recommended for session storage and horizontal scaling.
+wait_for_redis() {
+    # Skip if Redis isn't configured
+    [[ -z "${REDIS_SERVER:-}" ]] && return 0
+
+    # Parse Redis server address (format: "host:port" or just "host")
+    local redis_host
+    local redis_port
+    IFS=: read -r redis_host redis_port _ <<< "${REDIS_SERVER}"
+    redis_port="${redis_port:-6379}"  # Default Redis port
+
+    # Try to connect to Redis using netcat
+    local -i retries=10
+    while (( retries-- > 0 )); do
+        if command -v nc >/dev/null 2>&1 && nc -z "${redis_host}" "${redis_port}" >/dev/null 2>&1; then
+            echo "Redis is ready!"
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo "Warning: Redis at ${REDIS_SERVER} not available, using file sessions" >&2
+    return 1
+}
+
+# Checks if OpenEMR has already been configured.
+# Returns "1" if configured, "0" if not configured yet.
+is_configured() {
+    php -r "if (is_file('${SQLCONF_FILE}')) { require '${SQLCONF_FILE}'; echo isset(\$config) && \$config ? 1 : 0; } else { echo 0; }" 2>/dev/null | tail -1 || echo 0
+}
+
+# ============================================================================
+# CONTAINER ROLE DEFINITIONS
+# ============================================================================
+# AUTHORITY: Right to change OpenEMR's configured state
+#   - true for singletons, swarm leaders, and Kubernetes startup jobs
+#   - false for swarm members and Kubernetes workers
+#
+# OPERATOR: Right to launch Apache and serve OpenEMR
+#   - true for singletons, swarm members (leader or otherwise), and Kubernetes workers
+#   - false for Kubernetes startup jobs and manual image runs
+
 AUTHORITY=yes
 OPERATOR=yes
-case "${K8S}" in
-    admin) OPERATOR=no;;
-    worker) AUTHORITY=no;;
-    *) :;;
-esac
 
-if [ "${SWARM_MODE}" = yes ]; then
-    # atomically test for leadership
-    set -o noclobber
-    { : > /var/www/localhost/htdocs/openemr/sites/docker-leader ; } > /dev/null 2>&1 || AUTHORITY=no
-    set +o noclobber
+# Kubernetes-specific role assignment
+if [[ "${K8S}" = "admin" ]]; then
+    OPERATOR=no
+elif [[ "${K8S}" = "worker" ]]; then
+    AUTHORITY=no
+fi
 
-    if [ "${AUTHORITY}" = "no" ]; then
-        until [ -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; do
-            echo "Waiting for the docker-leader to finish configuration before proceeding."
-            sleep 10;
-        done
+# ============================================================================
+# SWARM MODE COORDINATION FUNCTIONS
+# ============================================================================
+# When running multiple containers (swarm mode), coordinate to ensure only
+# one container performs the initial setup to avoid conflicts.
+
+# Returns whether we should wait for the leader to finish setup.
+# Returns 0 (wait) if setup is not complete, 1 (don't wait) if complete.
+# Setup is complete if the file exists.
+swarm_wait() {
+    [[ ! -f "${OE_ROOT}/sites/docker-completed" ]]
+}
+
+# Checks if the current leader container has stopped responding (become stale).
+# This detects crashed or frozen leader containers by checking when the leader
+# file was last updated. If older than the timeout (default 5 minutes), the
+# leader is considered stale.
+is_leader_stale() {
+    local leader_file="${OE_ROOT}/sites/docker-leader"
+
+    # No leader file means no active leader (not stale, just absent)
+    [[ ! -f "${leader_file}" ]] && return 0
+
+    # Check file age
+    local -i leader_timeout="${LEADER_TIMEOUT:-300}"  # Default: 5 minutes
+    local -i now
+    now=$(date +%s)
+    local -i leader_mtime
+    leader_mtime=$(stat -c %Y "${leader_file}" 2>/dev/null || stat -f %m "${leader_file}" 2>/dev/null || echo 0)
+    local -i age=$((now - leader_mtime))
+
+    # Leader is stale if file is older than timeout
+    (( age > leader_timeout ))
+}
+
+# Tries to become the leader container using atomic file creation.
+# Only one container can be leader at a time. Uses file locking via noclobber.
+try_become_leader() {
+    local leader_file="${OE_ROOT}/sites/docker-leader"
+
+    # If setup is already complete, nobody needs to be leader
+    if [[ -f "${OE_ROOT}/sites/docker-completed" ]]; then
+        AUTHORITY=no
+        echo "Setup already complete, this instance is a follower (AUTHORITY=no)"
+        return 0
     fi
 
-    if [ "${AUTHORITY}" = "yes" ]; then
-        touch /var/www/localhost/htdocs/openemr/sites/docker-initiated
-        if [ ! -f /etc/ssl/openssl.cnf ]; then
-            # Restore the emptied /etc/ssl directory
-            echo "Restoring empty /etc/ssl directory."
-            rsync --owner --group --perms --recursive --links /swarm-pieces/ssl /etc/
+    # Check if current leader is stale
+    # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
+    if is_leader_stale; then
+        echo "Current leader appears stale, attempting to take over..."
+        rm -f "${leader_file}" "${OE_ROOT}/sites/docker-initiated"
+        sleep 1  # Small delay to ensure file deletion is visible
+    fi
+
+    # Try to create leader file atomically
+    set -o noclobber
+    if { date +%s > "${leader_file}"; } 2>/dev/null; then
+        # Success! We're the leader
+        AUTHORITY=yes
+        echo "This instance is the docker-leader (AUTHORITY=yes)"
+        set +o noclobber
+        return 0
+    else
+        # Someone else is the leader
+        AUTHORITY=no
+        echo "This instance is a follower (AUTHORITY=no)"
+        set +o noclobber
+        return 0
+    fi
+}
+
+# Updates the leader file with current timestamp (heartbeat).
+# This lets followers know the leader is still alive and working.
+update_leader_heartbeat() {
+    local leader_file="${OE_ROOT}/sites/docker-leader"
+    if [[ "${AUTHORITY}" = "yes" ]]; then
+        date +%s > "${leader_file}" 2>/dev/null || true
+    fi
+}
+
+# Handles swarm mode coordination: leader election and follower waiting.
+handle_swarm_mode() {
+    # Skip coordination if swarm mode isn't enabled
+    if [[ "${SWARM_MODE}" != "yes" ]]; then
+        return 0
+    fi
+
+    # Try to become the leader
+    try_become_leader
+
+    # If we're a follower, wait for the leader to finish setup
+    if [[ "${AUTHORITY}" = "no" && ! -f "${OE_ROOT}/sites/docker-completed" ]]; then
+        echo "Waiting for docker-leader to finish configuration (with timeout-based recovery)..."
+        local -i max_wait_time="${LEADER_WAIT_TIMEOUT:-600}"  # Default: 10 minutes
+        local -i waited=0
+
+        # Wait for setup completion with stale leader detection
+        # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
+        while swarm_wait && (( waited < max_wait_time )); do
+            # Check if leader has died
+            # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
+            if is_leader_stale; then
+                echo "Leader appears to have crashed, attempting to take over..."
+                # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
+                if try_become_leader; then
+                    echo "Successfully became leader after previous leader failure"
+                    break
+                fi
+            fi
+            sleep 10
+            (( waited += 10 ))
+        done
+
+        # Try one more time to become leader (in case leader died just as we timed out)
+        # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
+        if [[ ! -f "${OE_ROOT}/sites/docker-completed" ]] && try_become_leader; then
+            echo "Promoted to leader after waiting period"
+        fi
+
+        # If we timed out, check if configuration actually exists
+        if [[ ! -f "${OE_ROOT}/sites/docker-completed" ]]; then
+            local config_state
+            config_state=$(is_configured)
+            if [[ "${config_state}" = "1" ]]; then
+                # Configuration exists, create completion marker
+                touch "${OE_ROOT}/sites/docker-completed" 2>/dev/null || true
+                echo "Configuration detected, marking swarm as completed"
+            fi
         fi
     fi
+
+    # If we're the leader, create initiation marker and send heartbeat
+    if [[ "${AUTHORITY}" = "yes" ]]; then
+        touch "${OE_ROOT}/sites/docker-initiated"
+        update_leader_heartbeat
+
+        # Restore swarm-pieces if needed (for swarm mode with empty volumes)
+        if [[ ! -f /etc/ssl/openssl.cnf ]]; then
+            echo "Restoring empty /etc/ssl directory..."
+            rsync --owner --group --perms --recursive --links /swarm-pieces/ssl /etc/
+        fi
+        if [[ ! -d "${OE_ROOT}/sites/default" ]]; then
+            echo "Restoring empty ${OE_ROOT}/sites directory..."
+            rsync --owner --group --perms --recursive --links /swarm-pieces/sites "${OE_ROOT}/"
+        fi
+    fi
+}
+
+# ============================================================================
+# SWARM MODE COORDINATION (MAIN EXECUTION)
+# ============================================================================
+handle_swarm_mode
+[[ "${AUTHORITY}" = "yes" ]] && update_leader_heartbeat
+
+# ============================================================================
+# SSL/TLS CERTIFICATE CONFIGURATION
+# ============================================================================
+# Configure SSL/TLS certificates. In swarm mode, followers may generate
+# their own self-signed certs if /etc/ssl is not shared.
+if [[ "${AUTHORITY}" = "yes" ]]; then
+    sh ssl.sh &
+    # shellcheck disable=SC2034  # SSL_PID stored for potential future use (wait on background process)
+    SSL_PID=$!
+else
+    # Followers: try to generate self-signed certs if they don't exist
+    # This handles cases where /etc/ssl is not shared between containers
+    if [[ ! -f /etc/ssl/certs/webserver.cert.pem ]] || [[ ! -f /etc/ssl/private/webserver.key.pem ]]; then
+        sh ssl.sh &
+        # shellcheck disable=SC2034  # SSL_PID stored for potential future use (wait on background process)
+        SSL_PID=$!
+    fi
 fi
 
-if [ "${AUTHORITY}" = "yes" ]; then
-    sh ssl.sh
-fi
-
-# this is the primary flex orchestration block
-if [ -f /var/www/localhost/htdocs/auto_configure.php ] && [ "${EMPTY}" != "yes" ] &&
-   [ "${EASY_DEV_MODE_NEW}" != "yes" ]; then
+# ============================================================================
+# FLEX CONTAINER: RUNTIME SOURCE CODE FETCHING
+# ============================================================================
+# The flex container fetches OpenEMR source code from git at runtime.
+# This allows testing different branches, tags, or forks without rebuilding
+# the Docker image. The source is cloned to /var/www/localhost/htdocs/openemr
+# before any dependency building or configuration occurs.
+if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] && [[ "${EMPTY}" != "yes" ]] &&
+   [[ "${EASY_DEV_MODE_NEW}" != "yes" ]]; then
     echo "Configuring a new flex openemr docker"
-    if [ "${FLEX_REPOSITORY}" = "" ]; then
+    if [[ "${FLEX_REPOSITORY:-}" = "" ]]; then
         echo "Missing FLEX_REPOSITORY environment setting, so using https://github.com/openemr/openemr.git"
         FLEX_REPOSITORY="https://github.com/openemr/openemr.git"
     fi
-    if [ "${FLEX_REPOSITORY_BRANCH}" = "" ] &&
-       [ "${FLEX_REPOSITORY_TAG}" = "" ]; then
+    if [[ "${FLEX_REPOSITORY_BRANCH:-}" = "" ]] &&
+       [[ "${FLEX_REPOSITORY_TAG:-}" = "" ]]; then
         echo "Missing FLEX_REPOSITORY_BRANCH or FLEX_REPOSITORY_TAG environment setting, so using FLEX_REPOSITORY_BRANCH setting of master"
         FLEX_REPOSITORY_BRANCH="master"
     fi
 
     cd /
 
-    if [ "${FLEX_REPOSITORY_BRANCH}" != "" ]; then
+    if [[ "${FLEX_REPOSITORY_BRANCH}" != "" ]]; then
         echo "Collecting ${FLEX_REPOSITORY_BRANCH} branch from ${FLEX_REPOSITORY} repository"
         git clone "${FLEX_REPOSITORY}" --branch "${FLEX_REPOSITORY_BRANCH}" --depth 1
     else
@@ -156,12 +493,12 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] && [ "${EMPTY}" != "yes" 
         git checkout "${FLEX_REPOSITORY_TAG}"
         cd ../
     fi
-    if [ "${AUTHORITY}" = "yes" ] &&
-       [ "${SWARM_MODE}" = "yes" ]; then
+    if [[ "${AUTHORITY}" = "yes" ]] &&
+       [[ "${SWARM_MODE}" = "yes" ]]; then
         touch openemr/sites/default/docker-initiated
     fi
-    if [ "${AUTHORITY}" = "no" ] &&
-       [ "${SWARM_MODE}" = "yes" ]; then
+    if [[ "${AUTHORITY}" = "no" ]] &&
+       [[ "${SWARM_MODE}" = "yes" ]]; then
         # non-leader is building so remove the openemr/sites directory to avoid breaking anything in leader's build
         rm -fr openemr/sites
     fi
@@ -170,44 +507,58 @@ if [ -f /var/www/localhost/htdocs/auto_configure.php ] && [ "${EMPTY}" != "yes" 
     cd /var/www/localhost/htdocs/
 fi
 
-if [ "${EASY_DEV_MODE_NEW}" = "yes" ]; then
-    # trickery for the easy dev environment
+# ============================================================================
+# EASY DEV MODE: USE LOCAL REPOSITORY
+# ============================================================================
+# When EASY_DEV_MODE_NEW is enabled, use a local repository mounted at /openemr
+# instead of fetching from git. This is useful for development where the code
+# is already available in a volume mount.
+if [[ "${EASY_DEV_MODE_NEW}" = "yes" ]]; then
+    echo "EASY_DEV_MODE_NEW enabled: Using local repository from /openemr"
     rsync --ignore-existing --recursive --links --exclude .git /openemr /var/www/localhost/htdocs/
 fi
 
-# Check if we need to build PHP dependencies or frontend assets
-# Separate checks allow npm builds even when vendor already exists
+# ============================================================================
+# RUNTIME DEPENDENCY BUILDING
+# ============================================================================
+# Unlike versioned containers that build dependencies at Docker build time,
+# the flex container builds dependencies at runtime. This allows flexibility
+# to test different branches/tags that may have different dependency requirements.
+#
+# Dependencies are only built if they don't already exist, supporting scenarios
+# where users mount volumes with pre-built dependencies or use cached builds.
+# Separate checks allow npm builds even when vendor already exists (or vice versa).
 NEED_COMPOSER_BUILD=false
 NEED_NPM_BUILD=false
 RAN_ANY_BUILD=false
 
-if [ -f /var/www/localhost/htdocs/auto_configure.php ] && [ "${FORCE_NO_BUILD_MODE}" != "yes" ]; then
+if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] && [[ "${FORCE_NO_BUILD_MODE}" != "yes" ]]; then
     # Check if composer/vendor build is needed
-    if [ ! -d /var/www/localhost/htdocs/openemr/vendor ] || { [ -d /var/www/localhost/htdocs/openemr/vendor ] && [ -z "$(ls -A /var/www/localhost/htdocs/openemr/vendor || true)" ]; }; then
+    if [[ ! -d /var/www/localhost/htdocs/openemr/vendor ]] || { [[ -d /var/www/localhost/htdocs/openemr/vendor ]] && [[ -z "$(ls -A /var/www/localhost/htdocs/openemr/vendor || true)" ]]; }; then
         NEED_COMPOSER_BUILD=true
     fi
 
     # Check if npm build is needed (node_modules missing/empty OR public missing/empty)
-    if [ ! -d /var/www/localhost/htdocs/openemr/node_modules ] || { [ -d /var/www/localhost/htdocs/openemr/node_modules ] && [ -z "$(ls -A /var/www/localhost/htdocs/openemr/node_modules || true)" ]; } ||
-       [ ! -d /var/www/localhost/htdocs/openemr/public ] || { [ -d /var/www/localhost/htdocs/openemr/public ] && [ -z "$(ls -A /var/www/localhost/htdocs/openemr/public || true)" ]; }; then
+    if [[ ! -d /var/www/localhost/htdocs/openemr/node_modules ]] || { [[ -d /var/www/localhost/htdocs/openemr/node_modules ]] && [[ -z "$(ls -A /var/www/localhost/htdocs/openemr/node_modules || true)" ]]; } ||
+       [[ ! -d /var/www/localhost/htdocs/openemr/public ]] || { [[ -d /var/www/localhost/htdocs/openemr/public ]] && [[ -z "$(ls -A /var/www/localhost/htdocs/openemr/public || true)" ]]; }; then
         NEED_NPM_BUILD=true
     fi
 fi
 
-if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; then
+if [[ "${NEED_COMPOSER_BUILD}" = "true" ]] || [[ "${NEED_NPM_BUILD}" = "true" ]]; then
     cd /var/www/localhost/htdocs/openemr
 
     # Install PHP dependencies if needed
-    if [ "${NEED_COMPOSER_BUILD}" = "true" ]; then
+    if [[ "${NEED_COMPOSER_BUILD}" = "true" ]]; then
         # if there is a raw github composer token supplied, then try to use it
-        if [ "${GITHUB_COMPOSER_TOKEN}" != "" ]; then
+        if [[ "${GITHUB_COMPOSER_TOKEN}" != "" ]]; then
             echo "trying raw github composer token"
             githubTokenRateLimitRequest=$(curl -H "Authorization: token ${GITHUB_COMPOSER_TOKEN}" https://api.github.com/rate_limit)
             githubTokenRateLimit=$(echo "${githubTokenRateLimitRequest}" | jq '.rate.remaining')
             githubTokenRateLimitMessage=$(echo "${githubTokenRateLimitRequest}" | jq '.message')
             echo "Number of github api requests remaining is ${githubTokenRateLimit}";
             printf 'Message received from api request is "%s"\n' "${githubTokenRateLimitMessage}"
-            if [ "${githubTokenRateLimit}" -gt 100 ]; then
+            if [[ "${githubTokenRateLimit}" -gt 100 ]]; then
                 if composer config --global --auth github-oauth.github.com "${GITHUB_COMPOSER_TOKEN}"; then
                     echo "raw github composer token worked"
                     rawToken="pass"
@@ -215,7 +566,7 @@ if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; th
                     echo "raw github composer token did not work"
                 fi
             else
-                if [ "${githubTokenRateLimitMessage}" = '"Bad credentials"' ]; then
+                if [[ "${githubTokenRateLimitMessage}" = '"Bad credentials"' ]]; then
                     echo "raw github composer token is bad, so did not work"
                 else
                     echo "raw github composer token rate limit is now < 100, so did not work"
@@ -223,8 +574,8 @@ if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; th
             fi
         fi
         # if there is no raw github composer token supplied or it was invalid, try a base64 encoded one (if it was supplied)
-        if [ "${GITHUB_COMPOSER_TOKEN_ENCODED}" != "" ]; then
-            if [ "${rawToken}" != "pass" ]; then
+        if [[ "${GITHUB_COMPOSER_TOKEN_ENCODED}" != "" ]]; then
+            if [[ "${rawToken}" != "pass" ]]; then
                 echo "trying encoded github composer token"
                 githubToken=$(echo "${GITHUB_COMPOSER_TOKEN_ENCODED}" | base64 -d)
                 githubTokenRateLimitRequest=$(curl -H "Authorization: token ${githubToken}" https://api.github.com/rate_limit)
@@ -232,14 +583,14 @@ if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; th
                 githubTokenRateLimitMessage=$(echo "${githubTokenRateLimitRequest}" | jq '.message')
                 echo "Number of github api requests remaining is ${githubTokenRateLimit}";
                 printf 'Message received from api request is "%s"\n' "${githubTokenRateLimitMessage}"
-                if [ "${githubTokenRateLimit}" -gt 100 ]; then
+                if [[ "${githubTokenRateLimit}" -gt 100 ]]; then
                     if composer config --global --auth github-oauth.github.com "${githubToken}"; then
                         echo "encoded github composer token worked"
                     else
                         echo "encoded github composer token did not work"
                     fi
                 else
-                    if [ "${githubTokenRateLimitMessage}" = '"Bad credentials"' ]; then
+                    if [[ "${githubTokenRateLimitMessage}" = '"Bad credentials"' ]]; then
                         echo "encoded github composer token is bad, so did not work"
                     else
                         echo "encoded github composer token rate limit is now < 100, so did not work"
@@ -248,7 +599,7 @@ if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; th
             fi
         fi
         # install php dependencies
-        if [ "${DEVELOPER_TOOLS}" = "yes" ]; then
+        if [[ "${DEVELOPER_TOOLS}" = "yes" ]]; then
             composer install
             composer global require "squizlabs/php_codesniffer=3.*"
             # install support for the e2e testing
@@ -261,7 +612,7 @@ if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; th
     fi
 
     # Install frontend dependencies and build if needed
-    if [ "${NEED_NPM_BUILD}" = "true" ] && [ -f /var/www/localhost/htdocs/openemr/package.json ]; then
+    if [[ "${NEED_NPM_BUILD}" = "true" ]] && [[ -f /var/www/localhost/htdocs/openemr/package.json ]]; then
         # install frontend dependencies (need unsafe-perm to run as root)
         # IN ALPINE 3.14+, there is an odd permission thing happening where need to give non-root ownership
         #  to several places ('node_modules' and 'public') in flex environment that npm is accessing via:
@@ -271,13 +622,13 @@ if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; th
         # WILL KEEP TRYING TO REMOVE THESE LINES IN THE FUTURE SINCE APPEARS TO LIKELY BE A FLEETING NPM BUG WITH --unsafe-perm SETTING
         #  should be ready to remove then the following npm error no long shows up on the build:
         #    "ERR! warning: unable to access '/root/.config/git/attributes': Permission denied"
-        if [ -d node_modules ]; then
+        if [[ -d node_modules ]]; then
             chown -R apache:1000 node_modules
         fi
-        if [ -d ccdaservice/node_modules ]; then
+        if [[ -d ccdaservice/node_modules ]]; then
             chown -R apache:1000 ccdaservice/node_modules
         fi
-        if [ -d public ]; then
+        if [[ -d public ]]; then
             chown -R apache:1000 public
         fi
         npm install --unsafe-perm
@@ -286,7 +637,7 @@ if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; th
         RAN_ANY_BUILD=true
     fi
 
-    if [ "${NEED_NPM_BUILD}" = "true" ] && [ -f /var/www/localhost/htdocs/openemr/ccdaservice/package.json ]; then
+    if [[ "${NEED_NPM_BUILD}" = "true" ]] && [[ -f /var/www/localhost/htdocs/openemr/ccdaservice/package.json ]]; then
         # install ccdaservice
         cd /var/www/localhost/htdocs/openemr/ccdaservice
         npm install --unsafe-perm
@@ -295,7 +646,7 @@ if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; th
     fi
 
     # clean up and optimize (only if we ran any builds)
-    if [ "${RAN_ANY_BUILD}" = "true" ]; then
+    if [[ "${RAN_ANY_BUILD}" = "true" ]]; then
         composer global require phing/phing
         /root/.composer/vendor/bin/phing vendor-clean
         /root/.composer/vendor/bin/phing assets-clean
@@ -308,21 +659,23 @@ if [ "${NEED_COMPOSER_BUILD}" = "true" ] || [ "${NEED_NPM_BUILD}" = "true" ]; th
     cd /var/www/localhost/htdocs
 fi
 
-if [ "${AUTHORITY}" = "yes" ] ||
-   [ "${SWARM_MODE}" != "yes" ]; then
-    if [ -f /var/www/localhost/htdocs/auto_configure.php ] &&
-       [ "${EASY_DEV_MODE}" != "yes" ]; then
+if [[ "${AUTHORITY}" = "yes" ]] ||
+   [[ "${SWARM_MODE}" != "yes" ]]; then
+    if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] &&
+       [[ "${EASY_DEV_MODE}" != "yes" ]]; then
         chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     fi
 fi
 
-if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
-    find /var/www/localhost/htdocs/openemr/ -name ".git" -prune -o -exec chown apache {} \+
+# Set ownership to apache user (optimized: use {} + for batch operations)
+if [[ -f /var/www/localhost/htdocs/auto_configure.php ]]; then
+    # Use {} + instead of {} \; to batch chown operations for better performance
+    find /var/www/localhost/htdocs/openemr/ -name ".git" -prune -o -exec chown apache:apache {} + 2>/dev/null || true
 fi
 
 CONFIG=$(php -r "require_once('/var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'); echo \$config;")
-if [ "${AUTHORITY}" = "no" ] &&
-    [ "${CONFIG}" = "0" ]; then
+if [[ "${AUTHORITY}" = "no" ]] &&
+   [[ "${CONFIG}" = "0" ]]; then
     echo "Critical failure! An OpenEMR worker is trying to run on a missing configuration."
     echo " - Is this due to a Kubernetes grant hiccup?"
     echo "The worker will now terminate."
@@ -343,127 +696,151 @@ fi
 #    /root/certs/ldap/ldap-key (supported)
 #    /root/certs/redis/.. (not yet supported)
 MYSQLCA=false
-if [ -f /root/certs/mysql/server/mysql-ca ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]; then
+if [[ -f /root/certs/mysql/server/mysql-ca ]] &&
+   [[ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca ]]; then
     echo "copied over mysql-ca"
     cp /root/certs/mysql/server/mysql-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-ca
     # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     MYSQLCA=true
 fi
 MYSQLCERT=false
-if [ -f /root/certs/mysql/server/mysql-cert ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert ]; then
+if [[ -f /root/certs/mysql/server/mysql-cert ]] &&
+   [[ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert ]]; then
     echo "copied over mysql-cert"
     cp /root/certs/mysql/server/mysql-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
     # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     MYSQLCERT=true
 fi
 MYSQLKEY=false
-if [ -f /root/certs/mysql/server/mysql-key ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key ]; then
+if [[ -f /root/certs/mysql/server/mysql-key ]] &&
+   [[ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key ]]; then
     echo "copied over mysql-key"
     cp /root/certs/mysql/server/mysql-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
     # for specific issue in docker and kubernetes that is required for successful openemr adodb/laminas connections
     MYSQLKEY=true
 fi
-if [ -f /root/certs/couchdb/couchdb-ca ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca ]; then
+if [[ -f /root/certs/couchdb/couchdb-ca ]] &&
+   [[ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca ]]; then
     echo "copied over couchdb-ca"
     cp /root/certs/couchdb/couchdb-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-ca
 fi
-if [ -f /root/certs/couchdb/couchdb-cert ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert ]; then
+if [[ -f /root/certs/couchdb/couchdb-cert ]] &&
+   [[ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert ]]; then
     echo "copied over couchdb-cert"
     cp /root/certs/couchdb/couchdb-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-cert
 fi
-if [ -f /root/certs/couchdb/couchdb-key ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key ]; then
+if [[ -f /root/certs/couchdb/couchdb-key ]] &&
+   [[ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key ]]; then
     echo "copied over couchdb-key"
     cp /root/certs/couchdb/couchdb-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/couchdb-key
 fi
-if [ -f /root/certs/ldap/ldap-ca ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca ]; then
+if [[ -f /root/certs/ldap/ldap-ca ]] &&
+   [[ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca ]]; then
     echo "copied over ldap-ca"
     cp /root/certs/ldap/ldap-ca /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-ca
 fi
-if [ -f /root/certs/ldap/ldap-cert ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert ]; then
+if [[ -f /root/certs/ldap/ldap-cert ]] &&
+   [[ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert ]]; then
     echo "copied over ldap-cert"
     cp /root/certs/ldap/ldap-cert /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-cert
 fi
-if [ -f /root/certs/ldap/ldap-key ] &&
-   [ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key ]; then
+if [[ -f /root/certs/ldap/ldap-key ]] &&
+   [[ ! -f /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key ]]; then
     echo "copied over ldap-key"
     cp /root/certs/ldap/ldap-key /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/ldap-key
 fi
 
-if [ "${AUTHORITY}" = "yes" ]; then
-    if [ "${CONFIG}" = "0" ] &&
-       [ "${MYSQL_HOST}" != "" ] &&
-       [ "${MYSQL_ROOT_PASS}" != "" ] &&
-       [ "${EMPTY}" != "yes" ] &&
-       [ "${MANUAL_SETUP}" != "yes" ]; then
+if [[ "${AUTHORITY}" = "yes" ]]; then
+    if [[ "${CONFIG}" = "0" ]] &&
+       [[ "${MYSQL_HOST}" != "" ]] &&
+       [[ "${MYSQL_ROOT_PASS}" != "" ]] &&
+       [[ "${EMPTY}" != "yes" ]] &&
+       [[ "${MANUAL_SETUP}" != "yes" ]]; then
 
         echo "Running quick setup!"
-        set +e
-        # shellcheck disable=SC2310
-        until auto_setup; do
+        setup_retries=0
+        setup_delay=1
+        # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
+        while ! auto_setup; do
+            (( setup_retries++ ))
+            if [[ ${setup_retries} -eq 1 ]]; then
             echo "Couldn't set up. Any of these reasons could be what's wrong:"
             echo " - You didn't spin up a MySQL container or connect your OpenEMR container to a mysql instance"
             echo " - MySQL is still starting up and wasn't ready for connection yet"
-            echo " - The Mysql credentials were incorrect"
-            sleep 1;
+                echo " - The MySQL credentials were incorrect"
+            elif [[ ${setup_retries} -le 5 ]]; then
+                echo "Retrying setup (attempt ${setup_retries})..."
+            fi
+            # Use shorter initial delay, increase gradually (1s -> 2s)
+            sleep "${setup_delay}"
+            if [[ ${setup_retries} -lt 3 ]]; then
+                setup_delay=1
+            else
+                setup_delay=2
+            fi
         done
-        set -e
         echo "Setup Complete!"
     fi
 fi
 
-if
-   [ "${AUTHORITY}" = "yes" ] &&
-   [ "${CONFIG}" = "1" ] &&
-   [ "${MANUAL_SETUP}" != "yes" ] &&
-   [ "${EASY_DEV_MODE}" != "yes" ] &&
-   [ "${EMPTY}" != "yes" ]; then
+if [[ "${AUTHORITY}" = "yes" ]] &&
+   [[ "${CONFIG}" = "1" ]] &&
+   [[ "${MANUAL_SETUP}" != "yes" ]] &&
+   [[ "${EASY_DEV_MODE}" != "yes" ]] &&
+   [[ "${EMPTY}" != "yes" ]]; then
     # OpenEMR has been configured
 
-    if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
+    if [[ -f /var/www/localhost/htdocs/auto_configure.php ]]; then
         cd /var/www/localhost/htdocs/openemr/
         # This section only runs once after above configuration since auto_configure.php gets removed after this script
-        echo "Setting user 'www' as owner of openemr/ and setting file/dir permissions to 400/500"
+        echo "Setting file/dir permissions to 400/500 (optimized batch operations)"
 
-        #set all directories to 500
-        find . -type d -not -path "./sites/default/documents/*" -not -perm 500 -exec chmod 500 {} \+
-        #set all file access to 400
-        find . -type f -not -path "./sites/default/documents/*" -not -path './openemr.sh' -not -perm 400 -exec chmod 400 {} \+
+        PERM_START=$(date +%s.%N 2>/dev/null || date +%s)
 
-        echo "Default file permissions and ownership set, allowing writing to specific directories"
-        chmod 700 /var/www/localhost/htdocs/openemr.sh
-        # Set file and directory permissions
-        find sites/default/documents -not -perm 700 -exec chmod 700 {} \+
+        # Optimized: Set all directories to 500 (batch operation using {} +)
+        # Exclude sites/default/documents as it needs different permissions
+        find . -type d -not -path "./sites/default/documents/*" -not -perm 500 -exec chmod 500 {} + 2>/dev/null || true
+
+        # Optimized: Set all files to 400 (batch operation using {} +)
+        # Exclude sites/default/documents and openemr.sh
+        find . -type f -not -path "./sites/default/documents/*" -not -path './openemr.sh' -not -perm 400 -exec chmod 400 {} + 2>/dev/null || true
+
+        echo "Default file permissions set, allowing writing to specific directories"
+        chmod 700 /var/www/localhost/htdocs/openemr.sh 2>/dev/null || true
+
+        # Set documents directory permissions (batch operation)
+        if [[ -d sites/default/documents ]]; then
+            find sites/default/documents -not -perm 700 -exec chmod 700 {} + 2>/dev/null || true
+        fi
+
+        PERM_END=$(date +%s.%N 2>/dev/null || date +%s)
+        PERM_DURATION=0
+        if command -v python3 >/dev/null 2>&1; then
+            PERM_DURATION=$(python3 -c "print(round(${PERM_END} - ${PERM_START}, 2))" 2>/dev/null || echo "0")
+        else
+            PERM_DURATION=$((PERM_END - PERM_START))
+        fi
+        if [[ "${PERM_DURATION}" != "0" ]]; then
+            echo "[TIMING] File permissions took ${PERM_DURATION}s"
+        fi
 
         echo "Removing remaining setup scripts"
-        #remove all setup scripts
-        rm -f admin.php
-        rm -f acl_upgrade.php
-        rm -f setup.php
-        rm -f sql_patch.php
-        rm -f sql_upgrade.php
-        rm -f ippf_upgrade.php
+        # Remove all setup scripts
+        rm -f admin.php acl_upgrade.php setup.php sql_patch.php sql_upgrade.php ippf_upgrade.php
         echo "Setup scripts removed, we should be ready to go now!"
         cd /var/www/localhost/htdocs/
     fi
 fi
 
-if [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
-    if [ "${EASY_DEV_MODE_NEW}" = "yes" ] || [ "${INSANE_DEV_MODE}" = "yes" ]; then
+if [[ -f /var/www/localhost/htdocs/auto_configure.php ]]; then
+    if [[ "${EASY_DEV_MODE_NEW}" = "yes" ]] || [[ "${INSANE_DEV_MODE}" = "yes" ]]; then
         # need to copy this script somewhere so the easy/insane dev environment can use it
         cp /var/www/localhost/htdocs/auto_configure.php /root/
         # save couchdb initial data folder to support devtools snapshots
         rsync --recursive --links /couchdb/data /couchdb/original/
     fi
     # trickery to support devtools in insane dev environment (note the easy dev does this with a shared volume)
-    if [ "${INSANE_DEV_MODE}" = "yes" ]; then
+    if [[ "${INSANE_DEV_MODE}" = "yes" ]]; then
         mkdir /openemr
         rsync --recursive --links /var/www/localhost/htdocs/openemr/sites /openemr/
     fi
@@ -485,19 +862,21 @@ if ${MYSQLKEY} ; then
     chmod 744 /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
 fi
 
-if [ "${AUTHORITY}" = "yes" ] &&
-   [ "${SWARM_MODE}" = "yes" ] &&
-   [ -f /var/www/localhost/htdocs/auto_configure.php ]; then
+if [[ "${AUTHORITY}" = "yes" ]] &&
+   [[ "${SWARM_MODE}" = "yes" ]] &&
+   [[ -f /var/www/localhost/htdocs/auto_configure.php ]]; then
     # Set flag that the docker-leader configuration is complete
     touch /var/www/localhost/htdocs/openemr/sites/docker-completed
     rm -f /var/www/localhost/htdocs/openemr/sites/docker-leader
 fi
 
-# ensure the auto_configure.php script has been removed
+# ensure the auto_configure.php script has been removed (unless in MANUAL_SETUP mode)
+if [[ "${MANUAL_SETUP}" != "yes" ]]; then
 rm -f /var/www/localhost/htdocs/auto_configure.php
+fi
 
-if [ "${REDIS_SERVER}" != "" ] &&
-   [ ! -f /etc/php-redis-configured ]; then
+if [[ "${REDIS_SERVER}" != "" ]] &&
+   [[ ! -f /etc/php-redis-configured ]]; then
 
     # Support the following redis auth:
     #   No username and No password set (using redis default user with nopass set)
@@ -506,11 +885,11 @@ if [ "${REDIS_SERVER}" != "" ] &&
     #   NOTE that only username set is not supported (in this case will ignore the username
     #      and use no username and no password set mode)
     REDIS_PATH="tcp://${REDIS_SERVER}:6379"
-    if [ "${REDIS_USERNAME}" != "" ] &&
-       [ "${REDIS_PASSWORD}" != "" ]; then
+    if [[ "${REDIS_USERNAME}" != "" ]] &&
+       [[ "${REDIS_PASSWORD}" != "" ]]; then
         echo "redis setup with username and password"
         REDIS_PATH="${REDIS_PATH}?auth[user]=${REDIS_USERNAME}&auth[pass]=${REDIS_PASSWORD}"
-    elif [ "${REDIS_PASSWORD}" != "" ]; then
+    elif [[ "${REDIS_PASSWORD}" != "" ]]; then
         echo "redis setup with password"
         # only a password, thus using the default user which redis has set a password for
         REDIS_PATH="${REDIS_PATH}?auth[pass]=${REDIS_PASSWORD}"
@@ -524,18 +903,18 @@ if [ "${REDIS_SERVER}" != "" ] &&
     {
         printf 'session.save_handler = redis\n'
         printf 'session.save_path = "%s"\n' "${REDIS_PATH}"
-    } > "/etc/php${PHP_VERSION_ABBR?}/conf.d/redis-session.ini"
+    } > "/etc/php${PHP_VERSION_ABBR?}/conf.d/99-redis-sessions.ini"
 
     # Verify configuration was applied correctly
     ACTUAL_HANDLER=$(php -r "echo ini_get('session.save_handler');")
     ACTUAL_PATH=$(php -r "echo ini_get('session.save_path');")
 
-    if [ "${ACTUAL_HANDLER}" != "redis" ]; then
+    if [[ "${ACTUAL_HANDLER}" != "redis" ]]; then
         echo "ERROR: Failed to configure session.save_handler. Expected 'redis', got '${ACTUAL_HANDLER}'"
         exit 1
     fi
 
-    if [ "${ACTUAL_PATH}" != "${REDIS_PATH}" ]; then
+    if [[ "${ACTUAL_PATH}" != "${REDIS_PATH}" ]]; then
         echo "ERROR: Failed to configure session.save_path. Expected '${REDIS_PATH}', got '${ACTUAL_PATH}'"
         exit 1
     fi
@@ -546,17 +925,17 @@ if [ "${REDIS_SERVER}" != "" ] &&
     touch /etc/php-redis-configured
 fi
 
-if [ "${XDEBUG_IDE_KEY}" != "" ] ||
-   [ "${XDEBUG_ON}" = 1 ]; then
+if [[ "${XDEBUG_IDE_KEY}" != "" ]] ||
+   [[ "${XDEBUG_ON}" = 1 ]]; then
    sh xdebug.sh
    #also need to turn off opcache since it can not be turned on with xdebug
-   if [ ! -f /etc/php-opcache-jit-configured ]; then
+   if [[ ! -f /etc/php-opcache-jit-configured ]]; then
       echo "opcache.enable=0" >> "/etc/php${PHP_VERSION_ABBR?}/php.ini"
       touch /etc/php-opcache-jit-configured
    fi
 else
    # Configure opcache jit if Xdebug is not being used (note opcache is already on, so just need to add setting(s) to php.ini that are different from the default setting(s))
-   if [ ! -f /etc/php-opcache-jit-configured ]; then
+   if [[ ! -f /etc/php-opcache-jit-configured ]]; then
       {
         echo "opcache.jit=tracing"
         echo "opcache.jit_buffer_size=100M"
@@ -570,7 +949,7 @@ echo "Love OpenEMR? You can now support the project via the open collective:"
 echo " > https://opencollective.com/openemr/donate"
 echo
 
-if [ "${OPERATOR}" = yes ]; then
+if [[ "${OPERATOR}" = "yes" ]]; then
     echo 'Starting apache!'
     exec /usr/sbin/httpd -D FOREGROUND
 fi
