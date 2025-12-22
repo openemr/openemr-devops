@@ -348,11 +348,14 @@ EOF
     
     # Start services (build first, then start to work around Docker Compose context issue)
     log_info "Building and starting containers..."
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to build containers"
         cd - >/dev/null
         return 1
     fi
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         cd - >/dev/null
@@ -367,7 +370,9 @@ EOF
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
         cd "${test_dir}"
+        # shellcheck disable=SC2310  # Log retrieval and cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml logs openemr | tee -a "${LOG_FILE}" || true
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -383,6 +388,7 @@ EOF
 
     # Cleanup
     cd "${test_dir}"
+    # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
     cd - >/dev/null
 
@@ -463,11 +469,13 @@ EOF
     
     # Start services (build first, then start)
     log_info "Building and starting containers..."
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to build containers"
         cd - >/dev/null
         return 1
     fi
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         cd - >/dev/null
@@ -480,6 +488,7 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -500,6 +509,7 @@ EOF
     config_status=$(check_openemr_configured "${container_name}")
 
     # Cleanup
+    # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
     cd - >/dev/null
 
@@ -586,11 +596,13 @@ EOF
     
     # Start services (build first, then start)
     log_info "Building and starting containers..."
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to build containers"
         cd - >/dev/null
         return 1
     fi
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         return 1
@@ -601,6 +613,7 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -614,6 +627,7 @@ EOF
     local https_status
     https_status=$(curl -kfsL -o /dev/null -w "%{http_code}" "https://localhost:8443/" || echo "000")
 
+    # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
     cd - >/dev/null
 
@@ -715,11 +729,13 @@ EOF
     
     # Start services (build first, then start)
     log_info "Building and starting containers..."
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to build containers"
         cd - >/dev/null
         return 1
     fi
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         cd - >/dev/null
@@ -731,6 +747,7 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -745,6 +762,7 @@ EOF
     local redis_marker
     redis_marker=$(docker exec "${container_name}" test -f /etc/php-redis-configured && echo "1" || echo "0")
 
+    # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
     cd - >/dev/null
 
@@ -862,11 +880,13 @@ EOF
     
     # Start services (build first, then start)
     log_info "Building and starting containers..."
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to build containers"
         cd - >/dev/null
         return 1
     fi
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         cd - >/dev/null
@@ -880,6 +900,7 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${leader_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Leader container did not become healthy"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -889,6 +910,7 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${follower_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Follower container did not become healthy"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -910,6 +932,7 @@ EOF
         leader_authority="0"
     fi
 
+    # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
     cd - >/dev/null
 
@@ -1019,11 +1042,13 @@ EOF
     
     # Start services (build first, then start)
     log_info "Building and starting containers..."
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to build containers"
         cd - >/dev/null
         return 1
     fi
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         cd - >/dev/null
@@ -1053,6 +1078,7 @@ EOF
     if [[ "${admin_exit_code}" != "0" ]]; then
         log_test_result "${test_name}" "FAIL" "Admin container failed with exit code: ${admin_exit_code}"
         docker logs "${admin_name}" --tail 50 2>&1 | tee -a "${LOG_FILE}" || true
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -1067,6 +1093,7 @@ EOF
     if ! wait_for_healthy "${worker_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Worker container did not become healthy"
         docker logs "${worker_name}" --tail 50 2>&1 | tee -a "${LOG_FILE}" || true
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -1076,6 +1103,7 @@ EOF
     local config_status
     config_status=$(check_openemr_configured "${worker_name}")
 
+    # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
     cd - >/dev/null
 
@@ -1162,11 +1190,13 @@ EOF
     
     # Start services (build first, then start)
     log_info "Building and starting containers..."
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to build containers"
         cd - >/dev/null
         return 1
     fi
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         cd - >/dev/null
@@ -1178,6 +1208,7 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -1191,6 +1222,7 @@ EOF
     local opcache_disabled
     opcache_disabled=$(docker exec "${container_name}" grep -q "opcache.enable=0" /etc/php84/php.ini 2>/dev/null && echo "1" || echo "0")
 
+    # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
     cd - >/dev/null
 
@@ -1278,11 +1310,13 @@ EOF
     
     # Start services (build first, then start)
     log_info "Building and starting containers..."
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to build containers"
         cd - >/dev/null
         return 1
     fi
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         cd - >/dev/null
@@ -1294,6 +1328,7 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -1307,6 +1342,7 @@ EOF
     local can_write
     can_write=$(docker exec "${container_name}" touch /var/www/localhost/htdocs/openemr/sites/default/documents/test.txt 2>/dev/null && echo "1" || echo "0")
 
+    # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
     cd - >/dev/null
 
@@ -1399,11 +1435,13 @@ EOF
     
     # Step 1: Start fresh installation and wait for it to complete
     log_info "Step 1: Starting fresh installation..."
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to build containers"
         cd - >/dev/null
         return 1
     fi
+    # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
         return 1
@@ -1415,6 +1453,7 @@ EOF
     # shellcheck disable=SC2310
     if ! wait_for_healthy "${container_name}" 600; then
         log_test_result "${test_name}" "FAIL" "Container did not become healthy"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -1436,6 +1475,7 @@ EOF
 
     if [[ "${config_status}" != "1" ]]; then
         log_test_result "${test_name}" "FAIL" "OpenEMR was not configured"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -1471,6 +1511,7 @@ EOF
     if [[ "${old_version}" != "1" ]]; then
         log_test_result "${test_name}" "FAIL" "Failed to set old version marker"
         cd "${test_dir}"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -1485,6 +1526,7 @@ EOF
     # Step 5: Restart container to trigger upgrade check
     log_info "Step 4: Restarting container to trigger upgrade..."
     cd "${test_dir}"
+    # shellcheck disable=SC2310  # Restart may fail if container is not running, which is acceptable
     run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml restart openemr 2>&1 | tee -a "${LOG_FILE}" || true
     cd - >/dev/null
     
@@ -1497,6 +1539,7 @@ EOF
         log_test_result "${test_name}" "FAIL" "Container did not become healthy after restart"
         docker logs "${container_name}" --tail 50 2>&1 | tee -a "${LOG_FILE}" || true
         cd "${test_dir}"
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
         run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
@@ -1547,6 +1590,7 @@ EOF
     fi
 
     cd "${test_dir}"
+    # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
     cd - >/dev/null
 
