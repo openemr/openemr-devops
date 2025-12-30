@@ -937,12 +937,12 @@ if [[ "${OPERATOR}" = "yes" ]]; then
         TOTAL_DURATION=$((SCRIPT_END_TIME - SCRIPT_START_TIME))
     fi
     echo "[TIMING] Total script execution time: ${TOTAL_DURATION}s before PHP-FPM/Apache start"
-                echo 'Starting PHP-FPM...'
-                # Create PHP-FPM log directory (needed even if /var/log is a volume)
-                mkdir -p /var/log/php-fpm
-                # Start PHP-FPM in the background (not with exec since we need Apache to also run)
-                # Use -c flag to specify php.ini location instead of PHPRC environment variable
-                /usr/local/bin/php-fpm -c /usr/local/etc/php/php.ini --fpm-config /usr/local/etc/php-fpm.conf --nodaemonize &
+    echo 'Starting PHP-FPM...'
+    # Create PHP-FPM log directory (needed even if /var/log is a volume)
+    mkdir -p /var/log/php-fpm
+    # Start PHP-FPM in the background (not with exec since we need Apache to also run)
+    # Use -c flag to specify php.ini location instead of PHPRC environment variable
+    /usr/local/bin/php-fpm -c /usr/local/etc/php/php.ini --fpm-config /usr/local/etc/php-fpm.conf --nodaemonize &
     PHP_FPM_PID=$!
     
     # Wait a moment for PHP-FPM to start
