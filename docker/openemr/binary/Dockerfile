@@ -104,10 +104,6 @@ RUN ARCH_SUFFIX="${TARGETARCH}" \
     && mv php-cli /usr/local/bin/php \
     && ln -sf /usr/local/bin/php /usr/local/bin/php-cli
 
-# Install Composer (PHP dependency manager) for OpenEMR package installation
-# Required by the CI/CD test suite
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
-
 # ============================================================================
 # OPENEMR PHAR INSTALLATION
 # ============================================================================
