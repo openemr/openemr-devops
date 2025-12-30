@@ -755,8 +755,15 @@ EOF
 
     # Check if Redis session handler is configured
     # Redis config is written to conf.d/99-redis-sessions.ini, not php.ini directly
+    # Binary container uses /usr/local/etc/php/conf.d/, standard containers use /etc/php84/conf.d/
+    local redis_config_path
+    if [[ "${VERSION}" = "binary" ]]; then
+        redis_config_path="/usr/local/etc/php/conf.d/99-redis-sessions.ini"
+    else
+        redis_config_path="/etc/php84/conf.d/99-redis-sessions.ini"
+    fi
     local redis_configured
-    redis_configured=$(docker exec "${container_name}" grep -q "session.save_handler = redis" /etc/php84/conf.d/99-redis-sessions.ini 2>/dev/null && echo "1" || echo "0")
+    redis_configured=$(docker exec "${container_name}" grep -q "session.save_handler = redis" "${redis_config_path}" 2>/dev/null && echo "1" || echo "0")
 
     # Check if php-redis-configured marker exists
     local redis_marker
@@ -1212,6 +1219,15 @@ EOF
         run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
         cd - >/dev/null
         return 1
+    fi
+
+    # Binary container doesn't support XDebug (static binaries don't support dynamic extensions)
+    if [[ "${VERSION}" = "binary" ]]; then
+        # shellcheck disable=SC2310  # Cleanup should not fail the test
+        run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
+        cd - >/dev/null
+        log_test_result "${test_name}" "SKIP" "XDebug not supported in binary container (static binaries)"
+        return 0
     fi
 
     # Check if XDebug is configured
