@@ -28,6 +28,11 @@ ARG PHP_VERSION=8.5
 ENV OPENEMR_VERSION=${OPENEMR_VERSION}
 ENV PHP_VERSION=${PHP_VERSION}
 
+# Architecture detection - Docker automatically provides TARGETARCH
+# TARGETARCH values: amd64 (x86_64), arm64
+# Map to binary release naming: amd64 -> x86_64, arm64 -> arm64
+ARG TARGETARCH
+
 # ============================================================================
 # SYSTEM PACKAGE INSTALLATION
 # ============================================================================
@@ -85,9 +90,11 @@ RUN usermod -u 1000 apache
 # Download and install static PHP binaries from openemr-static-binary-forge
 # These binaries are statically compiled and include all necessary extensions
 # We need php-fpm (for FastCGI) and php-cli (for command-line scripts like auto_configure.php)
-RUN cd /tmp \
-    && curl -L "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_arm64-php85-openemr-v7_0_4-arm64-${BINARY_RELEASE_DATE}/php-fpm-v7_0_4-linux-arm64" -o php-fpm \
-    && curl -L "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_arm64-php85-openemr-v7_0_4-arm64-${BINARY_RELEASE_DATE}/php-cli-v7_0_4-linux-arm64" -o php-cli \
+# Architecture mapping: amd64 -> x86_64, arm64 -> arm64
+RUN ARCH_SUFFIX=$(case "${TARGETARCH}" in amd64) echo "x86_64" ;; arm64) echo "arm64" ;; *) echo "${TARGETARCH}" ;; esac) \
+    && cd /tmp \
+    && curl -L "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_${ARCH_SUFFIX}-php85-openemr-v${OPENEMR_VERSION}-${ARCH_SUFFIX}-${BINARY_RELEASE_DATE}/php-fpm-v${OPENEMR_VERSION}-linux-${ARCH_SUFFIX}" -o php-fpm \
+    && curl -L "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_${ARCH_SUFFIX}-php85-openemr-v${OPENEMR_VERSION}-${ARCH_SUFFIX}-${BINARY_RELEASE_DATE}/php-cli-v${OPENEMR_VERSION}-linux-${ARCH_SUFFIX}" -o php-cli \
     && chmod +x php-fpm php-cli \
     && mv php-fpm /usr/local/bin/php-fpm \
     && mv php-cli /usr/local/bin/php \
@@ -101,8 +108,10 @@ RUN cd /tmp \
 # Note: This is a BUILD-TIME operation extracting to a clean /tmp location.
 # User data paths (sites/*/documents, sites/*/sqlconf.php, etc.) are preserved
 # via volumes at runtime and never overwritten by this build-time extraction.
-RUN cd /tmp \
-    && curl -L "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_arm64-php85-openemr-v7_0_4-arm64-${BINARY_RELEASE_DATE}/openemr.phar" -o openemr.phar \
+# Architecture mapping: amd64 -> x86_64, arm64 -> arm64
+RUN ARCH_SUFFIX=$(case "${TARGETARCH}" in amd64) echo "x86_64" ;; arm64) echo "arm64" ;; *) echo "${TARGETARCH}" ;; esac) \
+    && cd /tmp \
+    && curl -L "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_${ARCH_SUFFIX}-php85-openemr-v${OPENEMR_VERSION}-${ARCH_SUFFIX}-${BINARY_RELEASE_DATE}/openemr.phar" -o openemr.phar \
     && mkdir -p /tmp/openemr \
     && /usr/local/bin/php -d memory_limit=512M -r "try { \$phar = new Phar('openemr.phar'); \$phar->extractTo('/tmp/openemr'); } catch (Exception \$e) { echo 'Error: ' . \$e->getMessage() . PHP_EOL; exit(1); }" \
     && rm openemr.phar
@@ -157,9 +166,6 @@ VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 # Set Apache log directory environment variable
 ENV APACHE_LOG_DIR=/var/log/apache2
 
-# Set PHPRC to tell PHP where to find php.ini (for static binaries)
-ENV PHPRC=/usr/local/etc/php
-
 # Copy Apache virtual host configuration for OpenEMR
 COPY openemr.conf /etc/apache2/conf.d/
 
@@ -169,7 +175,6 @@ RUN mkdir -p /usr/local/etc/php-fpm.d
 COPY php-fpm.d/www.conf /usr/local/etc/php-fpm.d/www.conf
 
 # Copy PHP configuration file with OpenEMR-optimized settings
-# Note: Static binaries may use different ini locations, but we'll provide one
 COPY php.ini /usr/local/etc/php/php.ini
 
 # ============================================================================

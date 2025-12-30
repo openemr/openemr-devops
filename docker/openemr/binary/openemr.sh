@@ -941,7 +941,8 @@ if [[ "${OPERATOR}" = "yes" ]]; then
                 # Create PHP-FPM log directory (needed even if /var/log is a volume)
                 mkdir -p /var/log/php-fpm
                 # Start PHP-FPM in the background (not with exec since we need Apache to also run)
-                /usr/local/bin/php-fpm --fpm-config /usr/local/etc/php-fpm.conf --nodaemonize &
+                # Use -c flag to specify php.ini location instead of PHPRC environment variable
+                /usr/local/bin/php-fpm -c /usr/local/etc/php/php.ini --fpm-config /usr/local/etc/php-fpm.conf --nodaemonize &
     PHP_FPM_PID=$!
     
     # Wait a moment for PHP-FPM to start

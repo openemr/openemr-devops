@@ -83,7 +83,7 @@ See the main [OpenEMR Docker documentation](../README.md) for a complete list of
 ## Limitations
 
 - **XDebug Not Supported**: XDebug cannot be used with static PHP binaries
-- **Architecture Specific**: The container is currently built for binaries made using the [linux/arm64 architecture build](https://github.com/Jmevorach/openemr-static-binary-forge/tree/main/linux_arm64).
+- **Architecture Support**: The container supports multiple architectures (amd64/x86_64, arm64) and automatically detects the build architecture. Binary releases must be available for the target architecture in the [openemr-static-binary-forge](https://github.com/Jmevorach/openemr-static-binary-forge) repository.
 - **PHP Version Fixed**: The PHP version is determined by the binary release (currently PHP 8.5)
 
 ## Technical Details
@@ -115,7 +115,7 @@ See the main [OpenEMR Docker documentation](../README.md) for a complete list of
 | PHP-FPM | System service | Explicitly started |
 | XDebug Support | Yes | No |
 | Build Time | Longer (builds from source) | Shorter (uses pre-built binaries) |
-| Architecture | Multi-arch support | Currently arm64 only |
+| Architecture | Multi-arch support | Multi-arch support (amd64/x86_64, arm64) |
 
 ## Performance Benchmarks
 
