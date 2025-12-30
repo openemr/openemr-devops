@@ -29,8 +29,8 @@ ENV OPENEMR_VERSION=${OPENEMR_VERSION}
 ENV PHP_VERSION=${PHP_VERSION}
 
 # Architecture detection - Docker automatically provides TARGETARCH
-# TARGETARCH values: amd64 (x86_64), arm64
-# Map to binary release naming: amd64 -> x86_64, arm64 -> arm64
+# TARGETARCH values: amd64, arm64
+# Binary release naming uses: amd64 (not x86_64), arm64
 ARG TARGETARCH
 
 # ============================================================================
@@ -90,11 +90,15 @@ RUN usermod -u 1000 apache
 # Download and install static PHP binaries from openemr-static-binary-forge
 # These binaries are statically compiled and include all necessary extensions
 # We need php-fpm (for FastCGI) and php-cli (for command-line scripts like auto_configure.php)
-# Architecture mapping: amd64 -> x86_64, arm64 -> arm64
-RUN ARCH_SUFFIX=$(case "${TARGETARCH}" in amd64) echo "x86_64" ;; arm64) echo "arm64" ;; *) echo "${TARGETARCH}" ;; esac) \
+# Architecture naming: amd64 and arm64 are used directly in release URLs and filenames
+RUN ARCH_SUFFIX="${TARGETARCH}" \
     && cd /tmp \
-    && curl -L "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_${ARCH_SUFFIX}-php85-openemr-v${OPENEMR_VERSION}-${ARCH_SUFFIX}-${BINARY_RELEASE_DATE}/php-fpm-v${OPENEMR_VERSION}-linux-${ARCH_SUFFIX}" -o php-fpm \
-    && curl -L "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_${ARCH_SUFFIX}-php85-openemr-v${OPENEMR_VERSION}-${ARCH_SUFFIX}-${BINARY_RELEASE_DATE}/php-cli-v${OPENEMR_VERSION}-linux-${ARCH_SUFFIX}" -o php-cli \
+    && curl -fSL "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_${ARCH_SUFFIX}-php85-openemr-v${OPENEMR_VERSION}-${ARCH_SUFFIX}-${BINARY_RELEASE_DATE}/php-fpm-v${OPENEMR_VERSION}-linux-${ARCH_SUFFIX}" -o php-fpm \
+    && test -s php-fpm || (echo "ERROR: php-fpm download failed - file is empty or missing" && exit 1) \
+    && test $(stat -f%z php-fpm 2>/dev/null || stat -c%s php-fpm 2>/dev/null || echo 0) -gt 1000000 || (echo "ERROR: php-fpm download appears invalid (file too small)" && exit 1) \
+    && curl -fSL "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_${ARCH_SUFFIX}-php85-openemr-v${OPENEMR_VERSION}-${ARCH_SUFFIX}-${BINARY_RELEASE_DATE}/php-cli-v${OPENEMR_VERSION}-linux-${ARCH_SUFFIX}" -o php-cli \
+    && test -s php-cli || (echo "ERROR: php-cli download failed - file is empty or missing" && exit 1) \
+    && test $(stat -f%z php-cli 2>/dev/null || stat -c%s php-cli 2>/dev/null || echo 0) -gt 1000000 || (echo "ERROR: php-cli download appears invalid (file too small)" && exit 1) \
     && chmod +x php-fpm php-cli \
     && mv php-fpm /usr/local/bin/php-fpm \
     && mv php-cli /usr/local/bin/php \
@@ -108,10 +112,12 @@ RUN ARCH_SUFFIX=$(case "${TARGETARCH}" in amd64) echo "x86_64" ;; arm64) echo "a
 # Note: This is a BUILD-TIME operation extracting to a clean /tmp location.
 # User data paths (sites/*/documents, sites/*/sqlconf.php, etc.) are preserved
 # via volumes at runtime and never overwritten by this build-time extraction.
-# Architecture mapping: amd64 -> x86_64, arm64 -> arm64
-RUN ARCH_SUFFIX=$(case "${TARGETARCH}" in amd64) echo "x86_64" ;; arm64) echo "arm64" ;; *) echo "${TARGETARCH}" ;; esac) \
+# Architecture naming: amd64 and arm64 are used directly in release URLs
+RUN ARCH_SUFFIX="${TARGETARCH}" \
     && cd /tmp \
-    && curl -L "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_${ARCH_SUFFIX}-php85-openemr-v${OPENEMR_VERSION}-${ARCH_SUFFIX}-${BINARY_RELEASE_DATE}/openemr.phar" -o openemr.phar \
+    && curl -fSL "https://github.com/Jmevorach/openemr-static-binary-forge/releases/download/linux_${ARCH_SUFFIX}-php85-openemr-v${OPENEMR_VERSION}-${ARCH_SUFFIX}-${BINARY_RELEASE_DATE}/openemr.phar" -o openemr.phar \
+    && test -s openemr.phar || (echo "ERROR: openemr.phar download failed - file is empty or missing" && exit 1) \
+    && test $(stat -f%z openemr.phar 2>/dev/null || stat -c%s openemr.phar 2>/dev/null || echo 0) -gt 10000000 || (echo "ERROR: openemr.phar download appears invalid (file too small, expected >10MB)" && exit 1) \
     && mkdir -p /tmp/openemr \
     && /usr/local/bin/php -d memory_limit=512M -r "try { \$phar = new Phar('openemr.phar'); \$phar->extractTo('/tmp/openemr'); } catch (Exception \$e) { echo 'Error: ' . \$e->getMessage() . PHP_EOL; exit(1); }" \
     && rm openemr.phar
