@@ -28,7 +28,21 @@ DOCKERFILE_CONTEXT="${DOCKERFILE_CONTEXT:-${DOCKER_CONTEXT:-../../docker/openemr
 IMAGE_TAG="${IMAGE_TAG:-openemr:7.0.5-test}"
 KEEP_CONTAINERS="${KEEP_CONTAINERS:-no}"
 VERBOSE="${VERBOSE:-no}"
-VERSION="${VERSION:-7.0.5}"
+
+# Auto-detect container type from DOCKERFILE_CONTEXT path if VERSION not explicitly set
+# This allows the test suite to automatically handle binary and flex containers
+# If VERSION is already set (via environment variable or --version flag), use that value
+# Otherwise, detect from the DOCKERFILE_CONTEXT path
+if [[ -z "${VERSION:-}" ]]; then
+    if [[ "${DOCKERFILE_CONTEXT}" == *"/binary"* ]]; then
+        VERSION="binary"
+    elif [[ "${DOCKERFILE_CONTEXT}" == *"/flex"* ]]; then
+        VERSION="flex"
+    else
+        # Extract version number from path (e.g., ../../docker/openemr/7.0.5 -> 7.0.5)
+        VERSION=$(basename "${DOCKERFILE_CONTEXT}" 2>/dev/null || echo "7.0.5")
+    fi
+fi
 
 # Flex container repository configuration (defaults to official OpenEMR repo)
 # These can be overridden via environment variables when testing flex container
@@ -1235,8 +1249,14 @@ EOF
     xdebug_configured=$(docker exec "${container_name}" php -m 2>/dev/null | grep -q xdebug && echo "1" || echo "0")
 
     # Check if opcache is disabled (XDebug and opcache are incompatible) - use correct php.ini path
+    local php_ini_path
+    if [[ "${VERSION}" = "binary" ]]; then
+        php_ini_path="/usr/local/etc/php/php.ini"
+    else
+        php_ini_path="/etc/php84/php.ini"
+    fi
     local opcache_disabled
-    opcache_disabled=$(docker exec "${container_name}" grep -q "opcache.enable=0" /etc/php84/php.ini 2>/dev/null && echo "1" || echo "0")
+    opcache_disabled=$(docker exec "${container_name}" grep -q "opcache.enable=0" "${php_ini_path}" 2>/dev/null && echo "1" || echo "0")
 
     # shellcheck disable=SC2310  # Cleanup should not fail the test
     run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml down --volumes >/dev/null 2>&1 || true
