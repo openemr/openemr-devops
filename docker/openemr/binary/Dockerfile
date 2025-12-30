@@ -157,6 +157,9 @@ VOLUME [ "/etc/letsencrypt/", "/etc/ssl" ]
 # Set Apache log directory environment variable
 ENV APACHE_LOG_DIR=/var/log/apache2
 
+# Set PHPRC to tell PHP where to find php.ini (for static binaries)
+ENV PHPRC=/usr/local/etc/php
+
 # Copy Apache virtual host configuration for OpenEMR
 COPY openemr.conf /etc/apache2/conf.d/
 
