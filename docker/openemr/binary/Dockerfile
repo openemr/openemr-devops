@@ -104,6 +104,10 @@ RUN ARCH_SUFFIX="${TARGETARCH}" \
     && mv php-cli /usr/local/bin/php \
     && ln -sf /usr/local/bin/php /usr/local/bin/php-cli
 
+# Install Composer (PHP dependency manager) for OpenEMR package installation
+# Required by the CI/CD test suite
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
+
 # ============================================================================
 # OPENEMR PHAR INSTALLATION
 # ============================================================================
@@ -121,6 +125,18 @@ RUN ARCH_SUFFIX="${TARGETARCH}" \
     && mkdir -p /tmp/openemr \
     && /usr/local/bin/php -d memory_limit=512M -r "try { \$phar = new Phar('openemr.phar'); \$phar->extractTo('/tmp/openemr'); } catch (Exception \$e) { echo 'Error: ' . \$e->getMessage() . PHP_EOL; exit(1); }" \
     && rm openemr.phar
+
+# Download tests directory from GitHub to match the PHAR version
+# GitHub tag format is v7_0_4 (with v prefix and underscores)
+# Note: GitHub archives strip the 'v' prefix, so openemr-v7_0_4 becomes openemr-7_0_4
+RUN OPENEMR_TAG="v${OPENEMR_VERSION}" \
+    && cd /tmp \
+    && curl -fSL "https://github.com/openemr/openemr/archive/refs/tags/${OPENEMR_TAG}.tar.gz" -o openemr-source.tar.gz \
+    && OPENEMR_DIR="openemr-${OPENEMR_VERSION}" \
+    && tar -xzf openemr-source.tar.gz \
+    && test -d "${OPENEMR_DIR}/tests" || (echo "ERROR: tests directory not found in ${OPENEMR_DIR}" && exit 1) \
+    && mv "${OPENEMR_DIR}/tests" /tmp/openemr/tests \
+    && rm -rf "${OPENEMR_DIR}" openemr-source.tar.gz
 
 # ============================================================================
 # OPENEMR SETUP AND PERMISSIONS
