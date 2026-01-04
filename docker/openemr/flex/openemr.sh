@@ -550,54 +550,69 @@ if [[ "${NEED_COMPOSER_BUILD}" = "true" ]] || [[ "${NEED_NPM_BUILD}" = "true" ]]
 
     # Install PHP dependencies if needed
     if [[ "${NEED_COMPOSER_BUILD}" = "true" ]]; then
+        # Try to configure a GitHub token for composer to avoid rate limiting.
+        # Returns 0 on success, 1 on failure.
+        try_github_token() {
+            local token="$1"
+            local token_desc="$2"
+
+            local rate_limit_response
+            local rate_limit
+            local rate_limit_message
+
+            rate_limit_response=$(curl -s -H "Authorization: token ${token}" https://api.github.com/rate_limit)
+            rate_limit=$(jq '.rate.remaining' <<< "${rate_limit_response}")
+            rate_limit_message=$(jq '.message' <<< "${rate_limit_response}")
+
+            printf 'Message received from api request is "%s"\n' "${rate_limit_message}"
+            printf 'Number of github api requests remaining is "%s"\n' "${rate_limit}"
+
+            # Validate the response
+            if [[ ${rate_limit_message} = '"Bad credentials"' ]]; then
+                echo "${token_desc} is bad, so did not work"
+                return 1
+            elif [[ -z ${rate_limit} ]]; then
+                echo "github token rate limit is empty, so did not work"
+                return 1
+            elif [[ ${rate_limit} = *[!0-9]* ]]; then
+                printf 'github token rate limit is not an integer ("%s")\n' "${rate_limit}"
+                return 1
+            elif (( rate_limit < 100 )); then
+                echo "${token_desc} rate limit is now < 100, so did not work"
+                return 1
+            fi
+
+            # Token is valid, configure composer
+            if composer config --global --auth github-oauth.github.com "${token}"; then
+                echo "${token_desc} worked"
+                return 0
+            fi
+
+            echo "${token_desc} did not work"
+            return 1
+        }
+
+        token_configured=false
+
         # if there is a raw github composer token supplied, then try to use it
-        if [[ "${GITHUB_COMPOSER_TOKEN}" != "" ]]; then
-            echo "trying raw github composer token"
-            githubTokenRateLimitRequest=$(curl -H "Authorization: token ${GITHUB_COMPOSER_TOKEN}" https://api.github.com/rate_limit)
-            githubTokenRateLimit=$(echo "${githubTokenRateLimitRequest}" | jq '.rate.remaining')
-            githubTokenRateLimitMessage=$(echo "${githubTokenRateLimitRequest}" | jq '.message')
-            echo "Number of github api requests remaining is ${githubTokenRateLimit}";
-            printf 'Message received from api request is "%s"\n' "${githubTokenRateLimitMessage}"
-            if [[ "${githubTokenRateLimit}" -gt 100 ]]; then
-                if composer config --global --auth github-oauth.github.com "${GITHUB_COMPOSER_TOKEN}"; then
-                    echo "raw github composer token worked"
-                    rawToken="pass"
-                else
-                    echo "raw github composer token did not work"
-                fi
-            else
-                if [[ "${githubTokenRateLimitMessage}" = '"Bad credentials"' ]]; then
-                    echo "raw github composer token is bad, so did not work"
-                else
-                    echo "raw github composer token rate limit is now < 100, so did not work"
-                fi
+        if [[ -n ${GITHUB_COMPOSER_TOKEN} ]]; then
+            echo 'trying raw github composer token'
+            # shellcheck disable=SC2310
+            if try_github_token "${GITHUB_COMPOSER_TOKEN}" 'raw github composer token'; then
+                token_configured=true
             fi
         fi
+
         # if there is no raw github composer token supplied or it was invalid, try a base64 encoded one (if it was supplied)
-        if [[ "${GITHUB_COMPOSER_TOKEN_ENCODED}" != "" ]]; then
-            if [[ "${rawToken}" != "pass" ]]; then
-                echo "trying encoded github composer token"
-                githubToken=$(echo "${GITHUB_COMPOSER_TOKEN_ENCODED}" | base64 -d)
-                githubTokenRateLimitRequest=$(curl -H "Authorization: token ${githubToken}" https://api.github.com/rate_limit)
-                githubTokenRateLimit=$(echo "${githubTokenRateLimitRequest}" | jq '.rate.remaining')
-                githubTokenRateLimitMessage=$(echo "${githubTokenRateLimitRequest}" | jq '.message')
-                echo "Number of github api requests remaining is ${githubTokenRateLimit}";
-                printf 'Message received from api request is "%s"\n' "${githubTokenRateLimitMessage}"
-                if [[ "${githubTokenRateLimit}" -gt 100 ]]; then
-                    if composer config --global --auth github-oauth.github.com "${githubToken}"; then
-                        echo "encoded github composer token worked"
-                    else
-                        echo "encoded github composer token did not work"
-                    fi
-                else
-                    if [[ "${githubTokenRateLimitMessage}" = '"Bad credentials"' ]]; then
-                        echo "encoded github composer token is bad, so did not work"
-                    else
-                        echo "encoded github composer token rate limit is now < 100, so did not work"
-                    fi
-                fi
+        if [[ ${token_configured} != true && -n ${GITHUB_COMPOSER_TOKEN_ENCODED} ]]; then
+            echo 'trying encoded github composer token'
+            decoded_token=$(base64 -d <<< "${GITHUB_COMPOSER_TOKEN_ENCODED}")
+            # shellcheck disable=SC2310
+            if try_github_token "${decoded_token}" 'encoded github composer token'; then
+                token_configured=true
             fi
         fi
+
         # install php dependencies
         if [[ "${DEVELOPER_TOOLS}" = "yes" ]]; then
             composer install
