@@ -672,20 +672,11 @@ handle_swarm_mode
 log_timing "1-SwarmMode"
 
 # Step 2: Configure SSL/TLS certificates
-# Leaders generate certificates, followers wait for them or generate their own if needed
+# Leaders always generate certs; followers only if certs don't exist
 # Run in parallel with certificate management since they're independent operations
-if [[ "${AUTHORITY}" = "yes" ]]; then
+if [[ "${AUTHORITY}" = "yes" || ! -f /etc/ssl/certs/webserver.cert.pem || ! -f /etc/ssl/private/webserver.key.pem ]]; then
     sh ssl.sh &
     SSL_PID=$!
-    SSL_IS_LEADER=1
-else
-    # Followers: try to generate self-signed certs if they don't exist
-    # This handles cases where /etc/ssl is not shared between containers
-    if [[ ! -f /etc/ssl/certs/webserver.cert.pem ]] || [[ ! -f /etc/ssl/private/webserver.key.pem ]]; then
-        sh ssl.sh &
-        SSL_PID=$!
-        SSL_IS_LEADER=0
-    fi
 fi
 
 # Step 3: Check for upgrades
@@ -710,15 +701,12 @@ manage_certificates &
 CERT_COPY_PID=$!
 
 # Wait for both SSL generation and certificate copying to complete
-if [[ -n "${SSL_PID:-}" ]]; then
-    # For leaders, ssl.sh failure should fail the script; for followers, tolerate failures
-    if [[ "${SSL_IS_LEADER:-0}" = "1" ]]; then
-        wait "${SSL_PID}"
-    else
-        wait "${SSL_PID}" 2>/dev/null || echo "Warning: Could not configure SSL certificates (may be read-only)"
-    fi
-    unset SSL_PID SSL_IS_LEADER
+# For leaders, ssl.sh failure should fail the script; for followers, tolerate failures
+if [[ -n "${SSL_PID:-}" ]] && ! wait "${SSL_PID}" 2>/dev/null; then
+    [[ "${AUTHORITY}" = "yes" ]] && exit 1
+    echo "Warning: Could not configure SSL certificates (may be read-only)"
 fi
+unset SSL_PID
 wait "${CERT_COPY_PID}" 2>/dev/null || true
 unset CERT_COPY_PID
 

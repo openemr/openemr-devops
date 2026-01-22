@@ -448,18 +448,10 @@ handle_swarm_mode
 # ============================================================================
 # Configure SSL/TLS certificates. In swarm mode, followers may generate
 # their own self-signed certs if /etc/ssl is not shared.
-if [[ "${AUTHORITY}" = "yes" ]]; then
+# Leaders always generate certs; followers only if certs don't exist
+if [[ "${AUTHORITY}" = "yes" || ! -f /etc/ssl/certs/webserver.cert.pem || ! -f /etc/ssl/private/webserver.key.pem ]]; then
     sh ssl.sh &
-    # shellcheck disable=SC2034  # SSL_PID stored for potential future use (wait on background process)
     SSL_PID=$!
-else
-    # Followers: try to generate self-signed certs if they don't exist
-    # This handles cases where /etc/ssl is not shared between containers
-    if [[ ! -f /etc/ssl/certs/webserver.cert.pem ]] || [[ ! -f /etc/ssl/private/webserver.key.pem ]]; then
-        sh ssl.sh &
-        # shellcheck disable=SC2034  # SSL_PID stored for potential future use (wait on background process)
-        SSL_PID=$!
-    fi
 fi
 
 # ============================================================================
@@ -972,6 +964,17 @@ else
       touch /etc/php-opcache-jit-configured
    fi
 fi
+
+# ============================================================================
+# WAIT FOR SSL CERTIFICATE GENERATION
+# ============================================================================
+# Ensure SSL certificate generation completes before starting Apache.
+# For leaders, ssl.sh failure should fail the script; for followers, tolerate failures.
+if [[ -n "${SSL_PID:-}" ]] && ! wait "${SSL_PID}" 2>/dev/null; then
+    [[ "${AUTHORITY}" = "yes" ]] && exit 1
+    echo "Warning: Could not configure SSL certificates (may be read-only)"
+fi
+unset SSL_PID
 
 echo
 echo "Love OpenEMR? You can now support the project via the open collective:"
