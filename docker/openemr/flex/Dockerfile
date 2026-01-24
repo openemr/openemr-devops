@@ -228,9 +228,10 @@ COPY openemr.conf /etc/apache2/conf.d/
 # Copy main startup and configuration scripts
 # - openemr.sh: Main container startup script (handles setup, upgrades, Apache)
 # - ssl.sh: SSL/TLS certificate management script
-# - xdebug.sh: XDebug configuration script (for development)
+# - xdebug.sh: XDebug configuration script (for development debugging)
+# - pcov.sh: PCOV configuration script (for code coverage)
 # - auto_configure.php: Automated OpenEMR installation script
-COPY openemr.sh ssl.sh xdebug.sh auto_configure.php /var/www/localhost/htdocs/
+COPY openemr.sh ssl.sh xdebug.sh pcov.sh auto_configure.php /var/www/localhost/htdocs/
 
 # Copy admin unlock utilities (for password recovery)
 COPY utilities/unlock_admin.php utilities/unlock_admin.sh /root/
@@ -238,7 +239,7 @@ COPY utilities/unlock_admin.php utilities/unlock_admin.sh /root/
 # Set script permissions:
 # - Executable scripts: 500 (read and execute for owner only)
 # - PHP scripts: 000 (no access) - prevents accidental execution until enabled
-RUN chmod 500 openemr.sh ssl.sh xdebug.sh /root/unlock_admin.sh \
+RUN chmod 500 openemr.sh ssl.sh xdebug.sh pcov.sh /root/unlock_admin.sh \
     && chmod 000 auto_configure.php /root/unlock_admin.php
 
 # ============================================================================

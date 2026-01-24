@@ -34,7 +34,8 @@
 #     - DEVELOPER_TOOLS: 'yes' to install development tools
 #     - GITHUB_COMPOSER_TOKEN: GitHub token for composer
 #     - REDIS_SERVER: Redis server address
-#     - XDEBUG_ON: Enable XDebug
+#     - PCOV_ON: Enable PCOV for code coverage (mutually exclusive with XDebug)
+#     - XDEBUG_ON: Enable XDebug for debugging
 #
 # Usage:
 #   Called automatically by Docker CMD, but can be run manually for testing
@@ -104,12 +105,19 @@ SWARM_MODE="${SWARM_MODE:-no}"
   "${INSANE_DEV_MODE:=no}" \
   "${K8S:=}" \
   "${MANUAL_SETUP:=no}" \
+  "${PCOV_ON:=no}" \
   "${REDIS_PASSWORD:=}" \
   "${REDIS_SERVER:=}" \
   "${REDIS_USERNAME:=}" \
   "${SWARM_MODE:=no}" \
   "${XDEBUG_IDE_KEY:=}" \
   "${XDEBUG_ON:=no}"
+
+# Normalize PCOV_ON to "true" or "false" for simpler checks
+case "${PCOV_ON,,}" in
+    1|yes|true) PCOV_ON=true ;;
+    *) PCOV_ON=false ;;
+esac
 
 auto_setup() {
     prepareVariables
@@ -946,16 +954,37 @@ if [[ "${REDIS_SERVER}" != "" ]] &&
     touch /etc/php-redis-configured
 fi
 
-if [[ "${XDEBUG_IDE_KEY}" != "" ]] ||
-   [[ "${XDEBUG_ON}" = 1 ]]; then
+# ============================================================================
+# PHP EXTENSION CONFIGURATION (Coverage/Debug/Performance)
+# ============================================================================
+# Configure PHP extensions based on the requested mode:
+#   - PCOV_ON=1: Lightweight code coverage (pcov), opcache enabled but no JIT
+#   - XDEBUG_ON/XDEBUG_IDE_KEY: Full debugging (xdebug), opcache disabled
+#   - Neither: Maximum performance with opcache JIT
+#
+# Note: PCOV and XDebug are mutually exclusive. PCOV takes precedence if both
+# are set, as it's typically used in CI where only coverage is needed.
+
+if [[ "${PCOV_ON}" = true ]]; then
+   # PCOV mode: lightweight coverage collection
+   # PCOV works with opcache but NOT with JIT (JIT interferes with coverage)
+   sh pcov.sh
+   if [[ ! -f /etc/php-opcache-jit-configured ]]; then
+      # Keep opcache enabled but disable JIT for coverage accuracy
+      echo "opcache.jit=off" >> "/etc/php${PHP_VERSION_ABBR?}/php.ini"
+      touch /etc/php-opcache-jit-configured
+   fi
+elif [[ "${XDEBUG_IDE_KEY}" != "" ]] || [[ "${XDEBUG_ON}" = 1 ]]; then
+   # XDebug mode: full debugging and profiling support
    sh xdebug.sh
-   #also need to turn off opcache since it can not be turned on with xdebug
+   # XDebug requires opcache to be disabled
    if [[ ! -f /etc/php-opcache-jit-configured ]]; then
       echo "opcache.enable=0" >> "/etc/php${PHP_VERSION_ABBR?}/php.ini"
       touch /etc/php-opcache-jit-configured
    fi
 else
-   # Configure opcache jit if Xdebug is not being used (note opcache is already on, so just need to add setting(s) to php.ini that are different from the default setting(s))
+   # Performance mode: opcache with JIT for maximum speed
+   # Note: opcache is already enabled, just adding JIT settings
    if [[ ! -f /etc/php-opcache-jit-configured ]]; then
       {
         echo "opcache.jit=tracing"
