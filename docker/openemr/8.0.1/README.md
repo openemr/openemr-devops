@@ -93,7 +93,6 @@ It is recommended to specify a version number in production, to ensure your buil
 # MYSQL_HOST and MYSQL_ROOT_PASS are required for openemr
 # MYSQL_USER, MYSQL_PASS, OE_USER, MYSQL_PASS are optional for openemr and
 #   if not provided, then default to openemr, openemr, admin, and pass respectively.
-version: '3.1'
 services:
   mysql:
     restart: always
@@ -105,7 +104,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
   openemr:
     restart: always
-    image: openemr/openemr:7.0.5
+    image: openemr/openemr:8.0.1
     ports:
     - 80:80
     - 443:443
