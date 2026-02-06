@@ -630,7 +630,6 @@ if [[ "${NEED_COMPOSER_BUILD}" = "true" ]] || [[ "${NEED_NPM_BUILD}" = "true" ]]
         # install php dependencies
         if [[ "${DEVELOPER_TOOLS}" = "yes" ]]; then
             composer install
-            composer global require "squizlabs/php_codesniffer=3.*"
             # install support for the e2e testing
             apk update
             apk add --no-cache chromium chromium-chromedriver
