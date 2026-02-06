@@ -147,7 +147,7 @@ fi
 if [ "$1" = "psr12-src-report" ]; then
     echo "Generating strict PSR12 code styling error report for src directory "
     cd /var/www/localhost/htdocs/openemr
-    php -d memory_limit=640M /root/.composer/vendor/squizlabs/php_codesniffer/bin/phpcs -p -n --extensions=php,inc --report-width=120 --standard=ci/phpcs_src.xml --report=full src/
+    composer phpcs -- --standard=PSR12 -d memory_limit=4G --extensions=php,inc -p -n src
 fi
 
 if [ "$1" = "lint-themes-report" ]; then
