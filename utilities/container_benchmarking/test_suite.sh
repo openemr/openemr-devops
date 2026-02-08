@@ -21,6 +21,7 @@ RESULTS_DIR="${RESULTS_DIR:-${SCRIPT_DIR}/test_results}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RESULT_FILE="${RESULTS_DIR}/test_results_${TIMESTAMP}.txt"
 LOG_FILE="${RESULTS_DIR}/test_log_${TIMESTAMP}.txt"
+mkdir -p "${RESULTS_DIR}"
 
 # Test configuration
 # Note: Using DOCKERFILE_CONTEXT instead of DOCKER_CONTEXT to avoid conflict with Docker CLI's context variable
@@ -846,8 +847,6 @@ services:
       OE_USER: admin
       OE_PASS: testpass123${flex_env_vars}
       SWARM_MODE: "yes"
-    ports:
-      - "8083:80"
     volumes:
       - swarm_sites:/var/www/localhost/htdocs/openemr/sites
     healthcheck:
@@ -875,8 +874,6 @@ services:
       MYSQL_PASS: openemr
       MYSQL_DATABASE: openemr
       SWARM_MODE: "yes"
-    ports:
-      - "8084:80"
     volumes:
       - swarm_sites:/var/www/localhost/htdocs/openemr/sites
     healthcheck:

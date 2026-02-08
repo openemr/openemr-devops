@@ -353,6 +353,24 @@ Integrate into CI/CD:
 - **Single Load Pattern**: Uses fixed concurrent requests. Real-world usage may vary.
 - **Local Environment**: Results depend on host system resources and may not reflect production.
 
+## Container Functionality Test Runner (`test_functionality.sh`)
+
+For CI and consistent validation of 8.0.1, binary, and flex containers, use the wrapper script:
+
+```bash
+./test_functionality.sh <version> [test_suite.sh options...]
+```
+
+Examples:
+
+```bash
+./test_functionality.sh 8.0.1
+./test_functionality.sh binary --test fresh_installation
+./test_functionality.sh flex --verbose
+```
+
+This runs `test_suite.sh` with the correct `DOCKERFILE_CONTEXT` and `IMAGE_TAG` for each variant.
+
 ## Functional Test Suite
 
 In addition to performance benchmarking, this directory includes a comprehensive functional test suite (`test_suite.sh`) that validates all OpenEMR container functionality.

@@ -255,8 +255,8 @@ wait_for_redis() {
     IFS=: read -r redis_host redis_port _ <<< "${REDIS_SERVER}"
     redis_port="${redis_port:-6379}"  # Default Redis port
 
-    # Try to connect to Redis using netcat
-    local -i retries=10
+    # Try to connect to Redis using netcat (allow time for DNS and service startup)
+    local -i retries=30
     while (( retries-- > 0 )); do
         if command -v nc >/dev/null 2>&1 && nc -z "${redis_host}" "${redis_port}" >/dev/null 2>&1; then
             echo "Redis is ready!"
@@ -906,13 +906,23 @@ fi
 if [[ "${REDIS_SERVER}" != "" ]] &&
    [[ ! -f /etc/php-redis-configured ]]; then
 
+    # Only configure PHP Redis when Redis is reachable; otherwise keep file sessions
+    # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
+    if ! wait_for_redis; then
+        echo "Skipping Redis session config (Redis not available), using file sessions"
+    else
     # Support the following redis auth:
     #   No username and No password set (using redis default user with nopass set)
     #   Both username and password set (using the redis user and pertinent password)
     #   Only password set (using redis default user and pertinent password)
     #   NOTE that only username set is not supported (in this case will ignore the username
     #      and use no username and no password set mode)
-    REDIS_PATH="tcp://${REDIS_SERVER}:6379"
+    # REDIS_SERVER may be "host" or "host:port"; avoid double port (tcp://host:6379:6379)
+    if [[ "${REDIS_SERVER}" == *:* ]]; then
+        REDIS_PATH="tcp://${REDIS_SERVER}"
+    else
+        REDIS_PATH="tcp://${REDIS_SERVER}:6379"
+    fi
     if [[ "${REDIS_USERNAME}" != "" ]] &&
        [[ "${REDIS_PASSWORD}" != "" ]]; then
         echo "redis setup with username and password"
@@ -951,6 +961,7 @@ if [[ "${REDIS_SERVER}" != "" ]] &&
 
     # Ensure only configure this one time
     touch /etc/php-redis-configured
+    fi
 fi
 
 # ============================================================================
