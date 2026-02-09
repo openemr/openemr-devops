@@ -52,7 +52,7 @@ if [[ ! -f /etc/php-pcov-configured ]]; then
         echo "; PCOV Configuration (Code Coverage)"
         echo "; ========================================================================"
         echo "; Load PCOV extension"
-        echo "zend_extension=/usr/lib/php${PHP_VERSION_ABBR}/modules/pcov.so"
+        echo "extension=pcov"
         echo ""
         echo "; Enable PCOV (can be disabled at runtime via pcov.enabled=0)"
         echo "pcov.enabled=1"
