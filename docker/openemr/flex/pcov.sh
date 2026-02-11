@@ -61,8 +61,8 @@ if [[ ! -f /etc/php-pcov-configured ]]; then
         echo "; Default covers the OpenEMR installation directory"
         echo "pcov.directory=/var/www/localhost/htdocs/openemr"
         echo ""
-        echo "; Exclude test files from coverage collection"
-        echo "pcov.exclude=\"~/(vendor|tests|node_modules)/~\""
+        echo "; Exclude vendor and node_modules from coverage collection"
+        echo "pcov.exclude=\"~/(vendor|node_modules)/~\""
         echo ""
     } >> "/etc/php${PHP_VERSION_ABBR}/php.ini"
 
