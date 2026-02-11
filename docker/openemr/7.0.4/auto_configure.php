@@ -22,10 +22,23 @@ $installSettings['no_root_db_access']        = 'BLANK';
 $installSettings['development_translations'] = 'BLANK';
 // Collect parameters(if exist) for installation configuration settings
 for ($i=1; $i < count($argv); $i++) {
-    $indexandvalue = explode("=", $argv[$i]);
-    $index = $indexandvalue[0];
-    $value = $indexandvalue[1] ?? '';
-    $installSettings[$index] = $value;
+    if ($argv[$i] === '-f' && isset($argv[$i+1])) {
+        // Handle -f flag: parse space-separated key=value pairs from a single string
+        $configPairs = preg_split('/\s+/', trim($argv[$i+1]));
+        foreach ($configPairs as $pair) {
+            if (strpos($pair, '=') !== false) {
+                list($index, $value) = explode('=', $pair, 2);
+                $installSettings[$index] = $value;
+            }
+        }
+        $i++;
+    } else {
+        // Handle standard key=value parameters
+        $indexandvalue = explode("=", $argv[$i]);
+        $index = $indexandvalue[0];
+        $value = $indexandvalue[1] ?? '';
+        $installSettings[$index] = $value;
+    }
 }
 // Convert BLANK settings to empty
 $tempInstallSettings = array();

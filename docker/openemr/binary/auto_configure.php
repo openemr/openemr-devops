@@ -125,13 +125,27 @@ $installSettings['development_translations'] = 'BLANK';        // Enable dev tra
 //          This would override the "server" and "rootpass" settings.
 
 for ($i=1; $i < count($argv); $i++) {
-    // Split each argument into key and value (format: "key=value")
-    $indexandvalue = explode("=", $argv[$i]);
-    $index = $indexandvalue[0];              // The setting name (e.g., "server")
-    $value = $indexandvalue[1] ?? '';        // The setting value (e.g., "mysql-lb")
-    
-    // Override the default setting with the command-line value
-    $installSettings[$index] = $value;
+    if ($argv[$i] === '-f' && isset($argv[$i+1])) {
+        // Handle -f flag: parse space-separated key=value pairs from a single string
+        // This format is used by entrypoint.sh: php auto_configure.php -f "server=mysql rootpass=root"
+        $configPairs = preg_split('/\s+/', trim($argv[$i+1]));
+        foreach ($configPairs as $pair) {
+            if (strpos($pair, '=') !== false) {
+                list($index, $value) = explode('=', $pair, 2);
+                $installSettings[$index] = $value;
+            }
+        }
+        $i++;
+    } else {
+        // Handle standard key=value parameters
+        // Split each argument into key and value (format: "key=value")
+        $indexandvalue = explode("=", $argv[$i]);
+        $index = $indexandvalue[0];              // The setting name (e.g., "server")
+        $value = $indexandvalue[1] ?? '';        // The setting value (e.g., "mysql-lb")
+
+        // Override the default setting with the command-line value
+        $installSettings[$index] = $value;
+    }
 }
 
 // ============================================================================
