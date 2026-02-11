@@ -845,7 +845,7 @@ services:
       MYSQL_DATABASE: openemr
       OE_USER: admin
       OE_PASS: testpass123${flex_env_vars}
-      SWARM_MODE: "yes"
+      SWARM_MODE: "true"
     ports:
       - "8083:80"
     volumes:
@@ -874,7 +874,7 @@ services:
       MYSQL_USER: openemr
       MYSQL_PASS: openemr
       MYSQL_DATABASE: openemr
-      SWARM_MODE: "yes"
+      SWARM_MODE: "true"
     ports:
       - "8084:80"
     volumes:
@@ -1186,7 +1186,7 @@ services:
       MYSQL_DATABASE: openemr
       OE_USER: admin
       OE_PASS: testpass123
-      XDEBUG_ON: 1
+      XDEBUG_ON: 'true'
       XDEBUG_IDE_KEY: PHPSTORM
     ports:
       - "8086:80"

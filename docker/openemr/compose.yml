@@ -29,7 +29,7 @@ services:
       mysql:
         condition: service_healthy
     environment:
-      MANUAL_SETUP: 'yes'
+      MANUAL_SETUP: 'true'
       MYSQL_HOST: mysql
       MYSQL_PASS: openemr
       MYSQL_ROOT_PASS: root
@@ -63,7 +63,7 @@ services:
     profiles: !override
     - dev
     environment:
-      EMPTY: "yes"
+      EMPTY: 'true'
     volumes:
     - ../../openemr:/var/www/localhost/htdocs/openemr
   openemr-kcov-dev:
