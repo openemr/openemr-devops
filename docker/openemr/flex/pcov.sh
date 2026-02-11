@@ -7,7 +7,7 @@
 # code coverage, offering significantly faster execution.
 #
 # Environment Variables:
-#   PCOV_ON - Set to "1" to enable PCOV for code coverage
+#   PCOV_ON - Set to "true" to enable PCOV for code coverage
 #
 # Note:
 #   - PCOV and XDebug cannot be loaded simultaneously
@@ -25,9 +25,9 @@ set -euo pipefail
 # ============================================================================
 # Ensure PCOV is actually requested before proceeding.
 
-# PCOV_ON is normalized to "true"/"false" by openemr.sh before calling this script
+# PCOV_ON is validated to be "true"/"false" by openemr.sh before calling this script
 # shellcheck disable=SC2154
-if [[ "${PCOV_ON}" != true ]]; then
+if ! ${PCOV_ON}; then
     echo "Error: PCOV script called but PCOV_ON is not enabled" >&2
     exit 1
 fi

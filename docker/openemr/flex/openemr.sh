@@ -27,11 +27,11 @@
 #   Optional:
 #     - MYSQL_USER, MYSQL_PASS, MYSQL_DATABASE: Database credentials
 #     - OE_USER, OE_PASS: OpenEMR admin credentials
-#     - EASY_DEV_MODE: 'yes' to skip permission changes (for volume mounts)
-#     - EASY_DEV_MODE_NEW: 'yes' to use local repo instead of downloading
-#     - INSANE_DEV_MODE: 'yes' for devtools support
-#     - FORCE_NO_BUILD_MODE: 'yes' to skip composer/npm builds
-#     - DEVELOPER_TOOLS: 'yes' to install development tools
+#     - EASY_DEV_MODE: 'true' to skip permission changes (for volume mounts)
+#     - EASY_DEV_MODE_NEW: 'true' to use local repo instead of downloading
+#     - INSANE_DEV_MODE: 'true' for devtools support
+#     - FORCE_NO_BUILD_MODE: 'true' to skip composer/npm builds
+#     - DEVELOPER_TOOLS: 'true' to install development tools
 #     - GITHUB_COMPOSER_TOKEN: GitHub token for composer
 #     - REDIS_SERVER: Redis server address
 #     - PCOV_ON: Enable PCOV for code coverage (mutually exclusive with XDebug)
@@ -87,37 +87,58 @@ OE_PASS="${OE_PASS:-pass}"
 # OPERATION MODE SETTINGS
 # ============================================================================
 # Control container behavior for different deployment scenarios
-MANUAL_SETUP="${MANUAL_SETUP:-no}"
 K8S="${K8S:-}"
-SWARM_MODE="${SWARM_MODE:-no}"
 
 # defaults
 : "${DEMO_MODE:=no}" \
-  "${DEVELOPER_TOOLS:=no}" \
-  "${EASY_DEV_MODE:=no}" \
-  "${EASY_DEV_MODE_NEW:=no}" \
-  "${EMPTY:=no}" \
+  "${DEVELOPER_TOOLS:=false}" \
+  "${EASY_DEV_MODE:=false}" \
+  "${EASY_DEV_MODE_NEW:=false}" \
+  "${EMPTY:=false}" \
   "${FLEX_REPOSITORY_TAG:=}" \
-  "${FORCE_NO_BUILD_MODE:=no}" \
+  "${FORCE_NO_BUILD_MODE:=false}" \
   "${GITHUB_COMPOSER_TOKEN:=}" \
   "${GITHUB_COMPOSER_TOKEN_ENCODED:=}" \
   "${GITHUB_COMPOSER_TOKEN_ENCODED_ALTERNATE:=}" \
-  "${INSANE_DEV_MODE:=no}" \
+  "${INSANE_DEV_MODE:=false}" \
   "${K8S:=}" \
-  "${MANUAL_SETUP:=no}" \
-  "${PCOV_ON:=no}" \
+  "${MANUAL_SETUP:=false}" \
+  "${PCOV_ON:=false}" \
   "${REDIS_PASSWORD:=}" \
   "${REDIS_SERVER:=}" \
   "${REDIS_USERNAME:=}" \
-  "${SWARM_MODE:=no}" \
+  "${SWARM_MODE:=false}" \
   "${XDEBUG_IDE_KEY:=}" \
-  "${XDEBUG_ON:=no}"
+  "${XDEBUG_ON:=false}"
 
-# Normalize PCOV_ON to "true" or "false" for simpler checks
-case "${PCOV_ON,,}" in
-    1|yes|true) PCOV_ON=true ;;
-    *) PCOV_ON=false ;;
-esac
+# ============================================================================
+# BOOLEAN ENVIRONMENT VARIABLE VALIDATION
+# ============================================================================
+# Validate that boolean env vars contain only 'true' or 'false'.
+# This provides clear error messages for users and allows simpler checks
+# using shell builtins (e.g., `if $VAR; then` instead of `if [[ "$VAR" = "yes" ]]; then`).
+validate_bool() {
+    local var_name=$1
+    local value=${!var_name}
+    case "${value}" in
+        true|false) ;;
+        *)
+            printf "Error: %s must be 'true' or 'false', got '%s'\n" "${var_name}" "${value}" >&2
+            exit 1
+            ;;
+    esac
+}
+
+validate_bool DEVELOPER_TOOLS
+validate_bool EASY_DEV_MODE
+validate_bool EASY_DEV_MODE_NEW
+validate_bool EMPTY
+validate_bool FORCE_NO_BUILD_MODE
+validate_bool INSANE_DEV_MODE
+validate_bool MANUAL_SETUP
+validate_bool PCOV_ON
+validate_bool SWARM_MODE
+validate_bool XDEBUG_ON
 
 auto_setup() {
     prepareVariables
@@ -126,7 +147,7 @@ auto_setup() {
     [[ "${AUTHORITY}" = "yes" ]] && update_leader_heartbeat
 
     # Only set permissions if not in EASY_DEV_MODE (optimized: use -exec {} + instead of \; for better performance)
-    if [[ "${EASY_DEV_MODE}" != "yes" ]]; then
+    if ! ${EASY_DEV_MODE}; then
         # Use {} + instead of {} \; to batch file operations and reduce process overhead
         find /var/www/localhost/htdocs/openemr -type f -not -perm 600 -exec chmod 600 {} + 2>/dev/null || true
     fi
@@ -380,7 +401,7 @@ update_leader_heartbeat() {
 # Handles swarm mode coordination: leader election and follower waiting.
 handle_swarm_mode() {
     # Skip coordination if swarm mode isn't enabled
-    if [[ "${SWARM_MODE}" != "yes" ]]; then
+    if ! ${SWARM_MODE}; then
         return 0
     fi
 
@@ -469,8 +490,8 @@ fi
 # This allows testing different branches, tags, or forks without rebuilding
 # the Docker image. The source is cloned to /var/www/localhost/htdocs/openemr
 # before any dependency building or configuration occurs.
-if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] && [[ "${EMPTY}" != "yes" ]] &&
-   [[ "${EASY_DEV_MODE_NEW}" != "yes" ]]; then
+if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] && ! ${EMPTY} &&
+   ! ${EASY_DEV_MODE_NEW}; then
     echo "Configuring a new flex openemr docker"
     if [[ "${FLEX_REPOSITORY:-}" = "" ]]; then
         echo "Missing FLEX_REPOSITORY environment setting, so using https://github.com/openemr/openemr.git"
@@ -495,11 +516,11 @@ if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] && [[ "${EMPTY}" != "ye
         cd ../
     fi
     if [[ "${AUTHORITY}" = "yes" ]] &&
-       [[ "${SWARM_MODE}" = "yes" ]]; then
+       ${SWARM_MODE}; then
         touch openemr/sites/default/docker-initiated
     fi
     if [[ "${AUTHORITY}" = "no" ]] &&
-       [[ "${SWARM_MODE}" = "yes" ]]; then
+       ${SWARM_MODE}; then
         # non-leader is building so remove the openemr/sites directory to avoid breaking anything in leader's build
         rm -fr openemr/sites
     fi
@@ -514,7 +535,7 @@ fi
 # When EASY_DEV_MODE_NEW is enabled, use a local repository mounted at /openemr
 # instead of fetching from git. This is useful for development where the code
 # is already available in a volume mount.
-if [[ "${EASY_DEV_MODE_NEW}" = "yes" ]]; then
+if ${EASY_DEV_MODE_NEW}; then
     echo "EASY_DEV_MODE_NEW enabled: Using local repository from /openemr"
     rsync --ignore-existing --recursive --links --exclude .git /openemr /var/www/localhost/htdocs/
 fi
@@ -533,7 +554,7 @@ NEED_COMPOSER_BUILD=false
 NEED_NPM_BUILD=false
 RAN_ANY_BUILD=false
 
-if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] && [[ "${FORCE_NO_BUILD_MODE}" != "yes" ]]; then
+if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] && ! ${FORCE_NO_BUILD_MODE}; then
     # Check if composer/vendor build is needed
     if [[ ! -d /var/www/localhost/htdocs/openemr/vendor ]] || { [[ -d /var/www/localhost/htdocs/openemr/vendor ]] && [[ -z "$(ls -A /var/www/localhost/htdocs/openemr/vendor || true)" ]]; }; then
         NEED_COMPOSER_BUILD=true
@@ -628,7 +649,7 @@ if [[ "${NEED_COMPOSER_BUILD}" = "true" ]] || [[ "${NEED_NPM_BUILD}" = "true" ]]
         fi
 
         # install php dependencies
-        if [[ "${DEVELOPER_TOOLS}" = "yes" ]]; then
+        if ${DEVELOPER_TOOLS}; then
             composer install
             composer global require "squizlabs/php_codesniffer=3.*"
             # install support for the e2e testing
@@ -689,9 +710,9 @@ if [[ "${NEED_COMPOSER_BUILD}" = "true" ]] || [[ "${NEED_NPM_BUILD}" = "true" ]]
 fi
 
 if [[ "${AUTHORITY}" = "yes" ]] ||
-   [[ "${SWARM_MODE}" != "yes" ]]; then
+   ! ${SWARM_MODE}; then
     if [[ -f /var/www/localhost/htdocs/auto_configure.php ]] &&
-       [[ "${EASY_DEV_MODE}" != "yes" ]]; then
+       ! ${EASY_DEV_MODE}; then
         chmod 666 /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php
     fi
 fi
@@ -783,8 +804,8 @@ if [[ "${AUTHORITY}" = "yes" ]]; then
     if [[ "${CONFIG}" = "0" ]] &&
        [[ "${MYSQL_HOST}" != "" ]] &&
        [[ "${MYSQL_ROOT_PASS}" != "" ]] &&
-       [[ "${EMPTY}" != "yes" ]] &&
-       [[ "${MANUAL_SETUP}" != "yes" ]]; then
+       ! ${EMPTY} &&
+       ! ${MANUAL_SETUP}; then
 
         echo "Running quick setup!"
         setup_retries=0
@@ -814,9 +835,9 @@ fi
 
 if [[ "${AUTHORITY}" = "yes" ]] &&
    [[ "${CONFIG}" = "1" ]] &&
-   [[ "${MANUAL_SETUP}" != "yes" ]] &&
-   [[ "${EASY_DEV_MODE}" != "yes" ]] &&
-   [[ "${EMPTY}" != "yes" ]]; then
+   ! ${MANUAL_SETUP} &&
+   ! ${EASY_DEV_MODE} &&
+   ! ${EMPTY}; then
     # OpenEMR has been configured
 
     if [[ -f /var/www/localhost/htdocs/auto_configure.php ]]; then
@@ -862,14 +883,14 @@ if [[ "${AUTHORITY}" = "yes" ]] &&
 fi
 
 if [[ -f /var/www/localhost/htdocs/auto_configure.php ]]; then
-    if [[ "${EASY_DEV_MODE_NEW}" = "yes" ]] || [[ "${INSANE_DEV_MODE}" = "yes" ]]; then
+    if ${EASY_DEV_MODE_NEW} || ${INSANE_DEV_MODE}; then
         # need to copy this script somewhere so the easy/insane dev environment can use it
         cp /var/www/localhost/htdocs/auto_configure.php /root/
         # save couchdb initial data folder to support devtools snapshots
         rsync --recursive --links /couchdb/data /couchdb/original/
     fi
     # trickery to support devtools in insane dev environment (note the easy dev does this with a shared volume)
-    if [[ "${INSANE_DEV_MODE}" = "yes" ]]; then
+    if ${INSANE_DEV_MODE}; then
         mkdir /openemr
         rsync --recursive --links /var/www/localhost/htdocs/openemr/sites /openemr/
     fi
@@ -892,7 +913,7 @@ if ${MYSQLKEY} ; then
 fi
 
 if [[ "${AUTHORITY}" = "yes" ]] &&
-   [[ "${SWARM_MODE}" = "yes" ]] &&
+   ${SWARM_MODE} &&
    [[ -f /var/www/localhost/htdocs/auto_configure.php ]]; then
     # Set flag that the docker-leader configuration is complete
     touch /var/www/localhost/htdocs/openemr/sites/docker-completed
@@ -900,7 +921,7 @@ if [[ "${AUTHORITY}" = "yes" ]] &&
 fi
 
 # ensure the auto_configure.php script has been removed (unless in MANUAL_SETUP mode)
-if [[ "${MANUAL_SETUP}" != "yes" ]]; then
+if ! ${MANUAL_SETUP}; then
 rm -f /var/www/localhost/htdocs/auto_configure.php
 fi
 
@@ -958,14 +979,14 @@ fi
 # PHP EXTENSION CONFIGURATION (Coverage/Debug/Performance)
 # ============================================================================
 # Configure PHP extensions based on the requested mode:
-#   - PCOV_ON=1: Lightweight code coverage (pcov), opcache enabled but no JIT
+#   - PCOV_ON=true: Lightweight code coverage (pcov), opcache enabled but no JIT
 #   - XDEBUG_ON/XDEBUG_IDE_KEY: Full debugging (xdebug), opcache disabled
 #   - Neither: Maximum performance with opcache JIT
 #
 # Note: PCOV and XDebug are mutually exclusive. PCOV takes precedence if both
 # are set, as it's typically used in CI where only coverage is needed.
 
-if [[ "${PCOV_ON}" = true ]]; then
+if ${PCOV_ON}; then
    # PCOV mode: lightweight coverage collection
    # PCOV works with opcache but NOT with JIT (JIT interferes with coverage)
    sh pcov.sh
@@ -974,7 +995,7 @@ if [[ "${PCOV_ON}" = true ]]; then
       echo "opcache.jit=off" >> "/etc/php${PHP_VERSION_ABBR?}/php.ini"
       touch /etc/php-opcache-jit-configured
    fi
-elif [[ "${XDEBUG_IDE_KEY}" != "" ]] || [[ "${XDEBUG_ON}" = 1 ]]; then
+elif [[ "${XDEBUG_IDE_KEY}" != "" ]] || ${XDEBUG_ON}; then
    # XDebug mode: full debugging and profiling support
    sh xdebug.sh
    # XDebug requires opcache to be disabled
