@@ -15,9 +15,10 @@ setup() {
     assert_script_contains "${SCRIPT_DIR}/pcov.sh" 'php-pcov-configured'
 }
 
-@test "flex pcov.sh: pecl-pcov and pcov.so" {
+@test "flex pcov.sh: pecl-pcov and zend_extension config" {
     assert_script_contains "${SCRIPT_DIR}/pcov.sh" 'pecl-pcov'
-    assert_script_contains "${SCRIPT_DIR}/pcov.sh" 'pcov.so'
+    assert_script_contains "${SCRIPT_DIR}/pcov.sh" 'zend_extension='
+    assert_script_contains "${SCRIPT_DIR}/pcov.sh" 'pcov.enabled=1'
 }
 
 @test "flex pcov.sh: pcov.directory openemr" {

@@ -83,3 +83,22 @@ assert_pattern_count_ge() {
     [[ "$count" -ge "$min" ]] || { echo "Pattern $pattern found $count times in $path (expected >= $min)"; return 1; }
     return 0
 }
+
+# Create an executable command stub in a directory.
+# Usage: create_stub_command <stub_dir> <command_name> <script_body>
+create_stub_command() {
+    local stub_dir="$1"
+    local command_name="$2"
+    local script_body="$3"
+    mkdir -p "$stub_dir" || return 1
+    printf '%s\n' "$script_body" > "${stub_dir}/${command_name}" || return 1
+    chmod +x "${stub_dir}/${command_name}" || return 1
+}
+
+# Run a command with PATH prefixed by the given stub directory.
+# Usage: run_with_stubbed_path <stub_dir> <cmd> [args...]
+run_with_stubbed_path() {
+    local stub_dir="$1"
+    shift
+    run env PATH="${stub_dir}:$PATH" "$@"
+}

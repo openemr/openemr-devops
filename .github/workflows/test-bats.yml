@@ -33,6 +33,10 @@ jobs:
           /tmp/bats-core/install.sh "$HOME/bats"
           echo "$HOME/bats/bin" >> "$GITHUB_PATH"
           echo "PATH=$HOME/bats/bin:$PATH" >> "$GITHUB_ENV"
+      - name: Install Bats assertion libraries
+        run: |
+          git clone --depth 1 https://github.com/bats-core/bats-support.git tests/bats/test_helper/bats-support
+          git clone --depth 1 https://github.com/bats-core/bats-assert.git tests/bats/test_helper/bats-assert
       - name: Run BATS tests (8.0.1)
         run: bats tests/bats/8.0.1/
 
@@ -47,6 +51,10 @@ jobs:
           /tmp/bats-core/install.sh "$HOME/bats"
           echo "$HOME/bats/bin" >> "$GITHUB_PATH"
           echo "PATH=$HOME/bats/bin:$PATH" >> "$GITHUB_ENV"
+      - name: Install Bats assertion libraries
+        run: |
+          git clone --depth 1 https://github.com/bats-core/bats-support.git tests/bats/test_helper/bats-support
+          git clone --depth 1 https://github.com/bats-core/bats-assert.git tests/bats/test_helper/bats-assert
       - name: Run BATS tests (binary)
         run: bats tests/bats/binary/
 
@@ -61,5 +69,9 @@ jobs:
           /tmp/bats-core/install.sh "$HOME/bats"
           echo "$HOME/bats/bin" >> "$GITHUB_PATH"
           echo "PATH=$HOME/bats/bin:$PATH" >> "$GITHUB_ENV"
+      - name: Install Bats assertion libraries
+        run: |
+          git clone --depth 1 https://github.com/bats-core/bats-support.git tests/bats/test_helper/bats-support
+          git clone --depth 1 https://github.com/bats-core/bats-assert.git tests/bats/test_helper/bats-assert
       - name: Run BATS tests (flex)
         run: bats tests/bats/flex/
