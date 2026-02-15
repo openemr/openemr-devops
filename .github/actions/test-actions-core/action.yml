@@ -45,7 +45,7 @@ runs:
       working-directory: docker/openemr
 
     - name: Run the containers
-      run: docker compose up --detach --wait --wait-timeout 600
+      run: docker compose up --detach --wait --wait-timeout 600 mysql "${OPENEMR_SERVICE_NAME}"
       shell: bash
       working-directory: docker/openemr
 
