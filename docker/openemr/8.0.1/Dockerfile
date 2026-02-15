@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # ============================================================================
-# OpenEMR Dockerfile for Version 7.0.5
+# OpenEMR Dockerfile for Version 8.0.1
 # ============================================================================
 # This Dockerfile builds a production-ready OpenEMR container image with:
 #   - Apache web server for serving OpenEMR
