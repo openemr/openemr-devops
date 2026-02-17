@@ -1,6 +1,9 @@
 [![ShellCheck](https://github.com/openemr/openemr-devops/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/shellcheck.yml)
 [![Dockerfile Linting](https://github.com/openemr/openemr-devops/actions/workflows/hadolint.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/hadolint.yml)
 [![Docker Compose Linting](https://github.com/openemr/openemr-devops/actions/workflows/dclint.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/dclint.yml)
+[![BATS Tests](https://github.com/openemr/openemr-devops/actions/workflows/test-bats.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/test-bats.yml)
+[![Container Functionality](https://github.com/openemr/openemr-devops/actions/workflows/test-container-functionality.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/test-container-functionality.yml)
+[![Production Docker Test](https://github.com/openemr/openemr-devops/actions/workflows/test-production.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/test-production.yml)
 
 # openemr-devops
 

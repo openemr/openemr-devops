@@ -265,7 +265,7 @@ wait_for_redis() {
         sleep 1
     done
 
-    echo "Warning: Redis at ${REDIS_SERVER} not available, using file sessions" >&2
+    echo "ERROR: Redis at ${REDIS_SERVER} not reachable after 30 retries" >&2
     return 1
 }
 
@@ -906,11 +906,15 @@ fi
 if [[ "${REDIS_SERVER}" != "" ]] &&
    [[ ! -f /etc/php-redis-configured ]]; then
 
-    # Only configure PHP Redis when Redis is reachable; otherwise keep file sessions
+    # Wait for Redis to be available before configuring sessions.
+    # If Redis is configured but unreachable, fail loudly rather than silently
+    # falling back to file sessions (which would break downstream orchestration).
     # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
     if ! wait_for_redis; then
-        echo "Skipping Redis session config (Redis not available), using file sessions"
-    else
+        echo "ERROR: Redis server '${REDIS_SERVER}' is configured but not reachable after retries. Exiting."
+        exit 1
+    fi
+
     # Support the following redis auth:
     #   No username and No password set (using redis default user with nopass set)
     #   Both username and password set (using the redis user and pertinent password)
@@ -961,7 +965,6 @@ if [[ "${REDIS_SERVER}" != "" ]] &&
 
     # Ensure only configure this one time
     touch /etc/php-redis-configured
-    fi
 fi
 
 # ============================================================================
