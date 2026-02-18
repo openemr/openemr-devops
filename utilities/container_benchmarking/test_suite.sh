@@ -263,14 +263,6 @@ run_docker_compose() {
     # Unset DOCKER_CONTEXT (Docker CLI variable) to avoid conflicts
     # We don't restore it because we use DOCKERFILE_CONTEXT internally, not DOCKER_CONTEXT
     unset DOCKER_CONTEXT
-
-    # Prune BuildKit cache before builds to prevent snapshot corruption.
-    # After many sequential builds in CI, containerd's snapshotter can lose
-    # parent layers, causing "parent snapshot does not exist" errors.
-    if [[ "${*}" == *"build"* ]]; then
-        docker builder prune -f >/dev/null 2>&1 || true
-    fi
-
     docker compose -p "${project_name}" "$@"
     local exit_code=$?
     return "${exit_code}"
@@ -305,8 +297,6 @@ test_fresh_installation() {
     local test_dir="${TESTS_DIR}/fresh_installation"
     mkdir -p "${test_dir}"
 
-    local docker_context_abs
-    docker_context_abs=$(get_docker_context_abs)
     local flex_env_vars
     flex_env_vars=$(get_flex_env_vars)
 
@@ -332,8 +322,6 @@ services:
       - test-network
 
   openemr:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -369,15 +357,7 @@ EOF
     # Docker Compose needs to be run from the directory containing docker-compose.yml
     cd "${test_dir}"
     
-    # Start services (build first, then start to work around Docker Compose context issue)
-    log_info "Building and starting containers..."
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
-    if ! run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to build containers"
-        cd - >/dev/null
-        return 1
-    fi
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
+    log_info "Starting containers..."
     # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-fresh" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
@@ -459,8 +439,6 @@ services:
       - test-network
 
   openemr:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -490,14 +468,7 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (build first, then start)
-    log_info "Building and starting containers..."
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
-    if ! run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to build containers"
-        cd - >/dev/null
-        return 1
-    fi
+    log_info "Starting containers..."
     # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-manual" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
@@ -553,8 +524,6 @@ test_ssl_configuration() {
     local test_dir="${TESTS_DIR}/ssl_configuration"
     mkdir -p "${test_dir}/certs"
     
-    local docker_context_abs
-    docker_context_abs=$(get_docker_context_abs)
     local flex_env_vars
     flex_env_vars=$(get_flex_env_vars)
     
@@ -582,8 +551,6 @@ services:
       - test-network
 
   openemr:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -617,14 +584,7 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (build first, then start)
-    log_info "Building and starting containers..."
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
-    if ! run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to build containers"
-        cd - >/dev/null
-        return 1
-    fi
+    log_info "Starting containers..."
     # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-ssl" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
@@ -671,8 +631,6 @@ test_redis_sessions() {
     local test_dir="${TESTS_DIR}/redis_sessions"
     mkdir -p "${test_dir}"
     
-    local docker_context_abs
-    docker_context_abs=$(get_docker_context_abs)
     local flex_env_vars
     flex_env_vars=$(get_flex_env_vars)
     
@@ -711,8 +669,6 @@ services:
       - test-network
 
   openemr:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -750,14 +706,7 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (build first, then start)
-    log_info "Building and starting containers..."
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
-    if ! run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to build containers"
-        cd - >/dev/null
-        return 1
-    fi
+    log_info "Starting containers..."
     # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-redis" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
@@ -813,8 +762,6 @@ test_swarm_mode() {
     local test_dir="${TESTS_DIR}/swarm_mode"
     mkdir -p "${test_dir}"
     
-    local docker_context_abs
-    docker_context_abs=$(get_docker_context_abs)
     local flex_env_vars
     flex_env_vars=$(get_flex_env_vars)
     
@@ -840,8 +787,6 @@ services:
       - test-network
 
   openemr-leader:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -867,8 +812,6 @@ services:
       - test-network
 
   openemr-follower:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -904,14 +847,7 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (build first, then start)
-    log_info "Building and starting containers..."
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
-    if ! run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to build containers"
-        cd - >/dev/null
-        return 1
-    fi
+    log_info "Starting containers..."
     # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-swarm" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
@@ -979,8 +915,6 @@ test_kubernetes_mode() {
     local test_dir="${TESTS_DIR}/kubernetes_mode"
     mkdir -p "${test_dir}"
     
-    local docker_context_abs
-    docker_context_abs=$(get_docker_context_abs)
     local flex_env_vars
     flex_env_vars=$(get_flex_env_vars)
     
@@ -1006,8 +940,6 @@ services:
       - test-network
 
   openemr-admin:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -1027,8 +959,6 @@ services:
       - test-network
 
   openemr-worker:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -1066,14 +996,7 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (build first, then start)
-    log_info "Building and starting containers..."
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
-    if ! run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to build containers"
-        cd - >/dev/null
-        return 1
-    fi
+    log_info "Starting containers..."
     # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-k8s" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
@@ -1150,8 +1073,6 @@ test_xdebug_configuration() {
     local test_dir="${TESTS_DIR}/xdebug"
     mkdir -p "${test_dir}"
     
-    local docker_context_abs
-    docker_context_abs=$(get_docker_context_abs)
     local flex_env_vars
     flex_env_vars=$(get_flex_env_vars)
     
@@ -1177,8 +1098,6 @@ services:
       - test-network
 
   openemr:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -1214,14 +1133,7 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (build first, then start)
-    log_info "Building and starting containers..."
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
-    if ! run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to build containers"
-        cd - >/dev/null
-        return 1
-    fi
+    log_info "Starting containers..."
     # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-xdebug" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
@@ -1284,8 +1196,6 @@ test_document_upload() {
     local test_dir="${TESTS_DIR}/document_upload"
     mkdir -p "${test_dir}"
     
-    local docker_context_abs
-    docker_context_abs=$(get_docker_context_abs)
     local flex_env_vars
     flex_env_vars=$(get_flex_env_vars)
     
@@ -1311,8 +1221,6 @@ services:
       - test-network
 
   openemr:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -1349,14 +1257,7 @@ EOF
 
     cd "${test_dir}"
     
-    # Start services (build first, then start)
-    log_info "Building and starting containers..."
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
-    if ! run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to build containers"
-        cd - >/dev/null
-        return 1
-    fi
+    log_info "Starting containers..."
     # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-docs" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
@@ -1436,8 +1337,6 @@ services:
       - test-network
 
   openemr:
-    build:
-      context: ${docker_context_abs}
     image: ${IMAGE_TAG}
     depends_on:
       mysql:
@@ -1476,12 +1375,6 @@ EOF
     
     # Step 1: Start fresh installation and wait for it to complete
     log_info "Step 1: Starting fresh installation..."
-    # shellcheck disable=SC2310  # Error handling is explicit via if/return
-    if ! run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml build 2>&1 | tee -a "${LOG_FILE}"; then
-        log_test_result "${test_name}" "FAIL" "Failed to build containers"
-        cd - >/dev/null
-        return 1
-    fi
     # shellcheck disable=SC2310  # Error handling is explicit via if/return
     if ! run_docker_compose "${PROJECT_NAME}-upgrade" -f docker-compose.yml up -d 2>&1 | tee -a "${LOG_FILE}"; then
         log_test_result "${test_name}" "FAIL" "Failed to start containers"
@@ -1724,6 +1617,19 @@ main() {
         echo "Version: ${VERSION}"
         echo ""
     } > "${RESULT_FILE}"
+
+    # Pre-build the OpenEMR image once so all tests reuse it.
+    # This avoids rebuilding from the Dockerfile in every test, which is both
+    # slow (~5 min each) and triggers BuildKit cache corruption in CI.
+    log_info "Pre-building OpenEMR image: ${IMAGE_TAG}..."
+    local docker_context_abs
+    docker_context_abs=$(get_docker_context_abs)
+    if ! docker build -t "${IMAGE_TAG}" "${docker_context_abs}" 2>&1 | tee -a "${LOG_FILE}"; then
+        log_error "Failed to build OpenEMR image"
+        return 1
+    fi
+    log_success "Image ${IMAGE_TAG} built successfully"
+    echo ""
 
     log_info "Starting test suite..."
     log_info "Results will be saved to: ${RESULT_FILE}"
