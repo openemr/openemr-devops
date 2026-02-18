@@ -263,6 +263,14 @@ run_docker_compose() {
     # Unset DOCKER_CONTEXT (Docker CLI variable) to avoid conflicts
     # We don't restore it because we use DOCKERFILE_CONTEXT internally, not DOCKER_CONTEXT
     unset DOCKER_CONTEXT
+
+    # Prune BuildKit cache before builds to prevent snapshot corruption.
+    # After many sequential builds in CI, containerd's snapshotter can lose
+    # parent layers, causing "parent snapshot does not exist" errors.
+    if [[ "${*}" == *"build"* ]]; then
+        docker builder prune -f >/dev/null 2>&1 || true
+    fi
+
     docker compose -p "${project_name}" "$@"
     local exit_code=$?
     return "${exit_code}"
@@ -1392,11 +1400,6 @@ EOF
 test_docker_upgrade() {
     local test_name="Docker Upgrade Process"
     log_test_start "${test_name}"
-
-    # Prune BuildKit cache to avoid snapshot corruption after many sequential builds.
-    # Without this, the containerd snapshotter can lose parent layers after 8+ builds
-    # in the same CI job, causing "parent snapshot does not exist" errors.
-    docker builder prune -f >/dev/null 2>&1 || true
 
     # Skip upgrade test for flex containers (they don't have upgrade scripts)
     local docker_context_abs
