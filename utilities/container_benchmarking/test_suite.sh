@@ -1393,6 +1393,11 @@ test_docker_upgrade() {
     local test_name="Docker Upgrade Process"
     log_test_start "${test_name}"
 
+    # Prune BuildKit cache to avoid snapshot corruption after many sequential builds.
+    # Without this, the containerd snapshotter can lose parent layers after 8+ builds
+    # in the same CI job, causing "parent snapshot does not exist" errors.
+    docker builder prune -f >/dev/null 2>&1 || true
+
     # Skip upgrade test for flex containers (they don't have upgrade scripts)
     local docker_context_abs
     docker_context_abs=$(get_docker_context_abs)
