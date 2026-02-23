@@ -26,7 +26,7 @@ jobs:
     name: BATS 8.0.1
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Bats
         run: |
           git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
@@ -44,7 +44,7 @@ jobs:
     name: BATS binary
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Bats
         run: |
           git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
@@ -62,7 +62,7 @@ jobs:
     name: BATS flex
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Bats
         run: |
           git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
