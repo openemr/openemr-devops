@@ -4,10 +4,10 @@ on:
     branches:
       - master
     # GitHub Actions do not support YAML anchors
-    # There are five places in here we must keep
+    # There are six places in here we must keep
     # the paths in sync and the exclusion logic.
     paths:
-      # Include all shell scripts except those in docker/openemr/obsolete/
+      # Include all shell scripts except those in frozen/obsolete image directories
       - '**.sh'
       - '**.source'
       - '.github/workflows/shellcheck.yml'
@@ -20,15 +20,19 @@ on:
       - 'utilities/openemr-env-installer/openemr-env-installer'
       - 'utilities/openemr-env-migrator/openemr-env-migrator'
       - 'utilities/openemr-monitor/monitor-installer'
-      # Exclude everything in obsolete.
+      # Exclude frozen production images and obsolete directories.
+      # These are released images whose scripts must not be modified.
       # This needs to be last.
+      - '!docker/openemr/7.0.3/**'
+      - '!docker/openemr/7.0.4/**'
+      - '!docker/openemr/8.0.0/**'
       - '!docker/openemr/obsolete/**'
       - '!docker/obsolete/**'
   pull_request:
     branches:
       - master
     paths:
-      # Include all shell scripts except those in docker/openemr/obsolete/
+      # Include all shell scripts except those in frozen/obsolete image directories
       - '**.sh'
       - '**.source'
       - '.github/workflows/shellcheck.yml'
@@ -41,8 +45,12 @@ on:
       - 'utilities/openemr-env-installer/openemr-env-installer'
       - 'utilities/openemr-env-migrator/openemr-env-migrator'
       - 'utilities/openemr-monitor/monitor-installer'
-      # Exclude everything in obsolete.
+      # Exclude frozen production images and obsolete directories.
+      # These are released images whose scripts must not be modified.
       # This needs to be last.
+      - '!docker/openemr/7.0.3/**'
+      - '!docker/openemr/7.0.4/**'
+      - '!docker/openemr/8.0.0/**'
       - '!docker/openemr/obsolete/**'
       - '!docker/obsolete/**'
 jobs:
@@ -80,6 +88,9 @@ jobs:
             utilities/openemr-env-installer/openemr-env-installer
             utilities/openemr-env-migrator/openemr-env-migrator
             utilities/openemr-monitor/monitor-installer
+            !docker/openemr/7.0.3/**
+            !docker/openemr/7.0.4/**
+            !docker/openemr/8.0.0/**
             !docker/openemr/obsolete/**
       - name: Create unique files list
         id: unique-files
@@ -124,7 +135,10 @@ jobs:
           # Process each changed file
           for file in "${files_to_check[@]}"; do
             [[ -f "$file" ]] || continue
-            # Skip files in the obsolete directory
+            # Skip files in frozen production or obsolete image directories
+            [[ "$file" = docker/openemr/7.0.3/* ]] && continue
+            [[ "$file" = docker/openemr/7.0.4/* ]] && continue
+            [[ "$file" = docker/openemr/8.0.0/* ]] && continue
             [[ "$file" = docker/openemr/obsolete/* ]] && continue
             [[ "$file" = docker/obsolete/* ]] && continue 
             # Get hash of file content

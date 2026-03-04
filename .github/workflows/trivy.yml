@@ -1,0 +1,91 @@
+name: Trivy Security Scan
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/binary/**'
+      - 'docker/openemr/flex/**'
+      - '.github/workflows/trivy.yml'
+      - '.trivyignore.yaml'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/binary/**'
+      - 'docker/openemr/flex/**'
+      - '.github/workflows/trivy.yml'
+      - '.trivyignore.yaml'
+  schedule:
+    - cron: '0 3 * * 1'
+
+jobs:
+  trivy-scan:
+    name: Trivy (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: 8.0.1
+            context: docker/openemr/8.0.1
+            build-args: ""
+          - image: binary
+            context: docker/openemr/binary
+            build-args: ""
+          - image: flex
+            context: docker/openemr/flex
+            build-args: |
+              ALPINE_VERSION=3.22
+              PHP_VERSION=8.4
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          build-args: ${{ matrix.build-args }}
+          tags: openemr-scan:${{ matrix.image }}
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.34.2
+        with:
+          image-ref: openemr-scan:${{ matrix.image }}
+          scanners: vuln
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          trivyignores: .trivyignore.yaml
+          timeout: 15m
+
+      - name: Run Trivy (SARIF upload)
+        if: always()
+        uses: aquasecurity/trivy-action@0.34.2
+        with:
+          image-ref: openemr-scan:${{ matrix.image }}
+          scanners: vuln
+          format: sarif
+          severity: CRITICAL,HIGH
+          trivyignores: .trivyignore.yaml
+          timeout: 15m
+          output: trivy-results-${{ matrix.image }}.sarif
+
+      - name: Upload SARIF results to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
