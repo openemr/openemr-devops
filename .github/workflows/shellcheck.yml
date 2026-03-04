@@ -3,9 +3,12 @@ on:
   push:
     branches:
       - master
-    # GitHub Actions do not support YAML anchors
-    # There are six places in here we must keep
-    # the paths in sync and the exclusion logic.
+    # GitHub Actions do not support YAML anchors.
+    # There are five places in here we must keep
+    # the paths in sync and the exclusion logic:
+    # 1. on.push.paths  2. on.pull_request.paths
+    # 3. tj-actions/changed-files  4. glob fallback list
+    # 5. skip-pattern loop
     paths:
       # Include all shell scripts except those in frozen/obsolete image directories
       - '**.sh'
@@ -14,7 +17,6 @@ on:
       - 'docker/openemr/flex-*/utilities/devtools'
       - 'kubernetes/kub-down'
       - 'kubernetes/kub-up'
-      - 'packages/standard/cfn/buildstacks.bat'  # ¯\_(ツ)_/¯
       - 'utilities/openemr-cmd/openemr-cmd'
       - 'utilities/openemr-cmd/openemr-cmd-h'
       - 'utilities/openemr-env-installer/openemr-env-installer'
@@ -22,12 +24,14 @@ on:
       - 'utilities/openemr-monitor/monitor-installer'
       # Exclude frozen production images and obsolete directories.
       # These are released images whose scripts must not be modified.
+      # Exclude packages/ scripts that source runtime-only cloud variables.
       # This needs to be last.
       - '!docker/openemr/7.0.3/**'
       - '!docker/openemr/7.0.4/**'
       - '!docker/openemr/8.0.0/**'
       - '!docker/openemr/obsolete/**'
       - '!docker/obsolete/**'
+      - '!packages/**'
   pull_request:
     branches:
       - master
@@ -39,7 +43,6 @@ on:
       - 'docker/openemr/flex-*/utilities/devtools'
       - 'kubernetes/kub-down'
       - 'kubernetes/kub-up'
-      - 'packages/standard/cfn/buildstacks.bat'  # ¯\_(ツ)_/¯
       - 'utilities/openemr-cmd/openemr-cmd'
       - 'utilities/openemr-cmd/openemr-cmd-h'
       - 'utilities/openemr-env-installer/openemr-env-installer'
@@ -47,12 +50,14 @@ on:
       - 'utilities/openemr-monitor/monitor-installer'
       # Exclude frozen production images and obsolete directories.
       # These are released images whose scripts must not be modified.
+      # Exclude packages/ scripts that source runtime-only cloud variables.
       # This needs to be last.
       - '!docker/openemr/7.0.3/**'
       - '!docker/openemr/7.0.4/**'
       - '!docker/openemr/8.0.0/**'
       - '!docker/openemr/obsolete/**'
       - '!docker/obsolete/**'
+      - '!packages/**'
 jobs:
   shellcheck:
     name: ShellCheck
@@ -82,7 +87,6 @@ jobs:
             docker/openemr/flex-*/utilities/devtools
             kubernetes/kub-down
             kubernetes/kub-up
-            packages/standard/cfn/buildstacks.bat
             utilities/openemr-cmd/openemr-cmd
             utilities/openemr-cmd/openemr-cmd-h
             utilities/openemr-env-installer/openemr-env-installer
@@ -92,6 +96,7 @@ jobs:
             !docker/openemr/7.0.4/**
             !docker/openemr/8.0.0/**
             !docker/openemr/obsolete/**
+            !packages/**
       - name: Create unique files list
         id: unique-files
         run: |
@@ -122,7 +127,6 @@ jobs:
               docker/openemr/flex-*/utilities/devtools
               kubernetes/kub-down
               kubernetes/kub-up
-              packages/standard/cfn/buildstacks.bat
               utilities/openemr-cmd/openemr-cmd
               utilities/openemr-cmd/openemr-cmd-h
               utilities/openemr-env-installer/openemr-env-installer
@@ -140,7 +144,8 @@ jobs:
             [[ "$file" = docker/openemr/7.0.4/* ]] && continue
             [[ "$file" = docker/openemr/8.0.0/* ]] && continue
             [[ "$file" = docker/openemr/obsolete/* ]] && continue
-            [[ "$file" = docker/obsolete/* ]] && continue 
+            [[ "$file" = docker/obsolete/* ]] && continue
+            [[ "$file" = packages/* ]] && continue
             # Get hash of file content
             hash=$(sha256sum "$file" | cut -d ' ' -f 1)
             # Check if we've seen this hash before
