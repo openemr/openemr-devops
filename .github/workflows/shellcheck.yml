@@ -140,12 +140,11 @@ jobs:
           for file in "${files_to_check[@]}"; do
             [[ -f "$file" ]] || continue
             # Skip files in frozen production or obsolete image directories
-            [[ "$file" = docker/openemr/7.0.3/* ]] && continue
-            [[ "$file" = docker/openemr/7.0.4/* ]] && continue
-            [[ "$file" = docker/openemr/8.0.0/* ]] && continue
-            [[ "$file" = docker/openemr/obsolete/* ]] && continue
-            [[ "$file" = docker/obsolete/* ]] && continue
-            [[ "$file" = packages/* ]] && continue
+            case $file in
+              docker/openemr/7.0.3/*|docker/openemr/7.0.4/*|docker/openemr/8.0.0/*) continue ;;
+              docker/openemr/obsolete/*|docker/obsolete/*) continue ;;
+              packages/*) continue ;;
+            esac
             # Get hash of file content
             hash=$(sha256sum "$file" | cut -d ' ' -f 1)
             # Check if we've seen this hash before

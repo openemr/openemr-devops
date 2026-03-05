@@ -168,8 +168,7 @@ chmod 600 restore-client/properties
 
 installClient () {
     
-    (cd backup-client && docker compose -p "${PROJECT}" cp ./ "${SERVICENAME}":"${CLIENTDIRECTORY}")
-    if [[ $? != 0 ]]; then
+    if ! docker compose --project-directory backup-client -p "${PROJECT}" cp ./ "${SERVICENAME}":"${CLIENTDIRECTORY}"; then
         echo "failure, error writing client to container"
         exit 1
     fi
