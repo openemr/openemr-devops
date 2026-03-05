@@ -4,13 +4,9 @@ on:
     branches:
       - master
     # GitHub Actions do not support YAML anchors.
-    # There are five places in here we must keep
-    # the paths in sync and the exclusion logic:
-    # 1. on.push.paths  2. on.pull_request.paths
-    # 3. tj-actions/changed-files  4. glob fallback list
-    # 5. skip-pattern loop
+    # Directories containing a .shellcheck-skip marker file are
+    # excluded at runtime -- no need to maintain exclusions here.
     paths:
-      # Include all shell scripts except those in frozen/obsolete image directories
       - '**.sh'
       - '**.source'
       - '.github/workflows/shellcheck.yml'
@@ -22,21 +18,10 @@ on:
       - 'utilities/openemr-env-installer/openemr-env-installer'
       - 'utilities/openemr-env-migrator/openemr-env-migrator'
       - 'utilities/openemr-monitor/monitor-installer'
-      # Exclude frozen production images and obsolete directories.
-      # These are released images whose scripts must not be modified.
-      # Exclude packages/ scripts that source runtime-only cloud variables.
-      # This needs to be last.
-      - '!docker/openemr/7.0.3/**'
-      - '!docker/openemr/7.0.4/**'
-      - '!docker/openemr/8.0.0/**'
-      - '!docker/openemr/obsolete/**'
-      - '!docker/obsolete/**'
-      - '!packages/**'
   pull_request:
     branches:
       - master
     paths:
-      # Include all shell scripts except those in frozen/obsolete image directories
       - '**.sh'
       - '**.source'
       - '.github/workflows/shellcheck.yml'
@@ -48,16 +33,6 @@ on:
       - 'utilities/openemr-env-installer/openemr-env-installer'
       - 'utilities/openemr-env-migrator/openemr-env-migrator'
       - 'utilities/openemr-monitor/monitor-installer'
-      # Exclude frozen production images and obsolete directories.
-      # These are released images whose scripts must not be modified.
-      # Exclude packages/ scripts that source runtime-only cloud variables.
-      # This needs to be last.
-      - '!docker/openemr/7.0.3/**'
-      - '!docker/openemr/7.0.4/**'
-      - '!docker/openemr/8.0.0/**'
-      - '!docker/openemr/obsolete/**'
-      - '!docker/obsolete/**'
-      - '!packages/**'
 jobs:
   shellcheck:
     name: ShellCheck
@@ -78,9 +53,7 @@ jobs:
         continue-on-error: true
         uses: tj-actions/changed-files@v47
         with:
-          # Keep the paths in sync with the paths in the on.push and on.pull_request sections
-          # See https://github.com/tj-actions/changed-files/blob/v46/README.md#inputs-%EF%B8%8F
-          # for tj-actions/changed-files specific syntax
+          # .shellcheck-skip marker files handle exclusions at runtime.
           files: |
             **.sh
             **.source
@@ -92,11 +65,6 @@ jobs:
             utilities/openemr-env-installer/openemr-env-installer
             utilities/openemr-env-migrator/openemr-env-migrator
             utilities/openemr-monitor/monitor-installer
-            !docker/openemr/7.0.3/**
-            !docker/openemr/7.0.4/**
-            !docker/openemr/8.0.0/**
-            !docker/openemr/obsolete/**
-            !packages/**
       - name: Create unique files list
         id: unique-files
         run: |
@@ -119,7 +87,7 @@ jobs:
             # Use the same paths as in the on.push and on.pull_request sections
             # to ensure we only check shell files.
             # Use globstar to find shell files in subdirectories.
-            # We can't easily exclude obsolete here, so we exclude it later...
+            # Directories with .shellcheck-skip markers are excluded below.
             shopt -s globstar nullglob
             files_to_check+=(
               **/*.sh
@@ -136,15 +104,18 @@ jobs:
           fi
 
           unique_files=()
+          # Build skip list from .shellcheck-skip marker files
+          mapfile -t skip_dirs < <(find . -name '.shellcheck-skip' -exec dirname {} \; | sed 's|^\./||')
+
           # Process each changed file
           for file in "${files_to_check[@]}"; do
             [[ -f "$file" ]] || continue
-            # Skip files in frozen production or obsolete image directories
-            case $file in
-              docker/openemr/7.0.3/*|docker/openemr/7.0.4/*|docker/openemr/8.0.0/*) continue ;;
-              docker/openemr/obsolete/*|docker/obsolete/*) continue ;;
-              packages/*) continue ;;
-            esac
+            # Skip files in directories containing a .shellcheck-skip marker
+            skip=false
+            for dir in "${skip_dirs[@]}"; do
+              [[ "$file" = "$dir"/* ]] && { skip=true; break; }
+            done
+            [[ "$skip" = true ]] && continue
             # Get hash of file content
             hash=$(sha256sum "$file" | cut -d ' ' -f 1)
             # Check if we've seen this hash before
