@@ -7,7 +7,6 @@ on:
       - 'docker/openemr/8.0.1/**'
       - 'docker/openemr/flex/**'
       - '.github/workflows/trivy.yml'
-      - '.trivyignore.yaml'
   pull_request:
     branches:
       - master
@@ -15,7 +14,6 @@ on:
       - 'docker/openemr/8.0.1/**'
       - 'docker/openemr/flex/**'
       - '.github/workflows/trivy.yml'
-      - '.trivyignore.yaml'
   schedule:
     - cron: '0 3 * * 1'
 
@@ -65,7 +63,10 @@ jobs:
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH
-          trivyignores: .trivyignore.yaml
+          # Skip OpenEMR application dependencies (node_modules, vendor, JARs).
+          # Those are owned by the app repo; this scan covers OS packages and
+          # Dockerfile-layer concerns only.
+          skip-dirs: var/www/localhost/htdocs/openemr
           timeout: 15m
 
       - name: Run Trivy (SARIF upload)
@@ -77,7 +78,7 @@ jobs:
           scanners: vuln
           format: sarif
           severity: CRITICAL,HIGH
-          trivyignores: .trivyignore.yaml
+          skip-dirs: var/www/localhost/htdocs/openemr
           timeout: 15m
           output: trivy-results-${{ matrix.image }}.sarif
 
