@@ -35,6 +35,7 @@ jobs:
             build-args: ""
           - image: flex
             context: docker/openemr/flex
+            # Keep in sync with ARG defaults in docker/openemr/flex/Dockerfile
             build-args: |
               ALPINE_VERSION=3.22
               PHP_VERSION=8.4
