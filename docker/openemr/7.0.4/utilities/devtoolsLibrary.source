@@ -238,7 +238,7 @@ importRandomPatients() {
     if [ ! -d /root/synthea ]; then
         echo "Setting up synthea first"
         apk update
-        apk add openjdk11-jre
+        apk add openjdk17-jre
         mkdir /root/synthea
         cd /root/synthea || exit
         wget https://github.com/synthetichealth/synthea/releases/download/master-branch-latest/synthea-with-dependencies.jar
