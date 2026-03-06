@@ -6,21 +6,27 @@ updates:
     schedule:
       interval: "daily"
 
-  # Docker - docker/openemr/7.0.3
-  - package-ecosystem: "docker"
-    directory: "/docker/openemr/7.0.3"
-    schedule:
-      interval: "daily"
-
   # Docker - docker/openemr/7.0.4
   - package-ecosystem: "docker"
     directory: "/docker/openemr/7.0.4"
     schedule:
       interval: "daily"
 
-  # Docker - docker/openemr/7.0.5
+  # Docker - docker/openemr/8.0.0
   - package-ecosystem: "docker"
-    directory: "/docker/openemr/7.0.5"
+    directory: "/docker/openemr/8.0.0"
+    schedule:
+      interval: "daily"
+
+  # Docker - docker/openemr/8.0.1
+  - package-ecosystem: "docker"
+    directory: "/docker/openemr/8.0.1"
+    schedule:
+      interval: "daily"
+
+  # Docker - docker/openemr/binary
+  - package-ecosystem: "docker"
+    directory: "/docker/openemr/binary"
     schedule:
       interval: "daily"
 
