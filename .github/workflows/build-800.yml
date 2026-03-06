@@ -22,7 +22,7 @@ jobs:
         id: build_date
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       - name: Build and push 8.0.0 docker
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: "{{defaultContext}}:docker/openemr/8.0.0"
           tags: openemr/openemr:8.0.0, openemr/openemr:8.0.0.0, openemr/openemr:8.0.0.0-${{ steps.build_date.outputs.date }}, openemr/openemr:latest
