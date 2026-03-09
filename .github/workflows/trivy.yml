@@ -5,6 +5,7 @@ on:
       - master
     paths:
       - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/binary/**'
       - 'docker/openemr/flex/**'
       - '.github/workflows/trivy.yml'
   pull_request:
@@ -12,6 +13,7 @@ on:
       - master
     paths:
       - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/binary/**'
       - 'docker/openemr/flex/**'
       - '.github/workflows/trivy.yml'
   schedule:
@@ -30,6 +32,9 @@ jobs:
         include:
           - image: 8.0.1
             context: docker/openemr/8.0.1
+            build-args: ""
+          - image: binary
+            context: docker/openemr/binary
             build-args: ""
           - image: flex
             context: docker/openemr/flex
