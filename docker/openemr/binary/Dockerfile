@@ -126,6 +126,10 @@ RUN ARCH_SUFFIX="${TARGETARCH}" \
     && /usr/local/bin/php -d memory_limit=512M -r "try { \$phar = new Phar('openemr.phar'); \$phar->extractTo('/tmp/openemr'); } catch (Exception \$e) { echo 'Error: ' . \$e->getMessage() . PHP_EOL; exit(1); }" \
     && rm openemr.phar
 
+# Install ccdaservice dependencies (schematron validation service).
+# The PHAR includes ccdaservice/ source but not node_modules/.
+RUN cd /tmp/openemr/ccdaservice && npm install --unsafe-perm
+
 # Download tests directory from GitHub to match the PHAR version
 # GitHub tag format is v8_0_0 (with v prefix and underscores)
 # Note: GitHub archives strip the 'v' prefix, so openemr-v8_0_0 becomes openemr-8_0_0
