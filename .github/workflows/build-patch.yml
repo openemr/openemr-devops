@@ -169,11 +169,11 @@ jobs:
           done
         } > /tmp/changelog.md
 
-        echo 'Generated changelog:'
-        cat CHANGELOG.md
-
         # Copy changelog to workspace for artifact/release upload
         cp /tmp/changelog.md 'CHANGELOG.md'
+
+        echo 'Generated changelog:'
+        cat CHANGELOG.md
 
     - name: Generate changed file list
       id: diff
