@@ -47,12 +47,22 @@ jobs:
         printf '::error::release_tag is required when dry_run is false\n'
         exit 1
 
+    - name: Generate app token
+      if: '!inputs.dry_run'
+      id: app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ secrets.RELEASE_APP_ID }}
+        private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        owner: openemr
+        repositories: openemr
+
     - name: Checkout openemr release branch (blobless for speed)
       uses: actions/checkout@v6
       with:
         repository: openemr/openemr
         ref: ${{ inputs.version_branch }}
-        token: ${{ secrets.OPENEMR_TOKEN }}
+        token: ${{ steps.app-token.outputs.token || github.token }}
         filter: blob:none
         fetch-depth: 0
 
@@ -78,7 +88,7 @@ jobs:
 
     - name: Generate changelog
       env:
-        GH_TOKEN: ${{ secrets.OPENEMR_TOKEN }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         MILESTONE_NAME: ${{ inputs.milestone }}
       run: |
         # Find the milestone number from the name
@@ -377,7 +387,7 @@ jobs:
     - name: Create annotated tag and GitHub release
       if: '!inputs.dry_run'
       env:
-        GH_TOKEN: ${{ secrets.OPENEMR_TOKEN }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
       run: |
         tag='${{ inputs.release_tag }}'
 
@@ -417,7 +427,7 @@ jobs:
     - name: Create CHANGELOG PRs
       if: '!inputs.dry_run'
       env:
-        GH_TOKEN: ${{ secrets.OPENEMR_TOKEN }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         MILESTONE: ${{ inputs.milestone }}
         VERSION_BRANCH: ${{ inputs.version_branch }}
       run: |
