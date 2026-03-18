@@ -57,6 +57,16 @@ jobs:
         owner: openemr
         repositories: openemr
 
+    - name: Verify app token
+      if: '!inputs.dry_run'
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        MILESTONE_NAME: ${{ inputs.milestone }}
+      run: |
+        echo "Checking app token can access openemr/openemr milestones..."
+        gh api repos/openemr/openemr/milestones --jq '.[].title' | head -5
+        echo 'App token verified.'
+
     - name: Checkout openemr release branch
       uses: actions/checkout@v6
       with:
