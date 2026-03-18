@@ -63,7 +63,11 @@ jobs:
         repository: openemr/openemr
         ref: ${{ inputs.version_branch }}
         token: ${{ steps.app-token.outputs.token || github.token }}
-        fetch-depth: 0
+        filter: blob:none
+        fetch-depth: 1
+
+    - name: Fetch start tag
+      run: git fetch --filter=blob:none --depth=1 origin tag '${{ inputs.version_start }}'
 
     - name: Bump version.php
       env:
