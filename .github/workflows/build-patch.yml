@@ -57,13 +57,12 @@ jobs:
         owner: openemr
         repositories: openemr
 
-    - name: Checkout openemr release branch (blobless for speed)
+    - name: Checkout openemr release branch
       uses: actions/checkout@v6
       with:
         repository: openemr/openemr
         ref: ${{ inputs.version_branch }}
         token: ${{ steps.app-token.outputs.token || github.token }}
-        filter: blob:none
         fetch-depth: 0
 
     - name: Bump version.php
