@@ -410,3 +410,52 @@ jobs:
           '${{ inputs.patch_filename }}.sha512' \
           'CHANGELOG.md' \
           --clobber
+
+    - name: Create CHANGELOG PRs
+      if: '!inputs.dry_run'
+      env:
+        GH_TOKEN: ${{ secrets.OPENEMR_TOKEN }}
+        MILESTONE: ${{ inputs.milestone }}
+        VERSION_BRANCH: ${{ inputs.version_branch }}
+      run: |
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+        # Save the generated changelog entry before switching branches
+        cp /tmp/changelog.md /tmp/changelog-entry.md
+
+        for target in "$VERSION_BRANCH" master; do
+          branch="changelog-${MILESTONE}-${target}"
+
+          git checkout "$target"
+          git pull origin "$target"
+          git checkout -b "$branch"
+
+          # Prepend the new entry after the "# CHANGELOG.md" header line
+          if [[ -f CHANGELOG.md ]]; then
+            {
+              head -1 CHANGELOG.md
+              echo
+              cat /tmp/changelog-entry.md
+              echo
+              tail -n +2 CHANGELOG.md
+            } > CHANGELOG.md.tmp
+            mv CHANGELOG.md.tmp CHANGELOG.md
+          else
+            { echo '# CHANGELOG.md'; echo; cat /tmp/changelog-entry.md; } > CHANGELOG.md
+          fi
+
+          git add CHANGELOG.md
+          git commit -m "docs: add ${MILESTONE} changelog"
+          git push origin "$branch"
+
+          gh pr create \
+            --repo openemr/openemr \
+            --base "$target" \
+            --head "$branch" \
+            --title "docs: add ${MILESTONE} changelog" \
+            --body "Auto-generated changelog update from patch release workflow."
+
+          # Clean up branch for the next iteration
+          git checkout --detach
+        done
