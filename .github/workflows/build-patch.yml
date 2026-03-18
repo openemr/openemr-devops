@@ -35,6 +35,10 @@ on:
         description: Build and include compiled theme styles
         type: boolean
         default: false
+      validate_token:
+        description: Generate and verify the app token (use with dry run to test permissions)
+        type: boolean
+        default: false
 
 jobs:
   build-patch:
@@ -48,7 +52,7 @@ jobs:
         exit 1
 
     - name: Generate app token
-      if: '!inputs.dry_run'
+      if: '!inputs.dry_run || inputs.validate_token'
       id: app-token
       uses: actions/create-github-app-token@v2
       with:
@@ -58,7 +62,7 @@ jobs:
         repositories: openemr
 
     - name: Verify app token
-      if: '!inputs.dry_run'
+      if: '!inputs.dry_run || inputs.validate_token'
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token }}
         MILESTONE_NAME: ${{ inputs.milestone }}
