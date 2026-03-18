@@ -238,7 +238,10 @@ jobs:
           if [[ -z "$file" ]]; then
             continue
           fi
-          mkdir -p "${patch_dir}/${file%/*}"
+          dir="${file%/*}"
+          if [[ "$dir" != "$file" ]]; then
+            mkdir -p "${patch_dir}/${dir}"
+          fi
           cp "$file" "${patch_dir}/${file}"
         done < /tmp/changed-files.txt
 
