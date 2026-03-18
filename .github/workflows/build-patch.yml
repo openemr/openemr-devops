@@ -350,10 +350,10 @@ jobs:
           echo '### Changelog'
           cat CHANGELOG.md
           echo
-          echo '### Changed files'
-          echo '```'
+          printf '<details>\n<summary>Changed files (%d)</summary>\n\n```\n' \
+            "$(wc -l < /tmp/changed-files.txt)"
           cat /tmp/changed-files.txt
-          echo '```'
+          printf '```\n</details>\n'
           echo
           echo '---'
           echo
