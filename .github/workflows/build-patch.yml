@@ -157,7 +157,10 @@ jobs:
         } > /tmp/changelog.md
 
         echo 'Generated changelog:'
-        cat /tmp/changelog.md
+        cat CHANGELOG.md
+
+        # Copy changelog to workspace for artifact/release upload
+        cp /tmp/changelog.md 'CHANGELOG.md'
 
     - name: Generate changed file list
       id: diff
@@ -315,7 +318,7 @@ jobs:
           echo '```'
           echo
           echo '### Changelog'
-          cat /tmp/changelog.md
+          cat CHANGELOG.md
           echo
           echo '### Changed files'
           echo '```'
@@ -359,11 +362,13 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.patch_filename }}
+        compression-level: 0
         path: |
           ${{ inputs.patch_filename }}
           ${{ inputs.patch_filename }}.md5
           ${{ inputs.patch_filename }}.sha256
           ${{ inputs.patch_filename }}.sha512
+          CHANGELOG.md
         retention-days: 7
 
     - name: Create annotated tag and GitHub release
@@ -396,11 +401,12 @@ jobs:
             --verify-tag
         fi
 
-        # Upload patch zip and checksums
+        # Upload patch zip, checksums, and changelog
         gh release upload "$tag" \
           --repo openemr/openemr \
           '${{ inputs.patch_filename }}' \
           '${{ inputs.patch_filename }}.md5' \
           '${{ inputs.patch_filename }}.sha256' \
           '${{ inputs.patch_filename }}.sha512' \
+          'CHANGELOG.md' \
           --clobber
