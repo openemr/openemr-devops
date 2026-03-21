@@ -3,7 +3,7 @@
 /**
  * Wrapper around the gh CLI for GitHub API calls.
  *
- * @package   openemr
+ * @package   openemr-devops
  * @link      https://www.open-emr.org
  * @author    Michael A. Smith <michael@opencoreemr.com>
  * @copyright Copyright (c) 2026 OpenCoreEMR Inc.
@@ -42,6 +42,7 @@ class GitHubApi
         }
 
         // --slurp wraps each page in an outer array: [[...page1...], [...page2...]]
+        /** @var list<list<array<string, mixed>>> $pages */
         return array_merge(...$pages);
     }
 
@@ -56,7 +57,9 @@ class GitHubApi
             $milestones = $this->paginate("/milestones?state={$state}&per_page=100");
             foreach ($milestones as $milestone) {
                 if ($milestone['title'] === $name) {
-                    return (int) $milestone['number'];
+                    /** @var int $number */
+                    $number = $milestone['number'];
+                    return $number;
                 }
             }
         }

@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<ruleset name="OpenEMR Release Tools">
+    <description>Coding standard for OpenEMR release tooling</description>
+
+    <arg name="extensions" value="php"/>
+    <arg name="colors"/>
+    <arg value="sp"/>
+
+    <file>src</file>
+    <file>bin</file>
+
+    <exclude-pattern>vendor</exclude-pattern>
+
+    <rule ref="PSR12"/>
+
+    <rule ref="Generic.Arrays.DisallowLongArraySyntax"/>
+    <rule ref="Generic.PHP.DeprecatedFunctions"/>
+    <rule ref="Generic.Files.LineLength">
+        <properties>
+            <property name="lineLimit" value="120"/>
+            <property name="absoluteLineLimit" value="150"/>
+        </properties>
+    </rule>
+</ruleset>

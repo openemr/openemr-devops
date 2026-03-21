@@ -27,3 +27,111 @@ tasks:
         --milestone={{shellQuote .MILESTONE}}
         --repo={{shellQuote .REPO}}
         --output={{shellQuote .OUTPUT_DIR}}/changelog.md
+
+  version-bump:
+    desc: Bump version numbers in OpenEMR source files
+    requires:
+      vars: [MODE, OPENEMR_DIR]
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/version-bump.php
+        --mode={{shellQuote .MODE}}
+        {{if eq .MODE "patch"}}--patch-number={{shellQuote .PATCH_NUMBER}}{{end}}
+        --version-file={{shellQuote .OPENEMR_DIR}}/version.php
+        --globals-file={{shellQuote .OPENEMR_DIR}}/library/globals.inc.php
+
+  preflight:
+    desc: Run pre-release checks
+    requires:
+      vars: [MILESTONE]
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/preflight.php
+        --milestone={{shellQuote .MILESTONE}}
+        --repo={{shellQuote .REPO}}
+
+  checksum:
+    desc: Generate checksum sidecar files
+    requires:
+      vars: [FILE]
+    cmds:
+      - md5sum {{shellQuote .FILE}} > {{shellQuote .FILE}}.md5
+      - sha256sum {{shellQuote .FILE}} > {{shellQuote .FILE}}.sha256
+      - sha512sum {{shellQuote .FILE}} > {{shellQuote .FILE}}.sha512
+
+  tag:
+    desc: Create annotated git tag and push
+    requires:
+      vars: [TAG, REF]
+    status:
+      - git rev-parse {{shellQuote .TAG}} >/dev/null 2>&1
+    cmds:
+      - git tag -a {{shellQuote .TAG}} {{shellQuote .REF}} -m "Release {{.TAG}}"
+      - git push origin {{shellQuote .TAG}}
+
+  release:
+    desc: Create GitHub release
+    requires:
+      vars: [TAG]
+    status:
+      - gh release view {{shellQuote .TAG}} --repo {{shellQuote .REPO}} >/dev/null 2>&1
+    cmds:
+      - >-
+        gh release create {{shellQuote .TAG}}
+        --repo {{shellQuote .REPO}}
+        --title {{shellQuote .TAG}}
+        {{if .NOTES_FILE}}--notes-file {{shellQuote .NOTES_FILE}}{{end}}
+
+  release:upload:
+    desc: Upload assets to an existing GitHub release
+    requires:
+      vars: [TAG, ASSETS]
+    cmds:
+      - >-
+        gh release upload {{shellQuote .TAG}}
+        --repo {{shellQuote .REPO}}
+        --clobber
+        {{.ASSETS}}
+
+  changelog-pr:
+    desc: Create CHANGELOG.md update PRs
+    requires:
+      vars: [MILESTONE, BRANCHES, OPENEMR_DIR]
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/changelog-pr.php
+        --milestone={{shellQuote .MILESTONE}}
+        --branches={{shellQuote .BRANCHES}}
+        --openemr-dir={{shellQuote .OPENEMR_DIR}}
+        --changelog-file={{shellQuote .OUTPUT_DIR}}/changelog.md
+        --repo={{shellQuote .REPO}}
+
+  patch:assemble:
+    desc: Build cumulative patch zip from diff between tags
+    requires:
+      vars: [START_TAG, BRANCH, FILENAME, OPENEMR_DIR]
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/patch-assemble.php
+        --start-tag={{shellQuote .START_TAG}}
+        --branch={{shellQuote .BRANCH}}
+        --filename={{shellQuote .FILENAME}}
+        --openemr-dir={{shellQuote .OPENEMR_DIR}}
+        --output-dir={{shellQuote .OUTPUT_DIR}}
+        {{if .COPY_STYLES}}--copy-styles{{end}}
+
+  summary:
+    desc: Generate release summary
+    requires:
+      vars: [TYPE, MILESTONE]
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/summary.php
+        --type={{shellQuote .TYPE}}
+        --milestone={{shellQuote .MILESTONE}}
+        --output-dir={{shellQuote .OUTPUT_DIR}}

@@ -8,7 +8,7 @@
  *
  * Extracted from openemr/openemr CreateReleaseChangelogCommand by Stephen Nielson.
  *
- * @package   openemr
+ * @package   openemr-devops
  * @link      https://www.open-emr.org
  * @author    Stephen Nielson <snielson@discoverandchange.com>
  * @author    Michael A. Smith <michael@opencoreemr.com>
@@ -24,12 +24,12 @@ namespace OpenEMR\Release;
 class ChangelogGenerator
 {
     /**
-     * @param list<array<string, mixed>> $issues Raw issues from the GitHub API
+     * @param array<string, mixed> $issue Raw issue from the GitHub API
      * @return array{number: int, category: string, title: string, url: string, is_dev: bool}
      */
-    private static function categorize(array $issue): array
+    private function categorize(array $issue): array
     {
-        $title = (string) $issue['title'];
+        $title = is_string($issue['title'] ?? null) ? $issue['title'] : '';
         $category = 'bug';
 
         $parts = explode(':', $title, 2);
@@ -39,18 +39,20 @@ class ChangelogGenerator
         }
 
         $isDev = false;
-        foreach ($issue['labels'] ?? [] as $label) {
-            if ($label['name'] === 'developers') {
+        /** @var list<array<string, mixed>> $labels */
+        $labels = $issue['labels'] ?? [];
+        foreach ($labels as $label) {
+            if (($label['name'] ?? '') === 'developers') {
                 $isDev = true;
                 break;
             }
         }
 
         return [
-            'number' => (int) $issue['number'],
+            'number' => is_int($issue['number'] ?? null) ? $issue['number'] : 0,
             'category' => $category,
             'title' => $title,
-            'url' => (string) $issue['html_url'],
+            'url' => is_string($issue['html_url'] ?? null) ? $issue['html_url'] : '',
             'is_dev' => $isDev,
         ];
     }
@@ -62,21 +64,22 @@ class ChangelogGenerator
      */
     public function generate(string $milestone, int $milestoneNumber, string $repo, array $issues): string
     {
-        $categorized = array_map(self::categorize(...), $issues);
+        $categorized = array_map($this->categorize(...), $issues);
         usort($categorized, fn(array $a, array $b): int => strcasecmp($a['title'], $b['title']));
 
         $standard = array_values(array_filter($categorized, fn(array $i): bool => !$i['is_dev']));
         $developer = array_values(array_filter($categorized, fn(array $i): bool => $i['is_dev']));
 
         $lines = [];
-        $lines[] = "## [{$milestone}](https://github.com/{$repo}/milestone/{$milestoneNumber}?closed=1) - " . date('Y-m-d');
+        $url = "https://github.com/{$repo}/milestone/{$milestoneNumber}?closed=1";
+        $lines[] = "## [{$milestone}]({$url}) - " . date('Y-m-d');
         $lines[] = '';
-        $lines = array_merge($lines, self::formatIssues($standard));
+        $lines = array_merge($lines, $this->formatIssues($standard));
 
         if (count($developer) > 0) {
             $lines[] = '### OpenEMR Developer Changes';
             $lines[] = '';
-            $lines = array_merge($lines, self::formatIssues($developer));
+            $lines = array_merge($lines, $this->formatIssues($developer));
         }
 
         return implode("\n", $lines) . "\n";
@@ -86,12 +89,12 @@ class ChangelogGenerator
      * @param list<array{number: int, category: string, title: string, url: string, is_dev: bool}> $issues
      * @return list<string>
      */
-    private static function formatIssues(array $issues): array
+    private function formatIssues(array $issues): array
     {
         return array_merge(
-            self::formatByCategory($issues, 'feat', 'Added'),
-            self::formatByCategory($issues, 'bug', 'Fixed'),
-            self::formatOther($issues),
+            $this->formatByCategory($issues, 'feat', 'Added'),
+            $this->formatByCategory($issues, 'bug', 'Fixed'),
+            $this->formatOther($issues),
         );
     }
 
@@ -99,7 +102,7 @@ class ChangelogGenerator
      * @param list<array{number: int, category: string, title: string, url: string, is_dev: bool}> $issues
      * @return list<string>
      */
-    private static function formatByCategory(array $issues, string $category, string $heading): array
+    private function formatByCategory(array $issues, string $category, string $heading): array
     {
         $matches = array_filter($issues, fn(array $i): bool => $i['category'] === $category);
         if (count($matches) === 0) {
@@ -119,7 +122,7 @@ class ChangelogGenerator
      * @param list<array{number: int, category: string, title: string, url: string, is_dev: bool}> $issues
      * @return list<string>
      */
-    private static function formatOther(array $issues): array
+    private function formatOther(array $issues): array
     {
         $matches = array_filter($issues, fn(array $i): bool => !in_array($i['category'], ['feat', 'bug'], true));
         if (count($matches) === 0) {

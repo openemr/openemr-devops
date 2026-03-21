@@ -4,7 +4,7 @@
 /**
  * Generate a changelog from a GitHub milestone.
  *
- * @package   openemr
+ * @package   openemr-devops
  * @link      https://www.open-emr.org
  * @author    Michael A. Smith <michael@opencoreemr.com>
  * @copyright Copyright (c) 2026 OpenCoreEMR Inc.
@@ -29,12 +29,14 @@ use Symfony\Component\Console\SingleCommandApplication;
     ->addOption('repo', 'r', InputOption::VALUE_REQUIRED, 'GitHub repo (owner/name)', 'openemr/openemr')
     ->addOption('output', 'o', InputOption::VALUE_REQUIRED, 'Output file path (omit for stdout)')
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
+        /** @var ?string $milestone */
         $milestone = $input->getOption('milestone');
         if ($milestone === null) {
             $output->writeln('<error>--milestone is required</error>');
             return 1;
         }
 
+        /** @var string $repo */
         $repo = $input->getOption('repo');
         $api = new GitHubApi($repo);
 
@@ -52,6 +54,7 @@ use Symfony\Component\Console\SingleCommandApplication;
 
         $changelog = (new ChangelogGenerator())->generate($milestone, $milestoneNumber, $repo, $issues);
 
+        /** @var ?string $outputFile */
         $outputFile = $input->getOption('output');
         if ($outputFile !== null) {
             $dir = dirname($outputFile);
