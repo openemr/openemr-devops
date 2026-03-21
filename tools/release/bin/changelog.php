@@ -1,0 +1,69 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Generate a changelog from a GitHub milestone.
+ *
+ * @package   openemr
+ * @link      https://www.open-emr.org
+ * @author    Michael A. Smith <michael@opencoreemr.com>
+ * @copyright Copyright (c) 2026 OpenCoreEMR Inc.
+ * @license   https://github.com/openemr/openemr-devops/blob/master/LICENSE GNU General Public License 3
+ */
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+use OpenEMR\Release\ChangelogGenerator;
+use OpenEMR\Release\GitHubApi;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\SingleCommandApplication;
+
+(new SingleCommandApplication())
+    ->setName('changelog')
+    ->setDescription('Generate changelog from a GitHub milestone')
+    ->addOption('milestone', 'm', InputOption::VALUE_REQUIRED, 'Milestone name')
+    ->addOption('repo', 'r', InputOption::VALUE_REQUIRED, 'GitHub repo (owner/name)', 'openemr/openemr')
+    ->addOption('output', 'o', InputOption::VALUE_REQUIRED, 'Output file path (omit for stdout)')
+    ->setCode(function (InputInterface $input, OutputInterface $output): int {
+        $milestone = $input->getOption('milestone');
+        if ($milestone === null) {
+            $output->writeln('<error>--milestone is required</error>');
+            return 1;
+        }
+
+        $repo = $input->getOption('repo');
+        $api = new GitHubApi($repo);
+
+        $milestoneNumber = $api->findMilestone($milestone);
+        $output->writeln(
+            "Found milestone <info>{$milestone}</info> (#{$milestoneNumber})",
+            OutputInterface::VERBOSITY_VERBOSE,
+        );
+
+        $issues = $api->closedIssuesForMilestone($milestoneNumber);
+        $output->writeln(
+            sprintf('Fetched <info>%d</info> closed issues', count($issues)),
+            OutputInterface::VERBOSITY_VERBOSE,
+        );
+
+        $changelog = (new ChangelogGenerator())->generate($milestone, $milestoneNumber, $repo, $issues);
+
+        $outputFile = $input->getOption('output');
+        if ($outputFile !== null) {
+            $dir = dirname($outputFile);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+            file_put_contents($outputFile, $changelog);
+            $output->writeln("Changelog written to <info>{$outputFile}</info>");
+        } else {
+            $output->write($changelog);
+        }
+
+        return 0;
+    })
+    ->run();

@@ -1,0 +1,29 @@
+version: '3'
+
+vars:
+  OUTPUT_DIR: '{{.OUTPUT_DIR | default "./release-output"}}'
+  REPO: '{{.REPO | default "openemr/openemr"}}'
+
+tasks:
+  setup:
+    desc: Install PHP dependencies
+    cmds:
+      - composer install --no-interaction --no-progress
+    sources:
+      - composer.json
+      - composer.lock
+    generates:
+      - vendor/autoload.php
+
+  changelog:
+    desc: Generate changelog from GitHub milestone
+    requires:
+      vars: [MILESTONE]
+    deps: [setup]
+    cmds:
+      - mkdir -p {{.OUTPUT_DIR}}
+      - >-
+        php bin/changelog.php
+        --milestone={{shellQuote .MILESTONE}}
+        --repo={{shellQuote .REPO}}
+        --output={{shellQuote .OUTPUT_DIR}}/changelog.md
