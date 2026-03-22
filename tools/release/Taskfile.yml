@@ -51,6 +51,8 @@ tasks:
         php bin/preflight.php
         --milestone={{shellQuote .MILESTONE}}
         --repo={{shellQuote .REPO}}
+        {{if .SKIP_MILESTONE}}--skip-milestone{{end}}
+        {{if .SKIP_GHSA}}--skip-ghsa{{end}}
 
   checksum:
     desc: Generate checksum sidecar files
@@ -135,3 +137,10 @@ tasks:
         --type={{shellQuote .TYPE}}
         --milestone={{shellQuote .MILESTONE}}
         --output-dir={{shellQuote .OUTPUT_DIR}}
+        {{if .RELEASE_TAG}}--release-tag={{shellQuote .RELEASE_TAG}}{{end}}
+        {{if .START_TAG}}--start-tag={{shellQuote .START_TAG}}{{end}}
+        {{if .VERSION_BRANCH}}--version-branch={{shellQuote .VERSION_BRANCH}}{{end}}
+        {{if .PATCH_FILENAME}}--patch-filename={{shellQuote .PATCH_FILENAME}}{{end}}
+        {{if .PATCH_NUMBER}}--patch-number={{shellQuote .PATCH_NUMBER}}{{end}}
+        {{if .DRY_RUN}}--dry-run{{end}}
+        {{if .COPY_STYLES}}--copy-styles{{end}}

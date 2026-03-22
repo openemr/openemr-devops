@@ -19,6 +19,8 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\SingleCommandApplication;
+use Twig\Environment;
+use Twig\Loader\FilesystemLoader;
 
 (new SingleCommandApplication())
     ->setName('summary')
@@ -27,6 +29,13 @@ use Symfony\Component\Console\SingleCommandApplication;
     ->addOption('milestone', 'm', InputOption::VALUE_REQUIRED, 'Milestone name')
     ->addOption('output-dir', null, InputOption::VALUE_REQUIRED, 'Release artifacts directory', './release-output')
     ->addOption('output', 'o', InputOption::VALUE_REQUIRED, 'Output file (or GITHUB_STEP_SUMMARY)')
+    ->addOption('release-tag', null, InputOption::VALUE_REQUIRED, 'Release tag')
+    ->addOption('start-tag', null, InputOption::VALUE_REQUIRED, 'Start tag')
+    ->addOption('version-branch', null, InputOption::VALUE_REQUIRED, 'Release branch')
+    ->addOption('patch-filename', null, InputOption::VALUE_REQUIRED, 'Patch filename')
+    ->addOption('patch-number', null, InputOption::VALUE_REQUIRED, 'Patch number')
+    ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Whether this is a dry run')
+    ->addOption('copy-styles', null, InputOption::VALUE_NONE, 'Whether styles were copied')
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
         /** @var string $type */
         $type = $input->getOption('type');
@@ -47,60 +56,61 @@ use Symfony\Component\Console\SingleCommandApplication;
             return 1;
         }
 
-        $lines = [];
-        $lines[] = "## Release Summary: {$milestone}";
-        $lines[] = '';
+        $templateDir = dirname(__DIR__) . '/templates';
+        $templateFile = "{$type}-summary.md.twig";
+        if (!file_exists("{$templateDir}/{$templateFile}")) {
+            $output->writeln("<error>Template not found: {$templateFile}</error>");
+            return 1;
+        }
 
-        // Include checksums if available
+        // Collect checksums
+        $checksums = [];
         foreach (['md5', 'sha256', 'sha512'] as $ext) {
             $globResult = glob("{$outputDir}/*.{$ext}");
             if ($globResult === false) {
                 continue;
             }
             foreach ($globResult as $file) {
-                $content = trim((string) file_get_contents($file));
-                $lines[] = "**" . basename($file) . ":** `{$content}`";
+                $checksums[] = trim((string) file_get_contents($file));
             }
         }
-        $lines[] = '';
 
-        // Include changelog
+        // Read changelog
         $changelogFile = "{$outputDir}/changelog.md";
-        if (file_exists($changelogFile)) {
-            $lines[] = trim((string) file_get_contents($changelogFile));
-            $lines[] = '';
-        }
+        $changelog = file_exists($changelogFile)
+            ? trim((string) file_get_contents($changelogFile))
+            : '';
 
-        // Include changed files if patch
+        // Read changed files
+        $changedFiles = [];
         $changedFilesPath = "{$outputDir}/changed-files.txt";
-        if ($type === 'patch' && file_exists($changedFilesPath)) {
-            $changedFiles = file($changedFilesPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            if ($changedFiles !== false) {
+        if (file_exists($changedFilesPath)) {
+            $raw = file($changedFilesPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if ($raw !== false) {
+                $changedFiles = $raw;
                 sort($changedFiles);
-                $count = count($changedFiles);
-                $lines[] = "<details><summary>Changed files ({$count})</summary>";
-                $lines[] = '';
-                $lines[] = '```';
-                foreach ($changedFiles as $file) {
-                    $lines[] = $file;
-                }
-                $lines[] = '```';
-                $lines[] = '</details>';
-                $lines[] = '';
             }
         }
 
-        // Manual checklist
-        $lines[] = '### Post-Release Checklist';
-        $lines[] = '';
-        $lines[] = '- [ ] Upload to SourceForge';
-        $lines[] = '- [ ] Update Docker version files';
-        $lines[] = '- [ ] Update website';
-        $lines[] = '- [ ] Update wiki';
-        $lines[] = '- [ ] Post announcement to community forum';
-        $lines[] = '- [ ] Post announcement to chat';
+        $twig = new Environment(
+            new FilesystemLoader($templateDir),
+            ['autoescape' => false],
+        );
 
-        $content = implode("\n", $lines) . "\n";
+        $content = $twig->render($templateFile, [
+            'milestone' => $milestone,
+            'type' => $type,
+            'checksums' => $checksums,
+            'changelog' => $changelog,
+            'changed_files' => $changedFiles,
+            'release_tag' => $input->getOption('release-tag'),
+            'start_tag' => $input->getOption('start-tag'),
+            'version_branch' => $input->getOption('version-branch'),
+            'patch_filename' => $input->getOption('patch-filename'),
+            'patch_number' => $input->getOption('patch-number'),
+            'dry_run' => (bool) $input->getOption('dry-run'),
+            'copy_styles' => (bool) $input->getOption('copy-styles'),
+        ]);
 
         // Determine output destination
         /** @var ?string $outputFile */

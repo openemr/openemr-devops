@@ -69,24 +69,53 @@ use Symfony\Component\Process\Process;
         mkdir($patchDir, 0755, true);
 
         // Get changed files, excluding CI/dev/test paths
+        // Exclude CI, testing, build tooling, and Docker configuration.
+        // Keep in sync with build-patch.yml's exclude list.
         $excludes = [
+            // Directories
             ':(exclude).github/**',
             ':(exclude).phpstan/**',
             ':(exclude).git/**',
+            ':(exclude)ci/**',
             ':(exclude)docker/**',
             ':(exclude)tests/**',
-            ':(exclude).dockerignore',
-            ':(exclude).editorconfig',
-            ':(exclude).eslintrc.js',
-            ':(exclude).markdownlint.json',
-            ':(exclude).overcommit.yml',
-            ':(exclude).phpcs.xml',
-            ':(exclude).phpunit*',
-            ':(exclude).stylelintrc.json',
-            ':(exclude)phpstan*',
-            ':(exclude)phpunit*',
-            ':(exclude)package.json',
-            ':(exclude)package-lock.json',
+            ':(exclude)tools/**',
+            // Dotfiles
+            ':!.codespell*',
+            ':!.composer-require-checker.json',
+            ':!.dclintrc.yaml',
+            ':!.editorconfig',
+            ':!.gitattributes',
+            ':!.gitignore',
+            ':!.gitmodules',
+            ':!.hadolint.yaml',
+            ':!.pre-commit-config.yaml',
+            ':!.shellcheckrc',
+            ':!.stylelintignore',
+            ':!.stylelintrc.json',
+            // Build/CI config files
+            ':!build.xml',
+            ':!cloudbuild.yaml',
+            ':!codecov.yml',
+            ':!composer.json',
+            ':!composer.lock',
+            ':!eslint.config.mjs',
+            ':!gulpfile.js',
+            ':!jest.config.js',
+            ':!package.json',
+            ':!package-lock.json',
+            ':!phpcs.xml.dist',
+            ':!phpstan.neon.dist',
+            ':!phpunit*.xml',
+            ':!rector*.php',
+            ':!run-semgrep.sh',
+            ':!semgrep.yaml',
+            // Documentation
+            ':!CLAUDE.md',
+            ':!CONTRIBUTING.md',
+            ':!CODE_OF_CONDUCT.md',
+            ':!DOCKER_README.md',
+            ':!README-Isolated-Testing.md',
         ];
 
         $diff = new Process(
