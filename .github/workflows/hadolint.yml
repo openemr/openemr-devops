@@ -85,7 +85,7 @@ jobs:
             # Check if we've seen this hash before
             [[ -f "/tmp/hadolint-hashes/$hash" ]] && continue
             # New unique file
-            > "/tmp/hadolint-hashes/$hash"
+            : > "/tmp/hadolint-hashes/$hash"
             unique_files+=( "$file" )
           done
 
