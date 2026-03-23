@@ -5,11 +5,13 @@ on:
     branches:
       - master
     paths:
+      - '.github/actions/**'
       - '.github/workflows/**'
   pull_request:
     branches:
       - master
     paths:
+      - '.github/actions/**'
       - '.github/workflows/**'
 
 jobs:
