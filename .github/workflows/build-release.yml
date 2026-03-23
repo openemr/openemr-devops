@@ -1,40 +1,28 @@
-name: Build Patch Release
+name: Build Release
 
 on:
   workflow_dispatch:
     inputs:
-      version_start:
-        description: Start tag (e.g., v8_0_0)
-        required: true
-        type: string
       version_branch:
         description: Release branch (e.g., rel-800)
         required: true
         type: string
-      patch_filename:
-        description: Patch zip filename (e.g., 8-0-0-Patch-1.zip)
-        required: true
-        type: string
-      milestone:
-        description: GitHub milestone name for changelog (e.g., 8.0.0.1)
-        required: true
-        type: string
-      patch_number:
-        description: Patch number to set in version.php $v_realpatch (e.g., 1)
+      version:
+        description: Human-readable version (e.g., 8.0.0)
         required: true
         type: string
       release_tag:
-        description: GitHub release tag to upload to (e.g., v8_0_0_1). Required unless dry run.
+        description: Git tag (e.g., v8_0_0). Required unless dry run.
         required: false
         type: string
+      milestone:
+        description: GitHub milestone name (e.g., 8.0.0)
+        required: true
+        type: string
       dry_run:
-        description: Dry run — build and upload as workflow artifact only, skip GitHub release
+        description: Dry run — build only, skip release
         type: boolean
         default: true
-      copy_styles:
-        description: Build and include compiled theme styles
-        type: boolean
-        default: false
       validate_token:
         description: Generate and verify the app token (use with dry run to test permissions)
         type: boolean
@@ -47,11 +35,23 @@ on:
         description: Skip unpublished GHSA check
         type: boolean
         default: false
+      upload_sourceforge:
+        description: Upload to SourceForge (requires SF secrets)
+        type: boolean
+        default: false
+      docker_prep:
+        description: Create PR for Docker version bumps in openemr-devops
+        type: boolean
+        default: false
+      update_website:
+        description: Create PR in website-openemr repo
+        type: boolean
+        default: false
 
 jobs:
-  build-patch:
+  build-release:
     runs-on: ubuntu-24.04
-    name: Build Patch
+    name: Build Release
     env:
       DEVOPS_DIR: ${{ github.workspace }}/devops-tools
       OPENEMR_DIR: ${{ github.workspace }}/openemr
@@ -92,10 +92,6 @@ jobs:
         filter: blob:none
         fetch-depth: 1
 
-    - name: Fetch start tag
-      working-directory: openemr
-      run: git fetch --filter=blob:none --depth=1 origin tag '${{ inputs.version_start }}'
-
     - name: Checkout openemr-devops (release tools)
       uses: actions/checkout@v6
       with:
@@ -113,8 +109,8 @@ jobs:
         version: 3.x
 
     - name: Install release tools
-      run: task release:setup
       working-directory: devops-tools
+      run: task release:setup
 
     - name: Preflight checks
       if: '!inputs.skip_milestone_check || !inputs.skip_ghsa_check'
@@ -127,22 +123,21 @@ jobs:
         SKIP_MILESTONE='${{ inputs.skip_milestone_check }}'
         SKIP_GHSA='${{ inputs.skip_ghsa_check }}'
 
-    - name: Bump version.php
+    - name: Version bump (full mode)
       working-directory: devops-tools
       run: >-
         task release:version-bump
-        MODE=patch
-        PATCH_NUMBER='${{ inputs.patch_number }}'
+        MODE=full
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
 
-    - name: Commit and push version bump
+    - name: Commit and push version changes
       if: '!inputs.dry_run'
       working-directory: openemr
       run: |
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-        git add version.php
-        git commit -m "chore: bump v_realpatch to ${{ inputs.patch_number }} for patch release"
+        git add version.php library/globals.inc.php
+        git commit -m 'chore: prepare ${{ inputs.version }} for release'
         git push origin HEAD:'${{ inputs.version_branch }}'
 
     - name: Generate changelog
@@ -152,62 +147,6 @@ jobs:
       run: >-
         task release:changelog
         MILESTONE='${{ inputs.milestone }}'
-
-    - name: Build theme styles
-      if: inputs.copy_styles
-      uses: actions/setup-node@v6
-      with:
-        node-version: '22'
-    - name: Install npm and build styles
-      if: inputs.copy_styles
-      working-directory: openemr
-      run: |
-        npm ci
-        npm run build
-
-    - name: Assemble patch
-      working-directory: devops-tools
-      run: >-
-        task release:patch:assemble
-        START_TAG='${{ inputs.version_start }}'
-        BRANCH='${{ inputs.version_branch }}'
-        FILENAME='${{ inputs.patch_filename }}'
-        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
-        COPY_STYLES='${{ inputs.copy_styles }}'
-
-    - name: Generate checksums
-      working-directory: devops-tools
-      run: >-
-        task release:checksum
-        FILE='tools/release/release-output/${{ inputs.patch_filename }}'
-
-    - name: Build summary
-      working-directory: devops-tools
-      run: >-
-        task release:summary
-        TYPE=patch
-        MILESTONE='${{ inputs.milestone }}'
-        START_TAG='${{ inputs.version_start }}'
-        VERSION_BRANCH='${{ inputs.version_branch }}'
-        PATCH_FILENAME='${{ inputs.patch_filename }}'
-        PATCH_NUMBER='${{ inputs.patch_number }}'
-        RELEASE_TAG='${{ inputs.release_tag }}'
-        DRY_RUN='${{ inputs.dry_run }}'
-        COPY_STYLES='${{ inputs.copy_styles }}'
-
-    - name: Upload workflow artifact (dry run)
-      if: inputs.dry_run
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ inputs.patch_filename }}
-        compression-level: 0
-        path: |
-          ${{ env.TOOLS_DIR }}/release-output/${{ inputs.patch_filename }}
-          ${{ env.TOOLS_DIR }}/release-output/${{ inputs.patch_filename }}.md5
-          ${{ env.TOOLS_DIR }}/release-output/${{ inputs.patch_filename }}.sha256
-          ${{ env.TOOLS_DIR }}/release-output/${{ inputs.patch_filename }}.sha512
-          ${{ env.TOOLS_DIR }}/release-output/changelog.md
-        retention-days: 7
 
     - name: Create annotated tag and GitHub release
       if: '!inputs.dry_run'
@@ -224,7 +163,7 @@ jobs:
         if git rev-parse "$tag" > /dev/null 2>&1; then
           echo "Tag $tag already exists, skipping tag creation"
         else
-          git tag -a -m "Patch release $tag" "$tag" '${{ inputs.version_branch }}'
+          git tag -a -m "Release $tag" "$tag" '${{ inputs.version_branch }}'
           git push origin "$tag"
         fi
 
@@ -232,19 +171,67 @@ jobs:
           echo "Creating release $tag"
           gh release create "$tag" \
             --repo openemr/openemr \
-            --title "$tag" \
+            --title "OpenEMR ${{ inputs.version }}" \
             --notes-file "${output_dir}/changelog.md" \
             --verify-tag
         fi
 
+    - name: Download source archives and generate checksums
+      if: '!inputs.dry_run'
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+      run: |
+        tag='${{ inputs.release_tag }}'
+        output_dir='${{ env.DEVOPS_DIR }}/tools/release/release-output'
+
+        gh release download "$tag" \
+          --repo openemr/openemr \
+          --pattern '*.tar.gz' \
+          --pattern '*.zip' \
+          --dir "$output_dir"
+
+        cd "$output_dir"
+        for archive in *.tar.gz *.zip; do
+          [ -f "$archive" ] || continue
+          md5sum "$archive" > "${archive}.md5"
+          sha256sum "$archive" > "${archive}.sha256"
+          sha512sum "$archive" > "${archive}.sha512"
+        done
+
+    - name: Upload checksums to release
+      if: '!inputs.dry_run'
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+      run: |
+        tag='${{ inputs.release_tag }}'
+        output_dir='${{ env.DEVOPS_DIR }}/tools/release/release-output'
+
         gh release upload "$tag" \
           --repo openemr/openemr \
-          "${output_dir}/${{ inputs.patch_filename }}" \
-          "${output_dir}/${{ inputs.patch_filename }}.md5" \
-          "${output_dir}/${{ inputs.patch_filename }}.sha256" \
-          "${output_dir}/${{ inputs.patch_filename }}.sha512" \
-          "${output_dir}/changelog.md" \
-          --clobber
+          --clobber \
+          "${output_dir}"/*.md5 \
+          "${output_dir}"/*.sha256 \
+          "${output_dir}"/*.sha512 \
+          "${output_dir}/changelog.md"
+
+    - name: Build summary
+      working-directory: devops-tools
+      run: >-
+        task release:summary
+        TYPE=full
+        MILESTONE='${{ inputs.milestone }}'
+        VERSION_BRANCH='${{ inputs.version_branch }}'
+        RELEASE_TAG='${{ inputs.release_tag }}'
+        DRY_RUN='${{ inputs.dry_run }}'
+
+    - name: Upload changelog artifact (dry run)
+      if: inputs.dry_run
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-${{ inputs.version }}
+        path: |
+          ${{ env.TOOLS_DIR }}/release-output/changelog.md
+        retention-days: 7
 
     - name: Create CHANGELOG PRs
       if: '!inputs.dry_run'
@@ -256,3 +243,20 @@ jobs:
         MILESTONE='${{ inputs.milestone }}'
         BRANCHES='${{ inputs.version_branch }},master'
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
+
+    # Feature-flagged steps
+
+    - name: Upload to SourceForge
+      if: '!inputs.dry_run && inputs.upload_sourceforge'
+      run: |
+        echo '::notice::SourceForge upload not yet implemented'
+
+    - name: Create Docker prep PR
+      if: '!inputs.dry_run && inputs.docker_prep'
+      run: |
+        echo '::notice::Docker prep PR not yet implemented'
+
+    - name: Create website update PR
+      if: '!inputs.dry_run && inputs.update_website'
+      run: |
+        echo '::notice::Website update PR not yet implemented'
