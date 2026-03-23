@@ -147,24 +147,18 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin -
 # ============================================================================
 # MULTI-STAGE BUILD: OpenEMR Source and Dependencies
 # ============================================================================
-# Stage 1: Fetch OpenEMR source code from GitHub archive
-# Using archive instead of git clone eliminates .git directory overhead
-# Supports tags, branches, or commits via OPENEMR_VERSION build argument
+# Stage 1: Fetch OpenEMR source code via git clone
+# Use git clone instead of GitHub archive because OpenEMR's .gitattributes
+# marks tests/, phpunit*.xml, and other dev files as export-ignore, which
+# excludes them from archives but not from clones.
+# Supports branches or tags via OPENEMR_VERSION build argument.
 # Examples:
-#   - Branch: --build-arg OPENEMR_VERSION=refs/heads/master
-#   - Tag:    --build-arg OPENEMR_VERSION=refs/tags/7.0.5
-#   - Commit: --build-arg OPENEMR_VERSION=abc123def456
-# Note: GitHub archives extract to openemr-<ref-name> where ref-name is the
-#       last component of the path (e.g., "master" from "refs/heads/master")
-ARG OPENEMR_VERSION=refs/heads/master
+#   - Branch: --build-arg OPENEMR_VERSION=master
+#   - Tag:    --build-arg OPENEMR_VERSION=v7.0.5
+ARG OPENEMR_VERSION=master
 FROM base AS openemr-source
-# Extract the last component of the ref path for directory name
-# refs/heads/master -> master, refs/tags/7.0.5 -> 7.0.5, abc123 -> abc123
-# GitHub archives always extract to openemr-<last-component> directory
-RUN apk add --no-cache curl tar \
-    && OPENEMR_REF_NAME="${OPENEMR_VERSION##*/}" \
-    && curl -L "https://github.com/openemr/openemr/archive/${OPENEMR_VERSION}.tar.gz" | tar -xz \
-    && mv "openemr-${OPENEMR_REF_NAME}" openemr
+RUN git clone https://github.com/openemr/openemr.git --branch "${OPENEMR_VERSION}" --depth 1 \
+    && rm -rf openemr/.git
 
 # Stage 2: Install PHP dependencies (Composer)
 # Separate stage allows Docker to cache this layer independently
