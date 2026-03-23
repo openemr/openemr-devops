@@ -3,13 +3,10 @@ description: 'Run OpenEMR tests with Docker'
 inputs:
     is_production_docker:
       required: true
-      type: boolean
     alpine_version:
       required: false
-      type: string
     php_version:
       required: false
-      type: string
 
 runs:
   using: 'composite'
