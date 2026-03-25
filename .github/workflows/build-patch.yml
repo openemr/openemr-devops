@@ -179,7 +179,7 @@ jobs:
       working-directory: devops-tools
       run: >-
         task release:checksum
-        FILE='tools/release/release-output/${{ inputs.patch_filename }}'
+        FILE='release-output/${{ inputs.patch_filename }}'
 
     - name: Build summary
       working-directory: devops-tools
