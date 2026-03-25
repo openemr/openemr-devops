@@ -13,9 +13,5 @@
   - [ ] Chat
   - [ ] Twitter
   - [ ] Facebook
-  - [ ] Diaspora
-  - [ ] Mastodon
   - [ ] LinkedIn group+company
-  - [ ] Reddit
-  - [ ] Hacker News
   - [ ] Registered users
