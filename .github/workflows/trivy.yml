@@ -4,7 +4,7 @@ on:
     branches:
       - master
     paths:
-      - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/8.1.0/**'
       - 'docker/openemr/binary/**'
       - 'docker/openemr/flex/**'
       - '.github/workflows/trivy.yml'
@@ -12,7 +12,7 @@ on:
     branches:
       - master
     paths:
-      - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/8.1.0/**'
       - 'docker/openemr/binary/**'
       - 'docker/openemr/flex/**'
       - '.github/workflows/trivy.yml'
@@ -30,8 +30,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: 8.0.1
-            context: docker/openemr/8.0.1
+          - image: 8.1.0
+            context: docker/openemr/8.1.0
             build-args: ""
           - image: binary
             context: docker/openemr/binary
