@@ -61,7 +61,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         id: trivy-table
-        uses: aquasecurity/trivy-action@0.34.2
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: openemr-scan:${{ matrix.image }}
           scanners: vuln
@@ -77,7 +77,7 @@ jobs:
       - name: Run Trivy (SARIF upload)
         id: trivy-sarif
         if: ${{ success() || steps.trivy-table.conclusion == 'failure' }}
-        uses: aquasecurity/trivy-action@0.34.2
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: openemr-scan:${{ matrix.image }}
           scanners: vuln
