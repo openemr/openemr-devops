@@ -1,0 +1,49 @@
+{
+    "name": "openemr/release-tools",
+    "description": "Release tooling for OpenEMR",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.2",
+        "nikic/php-parser": "^5.0",
+        "symfony/console": "^7.0",
+        "symfony/process": "^7.0",
+        "twig/twig": "^3.24"
+    },
+    "require-dev": {
+        "ergebnis/composer-normalize": "^2.48",
+        "maglnet/composer-require-checker": "^4.0",
+        "phpstan/phpstan": "^2.1",
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "rector/rector": "^2.0",
+        "squizlabs/php_codesniffer": "^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "OpenEMR\\Release\\": "src/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "ergebnis/composer-normalize": true
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "check": [
+            "@phpcs",
+            "@phpstan",
+            "@rector"
+        ],
+        "fix": [
+            "@phpcbf",
+            "@rector-fix"
+        ],
+        "phpcbf": "phpcbf",
+        "phpcs": "phpcs",
+        "phpstan": "phpstan analyse",
+        "rector": "rector process --dry-run",
+        "rector-fix": "rector process",
+        "require-checker": "composer-require-checker check"
+    }
+}

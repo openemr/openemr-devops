@@ -1,4 +1,4 @@
-# BATS: binary ssl.sh — SSL/TLS (same behavior as 8.0.1)
+# BATS: binary ssl.sh — SSL/TLS (same behavior as 8.1.0)
 
 load '../helpers'
 

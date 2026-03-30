@@ -108,7 +108,7 @@ jobs:
             # Check if we've seen this hash before
             [[ -f "/tmp/dclint-hashes/$hash" ]] && continue
             # New unique file
-            > "/tmp/dclint-hashes/$hash"
+            : > "/tmp/dclint-hashes/$hash"
             unique_files+=( "$file" )
           done
 

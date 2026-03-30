@@ -1,0 +1,262 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_branch:
+        description: Release branch (e.g., rel-800)
+        required: true
+        type: string
+      version:
+        description: Human-readable version (e.g., 8.0.0)
+        required: true
+        type: string
+      release_tag:
+        description: Git tag (e.g., v8_0_0). Required unless dry run.
+        required: false
+        type: string
+      milestone:
+        description: GitHub milestone name (e.g., 8.0.0)
+        required: true
+        type: string
+      dry_run:
+        description: Dry run — build only, skip release
+        type: boolean
+        default: true
+      validate_token:
+        description: Generate and verify the app token (use with dry run to test permissions)
+        type: boolean
+        default: false
+      skip_milestone_check:
+        description: Skip milestone open-items check
+        type: boolean
+        default: false
+      skip_ghsa_check:
+        description: Skip unpublished GHSA check
+        type: boolean
+        default: false
+      upload_sourceforge:
+        description: Upload to SourceForge (requires SF secrets)
+        type: boolean
+        default: false
+      docker_prep:
+        description: Create PR for Docker version bumps in openemr-devops
+        type: boolean
+        default: false
+      update_website:
+        description: Create PR in website-openemr repo
+        type: boolean
+        default: false
+
+jobs:
+  build-release:
+    runs-on: ubuntu-24.04
+    name: Build Release
+    env:
+      DEVOPS_DIR: ${{ github.workspace }}/devops-tools
+      OPENEMR_DIR: ${{ github.workspace }}/openemr
+      TOOLS_DIR: devops-tools/tools/release
+    steps:
+    - name: Validate inputs
+      if: "!inputs.dry_run && inputs.release_tag == ''"
+      run: |
+        printf '::error::release_tag is required when dry_run is false\n'
+        exit 1
+
+    - name: Generate app token
+      if: '!inputs.dry_run || inputs.validate_token'
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ secrets.RELEASE_APP_ID }}
+        private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        owner: openemr
+        repositories: openemr
+
+    - name: Verify app token
+      if: '!inputs.dry_run || inputs.validate_token'
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: |
+        echo "Checking app token can access openemr/openemr milestones..."
+        gh api repos/openemr/openemr/milestones --jq '.[].title' | head -5
+        echo 'App token verified.'
+
+    - name: Checkout openemr release branch
+      uses: actions/checkout@v6
+      with:
+        repository: openemr/openemr
+        ref: ${{ inputs.version_branch }}
+        path: openemr
+        token: ${{ steps.app-token.outputs.token || github.token }}
+        filter: blob:none
+        fetch-depth: 1
+
+    - name: Checkout openemr-devops (release tools)
+      uses: actions/checkout@v6
+      with:
+        path: devops-tools
+        sparse-checkout: tools/release
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.4'
+
+    - name: Install Taskfile
+      uses: arduino/setup-task@v2
+      with:
+        version: 3.x
+
+    - name: Install release tools
+      working-directory: devops-tools
+      run: task release:setup
+
+    - name: Preflight checks
+      if: '!inputs.skip_milestone_check || !inputs.skip_ghsa_check'
+      working-directory: devops-tools
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+      run: >-
+        task release:preflight
+        MILESTONE='${{ inputs.milestone }}'
+        SKIP_MILESTONE='${{ inputs.skip_milestone_check }}'
+        SKIP_GHSA='${{ inputs.skip_ghsa_check }}'
+
+    - name: Version bump (full mode)
+      working-directory: devops-tools
+      run: >-
+        task release:version-bump
+        MODE=full
+        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
+
+    - name: Commit and push version changes
+      if: '!inputs.dry_run'
+      working-directory: openemr
+      run: |
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+        git add version.php library/globals.inc.php
+        git commit -m 'chore: prepare ${{ inputs.version }} for release'
+        git push origin HEAD:'${{ inputs.version_branch }}'
+
+    - name: Generate changelog
+      working-directory: devops-tools
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+      run: >-
+        task release:changelog
+        MILESTONE='${{ inputs.milestone }}'
+
+    - name: Create annotated tag and GitHub release
+      if: '!inputs.dry_run'
+      working-directory: openemr
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+      run: |
+        tag='${{ inputs.release_tag }}'
+        output_dir='${{ env.DEVOPS_DIR }}/tools/release/release-output'
+
+        git config user.name 'github-actions[bot]'
+        git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+        if git rev-parse "$tag" > /dev/null 2>&1; then
+          echo "Tag $tag already exists, skipping tag creation"
+        else
+          git tag -a -m "Release $tag" "$tag" '${{ inputs.version_branch }}'
+          git push origin "$tag"
+        fi
+
+        if ! gh release view "$tag" --repo openemr/openemr > /dev/null 2>&1; then
+          echo "Creating release $tag"
+          gh release create "$tag" \
+            --repo openemr/openemr \
+            --title "OpenEMR ${{ inputs.version }}" \
+            --notes-file "${output_dir}/changelog.md" \
+            --verify-tag
+        fi
+
+    - name: Download source archives and generate checksums
+      if: '!inputs.dry_run'
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+      run: |
+        tag='${{ inputs.release_tag }}'
+        output_dir='${{ env.DEVOPS_DIR }}/tools/release/release-output'
+
+        gh release download "$tag" \
+          --repo openemr/openemr \
+          --pattern '*.tar.gz' \
+          --pattern '*.zip' \
+          --dir "$output_dir"
+
+        cd "$output_dir"
+        for archive in *.tar.gz *.zip; do
+          [ -f "$archive" ] || continue
+          md5sum "$archive" > "${archive}.md5"
+          sha256sum "$archive" > "${archive}.sha256"
+          sha512sum "$archive" > "${archive}.sha512"
+        done
+
+    - name: Upload checksums to release
+      if: '!inputs.dry_run'
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+      run: |
+        tag='${{ inputs.release_tag }}'
+        output_dir='${{ env.DEVOPS_DIR }}/tools/release/release-output'
+
+        gh release upload "$tag" \
+          --repo openemr/openemr \
+          --clobber \
+          "${output_dir}"/*.md5 \
+          "${output_dir}"/*.sha256 \
+          "${output_dir}"/*.sha512 \
+          "${output_dir}/changelog.md"
+
+    - name: Build summary
+      working-directory: devops-tools
+      run: >-
+        task release:summary
+        TYPE=full
+        MILESTONE='${{ inputs.milestone }}'
+        VERSION_BRANCH='${{ inputs.version_branch }}'
+        RELEASE_TAG='${{ inputs.release_tag }}'
+        DRY_RUN='${{ inputs.dry_run }}'
+
+    - name: Upload changelog artifact (dry run)
+      if: inputs.dry_run
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-${{ inputs.version }}
+        path: |
+          ${{ env.TOOLS_DIR }}/release-output/changelog.md
+        retention-days: 7
+
+    - name: Create CHANGELOG PRs
+      if: '!inputs.dry_run'
+      working-directory: devops-tools
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+      run: >-
+        task release:changelog-pr
+        MILESTONE='${{ inputs.milestone }}'
+        BRANCHES='${{ inputs.version_branch }},master'
+        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
+
+    # Feature-flagged steps
+
+    - name: Upload to SourceForge
+      if: '!inputs.dry_run && inputs.upload_sourceforge'
+      run: |
+        echo '::notice::SourceForge upload not yet implemented'
+
+    - name: Create Docker prep PR
+      if: '!inputs.dry_run && inputs.docker_prep'
+      run: |
+        echo '::notice::Docker prep PR not yet implemented'
+
+    - name: Create website update PR
+      if: '!inputs.dry_run && inputs.update_website'
+      run: |
+        echo '::notice::Website update PR not yet implemented'

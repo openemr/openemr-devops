@@ -11,8 +11,8 @@ This directory contains two complementary tools for OpenEMR container validation
 
 This benchmarking utility provides a simple, clean way to compare performance between two OpenEMR container images:
 
-- **Image A**: A local build from your repository (default: `./docker/openemr/8.0.1/`)
-- **Image B**: A public Docker Hub image (default: `openemr/openemr:8.0.1`)
+- **Image A**: A local build from your repository (default: `./docker/openemr/8.1.0/`)
+- **Image B**: A public Docker Hub image (default: `openemr/openemr:8.1.0`)
 
 The benchmark measures:
 1. **Startup Time** - How long each container takes to become healthy
@@ -58,10 +58,10 @@ Edit the configuration variables at the top of `benchmark.sh`:
 
 ```bash
 # Image A: Local build context (relative to benchmark.sh)
-IMAGE_A_CONTEXT="${IMAGE_A_CONTEXT:-../../docker/openemr/8.0.1}"
+IMAGE_A_CONTEXT="${IMAGE_A_CONTEXT:-../../docker/openemr/8.1.0}"
 
 # Image B: Docker Hub image name and tag
-IMAGE_B_IMAGE="${IMAGE_B_IMAGE:-openemr/openemr:8.0.1}"
+IMAGE_B_IMAGE="${IMAGE_B_IMAGE:-openemr/openemr:8.1.0}"
 ```
 
 Or set environment variables before running:
@@ -114,7 +114,7 @@ The optimized image achieves these improvements through **build-time file permis
 
 3. **Performance**: Both images perform identically under load since the optimizations only affect startup, not runtime execution.
 
-For technical details, see the [OpenEMR 8.0.1 README](../../docker/openemr/8.0.1/README.md#performance-optimizations).
+For technical details, see the [OpenEMR 8.1.0 README](../../docker/openemr/8.1.0/README.md#performance-optimizations).
 
 ## Understanding Results
 
@@ -261,7 +261,7 @@ ERROR: mariadbd: Error writing file './ddl_recovery.log' (Errcode: 28 "No space 
 
 **Solutions**:
 - Check internet connectivity
-- Verify Docker Hub access: `docker pull openemr/openemr:8.0.1`
+- Verify Docker Hub access: `docker pull openemr/openemr:8.1.0`
 - Use a different registry or local image for Image B
 
 ## Analysis Tools
@@ -320,7 +320,7 @@ Create a wrapper script to test multiple versions:
 
 ```bash
 #!/bin/bash
-for version in 7.0.4 8.0.0 8.0.1; do
+for version in 7.0.4 8.0.0 8.1.0; do
     IMAGE_B_IMAGE="openemr/openemr:${version}" RESULTS_DIR="./results/${version}" ./benchmark.sh
 done
 ```
@@ -343,8 +343,8 @@ Integrate into CI/CD:
     cd utilities/container_benchmarking
     ./benchmark.sh
   env:
-    IMAGE_A_CONTEXT: ./docker/openemr/8.0.1
-    IMAGE_B_IMAGE: openemr/openemr:8.0.1
+    IMAGE_A_CONTEXT: ./docker/openemr/8.1.0
+    IMAGE_B_IMAGE: openemr/openemr:8.1.0
 ```
 
 ## Limitations
@@ -355,7 +355,7 @@ Integrate into CI/CD:
 
 ## Container Functionality Test Runner (`test_functionality.sh`)
 
-For CI and consistent validation of 8.0.1, binary, and flex containers, use the wrapper script:
+For CI and consistent validation of 8.1.0, binary, and flex containers, use the wrapper script:
 
 ```bash
 ./test_functionality.sh <version> [test_suite.sh options...]
@@ -364,7 +364,7 @@ For CI and consistent validation of 8.0.1, binary, and flex containers, use the 
 Examples:
 
 ```bash
-./test_functionality.sh 8.0.1
+./test_functionality.sh 8.1.0
 ./test_functionality.sh binary --test fresh_installation
 ./test_functionality.sh flex --verbose
 ```
@@ -443,10 +443,10 @@ Each test creates isolated Docker Compose environments and cleans up automatical
 Configure tests via environment variables:
 
 ```bash
-# Docker build context (default: ../../docker/openemr/8.0.1)
+# Docker build context (default: ../../docker/openemr/8.1.0)
 export DOCKER_CONTEXT="../../docker/openemr/8.0.0"
 
-# Image tag for built containers (default: openemr:8.0.1-test)
+# Image tag for built containers (default: openemr:8.1.0-test)
 export IMAGE_TAG="openemr:8.0.0-test"
 
 # Results directory (default: ./test_results)
@@ -464,8 +464,8 @@ The test suite is designed for CI/CD integration:
     cd utilities/container_benchmarking
     ./test_suite.sh
   env:
-    DOCKER_CONTEXT: ./docker/openemr/8.0.1
-    IMAGE_TAG: openemr:8.0.1-test
+    DOCKER_CONTEXT: ./docker/openemr/8.1.0
+    IMAGE_TAG: openemr:8.1.0-test
 ```
 
 ### Troubleshooting Tests

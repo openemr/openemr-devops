@@ -1,7 +1,7 @@
-# Run BATS tests for bash scripts in 8.0.1, binary, and flex Docker contexts.
+# Run BATS tests for bash scripts in 8.1.0, binary, and flex Docker contexts.
 # Ensures all scripts have valid syntax and expected structure.
 
-name: BATS Tests (8.0.1, binary, flex)
+name: BATS Tests (8.1.0, binary, flex)
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
     paths:
       - '.github/workflows/test-bats.yml'
       - 'tests/bats/**'
-      - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/8.1.0/**'
       - 'docker/openemr/binary/**'
       - 'docker/openemr/flex/**'
   pull_request:
@@ -17,13 +17,13 @@ on:
     paths:
       - '.github/workflows/test-bats.yml'
       - 'tests/bats/**'
-      - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/8.1.0/**'
       - 'docker/openemr/binary/**'
       - 'docker/openemr/flex/**'
 
 jobs:
-  bats-801:
-    name: BATS 8.0.1
+  bats-810:
+    name: BATS 8.1.0
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -37,8 +37,8 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/bats-core/bats-support.git tests/bats/test_helper/bats-support
           git clone --depth 1 https://github.com/bats-core/bats-assert.git tests/bats/test_helper/bats-assert
-      - name: Run BATS tests (8.0.1)
-        run: bats tests/bats/8.0.1/
+      - name: Run BATS tests (8.1.0)
+        run: bats tests/bats/8.1.0/
 
   bats-binary:
     name: BATS binary

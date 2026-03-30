@@ -12,7 +12,7 @@ get_repo_root() {
     echo ""
 }
 
-# Script directory for a version (8.0.1, binary, flex)
+# Script directory for a version (8.1.0, binary, flex)
 get_script_dir() {
     local version="$1"
     local root

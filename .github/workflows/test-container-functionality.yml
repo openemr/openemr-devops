@@ -1,8 +1,8 @@
-# Run container_benchmarking test_functionality.sh for 8.0.1, binary, and flex.
+# Run container_benchmarking test_functionality.sh for 8.1.0, binary, and flex.
 # Uses the test_suite.sh inside container_benchmarking to verify containers perform as expected.
 # By default runs the full test suite per variant. Use workflow_dispatch with test_name to run a single test.
 
-name: Container Functionality (8.0.1, binary, flex)
+name: Container Functionality (8.1.0, binary, flex)
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
     paths:
       - '.github/workflows/test-container-functionality.yml'
       - 'utilities/container_benchmarking/**'
-      - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/8.1.0/**'
       - 'docker/openemr/binary/**'
       - 'docker/openemr/flex/**'
   pull_request:
@@ -18,7 +18,7 @@ on:
     paths:
       - '.github/workflows/test-container-functionality.yml'
       - 'utilities/container_benchmarking/**'
-      - 'docker/openemr/8.0.1/**'
+      - 'docker/openemr/8.1.0/**'
       - 'docker/openemr/binary/**'
       - 'docker/openemr/flex/**'
   workflow_dispatch:
@@ -33,8 +33,8 @@ env:
   TEST_SUITE_ARGS: ''
 
 jobs:
-  functionality-801:
-    name: Functionality 8.0.1
+  functionality-810:
+    name: Functionality 8.1.0
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -48,10 +48,10 @@ jobs:
           else
             echo "args=${{ env.TEST_SUITE_ARGS }}" >> "$GITHUB_OUTPUT"
           fi
-      - name: Run container functionality tests (8.0.1)
+      - name: Run container functionality tests (8.1.0)
         run: |
           cd utilities/container_benchmarking
-          ./test_functionality.sh 8.0.1 ${{ steps.args.outputs.args }}
+          ./test_functionality.sh 8.1.0 ${{ steps.args.outputs.args }}
 
   functionality-binary:
     name: Functionality binary

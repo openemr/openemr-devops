@@ -74,7 +74,7 @@ services:
   # This container uses the image built from the local Dockerfile
   openemr-image-a:
     build:
-      context: ${IMAGE_A_CONTEXT:-../../docker/openemr/8.0.1}
+      context: ${IMAGE_A_CONTEXT:-../../docker/openemr/8.1.0}
       dockerfile: Dockerfile
     container_name: benchmark-image-a
     depends_on:
@@ -103,7 +103,7 @@ services:
   # Image B: Public Docker Hub image
   # This container uses the image from Docker Hub
   openemr-image-b:
-    image: ${IMAGE_B_IMAGE:-openemr/openemr:8.0.1}
+    image: ${IMAGE_B_IMAGE:-openemr/openemr:8.1.0}
     container_name: benchmark-image-b
     depends_on:
       mysql-b:

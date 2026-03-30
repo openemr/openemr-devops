@@ -1,0 +1,6 @@
+version: '3'
+
+includes:
+  release:
+    taskfile: tools/release
+    dir: tools/release
