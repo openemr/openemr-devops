@@ -1,4 +1,5 @@
 name: Build Patch Release
+run-name: "Build Patch Release ${{ inputs.version }}${{ inputs.dry_run && ' (dry run)' || '' }}"
 
 on:
   workflow_dispatch:
@@ -15,9 +16,13 @@ on:
         description: Patch zip filename (e.g., 8-0-0-Patch-1.zip)
         required: true
         type: string
-      milestone:
-        description: GitHub milestone name for changelog (e.g., 8.0.0.1)
+      version:
+        description: Human-readable version (e.g., 8.0.0.1)
         required: true
+        type: string
+      milestone:
+        description: GitHub milestone name for preflight check (e.g., 8.0.0.1)
+        required: false
         type: string
       patch_number:
         description: Patch number to set in version.php $v_realpatch (e.g., 1)
@@ -117,15 +122,15 @@ jobs:
       working-directory: devops-tools
 
     - name: Preflight checks
-      if: '!inputs.skip_milestone_check || !inputs.skip_ghsa_check'
+      if: '(!inputs.skip_milestone_check && inputs.milestone != '''') || !inputs.skip_ghsa_check'
       working-directory: devops-tools
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
       run: >-
         task release:preflight
         MILESTONE='${{ inputs.milestone }}'
-        SKIP_MILESTONE='${{ inputs.skip_milestone_check }}'
-        SKIP_GHSA='${{ inputs.skip_ghsa_check }}'
+        SKIP_MILESTONE='${{ (inputs.skip_milestone_check || inputs.milestone == '') && '1' || '' }}'
+        SKIP_GHSA='${{ inputs.skip_ghsa_check && '1' || '' }}'
 
     - name: Bump version.php
       working-directory: devops-tools
@@ -151,7 +156,9 @@ jobs:
         GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
       run: >-
         task release:changelog
-        MILESTONE='${{ inputs.milestone }}'
+        BASE_REF='${{ inputs.version_start }}'
+        HEAD_REF='${{ inputs.version_branch }}'
+        TITLE='${{ inputs.version }}'
 
     - name: Build theme styles
       if: inputs.copy_styles
@@ -253,6 +260,6 @@ jobs:
         GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
       run: >-
         task release:changelog-pr
-        MILESTONE='${{ inputs.milestone }}'
+        VERSION='${{ inputs.version }}'
         BRANCHES='${{ inputs.version_branch }},master'
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'

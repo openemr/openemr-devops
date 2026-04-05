@@ -2,7 +2,7 @@
 <?php
 
 /**
- * Generate a changelog from a GitHub milestone.
+ * Generate a changelog from the commit range between two git refs.
  *
  * @package   openemr-devops
  * @link      https://www.open-emr.org
@@ -24,35 +24,38 @@ use Symfony\Component\Console\SingleCommandApplication;
 
 (new SingleCommandApplication())
     ->setName('changelog')
-    ->setDescription('Generate changelog from a GitHub milestone')
-    ->addOption('milestone', 'm', InputOption::VALUE_REQUIRED, 'Milestone name')
+    ->setDescription('Generate changelog from a commit range')
+    ->addOption('base', 'b', InputOption::VALUE_REQUIRED, 'Base ref (tag)')
+    ->addOption('head', null, InputOption::VALUE_REQUIRED, 'Head ref (tag or branch)', 'HEAD')
+    ->addOption('title', 't', InputOption::VALUE_REQUIRED, 'Version string for the heading')
+    ->addOption('no-ghsa', null, InputOption::VALUE_NONE, 'Disable security advisories section')
     ->addOption('repo', 'r', InputOption::VALUE_REQUIRED, 'GitHub repo (owner/name)', 'openemr/openemr')
     ->addOption('output', 'o', InputOption::VALUE_REQUIRED, 'Output file path (omit for stdout)')
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
-        /** @var ?string $milestone */
-        $milestone = $input->getOption('milestone');
-        if ($milestone === null) {
-            $output->writeln('<error>--milestone is required</error>');
+        /** @var ?string $base */
+        $base = $input->getOption('base');
+        if ($base === null) {
+            $output->writeln('<error>--base is required</error>');
             return 1;
         }
+
+        /** @var string $head */
+        $head = $input->getOption('head');
+        /** @var ?string $title */
+        $title = $input->getOption('title');
+        $includeGhsa = $input->getOption('no-ghsa') !== true;
 
         /** @var string $repo */
         $repo = $input->getOption('repo');
         $api = new GitHubApi($repo);
 
-        $milestoneNumber = $api->findMilestone($milestone);
         $output->writeln(
-            "Found milestone <info>{$milestone}</info> (#{$milestoneNumber})",
+            "Generating changelog for <info>{$base}...{$head}</info>",
             OutputInterface::VERBOSITY_VERBOSE,
         );
 
-        $issues = $api->closedIssuesForMilestone($milestoneNumber);
-        $output->writeln(
-            sprintf('Fetched <info>%d</info> closed issues', count($issues)),
-            OutputInterface::VERBOSITY_VERBOSE,
-        );
-
-        $changelog = (new ChangelogGenerator())->generate($milestone, $milestoneNumber, $repo, $issues);
+        $generator = new ChangelogGenerator($api, $repo);
+        $changelog = $generator->generate($base, $head, $title, $includeGhsa);
 
         /** @var ?string $outputFile */
         $outputFile = $input->getOption('output');

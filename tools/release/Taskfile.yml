@@ -16,17 +16,20 @@ tasks:
       - vendor/autoload.php
 
   changelog:
-    desc: Generate changelog from GitHub milestone
+    desc: Generate changelog from commit range
     requires:
-      vars: [MILESTONE]
+      vars: [BASE_REF]
     deps: [setup]
     cmds:
-      - mkdir -p {{.OUTPUT_DIR}}
+      - mkdir -p {{shellQuote .OUTPUT_DIR}}
       - >-
         php bin/changelog.php
-        --milestone={{shellQuote .MILESTONE}}
+        --base={{shellQuote .BASE_REF}}
+        {{if .HEAD_REF}}--head={{shellQuote .HEAD_REF}}{{end}}
+        {{if .TITLE}}--title={{shellQuote .TITLE}}{{end}}
         --repo={{shellQuote .REPO}}
         --output={{shellQuote .OUTPUT_DIR}}/changelog.md
+        {{if eq .NO_GHSA "1"}}--no-ghsa{{end}}
 
   version-bump:
     desc: Bump version numbers in OpenEMR source files
@@ -43,16 +46,14 @@ tasks:
 
   preflight:
     desc: Run pre-release checks
-    requires:
-      vars: [MILESTONE]
     deps: [setup]
     cmds:
       - >-
         php bin/preflight.php
-        --milestone={{shellQuote .MILESTONE}}
+        {{if and .MILESTONE (ne .SKIP_MILESTONE "1")}}--milestone={{shellQuote .MILESTONE}}{{end}}
         --repo={{shellQuote .REPO}}
-        {{if .SKIP_MILESTONE}}--skip-milestone{{end}}
-        {{if .SKIP_GHSA}}--skip-ghsa{{end}}
+        {{if eq .SKIP_MILESTONE "1"}}--skip-milestone{{end}}
+        {{if eq .SKIP_GHSA "1"}}--skip-ghsa{{end}}
 
   checksum:
     desc: Generate checksum sidecar files
@@ -100,12 +101,12 @@ tasks:
   changelog-pr:
     desc: Create CHANGELOG.md update PRs
     requires:
-      vars: [MILESTONE, BRANCHES, OPENEMR_DIR]
+      vars: [VERSION, BRANCHES, OPENEMR_DIR]
     deps: [setup]
     cmds:
       - >-
         php bin/changelog-pr.php
-        --milestone={{shellQuote .MILESTONE}}
+        --version={{shellQuote .VERSION}}
         --branches={{shellQuote .BRANCHES}}
         --openemr-dir={{shellQuote .OPENEMR_DIR}}
         --changelog-file={{shellQuote .OUTPUT_DIR}}/changelog.md

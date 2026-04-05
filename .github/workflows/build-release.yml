@@ -1,4 +1,5 @@
 name: Build Release
+run-name: "Build Release ${{ inputs.version }}${{ inputs.dry_run && ' (dry run)' || '' }}"
 
 on:
   workflow_dispatch:
@@ -15,9 +16,13 @@ on:
         description: Git tag (e.g., v8_0_0). Required unless dry run.
         required: false
         type: string
-      milestone:
-        description: GitHub milestone name (e.g., 8.0.0)
+      base_ref:
+        description: Previous release tag for changelog (e.g., v7_3_7)
         required: true
+        type: string
+      milestone:
+        description: GitHub milestone name for preflight check (e.g., 8.0.0)
+        required: false
         type: string
       dry_run:
         description: Dry run — build only, skip release
@@ -113,15 +118,15 @@ jobs:
       run: task release:setup
 
     - name: Preflight checks
-      if: '!inputs.skip_milestone_check || !inputs.skip_ghsa_check'
+      if: '(!inputs.skip_milestone_check && inputs.milestone != '''') || !inputs.skip_ghsa_check'
       working-directory: devops-tools
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
       run: >-
         task release:preflight
         MILESTONE='${{ inputs.milestone }}'
-        SKIP_MILESTONE='${{ inputs.skip_milestone_check }}'
-        SKIP_GHSA='${{ inputs.skip_ghsa_check }}'
+        SKIP_MILESTONE='${{ (inputs.skip_milestone_check || inputs.milestone == '') && '1' || '' }}'
+        SKIP_GHSA='${{ inputs.skip_ghsa_check && '1' || '' }}'
 
     - name: Version bump (full mode)
       working-directory: devops-tools
@@ -146,7 +151,9 @@ jobs:
         GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
       run: >-
         task release:changelog
-        MILESTONE='${{ inputs.milestone }}'
+        BASE_REF='${{ inputs.base_ref }}'
+        HEAD_REF='${{ inputs.version_branch }}'
+        TITLE='${{ inputs.version }}'
 
     - name: Create annotated tag and GitHub release
       if: '!inputs.dry_run'
@@ -240,7 +247,7 @@ jobs:
         GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
       run: >-
         task release:changelog-pr
-        MILESTONE='${{ inputs.milestone }}'
+        VERSION='${{ inputs.version }}'
         BRANCHES='${{ inputs.version_branch }},master'
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
 

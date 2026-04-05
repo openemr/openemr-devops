@@ -76,4 +76,86 @@ class GitHubApi
     {
         return $this->paginate("/issues?milestone={$milestoneNumber}&state=closed&per_page=100");
     }
+
+    /**
+     * Get all commit SHAs between two refs using the compare API.
+     *
+     * @return list<string>
+     */
+    public function commitsBetweenRefs(string $base, string $head): array
+    {
+        $endpoint = "/repos/{$this->repo}/compare/{$base}...{$head}";
+        $shas = [];
+        $page = 1;
+        $maxPages = 50;
+
+        do {
+            $process = new Process([
+                'gh', 'api',
+                "{$endpoint}?per_page=250&page={$page}",
+                '--jq', '.commits[].sha',
+            ]);
+            $process->mustRun();
+
+            $output = trim($process->getOutput());
+            if ($output === '') {
+                break;
+            }
+
+            $pageShas = explode("\n", $output);
+            $shas = array_merge($shas, $pageShas);
+            $page++;
+        } while (count($pageShas) === 250 && $page <= $maxPages);
+
+        if ($page > $maxPages) {
+            throw new \RuntimeException(
+                "Compare {$base}...{$head} exceeded {$maxPages} pages — results may be truncated",
+            );
+        }
+
+        return $shas;
+    }
+
+    /**
+     * Resolve commit SHAs to their associated pull requests.
+     *
+     * Deduplicates by PR number. Returns PRs in the same shape as gh pr list --json.
+     *
+     * @param list<string> $shas
+     * @return list<array{number: int, title: string, labels: list<array{name: string}>, url: string}>
+     */
+    public function prsForCommits(array $shas): array
+    {
+        /** @var array<int, array{number: int, title: string, labels: list<array{name: string}>, url: string}> $seen */
+        $seen = [];
+
+        foreach ($shas as $sha) {
+            $process = new Process([
+                'gh', 'api',
+                "/repos/{$this->repo}/commits/{$sha}/pulls",
+                '--jq', '[.[] | {number, title, labels: [.labels[] | {name}], url: .html_url}]',
+            ]);
+            $process->mustRun();
+
+            /** @var list<array{number: int, title: string, labels: list<array{name: string}>, url: string}> $prs */
+            $prs = json_decode($process->getOutput(), true) ?? [];
+            foreach ($prs as $pr) {
+                if (!isset($seen[$pr['number']])) {
+                    $seen[$pr['number']] = $pr;
+                }
+            }
+        }
+
+        return array_values($seen);
+    }
+
+    /**
+     * Fetch all published security advisories.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function publishedAdvisories(): array
+    {
+        return $this->paginate('/security-advisories?state=published&per_page=100');
+    }
 }
