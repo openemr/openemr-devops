@@ -24,14 +24,14 @@ use Symfony\Component\Process\Process;
 (new SingleCommandApplication())
     ->setName('changelog-pr')
     ->setDescription('Create CHANGELOG.md update PRs')
-    ->addOption('milestone', 'm', InputOption::VALUE_REQUIRED, 'Milestone name')
+    ->addOption('version', null, InputOption::VALUE_REQUIRED, 'Version string (e.g., 8.0.0.3)')
     ->addOption('branches', null, InputOption::VALUE_REQUIRED, 'Comma-separated target branches')
     ->addOption('openemr-dir', null, InputOption::VALUE_REQUIRED, 'Path to openemr checkout')
     ->addOption('changelog-file', null, InputOption::VALUE_REQUIRED, 'Path to changelog entry file')
     ->addOption('repo', 'r', InputOption::VALUE_REQUIRED, 'GitHub repo', 'openemr/openemr')
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
-        /** @var string $milestone */
-        $milestone = $input->getOption('milestone');
+        /** @var string $version */
+        $version = $input->getOption('version');
         /** @var string $openemrDir */
         $openemrDir = $input->getOption('openemr-dir');
         /** @var string $changelogFile */
@@ -41,7 +41,7 @@ use Symfony\Component\Process\Process;
         /** @var string $branchesRaw */
         $branchesRaw = $input->getOption('branches');
 
-        foreach (['milestone', 'branches', 'openemr-dir', 'changelog-file'] as $required) {
+        foreach (['version', 'branches', 'openemr-dir', 'changelog-file'] as $required) {
             if ($input->getOption($required) === null) {
                 $output->writeln("<error>--{$required} is required</error>");
                 return 1;
@@ -63,7 +63,7 @@ use Symfony\Component\Process\Process;
 
         foreach ($branches as $branch) {
             $branch = trim($branch);
-            $prBranch = "changelog-{$milestone}-{$branch}";
+            $prBranch = "changelog-{$version}-{$branch}";
 
             // Check if PR already exists
             $check = new Process(
@@ -97,7 +97,7 @@ use Symfony\Component\Process\Process;
             // Commit, push, create PR
             (new Process(['git', 'add', 'CHANGELOG.md'], $openemrDir))->mustRun();
             (new Process(
-                ['git', 'commit', '-m', "docs: add {$milestone} changelog"],
+                ['git', 'commit', '-m', "docs: add {$version} changelog"],
                 $openemrDir,
             ))->mustRun();
             (new Process(['git', 'push', 'origin', $prBranch], $openemrDir))->mustRun();
@@ -106,8 +106,8 @@ use Symfony\Component\Process\Process;
                 '--repo', $repo,
                 '--base', $branch,
                 '--head', $prBranch,
-                '--title', "docs: add {$milestone} changelog",
-                '--body', "Add changelog entry for {$milestone} release.",
+                '--title', "docs: add {$version} changelog",
+                '--body', "Add changelog entry for {$version} release.",
             ]))->mustRun();
 
             $output->writeln("Created PR for <info>{$prBranch}</info> → {$branch}");
