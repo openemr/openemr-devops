@@ -7,7 +7,7 @@ first_arg=$1
 target_dir_local_check() {
     migrate_target_dir=$1
     echo -e "\033[30m===>\033[0m \033[32mChecking the target dir... \033[0m"
-    [[ ! -d "${migrate_target_dir}" ]] && mkdir ${migrate_target_dir} -p
+    [[ ! -d "${migrate_target_dir}" ]] && mkdir "${migrate_target_dir}" -p
     echo
 }
 
@@ -46,7 +46,7 @@ sync_data_dir_in_local() {
     # For the local env
     migrate_source_dir=$1
     migrate_target_dir=$2
-    rsync -avz ${migrate_source_dir} ${migrate_target_dir}
+    rsync -avz "${migrate_source_dir}" "${migrate_target_dir}"
     echo
 }
 
@@ -57,7 +57,7 @@ sync_data_dir_to_remote() {
     target_ssh_user=$2
     target_ip=$3
     migrate_target_dir=$4
-    rsync -avz ${migrate_source_dir} ${target_ssh_user}@${target_ip}:${migrate_target_dir}
+    rsync -avz "${migrate_source_dir}" "${target_ssh_user}@${target_ip}:${migrate_target_dir}"
     echo
 }
 
@@ -101,8 +101,8 @@ commit_and_save_container(){
     target_host=$4
     # Commit a container’s file changes or settings into a new image and save to tar file
     echo -e "\033[30m===>\033[0m \033[32mCommit and save the image... \033[0m"
-    docker commit ${migrate_container_name} ${container_name}  &>/dev/null
-    docker save -o /tmp/${container_name}.tar ${container_name}
+    docker commit "${migrate_container_name}" "${container_name}"  &>/dev/null
+    docker save -o "/tmp/${container_name}.tar" "${container_name}"
     echo
     echo -e "\033[30m===>\033[0m \033[32mMoving to the target host... \033[0m"
     echo
@@ -111,7 +111,7 @@ commit_and_save_container(){
         echo 'Please check openssh-clients install or not.'
         exit 1
     fi
-    scp /tmp/${container_name}.tar ${ssh_user}@${target_host}:/tmp
+    scp "/tmp/${container_name}.tar" "${ssh_user}@${target_host}:/tmp"
     echo
     # Load an image from a tar archive in the remote host
     echo -e "\033[30m===>\033[0m \033[32mLoaing the image... \033[0m"
@@ -122,7 +122,7 @@ commit_and_save_container(){
     echo
     echo "Please try to run the image in target host."
     # Clean the tar file after scp
-    rm -f /tmp/${container_name}.tar
+    rm -f "/tmp/${container_name}.tar"
 }
 
 # Script Usage
@@ -138,15 +138,15 @@ script_usage() {
     echo
     echo -e "\033[0m\033[36mMigrate all the containers: \033[0m"
     echo -e " \033[0m\033[33m Scenario one: Migrate in local.\033[0m"
-    echo "   e.g. $(basename $0) -t local -s /var/lib/docker/ -d /data/docker/"
+    echo "   e.g. $(basename "$0") -t local -s /var/lib/docker/ -d /data/docker/"
     echo -e " \033[0m\033[33m Scenario two: Migrate to remote host.\033[0m"
-    echo -e "   \033[0m\033[32mFirst step in local:\033[0m    $(basename $0) -t remote -s /var/lib/docker/ -u testuser -h 192.168.117.117 -d /data/docker/"
-    echo -e "   \033[0m\033[32mSecond step in remote:\033[0m  $(basename $0) -t set -d /data/docker/"
+    echo -e "   \033[0m\033[32mFirst step in local:\033[0m    $(basename "$0") -t remote -s /var/lib/docker/ -u testuser -h 192.168.117.117 -d /data/docker/"
+    echo -e "   \033[0m\033[32mSecond step in remote:\033[0m  $(basename "$0") -t set -d /data/docker/"
     echo -e "\033[0m\033[35m  **NOTE-1**: Do not forget the last slash of source dir, e.g. /var/lib/docker/ \033[0m"
     echo -e "\033[0m\033[35m  **NOTE-2**: Please make sure there is the same source code dir in the remote host for easy or insane env and setup the base container services. \033[0m"
     echo
     echo -e "\033[0m\033[36mMigrate the single container: \033[0m"
-    echo "   e.g. $(basename $0) -t single -m  brave_snyder -n http -u testuser -h 192.168.117.117"
+    echo "   e.g. $(basename "$0") -t single -m  brave_snyder -n http -u testuser -h 192.168.117.117"
     echo
     exit
 }
@@ -203,23 +203,23 @@ done
 # Main logic
 # Migrate from one data dir to another dir in local
 if [[ "${migrate_type}" = 'local' ]]; then
-    target_dir_local_check ${migrate_target_dir}
+    target_dir_local_check "${migrate_target_dir}"
     stop_all_containers
-    sync_data_dir_in_local ${migrate_source_dir} ${migrate_target_dir}
-    set_daemon_json_file ${migrate_target_dir}
+    sync_data_dir_in_local "${migrate_source_dir}" "${migrate_target_dir}"
+    set_daemon_json_file "${migrate_target_dir}"
     start_all_containers
     # Migrate data dir from one host to remote host(first step)
 elif [[ "${migrate_type}" = 'remote' ]]; then
-    target_dir_remote_check ${target_ssh_user} ${target_ip} ${migrate_target_dir}
+    target_dir_remote_check "${target_ssh_user}" "${target_ip}" "${migrate_target_dir}"
     stop_all_containers
-    sync_data_dir_to_remote ${migrate_source_dir} ${target_ssh_user} ${target_ip} ${migrate_target_dir}
+    sync_data_dir_to_remote "${migrate_source_dir}" "${target_ssh_user}" "${target_ip}" "${migrate_target_dir}"
     # Second step
 elif [[ "${migrate_type}" = 'set' ]]; then
-    set_daemon_json_file ${migrate_target_dir}
+    set_daemon_json_file "${migrate_target_dir}"
     start_all_containers
     # Migrate the single container
 elif [[ "${migrate_type}" = 'single' ]]; then
-    commit_and_save_container ${migrate_container_name} ${container_name} ${target_ssh_user} ${target_ip}
+    commit_and_save_container "${migrate_container_name}" "${container_name}" "${target_ssh_user}" "${target_ip}"
 else
     echo -e "\033[0m\033[31mInvalid migrate type, e.g. local, remote, set, single. \033[0m"
     echo
