@@ -9,7 +9,7 @@ while getopts "r:" opt; do
     r)
       RECOVERYMODE=${OPTARG}
       ;;
-    \?)
+    *)
       echo "Invalid option: -${OPTARG}" >&2
       exit 1
       ;;
@@ -25,7 +25,7 @@ case ${RECOVERYMODE} in
   import)
     BUCKET=${RECOVERYS3}
     ;;
-  \?)
+  *)
     echo "Invalid option: -r " "${RECOVERYMODE}" >&2
     exit 1
     ;;

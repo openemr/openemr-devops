@@ -13,7 +13,7 @@ while getopts "b:d:" opt; do
     d)
       DOCKERLABEL=${OPTARG}
       ;;
-    \?)
+    *)
       echo "Invalid option: -${opt}" >&2
       exit 1
       ;;
@@ -35,18 +35,13 @@ ln -s /root/aws-cfn-bootstrap-latest/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
 docker pull "openemr/openemr${DOCKERLABEL}"
 
 # get the rest of the devops repo and docker-tools
-cd /root
-if [[ ${REPOBRANCH} = master ]]; then
-  git clone --single-branch https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
-else
-  git clone --single-branch --branch "${REPOBRANCH}" https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
-fi
-chmod +x ami/*.sh scripts/*.sh
+cd /root || exit
+git clone --single-branch --branch "${REPOBRANCH}" https://github.com/openemr/openemr-devops.git
+chmod +x openemr-devops/packages/standard/ami/*.sh openemr-devops/packages/standard/scripts/*.sh
 
 # before we get started, we need the AWS cert chain installed
 # we can't grab it later because we can't depend on downloading things
-cd /root
 wget https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 mv global-bundle.pem mysql-ca
 
-echo ami-build.sh: done
+echo 'ami-build.sh: done'
