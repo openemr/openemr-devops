@@ -26,11 +26,11 @@ case ${RECOVERYMODE} in
     BUCKET=${RECOVERYS3}
     ;;
   \?)
-    echo "Invalid option: -r " ${RECOVERYMODE} >&2
+    echo "Invalid option: -r " "${RECOVERYMODE}" >&2
     exit 1
     ;;
 esac
 
-PASSPHRASE=$(aws s3 cp s3://${BUCKET}/Backup/passphrase.txt - --sse aws:kms --sse-kms-key-id ${KMS})
+PASSPHRASE=$(aws s3 cp "s3://${BUCKET}/Backup/passphrase.txt" - --sse aws:kms --sse-kms-key-id "${KMS}")
 export PASSPHRASE
-duplicity --force boto3+s3://${BUCKET}/Backup /
+duplicity --force "boto3+s3://${BUCKET}/Backup" /

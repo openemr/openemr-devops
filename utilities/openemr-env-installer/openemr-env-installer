@@ -64,10 +64,10 @@ install_git() {
 
 # The script usage
 installer_script_usage() {
-    echo "Usage: bash $(basename $0) <code location> <github account>"
+    echo "Usage: bash $(basename "$0") <code location> <github account>"
     echo
-    echo "  e.g. bash $(basename $0) /home/test/code testuser"
-    echo "    or bash $(basename $0) /Users/test/code testuser"
+    echo "  e.g. bash $(basename "$0") /home/test/code testuser"
+    echo "    or bash $(basename "$0") /Users/test/code testuser"
     echo
     echo -e "\033[33mNOTE1: Please make sure you have created your own fork of OpenEMR and OpenEMR-devops at first.\033[0m"
     echo -e "\033[33mNOTE2: Please make sure you have the necessary environment if use minikube:\033[0m"
@@ -115,13 +115,13 @@ code_dir_exist_or_not() {
     github_account=$2
     # Create the code location if not exist
     if [[ ! -d ${code_location} ]]; then
-        mkdir -p ${code_location}
-        git_clone_function $1 $2
+        mkdir -p "${code_location}"
+        git_clone_function "$1" "$2"
         # It already downloaded if openemr dir exsit
     elif [[ ! -d ${code_location}/openemr ]]; then
-        git_clone_function $1 $2
+        git_clone_function "$1" "$2"
     elif [[ ! -d ${code_location}/openemr-devops ]]; then
-        git_clone_function $1 $2
+        git_clone_function "$1" "$2"
     else
         echo -e "\033[30m===>\033[0m \033[32mOpenEMR repos are already downloaded. \033[0m"
         echo
@@ -147,9 +147,9 @@ rhel_register_check_and_enable_repo() {
     if [[ ! -f ${register_lock} ]]; then
         subscription_status=$(subscription-manager status)
         if grep -qF Current <<< "${subscription_status}"; then
-            echo 0 > ${register_lock}
+            echo 0 > "${register_lock}"
         else
-            echo 1 > ${register_lock}
+            echo 1 > "${register_lock}"
             register_note
         fi
     elif [[ -f ${register_lock} ]]; then
@@ -196,7 +196,7 @@ install_docker() {
                 sudo apt-get install apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y
                 echo
                 echo -e "\033[30m===>\033[0m \033[32mAdding the Docker official GPG key... \033[0m"
-                gpg=$(curl -fsSL https://download.docker.com/linux/${os_distribution}/gpg)
+                gpg=$(curl -fsSL "https://download.docker.com/linux/${os_distribution}/gpg")
                 sudo apt-key add - <<< "${gpg}"
                 echo
                 echo -e "\033[30m===>\033[0m \033[32mSetting up the stable repository... \033[0m"
@@ -209,7 +209,7 @@ install_docker() {
                 sudo apt-get install docker-ce docker-ce-cli containerd.io -y
                 echo -e "\033[30m===>\033[0m \033[32mAdding your username to the docker group to avoid typing sudo whenever you run the docker command... \033[0m"
                 echo
-                sudo usermod -aG docker ${USER}
+                sudo usermod -aG docker "${USER}"
                 sudo systemctl start docker
                 sudo systemctl enable docker
                 echo
@@ -359,11 +359,11 @@ install_minikube_kubectl(){
     else
         echo -e "\033[30m===>\033[0m \033[32mInstalling minikube... \033[0m"
         echo
-        sudo curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-${minikube_os}-amd64
+        sudo curl -LO "https://storage.googleapis.com/minikube/releases/latest/minikube-${minikube_os}-amd64"
         echo
         install_cmd_chk
-        sudo install minikube-${minikube_os}-amd64 /usr/local/bin/minikube
-        sudo rm -f minikube-${minikube_os}-amd64
+        sudo install "minikube-${minikube_os}-amd64" /usr/local/bin/minikube
+        sudo rm -f "minikube-${minikube_os}-amd64"
         echo
         run_cluster_tip
         echo
@@ -375,7 +375,7 @@ install_minikube_kubectl(){
     else
         echo -e "\033[30m===>\033[0m \033[32mInstalling kubectl... \033[0m"
         echo
-        sudo curl -L https://storage.googleapis.com/kubernetes-release/release/v1.19.0/bin/${minikube_os}/amd64/kubectl -o /usr/local/bin/kubectl
+        sudo curl -L "https://storage.googleapis.com/kubernetes-release/release/v1.19.0/bin/${minikube_os}/amd64/kubectl" -o /usr/local/bin/kubectl
         sudo chmod +x /usr/local/bin/kubectl
         echo
     fi
@@ -477,14 +477,14 @@ if [[ "${os_type}" = "Linux" ]]; then
             ;;
     esac
     install_git
-    code_dir_exist_or_not $1 $2
+    code_dir_exist_or_not "$1" "$2"
     install_docker
     install_docker_compose
     install_openemr_cmd
     install_conntrack
     install_minikube_kubectl
     quick_check_result
-    startup_the_env $1
+    startup_the_env "$1"
 elif [[ "${os_type}" = "Darwin" ]]; then
     # For MacOS
     # Check the macOS version
@@ -535,7 +535,7 @@ elif [[ "${os_type}" = "Darwin" ]]; then
         fi
 
         # Check the code dir and git clone
-        code_dir_exist_or_not $1 $2
+        code_dir_exist_or_not "$1" "$2"
 
         # Install docker
         if command -v docker &>/dev/null; then
@@ -576,7 +576,7 @@ elif [[ "${os_type}" = "Darwin" ]]; then
         echo
 
         # Startup env
-        startup_the_env $1
+        startup_the_env "$1"
     else
         echo -e "\e[31mNot supported OS. The tool only supports Linux or Darwin(macOS).\e[0m"
         exit

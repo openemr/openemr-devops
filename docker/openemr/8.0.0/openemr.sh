@@ -29,7 +29,7 @@ auto_setup() {
 
     #create temporary file cache directory for auto_configure.php to use
     TMP_FILE_CACHE_LOCATION="/tmp/php-file-cache"
-    mkdir ${TMP_FILE_CACHE_LOCATION}
+    mkdir "${TMP_FILE_CACHE_LOCATION}"
 
     #create auto_configure.ini to be able to leverage opcache for operations
     touch auto_configure.ini
@@ -42,10 +42,11 @@ auto_setup() {
     echo "opcache.max_accelerated_files=1000000" >> auto_configure.ini
 
     #run auto_configure
+    # shellcheck disable=SC2086 # CONFIGURATION intentionally word-splits into multiple -f flags (see openemr/openemr-devops#539)
     php auto_configure.php -c auto_configure.ini -f ${CONFIGURATION} || return 1
 
     #remove temporary file cache directory and auto_configure.ini
-    rm -r ${TMP_FILE_CACHE_LOCATION}
+    rm -r "${TMP_FILE_CACHE_LOCATION}"
     rm auto_configure.ini
 
     echo "OpenEMR configured."
@@ -246,12 +247,12 @@ if
         while [ "${c}" -le "${DOCKER_VERSION_ROOT}" ]; do
             if [ "${c}" -gt "${DOCKER_VERSION_SITES}" ] ; then
                 echo "Start: Processing fsupgrade-${c}.sh upgrade script"
-                sh /root/fsupgrade-${c}.sh
+                sh /root/fsupgrade-"${c}".sh
                 echo "Completed: Processing fsupgrade-${c}.sh upgrade script"
             fi
             c=$(( c + 1 ))
         done
-        echo -n ${DOCKER_VERSION_ROOT} > /var/www/localhost/htdocs/openemr/sites/default/docker-version
+        echo -n "${DOCKER_VERSION_ROOT}" > /var/www/localhost/htdocs/openemr/sites/default/docker-version
         echo "Completed upgrade"
     fi
 fi
@@ -269,8 +270,8 @@ if [ "${REDIS_SERVER}" != "" ] &&
     #    version 5.3.7 .
     if [ "${PHPREDIS_BUILD}" != "" ]; then
       apk update
-      apk del --no-cache php${PHP_VERSION_ABBR}-redis
-      apk add --no-cache git php${PHP_VERSION_ABBR}-dev php${PHP_VERSION_ABBR}-pecl-igbinary gcc make g++
+      apk del --no-cache php"${PHP_VERSION_ABBR}"-redis
+      apk add --no-cache git php"${PHP_VERSION_ABBR}"-dev php"${PHP_VERSION_ABBR}"-pecl-igbinary gcc make g++
       mkdir /tmpredis
       cd /tmpredis
       git clone https://github.com/phpredis/phpredis.git
@@ -282,11 +283,11 @@ if [ "${REDIS_SERVER}" != "" ] &&
       phpize83
       # note for php 8.3, needed to change from './configure --enable-redis-igbinary' to:
       ./configure --with-php-config=/usr/bin/php-config83 --enable-redis-igbinary
-      make -j $(nproc --all)
+      make -j "$(nproc --all)"
       make install
-      echo "extension=redis" > /etc/php${PHP_VERSION_ABBR}/conf.d/20_redis.ini
+      echo "extension=redis" > /etc/php"${PHP_VERSION_ABBR}"/conf.d/20_redis.ini
       rm -fr /tmpredis/phpredis
-      apk del --no-cache git php${PHP_VERSION_ABBR}-dev gcc make g++
+      apk del --no-cache git php"${PHP_VERSION_ABBR}"-dev gcc make g++
       cd /var/www/localhost/htdocs/openemr
     fi
 
@@ -436,14 +437,14 @@ if [ "${XDEBUG_IDE_KEY}" != "" ] ||
    sh xdebug.sh
    #also need to turn off opcache since it can not be turned on with xdebug
    if [ ! -f /etc/php-opcache-jit-configured ]; then
-      echo "opcache.enable=0" >> /etc/php${PHP_VERSION_ABBR}/php.ini
+      echo "opcache.enable=0" >> /etc/php"${PHP_VERSION_ABBR}"/php.ini
       touch /etc/php-opcache-jit-configured
    fi
 else
    # Configure opcache jit if Xdebug is not being used (note opcache is already on, so just need to add setting(s) to php.ini that are different from the default setting(s))
    if [ ! -f /etc/php-opcache-jit-configured ]; then
-      echo "opcache.jit=tracing" >> /etc/php${PHP_VERSION_ABBR}/php.ini
-      echo "opcache.jit_buffer_size=100M" >> /etc/php${PHP_VERSION_ABBR}/php.ini
+      echo "opcache.jit=tracing" >> /etc/php"${PHP_VERSION_ABBR}"/php.ini
+      echo "opcache.jit_buffer_size=100M" >> /etc/php"${PHP_VERSION_ABBR}"/php.ini
       touch /etc/php-opcache-jit-configured
    fi
 fi

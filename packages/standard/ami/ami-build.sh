@@ -32,14 +32,14 @@ pip install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-p
 ln -s /root/aws-cfn-bootstrap-latest/init/ubuntu/cfn-hup /etc/init.d/cfn-hup
 
 # grab our Docker instance
-docker pull openemr/openemr${DOCKERLABEL}
+docker pull "openemr/openemr${DOCKERLABEL}"
 
 # get the rest of the devops repo and docker-tools
 cd /root
 if [[ ${REPOBRANCH} = master ]]; then
   git clone --single-branch https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
 else
-  git clone --single-branch --branch ${REPOBRANCH} https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
+  git clone --single-branch --branch "${REPOBRANCH}" https://github.com/openemr/openemr-devops.git && cd openemr-devops/packages/standard
 fi
 chmod +x ami/*.sh scripts/*.sh
 
