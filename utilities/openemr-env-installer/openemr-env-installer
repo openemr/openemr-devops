@@ -514,8 +514,8 @@ elif [[ "${os_type}" = "Darwin" ]]; then
         else
             echo -e "\033[30m===>\033[0m \033[32mInstalling Homebrew... \033[0m"
             brew_installer=$(mktemp -d)
-            curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh > "${brew_installer}"/install.sh
-            chmod +x "${brew_installer}"/install.sh
+            curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh > "${brew_installer}/install.sh"
+            chmod +x "${brew_installer}/install.sh"
             "${brew_installer}/install.sh"
             echo
         fi

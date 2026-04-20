@@ -12,25 +12,24 @@ for dir in $(find /var/www/localhost/htdocs/openemr/sites/* -maxdepth 0 -type d 
     # Ensure have all directories
     echo "Start: Ensure have all directories in ${sitename}"
     mkdir -p \
-        "${dir}"/documents/certificates \
-        "${dir}"/documents/couchdb \
-        "${dir}"/documents/custom_menus/patient_menus \
-        "${dir}"/documents/edi \
-        "${dir}"/documents/era \
-        "${dir}"/documents/letter_templates \
-        "${dir}"/documents/logs_and_misc/methods \
-        "${dir}"/documents/mpdf/pdf_tmp \
-        "${dir}"/documents/onsite_portal_documents/templates \
-        "${dir}"/documents/procedure_results \
-        "${dir}"/documents/smarty/gacl \
-        "${dir}"/documents/smarty/main \
-        "${dir}"/documents/temp
+        "${dir}/documents/certificates" \
+        "${dir}/documents/couchdb" \
+        "${dir}/documents/custom_menus/patient_menus" \
+        "${dir}/documents/edi" \
+        "${dir}/documents/era" \
+        "${dir}/documents/letter_templates" \
+        "${dir}/documents/logs_and_misc/methods" \
+        "${dir}/documents/mpdf/pdf_tmp" \
+        "${dir}/documents/onsite_portal_documents/templates" \
+        "${dir}/documents/procedure_results" \
+        "${dir}/documents/smarty/gacl" \
+        "${dir}/documents/smarty/main" \
+        "${dir}/documents/temp"
     echo "Completed: Ensure have all directories in ${sitename}"
 
     # Clear smarty cache
     echo "Start: Clear smarty cache in ${sitename}"
-    rm -fr "${dir}"/documents/smarty/gacl/*
-    rm -fr "${dir}"/documents/smarty/main/*
+    rm -fr "${dir}/documents/smarty/gacl"/* "${dir}/documents/smarty/main"/*
     echo "Completed: Clear smarty cache in ${sitename}"
 done
 

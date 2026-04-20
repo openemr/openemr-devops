@@ -385,10 +385,12 @@ if [ "$1" = "backup" ]; then
         echo "Missing a backup identifier"
         exit
     fi
-    if echo "$2" | grep -Eq '[^a-zA-Z0-9\-]'; then
-        echo "Invalid identifier (can only contain numbers and letters)"
-        exit
-    fi
+    case $2 in
+        *[!a-zA-Z0-9-]*)
+            echo "Invalid identifier (can only contain numbers and letters)"
+            exit
+            ;;
+    esac
     if [ -f "/snapshots/${2}.tgz" ]; then
         echo "Identifier has already been used. Try with another identifier."
         exit
@@ -403,10 +405,12 @@ if [ "$1" = "restore" ]; then
         echo "Missing a restore identifier"
         exit
     fi
-    if echo "$2" | grep -Eq '[^a-zA-Z0-9\-]'; then
-        echo "Invalid identifier (can only contain numbers and letters)"
-        exit
-    fi
+    case $2 in
+        *[!a-zA-Z0-9-]*)
+            echo "Invalid identifier (can only contain numbers and letters)"
+            exit
+            ;;
+    esac
     if [ ! -f "/snapshots/${2}.tgz" ]; then
         echo "A backup with the identifier does not exist"
         exit

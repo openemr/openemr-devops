@@ -17,8 +17,7 @@ set -e
 fi
 
 if [ ! -f /etc/ssl/docker-selfsigned-configured ]; then
-    rm -f /etc/ssl/certs/webserver.cert.pem
-    rm -f /etc/ssl/private/webserver.key.pem
+    rm -f /etc/ssl/certs/webserver.cert.pem /etc/ssl/private/webserver.key.pem
     ln -s /etc/ssl/certs/selfsigned.cert.pem /etc/ssl/certs/webserver.cert.pem
     ln -s /etc/ssl/private/selfsigned.key.pem /etc/ssl/private/webserver.key.pem
     touch /etc/ssl/docker-selfsigned-configured
@@ -33,7 +32,7 @@ if [ "${DOMAIN}" != "" ]; then
     fi
     # if a domain has been set, set up LE and target those certs
 
-    if ! [ -f /etc/letsencrypt/live/"${DOMAIN}"/fullchain.pem ]; then
+    if ! [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
         /usr/sbin/httpd -k start
         sleep 2
         # shellcheck disable=SC2086 # EMAIL intentionally word-splits to pass "-m address" as separate args
@@ -44,10 +43,9 @@ if [ "${DOMAIN}" != "" ]; then
 
     # run letsencrypt as a daemon and reference the correct cert
     if [ ! -f /etc/ssl/docker-letsencrypt-configured ]; then
-        rm -f /etc/ssl/certs/webserver.cert.pem
-        rm -f /etc/ssl/private/webserver.key.pem
-        ln -s /etc/letsencrypt/live/"${DOMAIN}"/fullchain.pem /etc/ssl/certs/webserver.cert.pem
-        ln -s /etc/letsencrypt/live/"${DOMAIN}"/privkey.pem /etc/ssl/private/webserver.key.pem
+        rm -f /etc/ssl/certs/webserver.cert.pem /etc/ssl/private/webserver.key.pem
+        ln -s "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" /etc/ssl/certs/webserver.cert.pem
+        ln -s "/etc/letsencrypt/live/${DOMAIN}/privkey.pem" /etc/ssl/private/webserver.key.pem
         touch /etc/ssl/docker-letsencrypt-configured
     fi
 

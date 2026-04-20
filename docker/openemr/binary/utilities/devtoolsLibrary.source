@@ -445,12 +445,12 @@ changeEncodingCollation() {
     # Generate and execute ALTER DATABASE statement
     # Single quotes intentionally used for SQL syntax - variables expand on server side
     # shellcheck disable=SC2016,SC2312  # Pipeline return value is intentionally ignored
-    mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' | grep -E '^ALTER' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" || true
+    mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER DATABASE `",TABLE_SCHEMA,"` CHARACTER SET = '"${1}"' COLLATE = '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`;' | grep '^ALTER' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" || true
     
     # Generate and execute ALTER TABLE statements for all tables
     # Single quotes intentionally used for SQL syntax - variables expand on server side
     # shellcheck disable=SC2016,SC2312  # Pipeline return value is intentionally ignored
-    mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' | grep -E '^ALTER' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" || true
+    mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e 'SELECT concat("ALTER TABLE `",TABLE_SCHEMA,"`.`",TABLE_NAME,"` CONVERT TO CHARACTER SET '"${1}"' COLLATE '"${2}"';") as _sql FROM `information_schema`.`TABLES` where `TABLE_SCHEMA` like "'"${CUSTOM_DATABASE}"'" and `TABLE_TYPE`="BASE TABLE" group by `TABLE_SCHEMA`, `TABLE_NAME`;' | grep '^ALTER' | mariadb --skip-ssl -u "${CUSTOM_ROOT_USER}" --password="${MYSQL_ROOT_PASS}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" || true
 }
 
 # ============================================================================
