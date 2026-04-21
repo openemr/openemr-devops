@@ -1,0 +1,9 @@
+# shellcheck shell=sh
+# Declares the variables written into /root/cloud-variables by CloudFormation
+# UserData at instance boot, so ShellCheck can resolve them statically.
+# This file is NOT used at runtime; the real values come from CFN.
+: "${DVOL:=}"           # encrypted EBS volume serial
+: "${S3:=}"             # backup bucket for this instance
+: "${KMS:=}"            # KMS key ID for SSE
+: "${RECOVERYS3:=}"     # source bucket when restoring from another stack
+: "${RECOVERY_NEWRDS:=}" # replacement RDS hostname when restoring

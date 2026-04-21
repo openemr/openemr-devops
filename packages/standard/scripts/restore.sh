@@ -16,6 +16,7 @@ while getopts "r:" opt; do
   esac
 done
 
+# shellcheck source=packages/standard/cloud-variables.stub
 source /root/cloud-variables
 
 case ${RECOVERYMODE} in

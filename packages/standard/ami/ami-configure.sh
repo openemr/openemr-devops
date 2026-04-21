@@ -5,12 +5,15 @@ exec > /var/log/openemr-configure.log 2>&1
 cd /root/openemr-devops/packages/standard
 
 # pick up cloud settings
+# shellcheck source=packages/standard/cloud-variables.stub
 source /root/cloud-variables
 
 # prepare the encrypted volume CFN just added
 # this used to be in a weird ready-loop but that doesn't make any sense to me
 DVOL_SERIAL=${DVOL/-/}
-DVOL_DEVICE=/dev/$(lsblk -no NAME,SERIAL | awk -v s="${DVOL_SERIAL}" '$2 == s {print $1}')
+# Split across statements so ShellCheck can see lsblk's exit status (SC2312).
+LSBLK_OUTPUT=$(lsblk -no NAME,SERIAL)
+DVOL_DEVICE=/dev/$(awk -v s="${DVOL_SERIAL}" '$2 == s {print $1}' <<< "${LSBLK_OUTPUT}")
 mkfs -t ext4 "${DVOL_DEVICE}"
 echo "${DVOL_DEVICE}" /mnt/docker ext4 defaults,nofail 0 0 >> /etc/fstab
 mkdir /mnt/docker
