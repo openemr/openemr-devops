@@ -8,6 +8,18 @@
 #
 set -e
 
+# Environment variables used by this script are supplied by the Docker runtime
+# (docker-compose `environment:` or `-e` flags). The env.stub file declares
+# them for ShellCheck's benefit using `: "${VAR:=}"` assignments that leave
+# real runtime values untouched. The stub is not shipped into the container
+# image; the `if false` keeps the `.` statically visible to ShellCheck's
+# source-follower without ever running it — BusyBox ash treats `.` as a
+# special builtin and exits the shell on file-not-found even with `|| true`.
+if false; then
+    # shellcheck source=docker/openemr/7.0.4/env.stub
+    . /root/env.stub
+fi
+
  if ! [ -f /etc/ssl/private/selfsigned.key.pem ]; then
     openssl req -x509 -newkey rsa:4096 \
     -keyout /etc/ssl/private/selfsigned.key.pem \
