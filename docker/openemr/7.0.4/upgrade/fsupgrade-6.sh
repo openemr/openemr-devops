@@ -6,8 +6,9 @@ priorOpenemrVersion="7.0.1"
 echo "Start: Upgrade to docker-version 6"
 
 # Perform codebase upgrade on each directory in sites/
-for dir in $(find /var/www/localhost/htdocs/openemr/sites/* -maxdepth 0 -type d ); do
-    sitename=$(basename "${dir}")
+for dir in /var/www/localhost/htdocs/openemr/sites/*/; do
+    dir="${dir%/}"
+    sitename=${dir##*/}
 
     # Ensure have all directories
     echo "Start: Ensure have all directories in ${sitename}"
@@ -39,8 +40,9 @@ chown -R apache:root /var/www/localhost/htdocs/openemr/sites/
 echo "Completed: Fix permissions"
 
 # Perform database upgrade on each directory in sites/
-for dirdata in $(find /var/www/localhost/htdocs/openemr/sites/* -maxdepth 0 -type d ); do
-    sitename=$(basename "${dirdata}")
+for dirdata in /var/www/localhost/htdocs/openemr/sites/*/; do
+    dirdata="${dirdata%/}"
+    sitename=${dirdata##*/}
 
     # Upgrade database
     echo "Start: Upgrade database for ${sitename} from ${priorOpenemrVersion}"
