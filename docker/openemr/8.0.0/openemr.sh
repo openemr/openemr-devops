@@ -12,6 +12,18 @@ set -e
 # shellcheck source=SCRIPTDIR/utilities/devtoolsLibrary.source
 . /root/devtoolsLibrary.source
 
+# Environment variables used by this script are supplied by the Docker runtime
+# (docker-compose `environment:` or `-e` flags). The env.stub file declares
+# them for ShellCheck's benefit using `: "${VAR:=}"` assignments that leave
+# real runtime values untouched. The stub is not shipped into the container
+# image; the `if false` keeps the `.` statically visible to ShellCheck's
+# source-follower without ever running it — BusyBox ash treats `.` as a
+# special builtin and exits the shell on file-not-found even with `|| true`.
+if false; then
+    # shellcheck source=docker/openemr/8.0.0/env.stub
+    . /root/env.stub
+fi
+
 swarm_wait() {
     if [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
         # true
@@ -75,13 +87,23 @@ elif [ "${K8S}" = "worker" ]; then
 fi
 
 if [ "${SWARM_MODE}" = "yes" ]; then
-    # atomically test for leadership
+    # Atomically test for leadership. Multiple swarm containers race through this block,
+    # and exactly one must become the leader. A `[ -f file ]` check followed by a create
+    # has a TOCTOU race — every racer sees the file missing, every racer creates it, every
+    # racer declares itself leader. Instead, `set -o noclobber` makes the redirect below
+    # use `open(O_CREAT|O_EXCL)`: the kernel serializes the creation, exactly one redirect
+    # succeeds, and every other container's redirect fails with EEXIST and falls into the
+    # `|| AUTHORITY=no` branch. One winner by construction.
     set -o noclobber
-    { > /var/www/localhost/htdocs/openemr/sites/docker-leader ; } &> /dev/null || AUTHORITY=no
+    : > /var/www/localhost/htdocs/openemr/sites/docker-leader 2>/dev/null || AUTHORITY=no
     set +o noclobber
 
     if [ "${AUTHORITY}" = "no" ] &&
        [ ! -f /var/www/localhost/htdocs/openemr/sites/docker-completed ]; then
+        # swarm_wait is a retry predicate: its failure is the loop termination
+        # signal, not a script-fatal condition. Disabling set -e in the while
+        # condition is intentional.
+        # shellcheck disable=SC2310
         while swarm_wait; do
             echo "Waiting for the docker-leader to finish configuration before proceeding."
             sleep 10;
@@ -224,6 +246,10 @@ if [ "${AUTHORITY}" = "yes" ]; then
        [ "${MANUAL_SETUP}" != "yes" ]; then
 
         echo "Running quick setup!"
+        # auto_setup is a retry predicate: the loop drives it to success and
+        # the ! inverts its exit for the exit condition. Disabling set -e in
+        # both the ! and while contexts is intentional.
+        # shellcheck disable=SC2310
         while ! auto_setup; do
             echo "Couldn't set up. Any of these reasons could be what's wrong:"
             echo " - You didn't spin up a MySQL container or connect your OpenEMR container to a mysql instance"
@@ -253,7 +279,7 @@ if
             fi
             c=$(( c + 1 ))
         done
-        echo -n "${DOCKER_VERSION_ROOT}" > /var/www/localhost/htdocs/openemr/sites/default/docker-version
+        printf '%s' "${DOCKER_VERSION_ROOT}" > /var/www/localhost/htdocs/openemr/sites/default/docker-version
         echo "Completed upgrade"
     fi
 fi
@@ -284,7 +310,8 @@ if [ "${REDIS_SERVER}" != "" ] &&
       phpize83
       # note for php 8.3, needed to change from './configure --enable-redis-igbinary' to:
       ./configure --with-php-config=/usr/bin/php-config83 --enable-redis-igbinary
-      make -j "$(nproc --all)"
+      jobs=$(nproc --all)
+      make -j "${jobs}"
       make install
       echo "extension=redis" > "/etc/php${PHP_VERSION_ABBR}/conf.d/20_redis.ini"
       rm -fr /tmpredis/phpredis
