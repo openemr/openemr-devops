@@ -288,6 +288,7 @@ is_configured() {
 
 AUTHORITY=yes
 OPERATOR=yes
+SWARM_WAIT_DEFERRED=no
 
 # Kubernetes-specific role assignment
 if [[ "${K8S}" = "admin" ]]; then
@@ -377,17 +378,8 @@ update_leader_heartbeat() {
     fi
 }
 
-# Handles swarm mode coordination: leader election and follower waiting.
-handle_swarm_mode() {
-    # Skip coordination if swarm mode isn't enabled
-    if [[ "${SWARM_MODE}" != "yes" ]]; then
-        return 0
-    fi
-
-    # Try to become the leader
-    try_become_leader
-
-    # If we're a follower, wait for the leader to finish setup
+# Waits for the swarm leader to finish setup before reading shared configuration.
+wait_for_swarm_completion() {
     if [[ "${AUTHORITY}" = "no" && ! -f "${OE_ROOT}/sites/docker-completed" ]]; then
         echo "Waiting for docker-leader to finish configuration (with timeout-based recovery)..."
         local -i max_wait_time="${LEADER_WAIT_TIMEOUT:-600}"  # Default: 10 minutes
@@ -400,8 +392,8 @@ handle_swarm_mode() {
             # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
             if is_leader_stale; then
                 echo "Leader appears to have crashed, attempting to take over..."
-                # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
-                if try_become_leader; then
+                try_become_leader
+                if [[ "${AUTHORITY}" = "yes" ]]; then
                     echo "Successfully became leader after previous leader failure"
                     break
                 fi
@@ -412,8 +404,11 @@ handle_swarm_mode() {
 
         # Try one more time to become leader (in case leader died just as we timed out)
         # shellcheck disable=SC2310  # set -e behavior in conditionals is intentional
-        if [[ ! -f "${OE_ROOT}/sites/docker-completed" ]] && try_become_leader; then
-            echo "Promoted to leader after waiting period"
+        if [[ ! -f "${OE_ROOT}/sites/docker-completed" ]]; then
+            try_become_leader
+            if [[ "${AUTHORITY}" = "yes" ]]; then
+                echo "Promoted to leader after waiting period"
+            fi
         fi
 
         # If we timed out, check if configuration actually exists
@@ -427,8 +422,10 @@ handle_swarm_mode() {
             fi
         fi
     fi
+}
 
-    # If we're the leader, create initiation marker and send heartbeat
+# If we're the leader, create initiation marker and restore swarm pieces.
+prepare_swarm_leader() {
     if [[ "${AUTHORITY}" = "yes" ]]; then
         touch "${OE_ROOT}/sites/docker-initiated"
         update_leader_heartbeat
@@ -443,6 +440,28 @@ handle_swarm_mode() {
             rsync --owner --group --perms --recursive --links /swarm-pieces/sites "${OE_ROOT}/"
         fi
     fi
+}
+
+# Handles swarm mode coordination: leader election and follower waiting.
+handle_swarm_mode() {
+    # Skip coordination if swarm mode isn't enabled
+    if [[ "${SWARM_MODE}" != "yes" ]]; then
+        return 0
+    fi
+
+    # Try to become the leader
+    try_become_leader
+
+    # Flex followers can prepare local source/dependencies while the leader
+    # configures the shared sites volume, then wait before reading sqlconf.php.
+    if [[ "${AUTHORITY}" = "no" && ! -f "${OE_ROOT}/sites/docker-completed" ]]; then
+        SWARM_WAIT_DEFERRED=yes
+        echo "Deferring docker-leader wait until local flex build is ready"
+        return 0
+    fi
+
+    wait_for_swarm_completion
+    prepare_swarm_leader
 }
 
 # ============================================================================
@@ -685,6 +704,12 @@ if [[ "${NEED_COMPOSER_BUILD}" = "true" ]] || [[ "${NEED_NPM_BUILD}" = "true" ]]
     fi
 
     cd /var/www/localhost/htdocs
+fi
+
+if [[ "${SWARM_WAIT_DEFERRED}" = "yes" ]]; then
+    wait_for_swarm_completion
+    SWARM_WAIT_DEFERRED=no
+    prepare_swarm_leader
 fi
 
 if [[ "${AUTHORITY}" = "yes" ]] ||

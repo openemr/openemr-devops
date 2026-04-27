@@ -7,6 +7,10 @@ setup() {
     [[ -n "$SCRIPT_DIR" ]] && [[ -d "$SCRIPT_DIR" ]]
 }
 
+@test "flex openemr.sh: valid bash syntax" {
+    assert_script_syntax "${SCRIPT_DIR}/openemr.sh"
+}
+
 @test "flex openemr.sh: FLEX_REPOSITORY and FLEX_REPOSITORY_BRANCH" {
     assert_script_contains "${SCRIPT_DIR}/openemr.sh" 'FLEX_REPOSITORY'
     assert_script_contains "${SCRIPT_DIR}/openemr.sh" 'FLEX_REPOSITORY_BRANCH'
@@ -33,6 +37,12 @@ setup() {
 @test "flex openemr.sh: MANUAL_SETUP, K8S, SWARM_MODE" {
     assert_script_contains "${SCRIPT_DIR}/openemr.sh" 'MANUAL_SETUP='
     assert_script_contains "${SCRIPT_DIR}/openemr.sh" 'SWARM_MODE='
+}
+
+@test "flex openemr.sh: swarm follower defers leader wait for flex build" {
+    assert_script_contains "${SCRIPT_DIR}/openemr.sh" 'SWARM_WAIT_DEFERRED=yes'
+    assert_script_contains "${SCRIPT_DIR}/openemr.sh" 'Deferring docker-leader wait until local flex build is ready'
+    assert_script_contains "${SCRIPT_DIR}/openemr.sh" 'wait_for_swarm_completion'
 }
 
 @test "flex openemr.sh: INSANE_DEV_MODE or DEVELOPER_TOOLS" {
