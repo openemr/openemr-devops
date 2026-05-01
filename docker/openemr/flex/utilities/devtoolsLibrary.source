@@ -207,26 +207,14 @@ demoData() {
 # ============================================================================
 
 # Upgrades OpenEMR database from a specified version to the current version.
-# This function runs OpenEMR's sql_upgrade.php script programmatically
-# by modifying it to run non-interactively.
+# Invokes sql_upgrade.php in CLI mode (added in openemr/openemr#11906).
 #
 # Parameters:
 #   $1: Original OpenEMR version (e.g., "5.0.0", "6.0.0")
 #
-# Process:
-#   1. Creates a temporary version of sql_upgrade.php
-#   2. Modifies it to run non-interactively (auto-submit form)
-#   3. Sets the source version
-#   4. Executes the upgrade script
-#   5. Cleans up temporary file
-#
 # Must call prepareVariables() before calling this function.
 upgradeOpenEMR() {
-    sed -e "s@!empty(\$_POST\['form_submit'\])@true@" < /var/www/localhost/htdocs/openemr/sql_upgrade.php > /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
-    sed -i "s@\$form_old_version = \$_POST\['form_old_version'\];@\$form_old_version = '${1}';@" /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
-    sed -i "1s@^@<?php \$_GET['site'] = 'default'; ?>@" /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
-    php -f /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
-    rm -f /var/www/localhost/htdocs/openemr/sql_upgrade_temp.php
+    php -f /var/www/localhost/htdocs/openemr/sql_upgrade.php -- --from="${1}"
 }
 
 # ============================================================================
