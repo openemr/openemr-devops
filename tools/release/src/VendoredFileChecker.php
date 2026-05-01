@@ -10,9 +10,16 @@
  * therefore has `vendored/openemr-devops/contracts/dispatch.schema.json` and
  * `vendored/openemr-devops/src/TagVerifier.php`.
  *
- * Equivalence is byte-for-byte (sha256). The vendored set is intentionally
- * small — it covers only what consumers need to validate dispatch payloads
- * and verify release tags without depending on this repo's autoloader.
+ * Equivalence is per-file-type, per the openemr-devops#664 spec:
+ *
+ *   - JSON: parse + canonical re-serialize (recursively sort object keys,
+ *     preserve list order, normalize whitespace), then string-compare.
+ *     A consumer can reformat or reorder object keys without tripping drift.
+ *   - PHP: strip the `namespace` declaration line, then string-compare.
+ *     A consumer can vendor under its own namespace (e.g.
+ *     `OpenEMR\ReleaseDocs\Release`) so long as everything else — class
+ *     structure, method signatures, behavior — is identical.
+ *   - Other: byte-for-byte sha256. Default for any file type added later.
  *
  * @package   openemr-devops
  * @link      https://www.open-emr.org
@@ -69,7 +76,7 @@ final readonly class VendoredFileChecker
                 );
                 continue;
             }
-            if (hash_file('sha256', $canonicalAbs) !== hash_file('sha256', $consumerAbs)) {
+            if (!$this->equivalent($rel, $canonicalAbs, $consumerAbs)) {
                 $issues[] = new VendoredDriftIssue(
                     $rel,
                     'drift',
@@ -78,5 +85,67 @@ final readonly class VendoredFileChecker
             }
         }
         return $issues;
+    }
+
+    private function equivalent(string $relativePath, string $canonicalAbs, string $consumerAbs): bool
+    {
+        $extension = pathinfo($relativePath, PATHINFO_EXTENSION);
+        return match ($extension) {
+            'json' => $this->canonicalJson($canonicalAbs) === $this->canonicalJson($consumerAbs),
+            'php' => $this->stripNamespace($this->readFile($canonicalAbs))
+                === $this->stripNamespace($this->readFile($consumerAbs)),
+            default => hash_file('sha256', $canonicalAbs) === hash_file('sha256', $consumerAbs),
+        };
+    }
+
+    private function canonicalJson(string $path): string
+    {
+        $decoded = json_decode($this->readFile($path), true, flags: JSON_THROW_ON_ERROR);
+        $this->sortObjectKeys($decoded);
+        return json_encode(
+            $decoded,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+        );
+    }
+
+    /**
+     * Recursively sort object (associative array) keys to make JSON
+     * comparison insensitive to key order. List order stays intact —
+     * arrays in JSON Schema (`enum`, `oneOf`, `required`) carry semantic
+     * meaning that reordering would silently change.
+     */
+    private function sortObjectKeys(mixed &$value): void
+    {
+        if (!is_array($value)) {
+            return;
+        }
+        if (!array_is_list($value)) {
+            ksort($value);
+        }
+        foreach ($value as &$child) {
+            $this->sortObjectKeys($child);
+        }
+    }
+
+    /**
+     * Strip the single `namespace …;` declaration line from a PHP source
+     * string. Removes the line itself but leaves surrounding whitespace
+     * intact — both canonical and consumer files have the same
+     * surrounding whitespace, so byte-comparing the post-strip strings
+     * is sufficient.
+     */
+    private function stripNamespace(string $contents): string
+    {
+        $stripped = preg_replace('/^namespace\s+[\w\\\\]+;\s*$/m', '', $contents);
+        return $stripped ?? $contents;
+    }
+
+    private function readFile(string $path): string
+    {
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            throw new \RuntimeException('Cannot read ' . $path);
+        }
+        return $contents;
     }
 }

@@ -18,6 +18,34 @@ use PHPUnit\Framework\TestCase;
 
 final class VendoredFileCheckerTest extends TestCase
 {
+    private const CANONICAL_JSON = <<<'JSON'
+        {
+            "$schema": "https://example.test/schema",
+            "title": "test schema",
+            "required": ["event", "data"],
+            "properties": {
+                "event": { "type": "string" },
+                "data": { "type": "object" }
+            }
+        }
+        JSON;
+
+    private const CANONICAL_PHP_TEMPLATE = <<<'PHP'
+        <?php
+
+        declare(strict_types=1);
+
+        namespace %s;
+
+        final class TagVerifier
+        {
+            public function verify(string $tag): bool
+            {
+                return $tag !== '';
+            }
+        }
+        PHP;
+
     private string $canonicalRoot = '';
     private string $consumerDir = '';
 
@@ -28,9 +56,7 @@ final class VendoredFileCheckerTest extends TestCase
         if (!mkdir($this->canonicalRoot, 0700, true) || !mkdir($this->consumerDir, 0700, true)) {
             throw new \RuntimeException('Failed to create tmp dirs');
         }
-        foreach (VendoredFileChecker::VENDORED_PATHS as $rel) {
-            $this->writeFile($this->canonicalRoot, $rel, "canonical:{$rel}\n");
-        }
+        $this->writeCanonicalFixtures($this->canonicalRoot);
     }
 
     protected function tearDown(): void
@@ -41,25 +67,99 @@ final class VendoredFileCheckerTest extends TestCase
 
     public function testMatchingCopiesProduceNoIssues(): void
     {
-        foreach (VendoredFileChecker::VENDORED_PATHS as $rel) {
-            $this->writeFile($this->consumerDir, $rel, "canonical:{$rel}\n");
-        }
+        $this->writeCanonicalFixtures($this->consumerDir);
 
         $issues = (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
 
         self::assertSame([], $issues);
     }
 
-    public function testDriftedCopyIsFlagged(): void
+    public function testJsonReorderedKeysAreEquivalent(): void
     {
-        foreach (VendoredFileChecker::VENDORED_PATHS as $rel) {
-            $this->writeFile($this->consumerDir, $rel, "canonical:{$rel}\n");
-        }
-        $this->writeFile($this->consumerDir, 'src/TagVerifier.php', "stale-content\n");
+        $this->writeCanonicalFixtures($this->consumerDir);
+        $reordered = json_encode(
+            [
+                'properties' => [
+                    'data' => ['type' => 'object'],
+                    'event' => ['type' => 'string'],
+                ],
+                'required' => ['event', 'data'],
+                'title' => 'test schema',
+                '$schema' => 'https://example.test/schema',
+            ],
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+        file_put_contents($this->consumerDir . '/contracts/dispatch.schema.json', $reordered);
 
         $issues = (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
 
-        self::assertCount(1, $issues);
+        self::assertSame([], $issues, 'JSON object key order must not affect equivalence');
+    }
+
+    public function testJsonReformattedWhitespaceIsEquivalent(): void
+    {
+        $this->writeCanonicalFixtures($this->consumerDir);
+        $minified = json_encode(
+            json_decode(self::CANONICAL_JSON, true, flags: JSON_THROW_ON_ERROR),
+            JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+        file_put_contents($this->consumerDir . '/contracts/dispatch.schema.json', $minified);
+
+        $issues = (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
+
+        self::assertSame([], $issues, 'JSON whitespace must not affect equivalence');
+    }
+
+    public function testJsonListReorderingIsFlagged(): void
+    {
+        $this->writeCanonicalFixtures($this->consumerDir);
+        $reorderedList = json_encode(
+            [
+                '$schema' => 'https://example.test/schema',
+                'title' => 'test schema',
+                'required' => ['data', 'event'],
+                'properties' => [
+                    'event' => ['type' => 'string'],
+                    'data' => ['type' => 'object'],
+                ],
+            ],
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+        );
+        file_put_contents($this->consumerDir . '/contracts/dispatch.schema.json', $reorderedList);
+
+        $issues = (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
+
+        self::assertCount(1, $issues, 'JSON list element order is semantic and must trip drift');
+        self::assertSame('contracts/dispatch.schema.json', $issues[0]->relativePath);
+        self::assertSame('drift', $issues[0]->kind);
+    }
+
+    public function testPhpWithDifferentNamespaceIsEquivalent(): void
+    {
+        $this->writeCanonicalFixtures($this->consumerDir);
+        file_put_contents(
+            $this->consumerDir . '/src/TagVerifier.php',
+            sprintf(self::CANONICAL_PHP_TEMPLATE, 'OpenEMR\\ReleaseDocs\\Release'),
+        );
+
+        $issues = (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
+
+        self::assertSame([], $issues, 'Different vendored namespace must not trip drift');
+    }
+
+    public function testPhpDriftBeyondNamespaceIsFlagged(): void
+    {
+        $this->writeCanonicalFixtures($this->consumerDir);
+        $modified = str_replace(
+            "return \$tag !== '';",
+            "return true;",
+            sprintf(self::CANONICAL_PHP_TEMPLATE, 'OpenEMR\\Release'),
+        );
+        file_put_contents($this->consumerDir . '/src/TagVerifier.php', $modified);
+
+        $issues = (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
+
+        self::assertCount(1, $issues, 'Behavior change must trip drift even with matching namespace');
         self::assertSame('src/TagVerifier.php', $issues[0]->relativePath);
         self::assertSame('drift', $issues[0]->kind);
     }
@@ -68,9 +168,7 @@ final class VendoredFileCheckerTest extends TestCase
     {
         $copy = VendoredFileChecker::VENDORED_PATHS;
         array_pop($copy);
-        foreach ($copy as $rel) {
-            $this->writeFile($this->consumerDir, $rel, "canonical:{$rel}\n");
-        }
+        $this->writeCanonicalFixtures($this->consumerDir, $copy);
 
         $issues = (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
 
@@ -81,9 +179,7 @@ final class VendoredFileCheckerTest extends TestCase
     public function testMissingCanonicalIsFlagged(): void
     {
         unlink($this->canonicalRoot . '/contracts/dispatch.schema.json');
-        foreach (VendoredFileChecker::VENDORED_PATHS as $rel) {
-            $this->writeFile($this->consumerDir, $rel, "canonical:{$rel}\n");
-        }
+        $this->writeCanonicalFixtures($this->consumerDir);
 
         $issues = (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
 
@@ -94,7 +190,11 @@ final class VendoredFileCheckerTest extends TestCase
 
     public function testMultipleDriftKindsReportedTogether(): void
     {
-        $this->writeFile($this->consumerDir, 'contracts/dispatch.schema.json', "stale\n");
+        $this->writeFile(
+            $this->consumerDir,
+            'contracts/dispatch.schema.json',
+            json_encode(['unrelated' => 'value'], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR),
+        );
 
         $issues = (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
 
@@ -109,6 +209,27 @@ final class VendoredFileCheckerTest extends TestCase
         self::assertContains('contracts/dispatch.schema.json', VendoredFileChecker::VENDORED_PATHS);
         self::assertContains('src/TagVerifier.php', VendoredFileChecker::VENDORED_PATHS);
         self::assertContains('src/TagVerificationResult.php', VendoredFileChecker::VENDORED_PATHS);
+    }
+
+    /**
+     * @param list<string>|null $only restrict which paths to write
+     */
+    private function writeCanonicalFixtures(string $root, ?array $only = null): void
+    {
+        $paths = $only ?? VendoredFileChecker::VENDORED_PATHS;
+        foreach ($paths as $rel) {
+            $this->writeFile($root, $rel, $this->canonicalContents($rel));
+        }
+    }
+
+    private function canonicalContents(string $relativePath): string
+    {
+        $extension = pathinfo($relativePath, PATHINFO_EXTENSION);
+        return match ($extension) {
+            'json' => self::CANONICAL_JSON,
+            'php' => sprintf(self::CANONICAL_PHP_TEMPLATE, 'OpenEMR\\Release'),
+            default => "canonical:{$relativePath}\n",
+        };
     }
 
     private function writeFile(string $root, string $rel, string $contents): void
