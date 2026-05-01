@@ -10,7 +10,7 @@
     <file>bin</file>
     <file>tests</file>
 
-    <exclude-pattern>vendor</exclude-pattern>
+    <exclude-pattern>*/vendor/*</exclude-pattern>
 
     <rule ref="PSR12"/>
 
