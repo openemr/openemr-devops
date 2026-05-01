@@ -1,0 +1,252 @@
+# Release-tooling registry of OpenEMR version pins in this repo.
+#
+# Drives:
+#   - tools/release/bin/rotate.php (slot rotation)
+#   - tools/release/bin/lint-versions.php (drift detection)
+#
+# Rotation model (openemr/openemr-devops#664):
+#   current = most recent tagged release (Docker tag :latest)
+#   next    = upcoming release / active rel-* branch (Docker tag :next)
+#   dev     = head of master (Docker tag :dev)
+#
+# This file is the source of truth. Editing slot assignments below + running
+# `task release:rotate` rewrites every pin listed in `files`.
+#
+# DRAFT: built by manual sweep on 2026-04-29. Several files were excluded with
+# explicit reasons; ambiguous cases are reported in PR #665.
+
+version: 1
+
+slots:
+  current:
+    minor: "8.0"
+    full: "8.0.0"
+    patch: "8.0.0.3"
+    branch: "rel-800"
+    docker_dir: "8.0.0"
+  next:
+    minor: "8.1"
+    full: "8.1.0"
+    branch: "rel-810"
+    docker_dir: "8.1.0"
+  dev:
+    minor: "8.1"
+    full: "8.1.1"
+    branch: "master"
+    docker_dir: "8.1.1"
+
+# Files containing rotating OpenEMR version pins. The rotator dispatches on
+# `kind` per pin to decide the rewrite strategy; the linter uses these entries
+# to verify no version-looking string lives in a non-listed location.
+#
+# `kind` taxonomy:
+#   build_workflow             — .github/workflows/build-*.yml docker build job
+#   docker_arg_branch          — Dockerfile `ARG OPENEMR_VERSION=<rel-branch>`
+#   docker_clone_branch        — Dockerfile `git clone … --branch <rel-branch>`
+#   docker_image_tag           — markdown/yaml `openemr/openemr:<tag>` reference
+#   bats_test_paths            — workflow path filter `docker/openemr/<dir>/**`
+#   container_func_test_paths  — workflow path filter + script arg
+#   benchmarking_default       — utilities/container_benchmarking default variant
+#   overview_table             — docker/openemr/OVERVIEW.md mapping table
+files:
+  - path: .github/workflows/build-800.yml
+    slot: current
+    kinds: [build_workflow]
+
+  - path: .github/workflows/build-810.yml
+    slot: next
+    kinds: [build_workflow]
+
+  - path: .github/workflows/build-811.yml
+    slot: dev
+    kinds: [build_workflow]
+
+  - path: docker/openemr/8.0.0/Dockerfile
+    slot: current
+    kinds: [docker_clone_branch]
+
+  - path: docker/openemr/8.1.0/Dockerfile
+    slot: next
+    kinds: [docker_arg_branch]
+
+  - path: docker/openemr/8.1.1/Dockerfile
+    slot: dev
+    kinds: [docker_arg_branch]
+
+  - path: docker/openemr/8.0.0/README.md
+    slot: current
+    kinds: [docker_image_tag]
+    # FIXME: line 33 currently reads `image: openemr/openemr:7.0.5` — a stale
+    # copy-paste from before 8.0.0 was tagged. Rotator should overwrite to
+    # match slot.full on next run; flagged in PR #665 for human confirmation.
+
+  - path: docker/openemr/8.1.0/README.md
+    slot: next
+    kinds: [docker_image_tag]
+
+  - path: docker/openemr/8.1.1/README.md
+    slot: dev
+    kinds: [docker_image_tag]
+
+  - path: .github/workflows/test-bats.yml
+    slot: next
+    kinds: [bats_test_paths]
+
+  - path: .github/workflows/test-container-functionality.yml
+    slot: next
+    kinds: [container_func_test_paths]
+
+  - path: utilities/container_benchmarking/docker-compose.yml
+    slot: next
+    kinds: [benchmarking_default]
+
+  - path: utilities/container_benchmarking/benchmark.sh
+    slot: next
+    kinds: [benchmarking_default]
+
+  - path: utilities/container_benchmarking/test_functionality.sh
+    slot: next
+    kinds: [benchmarking_default]
+
+  - path: utilities/container_benchmarking/test_suite.sh
+    slot: next
+    kinds: [benchmarking_default]
+
+  # Touched by every rotation — the canonical Docker tag mapping table.
+  - path: docker/openemr/OVERVIEW.md
+    slot: all
+    kinds: [overview_table]
+
+  # Dependabot enumerates each rotating Docker dir explicitly; rotation needs
+  # to add/remove entries when slot dirs change.
+  - path: .github/dependabot.yml
+    slot: all
+    kinds: [dependabot_directory]
+
+  # In-container init scripts; reference their own dir as shellcheck source
+  # comments, so they rotate with the slot's docker_dir. Only the 8.0.0/*.sh
+  # files currently have these refs; the next/dev variants have no path
+  # comments and will be picked up by the linter only if added later.
+  - path: docker/openemr/8.0.0/openemr.sh
+    slot: current
+    kinds: [shellcheck_source]
+  - path: docker/openemr/8.0.0/ssl.sh
+    slot: current
+    kinds: [shellcheck_source]
+
+  # Container-benchmarking docs reference the next-slot version as defaults.
+  - path: utilities/container_benchmarking/README.md
+    slot: next
+    kinds: [docker_image_tag]
+
+# Files the linter would otherwise flag as containing OpenEMR version pins, but
+# which intentionally don't participate in 3-slot rotation. Each entry needs a
+# reason — that's the cost of bypassing the lint.
+excludes:
+  # Legacy 7.0.4 support track — rotated by hand, not by slot system.
+  - path: .github/workflows/build-704.yml
+    reason: "legacy 7.0.4 support track; manual rotation only"
+  - path: docker/openemr/7.0.4
+    reason: "legacy 7.0.4 support track (entire dir)"
+
+  # Frozen historical builds.
+  - path: docker/openemr/obsolete
+    reason: "frozen historical builds; never rotate"
+  - path: docker/obsolete
+    reason: "frozen historical builds; never rotate"
+  - path: kubernetes/obsolete
+    reason: "frozen historical builds; never rotate"
+
+  # Binary track — own release cadence (currently 7_0_4 + dated build).
+  - path: docker/openemr/binary/Dockerfile
+    reason: "binary release track on independent cadence"
+  - path: docker/openemr/binary/README.md
+    reason: "binary release track on independent cadence"
+
+  # Flex (Alpine) track — separate axis from OpenEMR version slots.
+  - path: .github/workflows/build-322.yml
+    reason: "Alpine flex track (3.22), not OpenEMR rotation"
+  - path: .github/workflows/build-323.yml
+    reason: "Alpine flex track (3.23, currently :flex), not OpenEMR rotation"
+  - path: .github/workflows/build-edge.yml
+    reason: "Alpine flex-edge track, not OpenEMR rotation"
+  - path: .github/workflows/build-flex-core.yml
+    reason: "reusable flex build, no fixed pin"
+  - path: .github/workflows/test-flex-322.yml
+    reason: "Alpine flex test"
+  - path: .github/workflows/test-flex-323.yml
+    reason: "Alpine flex test"
+  - path: .github/workflows/test-flex-edge.yml
+    reason: "Alpine flex-edge test"
+  - path: docker/openemr/flex/Dockerfile
+    reason: "flex variant fetches OpenEMR at runtime; no build-time pin"
+  - path: docker/openemr/flex/README.md
+    reason: "flex variant; tag references are doc-only"
+
+  # Workflows with no fixed pin (parameterized or version-agnostic).
+  - path: .github/workflows/build-patch.yml
+    reason: "version comes from workflow_dispatch inputs"
+  - path: .github/workflows/build-release.yml
+    reason: "version comes from workflow_dispatch inputs"
+  - path: .github/workflows/test-core.yml
+    reason: "reusable workflow; callers supply version"
+  - path: .github/workflows/test-production.yml
+    reason: "pins production_coverage_openemr_version='7.0.5' (release not yet built); see PR #665"
+
+  # AWS deployment packages — independent release cadence; lag the Docker
+  # slots and currently span three different OpenEMR versions across the four
+  # packages. Maintainer decision pending on whether to fold into the 3-slot
+  # system. See PR #665 "Ambiguous registry entries".
+  - path: packages/appliance/docker-compose.yml
+    reason: "appliance package (currently 7.0.4) — independent cadence; pending decision"
+  - path: packages/standard/cfn/stack.py
+    reason: "standard CFN (currently 7.0.3) — independent cadence; pending decision"
+  - path: packages/standard/cfn/OpenEMR-Standard.json
+    reason: "generated from standard/cfn/stack.py"
+  - path: packages/standard/cfn/OpenEMR-Standard-Recovery.json
+    reason: "generated from standard/cfn/stack.py"
+  - path: packages/standard/ami/ami-build.sh
+    reason: "AMI build (currently 7.0.3) — tracks standard/cfn/stack.py"
+  - path: packages/express_plus/stack.py
+    reason: "express_plus CFN — independent cadence; pending decision"
+  - path: packages/express_plus/OpenEMR-Express-Plus.json
+    reason: "generated from express_plus/stack.py"
+  - path: packages/express_plus/OpenEMR-Express-Plus-Recovery.json
+    reason: "generated from express_plus/stack.py"
+  - path: packages/express/README.md
+    reason: "doc-only OpenEMR version reference (currently 7.0.4)"
+  - path: packages/lightsail/launch.sh
+    reason: "stub redirecting to appliance; no OpenEMR pin"
+
+  # K8s manifest currently lags the Docker rotation; needs a one-shot
+  # alignment commit before joining the rotation registry.
+  - path: kubernetes/openemr/deployment.yaml
+    reason: "pinned to 7.0.3; needs reconciliation before joining rotation"
+  - path: kubernetes/README.md
+    reason: "doc-only image-tag examples; not a deployment pin"
+
+  # Documentation that mentions versions in prose only.
+  - path: docker/openemr/COVERAGE.md
+    reason: "prose mention of 7.0.4 as 'future production' — stale doc, not a pin"
+  - path: raspberrypi/README.md
+    reason: "documentation; references master branch only"
+
+  # Upgrade machinery — version-looking strings are step indices and
+  # historical SQL-upgrade hints, not active pins.
+  - path: docker/openemr/8.0.0/upgrade
+    reason: "upgrade scripts: docker-version is a step index; fsupgrade-N.sh refs are historical"
+  - path: docker/openemr/8.1.0/upgrade
+    reason: "upgrade scripts: docker-version is a step index; fsupgrade-N.sh refs are historical"
+  - path: docker/openemr/8.1.1/upgrade
+    reason: "upgrade scripts: docker-version is a step index; fsupgrade-N.sh refs are historical"
+  - path: docker/openemr/7.0.4/upgrade
+    reason: "upgrade scripts: docker-version is a step index; fsupgrade-N.sh refs are historical"
+
+  # Demo SQL fixture — filename matches version regex but isn't a pin.
+  - path: docker/openemr/8.0.0/demo_5_0_0_5.sql
+    reason: "demo SQL fixture; filename matches regex but isn't an OpenEMR pin"
+
+  # Release tooling itself — versions appear in tests and documentation but
+  # are not subject to rotation.
+  - path: tools/release
+    reason: "release tooling; versions in tests and contracts, not pins"

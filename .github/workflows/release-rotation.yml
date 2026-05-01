@@ -1,0 +1,141 @@
+name: Release Rotation
+
+# Long-lived rotation PR for the 3-slot model (current/next/dev). Triggered by
+# repository_dispatch from openemr/openemr (per dispatch.schema.json) or
+# manually via workflow_dispatch. Force-pushes a regenerated diff to
+# release-rotation/auto and opens/updates the draft PR. Won't fire E2E until
+# the conductor side lands; until then this is exercised via workflow_dispatch.
+
+on:
+  repository_dispatch:
+    types: [openemr-rel-cut, openemr-rel-update, openemr-tag]
+  workflow_dispatch:
+    inputs:
+      current:
+        description: 'New value for current slot (e.g. 8.1)'
+        required: false
+        type: string
+      next:
+        description: 'New value for next slot (e.g. 8.2)'
+        required: false
+        type: string
+      dev:
+        description: 'New value for dev slot (e.g. 8.2 or edge)'
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-rotation
+  cancel-in-progress: false
+
+jobs:
+  rotate:
+    name: Apply rotation and update draft PR
+    runs-on: ubuntu-24.04
+    env:
+      ROTATION_BRANCH: release-rotation/auto
+      EVENT_NAME: ${{ github.event_name }}
+      DISPATCH_TYPE: ${{ github.event.action }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Mint release App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+
+      - name: Derive slot assignments
+        id: slots
+        env:
+          CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          INPUT_CURRENT: ${{ inputs.current }}
+          INPUT_NEXT: ${{ inputs.next }}
+          INPUT_DEV: ${{ inputs.dev }}
+        working-directory: tools/release
+        run: |
+          set -euo pipefail
+          if [[ ${EVENT_NAME} == 'workflow_dispatch' ]]; then
+              {
+                  printf 'current=%s\n' "${INPUT_CURRENT}"
+                  printf 'next=%s\n' "${INPUT_NEXT}"
+                  printf 'dev=%s\n' "${INPUT_DEV}"
+              } >> "${GITHUB_OUTPUT}"
+          else
+              printf '%s' "${CLIENT_PAYLOAD}" \
+                | task release:derive-slots-from-dispatch EVENT_TYPE="${DISPATCH_TYPE}" PAYLOAD_FILE='-' \
+                >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Apply rotation
+        env:
+          CURRENT: ${{ steps.slots.outputs.current }}
+          NEXT: ${{ steps.slots.outputs.next }}
+          DEV: ${{ steps.slots.outputs.dev }}
+        working-directory: tools/release
+        run: |
+          set -euo pipefail
+          if [[ -z ${CURRENT} && -z ${NEXT} && -z ${DEV} ]]; then
+              printf '::warning::no slot assignments derived; nothing to rotate\n'
+              exit 0
+          fi
+          task release:rotate CURRENT="${CURRENT}" NEXT="${NEXT}" DEV="${DEV}"
+
+      - name: Diff and decide
+        id: diff
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+              printf 'has-changes=false\n' >> "${GITHUB_OUTPUT}"
+              printf '::notice::rotation is a no-op (registry already at target)\n'
+          else
+              printf 'has-changes=true\n' >> "${GITHUB_OUTPUT}"
+              git diff --stat
+          fi
+
+      - name: Force-push rotation branch
+        if: steps.diff.outputs.has-changes == 'true'
+        working-directory: tools/release
+        run: |
+          set -euo pipefail
+          msg=$(printf 'rotation: %s (run %s)' "${DISPATCH_TYPE:-workflow_dispatch}" "${RUN_URL}")
+          task release:push-rotation-branch \
+              ROTATION_BRANCH="${ROTATION_BRANCH}" \
+              COMMIT_MESSAGE="${msg}"
+
+      - name: Open or update rotation PR
+        if: steps.diff.outputs.has-changes == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          CURRENT: ${{ steps.slots.outputs.current }}
+          NEXT: ${{ steps.slots.outputs.next }}
+          DEV: ${{ steps.slots.outputs.dev }}
+        working-directory: tools/release
+        run: |
+          set -euo pipefail
+          default_branch=$(gh api "/repos/${GITHUB_REPOSITORY}" --jq '.default_branch')
+          task release:open-rotation-pr \
+              BRANCH="${ROTATION_BRANCH}" \
+              BASE="${default_branch}" \
+              TRIGGER="${DISPATCH_TYPE:-workflow_dispatch}" \
+              RUN_URL="${RUN_URL}" \
+              CURRENT="${CURRENT}" \
+              NEXT="${NEXT}" \
+              DEV="${DEV}"

@@ -3,10 +3,11 @@ includes:
 
 parameters:
     level: 10
-    phpVersion: 80200
+    phpVersion: 80500
     paths:
         - src
         - bin
+        - tests
     checkMissingCallableSignature: true
     checkUninitializedProperties: true
     checkTooWideReturnTypesInProtectedAndPublicMethods: true

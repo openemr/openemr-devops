@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           tools: cs2pr
       - run: composer install --no-interaction --no-progress
       - run: vendor/bin/phpcs --report=checkstyle | cs2pr
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
       - run: composer install --no-interaction --no-progress
       - run: vendor/bin/phpstan analyse
 
@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
       - run: composer install --no-interaction --no-progress
       - run: vendor/bin/rector process --dry-run
 
@@ -70,6 +70,6 @@ jobs:
       - uses: actions/checkout@v6
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
       - run: composer install --no-interaction --no-progress
       - run: vendor/bin/composer-require-checker check
