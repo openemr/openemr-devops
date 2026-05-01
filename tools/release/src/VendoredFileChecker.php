@@ -100,7 +100,12 @@ final readonly class VendoredFileChecker
 
     private function canonicalJson(string $path): string
     {
-        $decoded = json_decode($this->readFile($path), true, flags: JSON_THROW_ON_ERROR);
+        $contents = $this->readFile($path);
+        try {
+            $decoded = json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            throw new \RuntimeException('Invalid JSON in ' . $path . ': ' . $e->getMessage(), 0, $e);
+        }
         $this->sortObjectKeys($decoded);
         return json_encode(
             $decoded,

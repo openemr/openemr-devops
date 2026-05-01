@@ -164,6 +164,17 @@ final class VendoredFileCheckerTest extends TestCase
         self::assertSame('drift', $issues[0]->kind);
     }
 
+    public function testInvalidJsonRaisesWithPathContext(): void
+    {
+        $this->writeCanonicalFixtures($this->consumerDir);
+        file_put_contents($this->consumerDir . '/contracts/dispatch.schema.json', '{not json');
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('contracts/dispatch.schema.json');
+
+        (new VendoredFileChecker($this->canonicalRoot, $this->consumerDir))->check();
+    }
+
     public function testMissingConsumerCopyIsFlagged(): void
     {
         $copy = VendoredFileChecker::VENDORED_PATHS;
