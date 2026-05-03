@@ -20,7 +20,7 @@ jobs:
 
       # Only auto-merge Kubernetes Docker image updates (not other ecosystems)
       - name: Enable auto-merge for Kubernetes Docker updates
-        if: steps.metadata.outputs.package-ecosystem == 'docker' && steps.metadata.outputs.directory == '/kubernetes'
+        if: steps.metadata.outputs.package-ecosystem == 'docker' && (steps.metadata.outputs.directory == '/kubernetes' || startsWith(steps.metadata.outputs.directory, '/kubernetes/'))
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

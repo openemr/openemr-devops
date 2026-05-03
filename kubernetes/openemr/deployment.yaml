@@ -19,10 +19,10 @@ spec:
       automountServiceAccountToken: false
       initContainers:
       - name: init-mysql-wait
-        image: busybox:1.37
+        image: busybox:1.37.0@sha256:1487d0af5f52b4ba31c7e465126ee2123fe3f2305d638e7827681e7cf6c83d5e
         command: ['sh', '-c', "until nc -z mysql 3306; do echo waiting for mysql; sleep 2; done"]
       - name: init-redis-wait
-        image: busybox:1.37
+        image: busybox:1.37.0@sha256:1487d0af5f52b4ba31c7e465126ee2123fe3f2305d638e7827681e7cf6c83d5e
         command: ['sh', '-c', "until nc -z redis 6379; do echo waiting for redis; sleep 2; done"]
       containers:
       - env:
@@ -81,7 +81,7 @@ spec:
         #   tls (no client certs): change FORCE_DATABASE_X509_CONNECT to FORCE_DATABASE_SSL_CONNECT
         #     and remove mysql cert/key volume mounts below
         #   tcp (no encryption): also remove the env var above and remove mysql ca volume mount below
-        image: openemr/openemr:8.1.0
+        image: openemr/openemr:8.1.0@sha256:1936be748bacfa5230d15d5a69fb0f5e0889bbcc6e2d5c2d152ab0a91fb90d40
         name: openemr
         ports:
         - containerPort: 80

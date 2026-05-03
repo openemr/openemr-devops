@@ -17,7 +17,7 @@ spec:
       automountServiceAccountToken: false
       initContainers:
       - name: config
-        image: redis:8.6-alpine
+        image: redis:8.6.2-alpine@sha256:c5e375abb885e6b2021c0377879e4890bf76f9065b8922ffc113f2b226b9fc17
         command: [ "sh", "-c" ]
         env:
         - name: REDIS_PASSWORD
@@ -94,7 +94,7 @@ spec:
           mountPath: /etc/redis/
       containers:
       - name: sentinel
-        image: redis:8.6-alpine
+        image: redis:8.6.2-alpine@sha256:c5e375abb885e6b2021c0377879e4890bf76f9065b8922ffc113f2b226b9fc17
         command: ["redis-sentinel"]
         args: ["/etc/redis/sentinel.conf"]
         ports:
