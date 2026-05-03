@@ -19,7 +19,7 @@ spec:
       - env:
         - name: PMA_HOSTS
           value: mysql
-        image: phpmyadmin/phpmyadmin:5.2.2
+        image: phpmyadmin/phpmyadmin:5.2.3
         name: phpmyadmin
         command: ["/wrapper.sh"]
         volumeMounts:
