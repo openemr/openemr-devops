@@ -17,6 +17,8 @@ name: Flex 3.23 Dockers Build
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *' # run at 2 AM UTC
 
 jobs:
   build:
