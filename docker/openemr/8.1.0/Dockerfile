@@ -4,7 +4,7 @@
 # ============================================================================
 # This Dockerfile builds a production-ready OpenEMR container image with:
 #   - Apache web server for serving OpenEMR
-#   - PHP 8.4 with all required extensions
+#   - PHP 8.5 with all required extensions
 #   - OpenEMR application code with dependencies installed
 #   - Automated setup and configuration scripts
 #   - Support for SSL/TLS certificates
