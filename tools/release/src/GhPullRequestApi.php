@@ -31,8 +31,12 @@ final readonly class GhPullRequestApi implements PullRequestApi
         ]);
         $process->mustRun();
 
+        $output = trim($process->getOutput());
+        if ($output === '' || $output === '[]') {
+            return null;
+        }
         /** @var list<array{number: int, headRefOid: string, baseRefName: string, mergedAt: ?string}> $rows */
-        $rows = json_decode(trim($process->getOutput()), true) ?? [];
+        $rows = $this->decodeJson($output, "gh pr list for {$repo}/{$branch}");
         if ($rows === []) {
             return null;
         }
@@ -69,7 +73,7 @@ final readonly class GhPullRequestApi implements PullRequestApi
          *     headRefOid: string,
          * } $data
          */
-        $data = json_decode(trim($process->getOutput()), true);
+        $data = $this->decodeJson(trim($process->getOutput()), "gh pr view {$repo}#{$number}");
 
         $reasons = [];
         if ($data['isDraft']) {
@@ -127,11 +131,14 @@ final readonly class GhPullRequestApi implements PullRequestApi
 
     public function squashMerge(string $repo, int $number, string $expectedHeadSha): string
     {
+        // --delete-branch=false is set explicitly so gh doesn't prompt about
+        // branch deletion when run from the workflow's non-TTY shell.
         $merge = new Process([
             'gh', 'pr', 'merge', (string) $number,
             '--repo', $repo,
             '--squash',
             '--match-head-commit', $expectedHeadSha,
+            '--delete-branch=false',
         ]);
         $merge->setTimeout(300.0);
         $merge->mustRun();
@@ -150,6 +157,24 @@ final readonly class GhPullRequestApi implements PullRequestApi
             );
         }
         return $sha;
+    }
+
+    /**
+     * Decode JSON output from gh, raising a controlled error with the
+     * originating context instead of the bare PHP TypeError that follows
+     * indexing into a null result.
+     */
+    private function decodeJson(string $payload, string $context): mixed
+    {
+        try {
+            return json_decode($payload, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            throw new \RuntimeException(
+                "Failed to decode JSON from {$context}: {$e->getMessage()}",
+                $e->getCode(),
+                $e,
+            );
+        }
     }
 
     /**

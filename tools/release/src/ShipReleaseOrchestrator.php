@@ -58,7 +58,7 @@ final readonly class ShipReleaseOrchestrator
         }
 
         if ($this->dryRun) {
-            return new ShipReleaseResult($this->dryRunSteps($targets, $snapshots, $preflight['readiness']));
+            return new ShipReleaseResult($this->dryRunSteps($targets, $snapshots));
         }
 
         return new ShipReleaseResult($this->executeMerges($targets, $snapshots, $preflight['readiness']));
@@ -151,12 +151,11 @@ final readonly class ShipReleaseOrchestrator
      * Build the dry-run report — preflight already passed, so each unmerged
      * target is "would merge" and merged ones stay "skipped".
      *
-     * @param list<PullRequestTarget>              $targets
-     * @param array<string, ?PullRequestSnapshot>  $snapshots
-     * @param array<string, PullRequestReadiness>  $readiness
+     * @param  list<PullRequestTarget>             $targets
+     * @param  array<string, ?PullRequestSnapshot> $snapshots
      * @return list<ShipReleaseStepResult>
      */
-    private function dryRunSteps(array $targets, array $snapshots, array $readiness): array
+    private function dryRunSteps(array $targets, array $snapshots): array
     {
         $steps = [];
         foreach ($targets as $target) {
@@ -178,7 +177,6 @@ final readonly class ShipReleaseOrchestrator
                 null,
                 [],
             );
-            unset($readiness[$target->roleLabel]);
         }
         return $steps;
     }
