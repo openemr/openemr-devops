@@ -294,6 +294,10 @@ final readonly class ShipReleaseOrchestrator
                 );
                 $mergeSha = $this->api->squashMerge($target->repo, $snapshot->number, $stepReadiness->headRefOid);
             } catch (\RuntimeException $e) {
+                // Best-effort: clear the success status we just posted so a failed
+                // run doesn't leave a release/ship-approved=success on the PR head
+                // that branch protection might honor for a subsequent manual merge.
+                $this->retractApprovalStatus($target->repo, $stepReadiness->headRefOid, $e->getMessage());
                 $steps[] = $this->blockedStep(
                     $target,
                     $snapshot->number,
@@ -386,9 +390,23 @@ final readonly class ShipReleaseOrchestrator
         if (!$conductorJustMerged && !$conductorPreviouslyMerged) {
             return null;
         }
-        $fresh = $conductorJustMerged
-            ? $this->awaitDownstreamUpdate($target, $current)
-            : $this->api->findByHead($target->repo, $target->branch);
+        if ($conductorJustMerged) {
+            $fresh = $this->awaitDownstreamUpdate($target, $current);
+            if ($fresh instanceof PullRequestSnapshot && $fresh->headRefOid === $current->headRefOid) {
+                // Timed out waiting for the docs PR to be re-rendered. The
+                // DRAFT→FINAL flip hasn't landed; merging now would ship
+                // stale docs content. Block — operator re-runs once the
+                // downstream workflow completes.
+                $reason = sprintf(
+                    'docs PR head SHA did not change after conductor merge (timed out waiting for downstream'
+                    . ' re-render — head still %s)',
+                    $current->headRefOid,
+                );
+                return [$fresh, null, $reason, [$reason]];
+            }
+        } else {
+            $fresh = $this->api->findByHead($target->repo, $target->branch);
+        }
         if (!$fresh instanceof PullRequestSnapshot) {
             return [null, null, 'docs PR disappeared before merge', ['docs PR disappeared before merge']];
         }
@@ -437,6 +455,23 @@ final readonly class ShipReleaseOrchestrator
             $out[] = $this->notReachedStep($target, 'fatal precondition');
         }
         return $out;
+    }
+
+    private function retractApprovalStatus(string $repo, string $sha, string $reason): void
+    {
+        try {
+            $this->api->postCommitStatus(
+                $repo,
+                $sha,
+                self::STATUS_CONTEXT,
+                'failure',
+                'ship-release failed: ' . substr($reason, 0, 100),
+                $this->statusTargetUrl,
+            );
+        } catch (\RuntimeException) {
+            // Best-effort. If the retraction itself fails, we still surface
+            // the original failure via ShipReleaseStepResult.
+        }
     }
 
     private function notReachedStep(PullRequestTarget $target, string $reason): ShipReleaseStepResult

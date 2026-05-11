@@ -111,9 +111,16 @@ final class ShipReleaseOrchestratorTest extends TestCase
         $api = new FakePullRequestApi();
         $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->merged(101, 'sha-infra'));
         $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
-        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs-old'));
+        // After conductor merges, the docs PR is re-rendered (DRAFT→FINAL).
+        $api->setSnapshotAfterFinds(
+            self::DOCS_REPO,
+            self::DOCS_BRANCH,
+            2,
+            $this->open(303, 'sha-docs-new'),
+        );
         $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
-        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs-new'));
 
         $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
 
@@ -258,8 +265,12 @@ final class ShipReleaseOrchestratorTest extends TestCase
         self::assertCount(1, $api->merges);
     }
 
-    public function testDownstreamWaitTimesOutAndReChecksReadiness(): void
+    public function testDownstreamWaitTimeoutBlocksDocsMerge(): void
     {
+        // Docs PR head SHA never changes during the wait — simulates the
+        // conductor's downstream re-render workflow not firing in time.
+        // Even if readiness still looks "clean", we must NOT merge stale
+        // docs content (DRAFT→FINAL flip never happened).
         $api = new FakePullRequestApi();
         $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
         $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
@@ -271,9 +282,14 @@ final class ShipReleaseOrchestratorTest extends TestCase
         $clock = new FakeClock();
         $result = (new ShipReleaseOrchestrator($api, $clock, 30))->ship($this->targets());
 
-        self::assertTrue($result->wasSuccessful());
+        self::assertFalse($result->wasSuccessful());
         self::assertGreaterThanOrEqual(30, $clock->totalSlept);
-        self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[2]->status);
+        self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[0]->status);
+        self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[1]->status);
+        self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[2]->status);
+        self::assertStringContainsString('did not change after conductor merge', $result->steps[2]->reasons[0]);
+        // Only infra + conductor merged; docs not.
+        self::assertCount(2, $api->merges);
     }
 
     public function testWrongBaseBranchBlocksWithoutMerging(): void
@@ -345,5 +361,30 @@ final class ShipReleaseOrchestratorTest extends TestCase
         self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[1]->status);
         self::assertStringContainsString('--match-head-commit does not match', $result->steps[1]->reasons[0]);
         self::assertSame(ShipReleaseStepStatus::NOT_REACHED, $result->steps[2]->status);
+    }
+
+    public function testMergeFailureRetractsApprovalStatus(): void
+    {
+        // Verify the success status is followed by a failure status on the
+        // same head SHA so a stale release/ship-approved=success doesn't
+        // remain on the PR for branch protection to honor.
+        $api = new FailingMergeApi('openemr/openemr', 202, 'gh: api error');
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs'));
+
+        (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
+
+        // Statuses on conductor head: success (pre-merge) then failure (retraction).
+        $conductorStatuses = array_values(array_filter(
+            $api->postedStatuses,
+            static fn (array $s): bool => $s['sha'] === 'sha-conductor',
+        ));
+        self::assertCount(2, $conductorStatuses);
+        self::assertSame('success', $conductorStatuses[0]['state']);
+        self::assertSame('failure', $conductorStatuses[1]['state']);
     }
 }

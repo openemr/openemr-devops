@@ -56,6 +56,8 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
