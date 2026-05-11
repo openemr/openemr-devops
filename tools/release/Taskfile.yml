@@ -222,6 +222,20 @@ tasks:
       - git commit -m {{shellQuote .COMMIT_MESSAGE}}
       - git push --force-with-lease origin {{shellQuote .ROTATION_BRANCH}}
 
+  release:ship:
+    desc: Merge the three release PRs (infra → conductor → docs) in order (issue #705)
+    requires:
+      vars: [VERSION, REL_BRANCH]
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/ship-release.php
+        --version={{shellQuote .VERSION}}
+        --rel-branch={{shellQuote .REL_BRANCH}}
+        {{if .TIMEOUT_SECONDS}}--timeout-seconds={{shellQuote .TIMEOUT_SECONDS}}{{end}}
+        {{if .STATUS_TARGET_URL}}--status-target-url={{shellQuote .STATUS_TARGET_URL}}{{end}}
+        {{if eq .DRY_RUN "1"}}--dry-run{{end}}
+
   release:probe-app-installation:
     desc: Verify the release App is installed on $OWNER/$REPO_NAME
     cmds:
