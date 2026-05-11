@@ -187,6 +187,66 @@ final class ShipReleaseOrchestratorTest extends TestCase
         }
     }
 
+    public function testConductorAlreadyMergedRefetchesDocsBeforeMerging(): void
+    {
+        // Recovery scenario: conductor was merged in a previous run. The
+        // orchestrator must re-fetch the docs PR + readiness right before
+        // merging — preflight readiness alone could be stale if the previous
+        // run's downstream re-render was still in flight.
+        $api = new FakePullRequestApi();
+        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
+        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->merged(202, 'sha-conductor'));
+        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs-stale'));
+        $api->setReadiness(101, $this->ready('sha-infra'));
+        // Preflight reads the stale head; the post-conductor refetch returns the fresh head.
+        $api->setReadinessSequence(303, [
+            $this->ready('sha-docs-stale'),
+            $this->ready('sha-docs-fresh'),
+        ]);
+        $api->setSnapshotAfterFinds(
+            'openemr/website-openemr',
+            'release-docs/8.1.0',
+            2,
+            $this->open(303, 'sha-docs-fresh'),
+        );
+
+        $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
+
+        self::assertTrue($result->wasSuccessful());
+        self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[0]->status);
+        self::assertSame(ShipReleaseStepStatus::SKIPPED_ALREADY_MERGED, $result->steps[1]->status);
+        self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[2]->status);
+        // Docs merge must use the fresh head SHA, not the preflight one.
+        self::assertSame('sha-docs-fresh', $api->merges[1]['expected']);
+    }
+
+    public function testConductorAlreadyMergedBlocksDocsIfDownstreamStillInFlight(): void
+    {
+        // Same recovery scenario, but the post-conductor docs re-check finds
+        // the docs PR not yet ready (e.g. checks still PENDING from the
+        // previous run's downstream regeneration). Orchestrator must stop.
+        $api = new FakePullRequestApi();
+        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
+        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->merged(202, 'sha-conductor'));
+        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs'));
+        $api->setReadiness(101, $this->ready('sha-infra'));
+        // Preflight passes; the post-merge re-check finds it not ready.
+        $api->setReadinessSequence(303, [
+            $this->ready('sha-docs'),
+            new PullRequestReadiness('sha-docs', ['check core-test status=IN_PROGRESS']),
+        ]);
+
+        $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
+
+        self::assertFalse($result->wasSuccessful());
+        self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[0]->status);
+        self::assertSame(ShipReleaseStepStatus::SKIPPED_ALREADY_MERGED, $result->steps[1]->status);
+        self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[2]->status);
+        self::assertContains('check core-test status=IN_PROGRESS', $result->steps[2]->reasons);
+        // Only infra was merged.
+        self::assertCount(1, $api->merges);
+    }
+
     public function testDownstreamWaitTimesOutAndReChecksReadiness(): void
     {
         $api = new FakePullRequestApi();

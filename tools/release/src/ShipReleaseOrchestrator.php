@@ -224,24 +224,29 @@ final readonly class ShipReleaseOrchestrator
             }
 
             // The conductor merge fires repository_dispatch handlers that re-render
-            // the docs PR. Wait for that effect (or time out), re-snapshot, then
-            // re-check readiness against the post-render head SHA before merging.
+            // the docs PR. Two cases need a fresh state read before merging docs:
+            //   - conductor merged in *this* run: poll until head SHA flips (or
+            //     time out), then re-check readiness against the new SHA.
+            //   - conductor was already merged when we started (recovery case):
+            //     re-check readiness right now in case the previous run's
+            //     downstream re-render is still in flight. Don't poll — if the
+            //     PR isn't ready, fail fast and the operator re-runs.
             $stepReadiness = $readiness[$target->roleLabel] ?? null;
-            if (
-                $target->roleLabel === 'docs'
-                && in_array('conductor', $mergedThisRun, true)
-            ) {
-                $snapshot = $this->awaitDownstreamUpdate($target, $snapshot);
-                if (!$snapshot instanceof \OpenEMR\Release\PullRequestSnapshot) {
-                    $steps[] = $this->blockedStep($target, null, ['docs PR disappeared after conductor merge']);
-                    $stopReason = 'docs PR is missing after conductor merge';
-                    continue;
-                }
-                $stepReadiness = $this->api->getReadiness($target->repo, $snapshot->number);
-                if (!$stepReadiness->isReady()) {
-                    $steps[] = $this->blockedStep($target, $snapshot->number, $stepReadiness->blockingReasons);
-                    $stopReason = 'docs PR not ready after conductor downstream update';
-                    continue;
+            if ($target->roleLabel === 'docs') {
+                $refresh = $this->refreshDocsBeforeMerge($target, $snapshot, $snapshots, $mergedThisRun);
+                if ($refresh !== null) {
+                    [$refreshedSnapshot, $refreshedReadiness, $refreshStopReason, $blockingReasons] = $refresh;
+                    if ($refreshStopReason !== null) {
+                        $steps[] = $this->blockedStep($target, $refreshedSnapshot?->number, $blockingReasons);
+                        $stopReason = $refreshStopReason;
+                        continue;
+                    }
+                    // refresh succeeded — both fields are guaranteed non-null
+                    if (!$refreshedSnapshot instanceof PullRequestSnapshot || $refreshedReadiness === null) {
+                        throw new \LogicException('refreshDocsBeforeMerge returned inconsistent tuple');
+                    }
+                    $snapshot = $refreshedSnapshot;
+                    $stepReadiness = $refreshedReadiness;
                 }
             }
 
@@ -312,6 +317,52 @@ final readonly class ShipReleaseOrchestrator
             }
         }
         throw new \LogicException("ship-release targets list is missing role: {$role}");
+    }
+
+    /**
+     * Two cases need a fresh state read before merging docs:
+     *   - conductor merged in *this* run: poll until head SHA flips (or time
+     *     out), then re-check readiness against the new SHA.
+     *   - conductor was already merged when we started (recovery case): re-check
+     *     readiness right now in case the previous run's downstream re-render
+     *     is still in flight. Don't poll — if not ready, fail fast and the
+     *     operator re-runs.
+     *
+     * Returns null when no refresh is needed. Otherwise returns a tuple
+     * [snapshot, readiness, stopReason, blockingReasons]:
+     *   - on success, snapshot + readiness are non-null and stopReason is null
+     *   - on failure, stopReason is non-null and blockingReasons populated;
+     *     snapshot may be null if the PR has disappeared
+     *
+     * @param  array<string, ?PullRequestSnapshot> $snapshots
+     * @param  list<string>                        $mergedThisRun
+     * @return array{0: ?PullRequestSnapshot, 1: ?PullRequestReadiness, 2: ?string, 3: list<string>}|null
+     */
+    private function refreshDocsBeforeMerge(
+        PullRequestTarget $target,
+        PullRequestSnapshot $current,
+        array $snapshots,
+        array $mergedThisRun,
+    ): ?array {
+        $conductorJustMerged = in_array('conductor', $mergedThisRun, true);
+        $conductorPreviouslyMerged = ($snapshots['conductor'] ?? null)?->isMerged() ?? false;
+        if (!$conductorJustMerged && !$conductorPreviouslyMerged) {
+            return null;
+        }
+        $fresh = $conductorJustMerged
+            ? $this->awaitDownstreamUpdate($target, $current)
+            : $this->api->findByHead($target->repo, $target->branch);
+        if (!$fresh instanceof PullRequestSnapshot) {
+            return [null, null, 'docs PR disappeared before merge', ['docs PR disappeared before merge']];
+        }
+        $readiness = $this->api->getReadiness($target->repo, $fresh->number);
+        if (!$readiness->isReady()) {
+            $stopReason = $conductorJustMerged
+                ? 'docs PR not ready after conductor downstream update'
+                : 'docs PR not ready (re-checked after conductor was already merged)';
+            return [$fresh, null, $stopReason, $readiness->blockingReasons];
+        }
+        return [$fresh, $readiness, null, []];
     }
 
     /**

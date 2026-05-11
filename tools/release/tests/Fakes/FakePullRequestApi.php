@@ -26,6 +26,9 @@ final class FakePullRequestApi implements PullRequestApi
     /** @var array<int, PullRequestReadiness> */
     private array $readinessByNumber = [];
 
+    /** @var array<int, list<PullRequestReadiness>> per-number queue, consumed left-to-right */
+    private array $readinessQueue = [];
+
     /** @var array<int, string> merge SHAs by PR number */
     private array $mergeShas = [];
 
@@ -64,6 +67,17 @@ final class FakePullRequestApi implements PullRequestApi
         $this->readinessByNumber[$number] = $readiness;
     }
 
+    /**
+     * Each call to getReadiness() for $number consumes one entry. Once exhausted,
+     * the last entry is returned for subsequent calls.
+     *
+     * @param list<PullRequestReadiness> $sequence
+     */
+    public function setReadinessSequence(int $number, array $sequence): void
+    {
+        $this->readinessQueue[$number] = $sequence;
+    }
+
     public function setMergeSha(int $number, string $sha): void
     {
         $this->mergeShas[$number] = $sha;
@@ -82,6 +96,11 @@ final class FakePullRequestApi implements PullRequestApi
 
     public function getReadiness(string $repo, int $number): PullRequestReadiness
     {
+        if (isset($this->readinessQueue[$number]) && $this->readinessQueue[$number] !== []) {
+            $next = array_shift($this->readinessQueue[$number]);
+            $this->readinessByNumber[$number] = $next;
+            return $next;
+        }
         if (!isset($this->readinessByNumber[$number])) {
             throw new \RuntimeException("No readiness configured for PR #{$number}");
         }
