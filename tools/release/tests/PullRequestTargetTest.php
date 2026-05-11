@@ -25,16 +25,19 @@ final class PullRequestTargetTest extends TestCase
         self::assertSame('infra', $targets[0]->roleLabel);
         self::assertSame('openemr/openemr-devops', $targets[0]->repo);
         self::assertSame('release-rotation/auto', $targets[0]->branch);
+        self::assertSame('master', $targets[0]->expectedBase);
         self::assertSame(1, $targets[0]->mergeOrder);
 
         self::assertSame('conductor', $targets[1]->roleLabel);
         self::assertSame('openemr/openemr', $targets[1]->repo);
         self::assertSame('release-prep/rel-810', $targets[1]->branch);
+        self::assertSame('rel-810', $targets[1]->expectedBase);
         self::assertSame(2, $targets[1]->mergeOrder);
 
         self::assertSame('docs', $targets[2]->roleLabel);
         self::assertSame('openemr/website-openemr', $targets[2]->repo);
         self::assertSame('release-docs/8.1.0', $targets[2]->branch);
+        self::assertSame('master', $targets[2]->expectedBase);
         self::assertSame(3, $targets[2]->mergeOrder);
     }
 }

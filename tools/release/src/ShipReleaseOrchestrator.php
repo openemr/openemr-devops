@@ -39,10 +39,11 @@ final readonly class ShipReleaseOrchestrator
     }
 
     /**
-     * @param list<PullRequestTarget> $targets infra → conductor → docs (sorted by mergeOrder)
+     * @param list<PullRequestTarget> $targets infra, conductor, docs (any order — sorted internally)
      */
     public function ship(array $targets): ShipReleaseResult
     {
+        $targets = $this->sortByMergeOrder($targets);
         $snapshots = $this->snapshotAll($targets);
 
         $fatal = $this->detectDocsFirst($targets, $snapshots);
@@ -65,7 +66,27 @@ final readonly class ShipReleaseOrchestrator
     }
 
     /**
-     * @param list<PullRequestTarget> $targets
+     * Defensive sort + uniqueness check so a caller passing targets in any
+     * order still gets infra → conductor → docs at merge time.
+     *
+     * @param  list<PullRequestTarget> $targets
+     * @return list<PullRequestTarget>
+     */
+    private function sortByMergeOrder(array $targets): array
+    {
+        $orders = array_map(static fn (PullRequestTarget $t): int => $t->mergeOrder, $targets);
+        if (count(array_unique($orders)) !== count($orders)) {
+            throw new \LogicException('ship-release targets have duplicate mergeOrder values');
+        }
+        usort(
+            $targets,
+            static fn (PullRequestTarget $a, PullRequestTarget $b): int => $a->mergeOrder <=> $b->mergeOrder,
+        );
+        return $targets;
+    }
+
+    /**
+     * @param  list<PullRequestTarget> $targets
      * @return array<string, ?PullRequestSnapshot>
      */
     private function snapshotAll(array $targets): array
@@ -97,6 +118,14 @@ final readonly class ShipReleaseOrchestrator
             $snapshot = $snapshots[$target->roleLabel] ?? null;
             if ($snapshot === null) {
                 $blocked[$target->roleLabel] = ['no PR found for branch ' . $target->branch];
+                continue;
+            }
+            if ($snapshot->baseRefName !== $target->expectedBase) {
+                $blocked[$target->roleLabel] = [sprintf(
+                    'PR base is %s, expected %s — refusing to merge a PR opened against the wrong base',
+                    $snapshot->baseRefName,
+                    $target->expectedBase,
+                )];
                 continue;
             }
             if ($snapshot->isMerged()) {
@@ -254,15 +283,25 @@ final readonly class ShipReleaseOrchestrator
                 );
             }
 
-            $this->api->postCommitStatus(
-                $target->repo,
-                $stepReadiness->headRefOid,
-                self::STATUS_CONTEXT,
-                'success',
-                self::STATUS_DESCRIPTION,
-                $this->statusTargetUrl,
-            );
-            $mergeSha = $this->api->squashMerge($target->repo, $snapshot->number, $stepReadiness->headRefOid);
+            try {
+                $this->api->postCommitStatus(
+                    $target->repo,
+                    $stepReadiness->headRefOid,
+                    self::STATUS_CONTEXT,
+                    'success',
+                    self::STATUS_DESCRIPTION,
+                    $this->statusTargetUrl,
+                );
+                $mergeSha = $this->api->squashMerge($target->repo, $snapshot->number, $stepReadiness->headRefOid);
+            } catch (\RuntimeException $e) {
+                $steps[] = $this->blockedStep(
+                    $target,
+                    $snapshot->number,
+                    [sprintf('gh call failed: %s', $e->getMessage())],
+                );
+                $stopReason = sprintf('%s merge failed', $target->roleLabel);
+                continue;
+            }
             $steps[] = new ShipReleaseStepResult(
                 $target,
                 ShipReleaseStepStatus::MERGED,

@@ -18,12 +18,21 @@ use OpenEMR\Release\PullRequestTarget;
 use OpenEMR\Release\ShipReleaseOrchestrator;
 use OpenEMR\Release\ShipReleaseStepResult;
 use OpenEMR\Release\ShipReleaseStepStatus;
+use OpenEMR\Release\Tests\Fakes\FailingMergeApi;
 use OpenEMR\Release\Tests\Fakes\FakeClock;
 use OpenEMR\Release\Tests\Fakes\FakePullRequestApi;
 use PHPUnit\Framework\TestCase;
 
 final class ShipReleaseOrchestratorTest extends TestCase
 {
+    private const INFRA_REPO = 'openemr/openemr-devops';
+    private const INFRA_BRANCH = 'release-rotation/auto';
+    private const CONDUCTOR_REPO = 'openemr/openemr';
+    private const CONDUCTOR_BRANCH = 'release-prep/rel-810';
+    private const CONDUCTOR_BASE = 'rel-810';
+    private const DOCS_REPO = 'openemr/website-openemr';
+    private const DOCS_BRANCH = 'release-docs/8.1.0';
+
     /**
      * @return list<PullRequestTarget>
      */
@@ -42,28 +51,38 @@ final class ShipReleaseOrchestratorTest extends TestCase
         return new PullRequestSnapshot($number, $head, $base, null);
     }
 
-    private function merged(int $number, string $head): PullRequestSnapshot
+    private function merged(int $number, string $head, string $base = 'master'): PullRequestSnapshot
     {
-        return new PullRequestSnapshot($number, $head, 'master', new \DateTimeImmutable('2026-05-01T00:00:00Z'));
+        return new PullRequestSnapshot($number, $head, $base, new \DateTimeImmutable('2026-05-01T00:00:00Z'));
+    }
+
+    private function openConductor(): PullRequestSnapshot
+    {
+        return $this->open(202, 'sha-conductor', self::CONDUCTOR_BASE);
+    }
+
+    private function mergedConductor(): PullRequestSnapshot
+    {
+        return $this->merged(202, 'sha-conductor', self::CONDUCTOR_BASE);
     }
 
     public function testHappyPathMergesAllThreeInOrderAndPostsApprovalStatus(): void
     {
         $api = new FakePullRequestApi();
         $targets = $this->targets();
-        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
-        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->open(202, 'sha-conductor'));
-        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs-old'));
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs-old'));
         // After conductor merge, the docs PR is re-rendered with a new head SHA.
         $api->setSnapshotAfterFinds(
-            'openemr/website-openemr',
-            'release-docs/8.1.0',
+            self::DOCS_REPO,
+            self::DOCS_BRANCH,
             2,
             $this->open(303, 'sha-docs-new'),
         );
-        $api->setReadiness(101, $this->ready('sha-infra'));
-        $api->setReadiness(202, $this->ready('sha-conductor'));
-        $api->setReadiness(303, $this->ready('sha-docs-new'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs-new'));
 
         $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($targets);
 
@@ -76,12 +95,11 @@ final class ShipReleaseOrchestratorTest extends TestCase
             ),
         );
         self::assertSame(
-            [['repo' => 'openemr/openemr-devops', 'number' => 101, 'expected' => 'sha-infra'],
-                ['repo' => 'openemr/openemr', 'number' => 202, 'expected' => 'sha-conductor'],
-                ['repo' => 'openemr/website-openemr', 'number' => 303, 'expected' => 'sha-docs-new']],
+            [['repo' => self::INFRA_REPO, 'number' => 101, 'expected' => 'sha-infra'],
+                ['repo' => self::CONDUCTOR_REPO, 'number' => 202, 'expected' => 'sha-conductor'],
+                ['repo' => self::DOCS_REPO, 'number' => 303, 'expected' => 'sha-docs-new']],
             $api->merges,
         );
-        // Three approval statuses, one per merge, on the head SHA we merged.
         self::assertCount(3, $api->postedStatuses);
         self::assertSame(ShipReleaseOrchestrator::STATUS_CONTEXT, $api->postedStatuses[0]['context']);
         self::assertSame('sha-infra', $api->postedStatuses[0]['sha']);
@@ -91,11 +109,11 @@ final class ShipReleaseOrchestratorTest extends TestCase
     public function testInfraAlreadyMergedSkipsThenContinues(): void
     {
         $api = new FakePullRequestApi();
-        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->merged(101, 'sha-infra'));
-        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->open(202, 'sha-conductor'));
-        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs'));
-        $api->setReadiness(202, $this->ready('sha-conductor'));
-        $api->setReadiness(303, $this->ready('sha-docs'));
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->merged(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs'));
 
         $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
 
@@ -109,12 +127,16 @@ final class ShipReleaseOrchestratorTest extends TestCase
     public function testConductorBlockedAtPreflightMergesNothing(): void
     {
         $api = new FakePullRequestApi();
-        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
-        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->open(202, 'sha-conductor'));
-        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs'));
-        $api->setReadiness(101, $this->ready('sha-infra'));
-        $api->setReadiness(202, new PullRequestReadiness('sha-conductor', ['check core-test conclusion=FAILURE']));
-        $api->setReadiness(303, $this->ready('sha-docs'));
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadiness(
+            self::CONDUCTOR_REPO,
+            202,
+            new PullRequestReadiness('sha-conductor', ['check core-test conclusion=FAILURE']),
+        );
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs'));
 
         $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
 
@@ -130,12 +152,12 @@ final class ShipReleaseOrchestratorTest extends TestCase
     public function testInfraReadyButDocsBlockedAtPreflightMergesNothing(): void
     {
         $api = new FakePullRequestApi();
-        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
-        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->open(202, 'sha-conductor'));
-        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs'));
-        $api->setReadiness(101, $this->ready('sha-infra'));
-        $api->setReadiness(202, $this->ready('sha-conductor'));
-        $api->setReadiness(303, new PullRequestReadiness(
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
+        $api->setReadiness(self::DOCS_REPO, 303, new PullRequestReadiness(
             'sha-docs',
             ['reviewDecision=REVIEW_REQUIRED (need APPROVED)'],
         ));
@@ -152,9 +174,9 @@ final class ShipReleaseOrchestratorTest extends TestCase
     public function testDocsFirstFatalRefusesToMergeAnything(): void
     {
         $api = new FakePullRequestApi();
-        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
-        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->open(202, 'sha-conductor'));
-        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->merged(303, 'sha-docs'));
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->merged(303, 'sha-docs'));
 
         $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
 
@@ -170,12 +192,12 @@ final class ShipReleaseOrchestratorTest extends TestCase
     public function testDryRunDoesNotMergeOrPostStatuses(): void
     {
         $api = new FakePullRequestApi();
-        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
-        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->open(202, 'sha-conductor'));
-        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs'));
-        $api->setReadiness(101, $this->ready('sha-infra'));
-        $api->setReadiness(202, $this->ready('sha-conductor'));
-        $api->setReadiness(303, $this->ready('sha-docs'));
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs'));
 
         $result = (new ShipReleaseOrchestrator($api, new FakeClock(), 600, true))->ship($this->targets());
 
@@ -189,23 +211,18 @@ final class ShipReleaseOrchestratorTest extends TestCase
 
     public function testConductorAlreadyMergedRefetchesDocsBeforeMerging(): void
     {
-        // Recovery scenario: conductor was merged in a previous run. The
-        // orchestrator must re-fetch the docs PR + readiness right before
-        // merging — preflight readiness alone could be stale if the previous
-        // run's downstream re-render was still in flight.
         $api = new FakePullRequestApi();
-        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
-        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->merged(202, 'sha-conductor'));
-        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs-stale'));
-        $api->setReadiness(101, $this->ready('sha-infra'));
-        // Preflight reads the stale head; the post-conductor refetch returns the fresh head.
-        $api->setReadinessSequence(303, [
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->mergedConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs-stale'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadinessSequence(self::DOCS_REPO, 303, [
             $this->ready('sha-docs-stale'),
             $this->ready('sha-docs-fresh'),
         ]);
         $api->setSnapshotAfterFinds(
-            'openemr/website-openemr',
-            'release-docs/8.1.0',
+            self::DOCS_REPO,
+            self::DOCS_BRANCH,
             2,
             $this->open(303, 'sha-docs-fresh'),
         );
@@ -216,22 +233,17 @@ final class ShipReleaseOrchestratorTest extends TestCase
         self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[0]->status);
         self::assertSame(ShipReleaseStepStatus::SKIPPED_ALREADY_MERGED, $result->steps[1]->status);
         self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[2]->status);
-        // Docs merge must use the fresh head SHA, not the preflight one.
         self::assertSame('sha-docs-fresh', $api->merges[1]['expected']);
     }
 
     public function testConductorAlreadyMergedBlocksDocsIfDownstreamStillInFlight(): void
     {
-        // Same recovery scenario, but the post-conductor docs re-check finds
-        // the docs PR not yet ready (e.g. checks still PENDING from the
-        // previous run's downstream regeneration). Orchestrator must stop.
         $api = new FakePullRequestApi();
-        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
-        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->merged(202, 'sha-conductor'));
-        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs'));
-        $api->setReadiness(101, $this->ready('sha-infra'));
-        // Preflight passes; the post-merge re-check finds it not ready.
-        $api->setReadinessSequence(303, [
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->mergedConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadinessSequence(self::DOCS_REPO, 303, [
             $this->ready('sha-docs'),
             new PullRequestReadiness('sha-docs', ['check core-test status=IN_PROGRESS']),
         ]);
@@ -243,20 +255,18 @@ final class ShipReleaseOrchestratorTest extends TestCase
         self::assertSame(ShipReleaseStepStatus::SKIPPED_ALREADY_MERGED, $result->steps[1]->status);
         self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[2]->status);
         self::assertContains('check core-test status=IN_PROGRESS', $result->steps[2]->reasons);
-        // Only infra was merged.
         self::assertCount(1, $api->merges);
     }
 
     public function testDownstreamWaitTimesOutAndReChecksReadiness(): void
     {
         $api = new FakePullRequestApi();
-        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
-        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->open(202, 'sha-conductor'));
-        // Docs PR head SHA never changes — simulates downstream workflow not firing.
-        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs'));
-        $api->setReadiness(101, $this->ready('sha-infra'));
-        $api->setReadiness(202, $this->ready('sha-conductor'));
-        $api->setReadiness(303, $this->ready('sha-docs')); // still ready — proceed despite no flip
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs'));
 
         $clock = new FakeClock();
         $result = (new ShipReleaseOrchestrator($api, $clock, 30))->ship($this->targets());
@@ -264,5 +274,76 @@ final class ShipReleaseOrchestratorTest extends TestCase
         self::assertTrue($result->wasSuccessful());
         self::assertGreaterThanOrEqual(30, $clock->totalSlept);
         self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[2]->status);
+    }
+
+    public function testWrongBaseBranchBlocksWithoutMerging(): void
+    {
+        // Conductor PR exists but has been opened against `master` instead of
+        // the expected `rel-810`. Refuse to merge it (would ship the wrong content).
+        $api = new FakePullRequestApi();
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->open(202, 'sha-conductor', 'master'));
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs'));
+
+        $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
+
+        self::assertFalse($result->wasSuccessful());
+        self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[1]->status);
+        self::assertStringContainsString('PR base is master, expected rel-810', $result->steps[1]->reasons[0]);
+        self::assertSame([], $api->merges);
+    }
+
+    public function testTargetsAreSortedByMergeOrderRegardlessOfInputOrder(): void
+    {
+        // Pass targets in shuffled order; the orchestrator must still merge
+        // infra → conductor → docs.
+        $api = new FakePullRequestApi();
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs-old'));
+        $api->setSnapshotAfterFinds(
+            self::DOCS_REPO,
+            self::DOCS_BRANCH,
+            2,
+            $this->open(303, 'sha-docs-new'),
+        );
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs-new'));
+
+        $shuffled = $this->targets();
+        $shuffled = [$shuffled[2], $shuffled[0], $shuffled[1]]; // docs, infra, conductor
+
+        $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($shuffled);
+
+        self::assertTrue($result->wasSuccessful());
+        self::assertSame(
+            [self::INFRA_REPO, self::CONDUCTOR_REPO, self::DOCS_REPO],
+            array_column($api->merges, 'repo'),
+        );
+    }
+
+    public function testMergeApiFailureReportsBlockedAndStopsSubsequentMerges(): void
+    {
+        // Simulate gh failing on the conductor merge (e.g. --match-head-commit
+        // mismatch from a race). Infra still merges, conductor reports BLOCKED
+        // with the gh error, docs is NOT_REACHED.
+        $api = new FailingMergeApi('openemr/openemr', 202, 'gh: --match-head-commit does not match');
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->open(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::INFRA_REPO, 101, $this->ready('sha-infra'));
+        $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs'));
+
+        $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
+
+        self::assertFalse($result->wasSuccessful());
+        self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[0]->status);
+        self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[1]->status);
+        self::assertStringContainsString('--match-head-commit does not match', $result->steps[1]->reasons[0]);
+        self::assertSame(ShipReleaseStepStatus::NOT_REACHED, $result->steps[2]->status);
     }
 }

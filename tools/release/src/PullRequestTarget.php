@@ -20,6 +20,7 @@ final readonly class PullRequestTarget
     public function __construct(
         public string $repo,
         public string $branch,
+        public string $expectedBase,
         public string $roleLabel,
         public int $mergeOrder,
     ) {
@@ -29,15 +30,16 @@ final readonly class PullRequestTarget
      * Build the canonical infra → conductor → docs target list for a release.
      *
      * Branch name conventions are defined in openemr-devops#705 and #664.
+     * Conductor merges into the rel-<n> branch, the other two into master.
      *
      * @return list<self>
      */
     public static function forRelease(string $version, string $relBranch): array
     {
         return [
-            new self('openemr/openemr-devops', 'release-rotation/auto', 'infra', 1),
-            new self('openemr/openemr', "release-prep/{$relBranch}", 'conductor', 2),
-            new self('openemr/website-openemr', "release-docs/{$version}", 'docs', 3),
+            new self('openemr/openemr-devops', 'release-rotation/auto', 'master', 'infra', 1),
+            new self('openemr/openemr', "release-prep/{$relBranch}", $relBranch, 'conductor', 2),
+            new self('openemr/website-openemr', "release-docs/{$version}", 'master', 'docs', 3),
         ];
     }
 }

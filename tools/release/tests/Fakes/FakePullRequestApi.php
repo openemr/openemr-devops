@@ -3,6 +3,10 @@
 /**
  * In-memory PullRequestApi for orchestrator tests.
  *
+ * Readiness and merge SHAs are keyed by "repo#number" so PR-number collisions
+ * across repos (entirely possible — PR numbers are per-repo on GitHub) don't
+ * silently mask cross-repo bugs in the orchestrator.
+ *
  * @package   openemr-devops
  * @link      https://www.open-emr.org
  * @author    Michael A. Smith <michael@opencoreemr.com>
@@ -18,18 +22,18 @@ use OpenEMR\Release\PullRequestApi;
 use OpenEMR\Release\PullRequestReadiness;
 use OpenEMR\Release\PullRequestSnapshot;
 
-final class FakePullRequestApi implements PullRequestApi
+class FakePullRequestApi implements PullRequestApi
 {
     /** @var array<string, ?PullRequestSnapshot> */
     private array $snapshotsByKey = [];
 
-    /** @var array<int, PullRequestReadiness> */
-    private array $readinessByNumber = [];
+    /** @var array<string, PullRequestReadiness> keyed by "repo#number" */
+    private array $readinessByPr = [];
 
-    /** @var array<int, list<PullRequestReadiness>> per-number queue, consumed left-to-right */
+    /** @var array<string, list<PullRequestReadiness>> per-PR queue, consumed left-to-right */
     private array $readinessQueue = [];
 
-    /** @var array<int, string> merge SHAs by PR number */
+    /** @var array<string, string> merge SHAs by "repo#number" */
     private array $mergeShas = [];
 
     /** @var list<array{repo: string, sha: string, context: string, state: string}> */
@@ -46,7 +50,7 @@ final class FakePullRequestApi implements PullRequestApi
 
     public function setSnapshot(string $repo, string $branch, ?PullRequestSnapshot $snapshot): void
     {
-        $this->snapshotsByKey[$this->key($repo, $branch)] = $snapshot;
+        $this->snapshotsByKey[$this->branchKey($repo, $branch)] = $snapshot;
     }
 
     /**
@@ -59,33 +63,33 @@ final class FakePullRequestApi implements PullRequestApi
         int $afterNCalls,
         PullRequestSnapshot $snapshot,
     ): void {
-        $this->snapshotAfterFind[$this->key($repo, $branch) . '|' . $afterNCalls] = $snapshot;
+        $this->snapshotAfterFind[$this->branchKey($repo, $branch) . '|' . $afterNCalls] = $snapshot;
     }
 
-    public function setReadiness(int $number, PullRequestReadiness $readiness): void
+    public function setReadiness(string $repo, int $number, PullRequestReadiness $readiness): void
     {
-        $this->readinessByNumber[$number] = $readiness;
+        $this->readinessByPr[$this->prKey($repo, $number)] = $readiness;
     }
 
     /**
-     * Each call to getReadiness() for $number consumes one entry. Once exhausted,
+     * Each call to getReadiness() for $repo#$number consumes one entry. Once exhausted,
      * the last entry is returned for subsequent calls.
      *
      * @param list<PullRequestReadiness> $sequence
      */
-    public function setReadinessSequence(int $number, array $sequence): void
+    public function setReadinessSequence(string $repo, int $number, array $sequence): void
     {
-        $this->readinessQueue[$number] = $sequence;
+        $this->readinessQueue[$this->prKey($repo, $number)] = $sequence;
     }
 
-    public function setMergeSha(int $number, string $sha): void
+    public function setMergeSha(string $repo, int $number, string $sha): void
     {
-        $this->mergeShas[$number] = $sha;
+        $this->mergeShas[$this->prKey($repo, $number)] = $sha;
     }
 
     public function findByHead(string $repo, string $branch): ?PullRequestSnapshot
     {
-        $key = $this->key($repo, $branch);
+        $key = $this->branchKey($repo, $branch);
         $this->findCalls[$key] = ($this->findCalls[$key] ?? 0) + 1;
         $swap = $this->snapshotAfterFind[$key . '|' . $this->findCalls[$key]] ?? null;
         if ($swap !== null) {
@@ -96,15 +100,16 @@ final class FakePullRequestApi implements PullRequestApi
 
     public function getReadiness(string $repo, int $number): PullRequestReadiness
     {
-        if (isset($this->readinessQueue[$number]) && $this->readinessQueue[$number] !== []) {
-            $next = array_shift($this->readinessQueue[$number]);
-            $this->readinessByNumber[$number] = $next;
+        $key = $this->prKey($repo, $number);
+        if (isset($this->readinessQueue[$key]) && $this->readinessQueue[$key] !== []) {
+            $next = array_shift($this->readinessQueue[$key]);
+            $this->readinessByPr[$key] = $next;
             return $next;
         }
-        if (!isset($this->readinessByNumber[$number])) {
-            throw new \RuntimeException("No readiness configured for PR #{$number}");
+        if (!isset($this->readinessByPr[$key])) {
+            throw new \RuntimeException("No readiness configured for {$key}");
         }
-        return $this->readinessByNumber[$number];
+        return $this->readinessByPr[$key];
     }
 
     public function postCommitStatus(
@@ -126,11 +131,16 @@ final class FakePullRequestApi implements PullRequestApi
     public function squashMerge(string $repo, int $number, string $expectedHeadSha): string
     {
         $this->merges[] = ['repo' => $repo, 'number' => $number, 'expected' => $expectedHeadSha];
-        return $this->mergeShas[$number] ?? "merge-sha-{$number}";
+        return $this->mergeShas[$this->prKey($repo, $number)] ?? "merge-sha-{$number}";
     }
 
-    private function key(string $repo, string $branch): string
+    private function branchKey(string $repo, string $branch): string
     {
         return $repo . '|' . $branch;
+    }
+
+    private function prKey(string $repo, int $number): string
+    {
+        return $repo . '#' . $number;
     }
 }
