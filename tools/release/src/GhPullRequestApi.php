@@ -174,8 +174,11 @@ final readonly class GhPullRequestApi implements PullRequestApi
             return [];
         }
         if (isset($check['state'])) {
+            // Legacy commit-status states: SUCCESS / FAILURE / ERROR / PENDING / EXPECTED.
+            // EXPECTED means "this status is expected but hasn't been reported yet" — treat
+            // it as blocking, same as PENDING. Only SUCCESS clears the gate.
             $state = is_string($check['state']) ? $check['state'] : '';
-            if (!in_array($state, ['SUCCESS', 'EXPECTED'], true)) {
+            if ($state !== 'SUCCESS') {
                 return [sprintf('status %s state=%s', $context, $state)];
             }
         }

@@ -35,7 +35,7 @@ final class FakePullRequestApi implements PullRequestApi
     /** @var list<array{repo: string, number: int, expected: string}> */
     public array $merges = [];
 
-    /** @var array<string, PullRequestSnapshot> snapshots installed by setSnapshotAfterFind() */
+    /** @var array<string, PullRequestSnapshot> snapshots installed by setSnapshotAfterFinds() */
     private array $snapshotAfterFind = [];
 
     /** @var array<string, int> */

@@ -3,11 +3,14 @@
 /**
  * Merges the three release PRs (infra → conductor → docs) in strict order.
  *
- * Skips PRs already merged so the same trigger handles partial-merge recovery.
- * Stops at the first non-ready PR without merging, so a half-finished release
- * never originates here. Detects the one unrecoverable case — docs merged
- * before conductor — and refuses to do anything; that recovery is documented
- * in the runbook (see issue #705).
+ * Two-phase: a preflight pass evaluates every unmerged target's readiness and
+ * refuses to merge anything if any unmerged PR is not ready (issue #705 step
+ * 3 + 5: "no partial merges from the workflow itself"). PRs already merged
+ * are skipped so the same trigger handles partial-merge recovery from outside
+ * causes (e.g. an admin-overridden direct merge).
+ *
+ * Detects the one unrecoverable case — docs merged before conductor — and
+ * refuses to do anything; that recovery is documented in the runbook.
  *
  * @package   openemr-devops
  * @link      https://www.open-emr.org
@@ -44,12 +47,154 @@ final readonly class ShipReleaseOrchestrator
 
         $fatal = $this->detectDocsFirst($targets, $snapshots);
         if ($fatal !== null) {
-            return new ShipReleaseResult(
-                $this->markAllNotReached($targets),
-                $fatal,
-            );
+            return new ShipReleaseResult($this->markAllNotReached($targets), $fatal);
         }
 
+        // Preflight: evaluate every unmerged target before any merge so a later
+        // blocker can't cause earlier ones to ship as a partial merge.
+        $preflight = $this->preflight($targets, $snapshots);
+        if ($preflight['hasBlocker']) {
+            return new ShipReleaseResult($preflight['steps']);
+        }
+
+        if ($this->dryRun) {
+            return new ShipReleaseResult($this->dryRunSteps($targets, $snapshots, $preflight['readiness']));
+        }
+
+        return new ShipReleaseResult($this->executeMerges($targets, $snapshots, $preflight['readiness']));
+    }
+
+    /**
+     * @param list<PullRequestTarget> $targets
+     * @return array<string, ?PullRequestSnapshot>
+     */
+    private function snapshotAll(array $targets): array
+    {
+        $out = [];
+        foreach ($targets as $target) {
+            $out[$target->roleLabel] = $this->api->findByHead($target->repo, $target->branch);
+        }
+        return $out;
+    }
+
+    /**
+     * Probe every unmerged target's readiness. If any is missing or blocked,
+     * return per-target step results with no merges performed.
+     *
+     * @param  list<PullRequestTarget>             $targets
+     * @param  array<string, ?PullRequestSnapshot> $snapshots
+     * @return array{
+     *     hasBlocker: bool,
+     *     steps: list<ShipReleaseStepResult>,
+     *     readiness: array<string, PullRequestReadiness>,
+     * }
+     */
+    private function preflight(array $targets, array $snapshots): array
+    {
+        $readiness = [];
+        $blocked = [];
+        foreach ($targets as $target) {
+            $snapshot = $snapshots[$target->roleLabel] ?? null;
+            if ($snapshot === null) {
+                $blocked[$target->roleLabel] = ['no PR found for branch ' . $target->branch];
+                continue;
+            }
+            if ($snapshot->isMerged()) {
+                continue;
+            }
+            $check = $this->api->getReadiness($target->repo, $snapshot->number);
+            $readiness[$target->roleLabel] = $check;
+            if (!$check->isReady()) {
+                $blocked[$target->roleLabel] = $check->blockingReasons;
+            }
+        }
+
+        $steps = [];
+        foreach ($targets as $target) {
+            $snapshot = $snapshots[$target->roleLabel] ?? null;
+            if ($snapshot !== null && $snapshot->isMerged()) {
+                $steps[] = new ShipReleaseStepResult(
+                    $target,
+                    ShipReleaseStepStatus::SKIPPED_ALREADY_MERGED,
+                    $snapshot->number,
+                    null,
+                    [],
+                );
+                continue;
+            }
+            if (isset($blocked[$target->roleLabel])) {
+                $steps[] = new ShipReleaseStepResult(
+                    $target,
+                    ShipReleaseStepStatus::BLOCKED,
+                    $snapshot?->number,
+                    null,
+                    $blocked[$target->roleLabel],
+                );
+                continue;
+            }
+            // Ready, but preflight failed elsewhere — we won't merge it now.
+            if ($blocked !== []) {
+                $steps[] = new ShipReleaseStepResult(
+                    $target,
+                    ShipReleaseStepStatus::NOT_REACHED,
+                    $snapshot?->number,
+                    null,
+                    ['preflight blocker on another PR — no merges performed'],
+                );
+            }
+        }
+
+        return ['hasBlocker' => $blocked !== [], 'steps' => $steps, 'readiness' => $readiness];
+    }
+
+    /**
+     * Build the dry-run report — preflight already passed, so each unmerged
+     * target is "would merge" and merged ones stay "skipped".
+     *
+     * @param list<PullRequestTarget>              $targets
+     * @param array<string, ?PullRequestSnapshot>  $snapshots
+     * @param array<string, PullRequestReadiness>  $readiness
+     * @return list<ShipReleaseStepResult>
+     */
+    private function dryRunSteps(array $targets, array $snapshots, array $readiness): array
+    {
+        $steps = [];
+        foreach ($targets as $target) {
+            $snapshot = $snapshots[$target->roleLabel] ?? null;
+            if ($snapshot !== null && $snapshot->isMerged()) {
+                $steps[] = new ShipReleaseStepResult(
+                    $target,
+                    ShipReleaseStepStatus::SKIPPED_ALREADY_MERGED,
+                    $snapshot->number,
+                    null,
+                    [],
+                );
+                continue;
+            }
+            $steps[] = new ShipReleaseStepResult(
+                $target,
+                ShipReleaseStepStatus::WOULD_MERGE,
+                $snapshot?->number,
+                null,
+                [],
+            );
+            unset($readiness[$target->roleLabel]);
+        }
+        return $steps;
+    }
+
+    /**
+     * Real merge pass. Preflight has already validated that every unmerged
+     * target was ready at snapshot time. The docs PR gets a fresh readiness
+     * check after the conductor's downstream effect re-renders it.
+     *
+     * @param  list<PullRequestTarget>             $targets
+     * @param  array<string, ?PullRequestSnapshot> $snapshots
+     * @param  array<string, PullRequestReadiness> $readiness  preflight readiness, by role
+     * @return list<ShipReleaseStepResult>
+     */
+    private function executeMerges(array $targets, array $snapshots, array $readiness): array
+    {
         $steps = [];
         $stopReason = null;
         $mergedThisRun = [];
@@ -60,20 +205,8 @@ final readonly class ShipReleaseOrchestrator
                 continue;
             }
 
-            // The conductor's merge fires repository_dispatch handlers that
-            // re-render the docs PR. Wait for that effect to land (or time
-            // out), then re-snapshot before deciding readiness.
-            if (
-                $target->roleLabel === 'docs'
-                && in_array('conductor', $mergedThisRun, true)
-            ) {
-                $snapshots[$target->roleLabel] = $this->awaitDownstreamUpdate(
-                    $target,
-                    $snapshots[$target->roleLabel] ?? null,
-                );
-            }
-
             $snapshot = $snapshots[$target->roleLabel] ?? null;
+            // Preflight already filtered missing PRs.
             if ($snapshot === null) {
                 $steps[] = $this->blockedStep($target, null, ['no PR found for branch ' . $target->branch]);
                 $stopReason = sprintf('%s PR is missing', $target->roleLabel);
@@ -90,37 +223,43 @@ final readonly class ShipReleaseOrchestrator
                 continue;
             }
 
-            $readiness = $this->api->getReadiness($target->repo, $snapshot->number);
-            if (!$readiness->isReady()) {
-                $steps[] = $this->blockedStep($target, $snapshot->number, $readiness->blockingReasons);
-                $stopReason = sprintf('%s PR is not ready', $target->roleLabel);
-                continue;
+            // The conductor merge fires repository_dispatch handlers that re-render
+            // the docs PR. Wait for that effect (or time out), re-snapshot, then
+            // re-check readiness against the post-render head SHA before merging.
+            $stepReadiness = $readiness[$target->roleLabel] ?? null;
+            if (
+                $target->roleLabel === 'docs'
+                && in_array('conductor', $mergedThisRun, true)
+            ) {
+                $snapshot = $this->awaitDownstreamUpdate($target, $snapshot);
+                if (!$snapshot instanceof \OpenEMR\Release\PullRequestSnapshot) {
+                    $steps[] = $this->blockedStep($target, null, ['docs PR disappeared after conductor merge']);
+                    $stopReason = 'docs PR is missing after conductor merge';
+                    continue;
+                }
+                $stepReadiness = $this->api->getReadiness($target->repo, $snapshot->number);
+                if (!$stepReadiness->isReady()) {
+                    $steps[] = $this->blockedStep($target, $snapshot->number, $stepReadiness->blockingReasons);
+                    $stopReason = 'docs PR not ready after conductor downstream update';
+                    continue;
+                }
             }
 
-            if ($this->dryRun) {
-                $steps[] = new ShipReleaseStepResult(
-                    $target,
-                    ShipReleaseStepStatus::WOULD_MERGE,
-                    $snapshot->number,
-                    null,
-                    [],
+            if ($stepReadiness === null) {
+                throw new \LogicException(
+                    "ship-release: missing preflight readiness for {$target->roleLabel}",
                 );
-                continue;
             }
 
             $this->api->postCommitStatus(
                 $target->repo,
-                $readiness->headRefOid,
+                $stepReadiness->headRefOid,
                 self::STATUS_CONTEXT,
                 'success',
                 self::STATUS_DESCRIPTION,
                 $this->statusTargetUrl,
             );
-            $mergeSha = $this->api->squashMerge(
-                $target->repo,
-                $snapshot->number,
-                $readiness->headRefOid,
-            );
+            $mergeSha = $this->api->squashMerge($target->repo, $snapshot->number, $stepReadiness->headRefOid);
             $steps[] = new ShipReleaseStepResult(
                 $target,
                 ShipReleaseStepStatus::MERGED,
@@ -131,20 +270,7 @@ final readonly class ShipReleaseOrchestrator
             $mergedThisRun[] = $target->roleLabel;
         }
 
-        return new ShipReleaseResult($steps);
-    }
-
-    /**
-     * @param list<PullRequestTarget> $targets
-     * @return array<string, ?PullRequestSnapshot>
-     */
-    private function snapshotAll(array $targets): array
-    {
-        $out = [];
-        foreach ($targets as $target) {
-            $out[$target->roleLabel] = $this->api->findByHead($target->repo, $target->branch);
-        }
-        return $out;
+        return $steps;
     }
 
     /**
@@ -195,16 +321,13 @@ final readonly class ShipReleaseOrchestrator
      */
     private function awaitDownstreamUpdate(
         PullRequestTarget $target,
-        ?PullRequestSnapshot $before,
+        PullRequestSnapshot $before,
     ): ?PullRequestSnapshot {
-        if (!$before instanceof \OpenEMR\Release\PullRequestSnapshot) {
-            return null;
-        }
         $deadline = $this->clock->now()->getTimestamp() + $this->downstreamTimeoutSeconds;
         $current = $before;
         while ($this->clock->now()->getTimestamp() < $deadline) {
             $current = $this->api->findByHead($target->repo, $target->branch);
-            if (!$current instanceof \OpenEMR\Release\PullRequestSnapshot) {
+            if (!$current instanceof PullRequestSnapshot) {
                 return null;
             }
             if ($current->headRefOid !== $before->headRefOid) {
@@ -216,7 +339,7 @@ final readonly class ShipReleaseOrchestrator
     }
 
     /**
-     * @param list<PullRequestTarget> $targets
+     * @param  list<PullRequestTarget> $targets
      * @return list<ShipReleaseStepResult>
      */
     private function markAllNotReached(array $targets): array

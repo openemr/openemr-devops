@@ -106,7 +106,7 @@ final class ShipReleaseOrchestratorTest extends TestCase
         self::assertCount(2, $api->merges);
     }
 
-    public function testConductorBlockedStopsBeforeDocs(): void
+    public function testConductorBlockedAtPreflightMergesNothing(): void
     {
         $api = new FakePullRequestApi();
         $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
@@ -119,11 +119,34 @@ final class ShipReleaseOrchestratorTest extends TestCase
         $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
 
         self::assertFalse($result->wasSuccessful());
-        self::assertSame(ShipReleaseStepStatus::MERGED, $result->steps[0]->status);
+        self::assertSame(ShipReleaseStepStatus::NOT_REACHED, $result->steps[0]->status);
         self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[1]->status);
         self::assertContains('check core-test conclusion=FAILURE', $result->steps[1]->reasons);
         self::assertSame(ShipReleaseStepStatus::NOT_REACHED, $result->steps[2]->status);
-        self::assertCount(1, $api->merges);
+        self::assertSame([], $api->merges);
+        self::assertSame([], $api->postedStatuses);
+    }
+
+    public function testInfraReadyButDocsBlockedAtPreflightMergesNothing(): void
+    {
+        $api = new FakePullRequestApi();
+        $api->setSnapshot('openemr/openemr-devops', 'release-rotation/auto', $this->open(101, 'sha-infra'));
+        $api->setSnapshot('openemr/openemr', 'release-prep/rel-810', $this->open(202, 'sha-conductor'));
+        $api->setSnapshot('openemr/website-openemr', 'release-docs/8.1.0', $this->open(303, 'sha-docs'));
+        $api->setReadiness(101, $this->ready('sha-infra'));
+        $api->setReadiness(202, $this->ready('sha-conductor'));
+        $api->setReadiness(303, new PullRequestReadiness(
+            'sha-docs',
+            ['reviewDecision=REVIEW_REQUIRED (need APPROVED)'],
+        ));
+
+        $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
+
+        self::assertFalse($result->wasSuccessful());
+        self::assertSame(ShipReleaseStepStatus::NOT_REACHED, $result->steps[0]->status);
+        self::assertSame(ShipReleaseStepStatus::NOT_REACHED, $result->steps[1]->status);
+        self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[2]->status);
+        self::assertSame([], $api->merges);
     }
 
     public function testDocsFirstFatalRefusesToMergeAnything(): void
