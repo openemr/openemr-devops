@@ -76,11 +76,10 @@ jobs:
           TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           STATUS_TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          task release:ship \
-              VERSION="${VERSION}" \
-              REL_BRANCH="${REL_BRANCH}" \
-              TIMEOUT_SECONDS="${TIMEOUT_SECONDS}" \
-              STATUS_TARGET_URL="${STATUS_TARGET_URL}" \
-              DRY_RUN="${DRY_RUN}"
+        run: >-
+          task release:ship
+          VERSION="${VERSION}"
+          REL_BRANCH="${REL_BRANCH}"
+          TIMEOUT_SECONDS="${TIMEOUT_SECONDS}"
+          STATUS_TARGET_URL="${STATUS_TARGET_URL}"
+          DRY_RUN="${DRY_RUN}"
