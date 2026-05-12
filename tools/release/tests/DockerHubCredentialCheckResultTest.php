@@ -83,6 +83,16 @@ final class DockerHubCredentialCheckResultTest extends TestCase
         self::assertSame(403, $result->httpStatus);
     }
 
+    public function testInvalidCredentialOnRead401(): void
+    {
+        // 401 from the repo endpoint after a successful login means the JWT is
+        // not accepted here — distinct from "JWT recognized but lacks scope".
+        $result = DockerHubCredentialCheckResult::interpret(self::REPO, 200, 'jwt', 401, false, null);
+
+        self::assertSame(DockerHubCredentialCheckStatus::INVALID_CREDENTIAL, $result->status);
+        self::assertSame(401, $result->httpStatus);
+    }
+
     public function testUnexpectedResponseOnRead404(): void
     {
         $result = DockerHubCredentialCheckResult::interpret(self::REPO, 200, 'jwt', 404, false, null);
@@ -119,6 +129,14 @@ final class DockerHubCredentialCheckResultTest extends TestCase
         self::assertSame(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $result->status);
         self::assertSame(403, $result->httpStatus, 'httpStatus reflects the failing probe (write)');
         self::assertStringContainsString('R/W/D scope', $result->toGithubActionsLine());
+    }
+
+    public function testInvalidCredentialWhenReadOkButWrite401(): void
+    {
+        $result = DockerHubCredentialCheckResult::interpret(self::REPO, 200, 'jwt', 200, true, 401);
+
+        self::assertSame(DockerHubCredentialCheckStatus::INVALID_CREDENTIAL, $result->status);
+        self::assertSame(401, $result->httpStatus);
     }
 
     public function testOkWhenAllStepsSucceed(): void

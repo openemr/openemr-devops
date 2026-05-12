@@ -135,23 +135,23 @@ final readonly class DockerHubCredentialCheckResult
 
     private static function fromAccessFailure(string $repository, int $readStatus): self
     {
-        return match (true) {
-            in_array($readStatus, [401, 403], true) =>
-                new self(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $repository, $readStatus),
-            default =>
-                new self(DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE, $repository, $readStatus),
+        // 401 = JWT not accepted by this endpoint (rotate the credential).
+        // 403 = JWT recognized but lacks scope on this repo (grant scope).
+        // Distinct remediations, distinct statuses.
+        return match ($readStatus) {
+            401 => new self(DockerHubCredentialCheckStatus::INVALID_CREDENTIAL, $repository, 401),
+            403 => new self(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $repository, 403),
+            default => new self(DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE, $repository, $readStatus),
         };
     }
 
     private static function fromWriteStatus(string $repository, int $writeStatus): self
     {
-        return match (true) {
-            $writeStatus === 200 =>
-                new self(DockerHubCredentialCheckStatus::OK, $repository, 200),
-            in_array($writeStatus, [401, 403], true) =>
-                new self(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $repository, $writeStatus),
-            default =>
-                new self(DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE, $repository, $writeStatus),
+        return match ($writeStatus) {
+            200 => new self(DockerHubCredentialCheckStatus::OK, $repository, 200),
+            401 => new self(DockerHubCredentialCheckStatus::INVALID_CREDENTIAL, $repository, 401),
+            403 => new self(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $repository, 403),
+            default => new self(DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE, $repository, $writeStatus),
         };
     }
 
