@@ -43,6 +43,7 @@
             "@phpcs",
             "@phpstan",
             "@rector-check",
+            "@require-checker",
             "@test"
         ],
         "fix": [
