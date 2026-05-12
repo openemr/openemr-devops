@@ -161,6 +161,15 @@ tasks:
         php bin/check-dockerhub-credential.php
         {{if .REPOSITORY}}--repository={{shellQuote .REPOSITORY}}{{end}}
 
+  release:render-dockerhub-overview:
+    desc: Render the Docker Hub readme for openemr/openemr from versions.yml
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/render-dockerhub-overview.php
+        --repo={{shellQuote (default "../.." .ROTATE_REPO)}}
+        {{if .OUTPUT}}--output={{shellQuote .OUTPUT}}{{end}}
+
   release:verify-tag:
     desc: Verify a release tag is annotated and well-formed per #664 spec
     requires:

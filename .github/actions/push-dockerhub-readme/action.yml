@@ -1,0 +1,41 @@
+name: 'Push Docker Hub readme for openemr/openemr'
+description: 'Render the readme from versions.yml + the Twig template and PATCH it to Docker Hub'
+
+inputs:
+  username:
+    description: 'Docker Hub username'
+    required: true
+  password:
+    description: 'Docker Hub access token (R/W/D scope on openemr/openemr)'
+    required: true
+  repository:
+    description: 'Docker Hub repository to update'
+    required: false
+    default: 'openemr/openemr'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.5'
+
+    - name: Install Task
+      uses: arduino/setup-task@v2
+
+    - name: Render readme
+      shell: bash
+      working-directory: tools/release
+      run: task release:render-dockerhub-overview OUTPUT="${RUNNER_TEMP}/dockerhub-readme.md"
+
+    - name: Push readme to Docker Hub
+      uses: peter-evans/dockerhub-description@v5
+      with:
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+        repository: ${{ inputs.repository }}
+        readme-filepath: ${{ runner.temp }}/dockerhub-readme.md

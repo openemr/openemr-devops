@@ -88,3 +88,9 @@ jobs:
             -t openemr/openemr:next \
             -t "openemr/openemr:8.1.0-${{ steps.build_date.outputs.date }}" \
             "${digests[@]}"
+
+      - name: Push Docker Hub readme
+        uses: ./.github/actions/push-dockerhub-readme
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}

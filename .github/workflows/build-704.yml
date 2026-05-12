@@ -29,3 +29,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           no-cache: true
+
+      - name: Push Docker Hub readme
+        uses: ./.github/actions/push-dockerhub-readme
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}

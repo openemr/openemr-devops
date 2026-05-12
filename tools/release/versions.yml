@@ -47,7 +47,6 @@ slots:
 #   bats_test_paths            — workflow path filter `docker/openemr/<dir>/**`
 #   container_func_test_paths  — workflow path filter + script arg
 #   benchmarking_default       — utilities/container_benchmarking default variant
-#   overview_table             — docker/openemr/OVERVIEW.md mapping table
 files:
   - path: .github/workflows/build-800.yml
     slot: current
@@ -111,11 +110,6 @@ files:
   - path: utilities/container_benchmarking/test_suite.sh
     slot: next
     kinds: [benchmarking_default]
-
-  # Touched by every rotation — the canonical Docker tag mapping table.
-  - path: docker/openemr/OVERVIEW.md
-    slot: all
-    kinds: [overview_table]
 
   # Dependabot enumerates each rotating Docker dir explicitly; rotation needs
   # to add/remove entries when slot dirs change.
