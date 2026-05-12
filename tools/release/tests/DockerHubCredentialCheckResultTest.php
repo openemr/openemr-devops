@@ -147,4 +147,37 @@ final class DockerHubCredentialCheckResultTest extends TestCase
             self::assertStringNotContainsString("\n", $result->toGithubActionsLine(), $status->value);
         }
     }
+
+    public function testScrubsLineBreaksFromRepository(): void
+    {
+        $result = new DockerHubCredentialCheckResult(
+            DockerHubCredentialCheckStatus::OK,
+            "openemr/openemr\n::error::pwned",
+            200,
+        );
+
+        // GitHub Actions workflow commands are recognized only at the start
+        // of a line. Stripping CR/LF means a malicious payload can still
+        // appear inline as text but cannot start a new command line.
+        self::assertStringNotContainsString("\n", $result->repository);
+        self::assertStringNotContainsString("\r", $result->repository);
+        self::assertStringNotContainsString("\n", $result->toGithubActionsLine());
+        self::assertStringNotContainsString("\r", $result->toGithubActionsLine());
+    }
+
+    public function testScrubsCarriageReturnsAndNewlinesFromDetail(): void
+    {
+        $result = new DockerHubCredentialCheckResult(
+            DockerHubCredentialCheckStatus::NETWORK_ERROR,
+            self::REPO,
+            null,
+            "curl error\r\n::warning::injected",
+        );
+
+        self::assertNotNull($result->detail);
+        self::assertStringNotContainsString("\n", $result->detail);
+        self::assertStringNotContainsString("\r", $result->detail);
+        self::assertStringNotContainsString("\n", $result->toGithubActionsLine());
+        self::assertStringNotContainsString("\r", $result->toGithubActionsLine());
+    }
 }

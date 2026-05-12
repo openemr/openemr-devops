@@ -49,6 +49,10 @@ use Symfony\Component\Console\SingleCommandApplication;
         }
         /** @var string $repository */
         $repository = $input->getOption('repository');
+        if (preg_match('#^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9._-]+$#', $repository) !== 1) {
+            $output->writeln('::error::--repository must match owner/name (alphanumeric, dot, underscore, dash).');
+            return 1;
+        }
 
         $result = (new DockerHubCredentialChecker())->check($username, $token, $repository);
         $output->writeln($result->toGithubActionsLine());

@@ -16,12 +16,31 @@ namespace OpenEMR\Release;
 
 final readonly class DockerHubCredentialCheckResult
 {
+    public DockerHubCredentialCheckStatus $status;
+    public string $repository;
+    public ?int $httpStatus;
+    public ?string $detail;
+
     public function __construct(
-        public DockerHubCredentialCheckStatus $status,
-        public string $repository,
-        public ?int $httpStatus = null,
-        public ?string $detail = null,
+        DockerHubCredentialCheckStatus $status,
+        string $repository,
+        ?int $httpStatus = null,
+        ?string $detail = null,
     ) {
+        // Defensively scrub CR/LF from caller-controlled strings before they
+        // ever get formatted into a `::error::` / `::notice::` line. The
+        // workflow-command syntax is line-based; an embedded newline could
+        // inject a second command. Belt-and-braces — the bin layer also
+        // validates repository against an owner/name pattern up front.
+        $this->status = $status;
+        $this->repository = $this->scrubLineBreaks($repository);
+        $this->httpStatus = $httpStatus;
+        $this->detail = $detail !== null ? $this->scrubLineBreaks($detail) : null;
+    }
+
+    private function scrubLineBreaks(string $value): string
+    {
+        return strtr($value, ["\r" => ' ', "\n" => ' ']);
     }
 
     /**
