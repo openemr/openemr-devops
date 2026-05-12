@@ -60,10 +60,11 @@ The current shape is the cost of **PHPStan level 10 + strict tests + structured 
 ## Running checks locally
 
 ```sh
-composer test           # PHPUnit
-composer phpstan        # level 10 + strict-rules
-composer phpcs          # PSR12 + line-length
-composer rector-check   # dry-run modernization checks
-composer check          # all four
-composer fix            # phpcbf + rector-fix
+composer test            # PHPUnit
+composer phpstan         # level 10 + strict-rules
+composer phpcs           # PSR12 + line-length
+composer rector-check    # dry-run modernization checks
+composer require-checker # composer.json declares every used symbol
+composer check           # all five
+composer fix             # phpcbf + rector-fix
 ```
