@@ -18,4 +18,5 @@ enum DockerHubCredentialCheckStatus: string
     case INVALID_CREDENTIAL = 'invalid_credential';
     case INSUFFICIENT_SCOPE = 'insufficient_scope';
     case UNEXPECTED_RESPONSE = 'unexpected_response';
+    case NETWORK_ERROR = 'network_error';
 }

@@ -20,37 +20,49 @@ final readonly class DockerHubCredentialCheckResult
         public DockerHubCredentialCheckStatus $status,
         public string $repository,
         public ?int $httpStatus = null,
+        public ?string $detail = null,
     ) {
     }
 
     /**
-     * Map raw HTTP responses from Docker Hub's login + repository read +
+     * Map raw HTTP statuses from Docker Hub's login + repository read +
      * repository write probes to a result. Pure: no network. Tested directly.
      *
-     * - $jwt is the token returned by /v2/users/login/ (null on auth failure)
-     * - $readStatus is the GET /v2/repositories/<repo>/ status (null if we
-     *   never reached that step)
+     * - $loginStatus is the POST /v2/users/login/ HTTP status (null if the
+     *   request itself failed at the transport layer)
+     * - $jwt is the token extracted from the login response (null if the
+     *   response was unparseable JSON or missing the token field)
+     * - $readStatus is the GET /v2/repositories/<repo>/ status (null if the
+     *   step was not reached)
+     * - $descriptionsParsed is whether the GET response body was usable JSON
+     *   with the expected fields (null if read step not reached)
      * - $writeStatus is the no-op PATCH /v2/repositories/<repo>/ status
-     *   (null if we couldn't read the existing description and so couldn't
-     *   send a no-op write)
+     *   (null if the step was not reached)
      */
     public static function interpret(
         string $repository,
+        ?int $loginStatus,
         ?string $jwt,
         ?int $readStatus,
+        ?bool $descriptionsParsed,
         ?int $writeStatus,
     ): self {
+        if ($loginStatus === null) {
+            return new self(DockerHubCredentialCheckStatus::NETWORK_ERROR, $repository);
+        }
         if (in_array($jwt, [null, '', 'null'], true)) {
-            return new self(DockerHubCredentialCheckStatus::INVALID_CREDENTIAL, $repository);
+            return self::fromAuthFailure($repository, $loginStatus);
         }
-        if ($readStatus !== 200) {
-            return new self(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $repository, $readStatus);
+        if ($readStatus === null) {
+            return new self(DockerHubCredentialCheckStatus::NETWORK_ERROR, $repository);
         }
-        return match ($writeStatus) {
-            200 => new self(DockerHubCredentialCheckStatus::OK, $repository, 200),
-            403 => new self(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $repository, 403),
-            default => new self(DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE, $repository, $writeStatus),
-        };
+        if ($readStatus !== 200 || $descriptionsParsed !== true) {
+            return self::fromAccessFailure($repository, $readStatus);
+        }
+        if ($writeStatus === null) {
+            return new self(DockerHubCredentialCheckStatus::NETWORK_ERROR, $repository);
+        }
+        return self::fromWriteStatus($repository, $writeStatus);
     }
 
     public function isOk(): bool
@@ -70,18 +82,62 @@ final readonly class DockerHubCredentialCheckResult
                 $this->repository,
             ),
             DockerHubCredentialCheckStatus::INVALID_CREDENTIAL =>
-                '::error::Login returned no JWT — DOCKERHUB_USERNAME / DOCKERHUB_TOKEN appear invalid.',
+                '::error::Login failed (HTTP ' . $this->httpStatusOrUnknown()
+                . ') — DOCKERHUB_USERNAME / DOCKERHUB_TOKEN appear invalid.',
             DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE => sprintf(
                 '::error::Login succeeded but the token lacks required scope on %s (HTTP %s). '
                 . 'Verify R/W/D scope on this repository.',
                 $this->repository,
-                $this->httpStatus ?? '(unknown)',
+                $this->httpStatusOrUnknown(),
             ),
             DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE => sprintf(
-                '::error::Unexpected HTTP %s from Docker Hub API for %s.',
-                $this->httpStatus ?? '(unknown)',
+                '::error::Unexpected response from Docker Hub API for %s (HTTP %s). %s',
                 $this->repository,
+                $this->httpStatusOrUnknown(),
+                $this->detail ?? 'Re-run, check status.docker.com, then re-evaluate.',
+            ),
+            DockerHubCredentialCheckStatus::NETWORK_ERROR => sprintf(
+                '::error::Could not reach Docker Hub API for %s. %s',
+                $this->repository,
+                $this->detail ?? 'Re-run, check status.docker.com, then re-evaluate.',
             ),
         };
+    }
+
+    private static function fromAuthFailure(string $repository, int $loginStatus): self
+    {
+        return match (true) {
+            in_array($loginStatus, [401, 403], true) =>
+                new self(DockerHubCredentialCheckStatus::INVALID_CREDENTIAL, $repository, $loginStatus),
+            default =>
+                new self(DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE, $repository, $loginStatus),
+        };
+    }
+
+    private static function fromAccessFailure(string $repository, int $readStatus): self
+    {
+        return match (true) {
+            in_array($readStatus, [401, 403], true) =>
+                new self(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $repository, $readStatus),
+            default =>
+                new self(DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE, $repository, $readStatus),
+        };
+    }
+
+    private static function fromWriteStatus(string $repository, int $writeStatus): self
+    {
+        return match (true) {
+            $writeStatus === 200 =>
+                new self(DockerHubCredentialCheckStatus::OK, $repository, 200),
+            in_array($writeStatus, [401, 403], true) =>
+                new self(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $repository, $writeStatus),
+            default =>
+                new self(DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE, $repository, $writeStatus),
+        };
+    }
+
+    private function httpStatusOrUnknown(): string
+    {
+        return $this->httpStatus !== null ? (string) $this->httpStatus : '(unknown)';
     }
 }

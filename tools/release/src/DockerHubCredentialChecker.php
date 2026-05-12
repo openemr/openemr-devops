@@ -16,6 +16,11 @@
  * last-modified timestamp on the repo. The actual readme push does the same
  * thing every time it runs, so this is not a novel side effect.
  *
+ * Internally tolerant of transport errors and unparseable responses (HTML
+ * error pages, partial JSON, etc.) — both surface as a structured
+ * DockerHubCredentialCheckResult so the workflow always emits exactly one
+ * `::error::` or `::notice::` line.
+ *
  * @package   openemr-devops
  * @link      https://www.open-emr.org
  * @author    Michael A. Smith <michael@opencoreemr.com>
@@ -38,35 +43,93 @@ final readonly class DockerHubCredentialChecker
 
     public function check(string $username, string $token, string $repository): DockerHubCredentialCheckResult
     {
-        $jwt = $this->mintJwt($username, $token);
-        if ($jwt === null) {
-            return DockerHubCredentialCheckResult::interpret($repository, null, null, null);
+        try {
+            [$loginStatus, $jwt] = $this->mintJwt($username, $token);
+        } catch (\RuntimeException $e) {
+            return new DockerHubCredentialCheckResult(
+                DockerHubCredentialCheckStatus::NETWORK_ERROR,
+                $repository,
+                detail: $e->getMessage(),
+            );
+        }
+        if ($loginStatus !== 200 || $jwt === null) {
+            return DockerHubCredentialCheckResult::interpret(
+                $repository,
+                $loginStatus,
+                $jwt,
+                null,
+                null,
+                null,
+            );
         }
 
-        [$readStatus, $descriptions] = $this->fetchDescriptions($jwt, $repository);
+        try {
+            [$readStatus, $descriptions] = $this->fetchDescriptions($jwt, $repository);
+        } catch (\RuntimeException $e) {
+            return new DockerHubCredentialCheckResult(
+                DockerHubCredentialCheckStatus::NETWORK_ERROR,
+                $repository,
+                detail: $e->getMessage(),
+            );
+        }
         if ($readStatus !== 200 || $descriptions === null) {
-            return DockerHubCredentialCheckResult::interpret($repository, $jwt, $readStatus, null);
+            return DockerHubCredentialCheckResult::interpret(
+                $repository,
+                $loginStatus,
+                $jwt,
+                $readStatus,
+                $descriptions !== null,
+                null,
+            );
         }
 
-        $writeStatus = $this->probeWrite($jwt, $repository, $descriptions);
-        return DockerHubCredentialCheckResult::interpret($repository, $jwt, $readStatus, $writeStatus);
+        try {
+            $writeStatus = $this->probeWrite($jwt, $repository, $descriptions);
+        } catch (\RuntimeException $e) {
+            return new DockerHubCredentialCheckResult(
+                DockerHubCredentialCheckStatus::NETWORK_ERROR,
+                $repository,
+                detail: $e->getMessage(),
+            );
+        }
+
+        return DockerHubCredentialCheckResult::interpret(
+            $repository,
+            $loginStatus,
+            $jwt,
+            $readStatus,
+            true,
+            $writeStatus,
+        );
     }
 
-    private function mintJwt(string $username, string $token): ?string
+    /**
+     * @return array{int, ?string}
+     */
+    private function mintJwt(string $username, string $token): array
     {
-        $body = json_encode(['username' => $username, 'password' => $token], JSON_THROW_ON_ERROR);
+        try {
+            $body = json_encode(['username' => $username, 'password' => $token], JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            // Encoding our own input shouldn't fail; treat as transport-level.
+            throw new \RuntimeException('failed to encode login payload: ' . $e->getMessage(), 0, $e);
+        }
         [$status, $responseBody] = $this->httpRequest('POST', $this->apiBase . '/users/login/', [
             'Content-Type: application/json',
         ], $body);
 
         if ($status !== 200) {
-            return null;
+            return [$status, null];
         }
-        $decoded = json_decode($responseBody, true, flags: JSON_THROW_ON_ERROR);
+        try {
+            $decoded = json_decode($responseBody, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return [$status, null];
+        }
         if (!is_array($decoded) || !isset($decoded['token']) || !is_string($decoded['token'])) {
-            return null;
+            return [$status, null];
         }
-        return $decoded['token'];
+        return [$status, $decoded['token']];
     }
 
     /**
@@ -80,7 +143,11 @@ final readonly class DockerHubCredentialChecker
         if ($status !== 200) {
             return [$status, null];
         }
-        $decoded = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        try {
+            $decoded = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return [$status, null];
+        }
         if (!is_array($decoded)) {
             return [$status, null];
         }
@@ -94,7 +161,11 @@ final readonly class DockerHubCredentialChecker
      */
     private function probeWrite(string $jwt, string $repository, array $descriptions): int
     {
-        $body = json_encode($descriptions, JSON_THROW_ON_ERROR);
+        try {
+            $body = json_encode($descriptions, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            throw new \RuntimeException('failed to encode patch payload: ' . $e->getMessage(), 0, $e);
+        }
         [$status] = $this->httpRequest('PATCH', $this->apiBase . '/repositories/' . $repository . '/', [
             'Authorization: JWT ' . $jwt,
             'Content-Type: application/json',
