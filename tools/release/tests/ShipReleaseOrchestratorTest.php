@@ -386,6 +386,8 @@ final class ShipReleaseOrchestratorTest extends TestCase
         self::assertFalse($result->wasSuccessful());
         self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[0]->status);
         self::assertStringContainsString('CLOSED without being merged', $result->steps[0]->reasons[0]);
+        self::assertSame(ShipReleaseStepStatus::NOT_REACHED, $result->steps[1]->status);
+        self::assertSame(ShipReleaseStepStatus::NOT_REACHED, $result->steps[2]->status);
         self::assertSame([], $api->merges);
     }
 

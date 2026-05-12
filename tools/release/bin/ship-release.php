@@ -20,6 +20,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use OpenEMR\Release\GhPullRequestApi;
 use OpenEMR\Release\PullRequestTarget;
+use OpenEMR\Release\ShipReleaseOptions;
 use OpenEMR\Release\ShipReleaseOrchestrator;
 use OpenEMR\Release\ShipReleaseRenderer;
 use OpenEMR\Release\SystemClock;
@@ -43,15 +44,13 @@ use Symfony\Component\Console\SingleCommandApplication;
     )
     ->addOption('status-target-url', null, InputOption::VALUE_REQUIRED, 'target_url for the ship-approved status', '')
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
-        $stringOpt = static fn (string $name): string => is_string($v = $input->getOption($name)) ? $v : '';
-
-        $version = $stringOpt('version');
-        $relBranch = $stringOpt('rel-branch');
+        $version = ShipReleaseOptions::asString($input, 'version');
+        $relBranch = ShipReleaseOptions::asString($input, 'rel-branch');
         if ($version === '' || $relBranch === '') {
             $output->writeln('<error>--version and --rel-branch are required</error>');
             return 1;
         }
-        $timeoutRaw = $stringOpt('timeout-seconds');
+        $timeoutRaw = ShipReleaseOptions::asString($input, 'timeout-seconds');
         if (!ctype_digit($timeoutRaw) || (int) $timeoutRaw < 1) {
             $output->writeln('<error>--timeout-seconds must be a positive integer</error>');
             return 1;
@@ -62,7 +61,7 @@ use Symfony\Component\Console\SingleCommandApplication;
             new SystemClock(),
             (int) $timeoutRaw,
             (bool) $input->getOption('dry-run'),
-            $stringOpt('status-target-url'),
+            ShipReleaseOptions::asString($input, 'status-target-url'),
         );
         $result = $orchestrator->ship(PullRequestTarget::forRelease($version, $relBranch));
         ShipReleaseRenderer::render($output, $result);

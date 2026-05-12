@@ -29,7 +29,7 @@ final readonly class PullRequestSnapshot
         return $this->state === PullRequestState::Merged;
     }
 
-    public function isClosedWithoutMerging(): bool
+    public function isClosed(): bool
     {
         return $this->state === PullRequestState::Closed;
     }

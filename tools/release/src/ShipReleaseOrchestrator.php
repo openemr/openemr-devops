@@ -122,7 +122,7 @@ final readonly class ShipReleaseOrchestrator
                 $blocked[$key] = ['no PR found for branch ' . $target->branch];
                 continue;
             }
-            if ($snapshot->isClosedWithoutMerging()) {
+            if ($snapshot->isClosed()) {
                 $blocked[$key] = [sprintf(
                     'PR #%d is CLOSED without being merged — refusing to ship a closed PR',
                     $snapshot->number,
@@ -263,7 +263,7 @@ final readonly class ShipReleaseOrchestrator
             $stepReadiness = $readiness[$target->roleLabel->value] ?? null;
             if ($target->roleLabel === RoleLabel::Docs) {
                 $refresh = $this->refreshDocsBeforeMerge($target, $snapshot, $snapshots, $mergedThisRun);
-                if ($refresh instanceof \OpenEMR\Release\DocsRefreshResult) {
+                if ($refresh instanceof DocsRefreshResult) {
                     if (!$refresh->isSuccess()) {
                         $steps[] = $this->blockedStep($target, $refresh->snapshot?->number, $refresh->blockingReasons);
                         $stopReason = $refresh->stopReason;
