@@ -9,6 +9,13 @@
  * path, which is exactly the failure mode openemr/openemr-devops#714 had to
  * recover from.
  *
+ * Verifies write scope by reading the current repo description fields and
+ * issuing a no-op PATCH that writes the same values back. That exercises the
+ * exact endpoint peter-evans/dockerhub-description uses; a read-only token
+ * passes the GET but 403s on the PATCH. Side effect: bumps Docker Hub's
+ * last-modified timestamp on the repo. The actual readme push does the same
+ * thing every time it runs, so this is not a novel side effect.
+ *
  * @package   openemr-devops
  * @link      https://www.open-emr.org
  * @author    Michael A. Smith <michael@opencoreemr.com>
@@ -32,10 +39,17 @@ final readonly class DockerHubCredentialChecker
     public function check(string $username, string $token, string $repository): DockerHubCredentialCheckResult
     {
         $jwt = $this->mintJwt($username, $token);
-        $repoStatus = $jwt !== null
-            ? $this->probeRepository($jwt, $repository)
-            : null;
-        return DockerHubCredentialCheckResult::interpret($repository, $jwt, $repoStatus);
+        if ($jwt === null) {
+            return DockerHubCredentialCheckResult::interpret($repository, null, null, null);
+        }
+
+        [$readStatus, $descriptions] = $this->fetchDescriptions($jwt, $repository);
+        if ($readStatus !== 200 || $descriptions === null) {
+            return DockerHubCredentialCheckResult::interpret($repository, $jwt, $readStatus, null);
+        }
+
+        $writeStatus = $this->probeWrite($jwt, $repository, $descriptions);
+        return DockerHubCredentialCheckResult::interpret($repository, $jwt, $readStatus, $writeStatus);
     }
 
     private function mintJwt(string $username, string $token): ?string
@@ -55,11 +69,36 @@ final readonly class DockerHubCredentialChecker
         return $decoded['token'];
     }
 
-    private function probeRepository(string $jwt, string $repository): int
+    /**
+     * @return array{int, ?array{description: string, full_description: string}}
+     */
+    private function fetchDescriptions(string $jwt, string $repository): array
     {
-        [$status] = $this->httpRequest('GET', $this->apiBase . '/repositories/' . $repository . '/', [
+        [$status, $body] = $this->httpRequest('GET', $this->apiBase . '/repositories/' . $repository . '/', [
             'Authorization: JWT ' . $jwt,
         ]);
+        if ($status !== 200) {
+            return [$status, null];
+        }
+        $decoded = json_decode($body, true, flags: JSON_THROW_ON_ERROR);
+        if (!is_array($decoded)) {
+            return [$status, null];
+        }
+        $description = is_string($decoded['description'] ?? null) ? $decoded['description'] : '';
+        $fullDescription = is_string($decoded['full_description'] ?? null) ? $decoded['full_description'] : '';
+        return [$status, ['description' => $description, 'full_description' => $fullDescription]];
+    }
+
+    /**
+     * @param array{description: string, full_description: string} $descriptions
+     */
+    private function probeWrite(string $jwt, string $repository, array $descriptions): int
+    {
+        $body = json_encode($descriptions, JSON_THROW_ON_ERROR);
+        [$status] = $this->httpRequest('PATCH', $this->apiBase . '/repositories/' . $repository . '/', [
+            'Authorization: JWT ' . $jwt,
+            'Content-Type: application/json',
+        ], $body);
         return $status;
     }
 

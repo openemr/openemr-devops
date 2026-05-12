@@ -20,7 +20,7 @@ final class DockerHubCredentialCheckResultTest extends TestCase
 {
     public function testInterpretReturnsInvalidCredentialWhenJwtMissing(): void
     {
-        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', null, null);
+        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', null, null, null);
 
         self::assertSame(DockerHubCredentialCheckStatus::INVALID_CREDENTIAL, $result->status);
         self::assertFalse($result->isOk());
@@ -29,14 +29,33 @@ final class DockerHubCredentialCheckResultTest extends TestCase
 
     public function testInterpretRejectsLiteralStringNullJwt(): void
     {
-        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', 'null', null);
+        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', 'null', null, null);
 
         self::assertSame(DockerHubCredentialCheckStatus::INVALID_CREDENTIAL, $result->status);
     }
 
-    public function testInterpretReturnsOkOnHttp200(): void
+    public function testInterpretReturnsInsufficientScopeWhenReadFails(): void
     {
-        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', 'jwt-value', 200);
+        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', 'jwt-value', 403, null);
+
+        self::assertSame(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $result->status);
+        self::assertSame(403, $result->httpStatus);
+        self::assertStringContainsString('lacks required scope on openemr/openemr', $result->toGithubActionsLine());
+        self::assertStringContainsString('HTTP 403', $result->toGithubActionsLine());
+    }
+
+    public function testInterpretReturnsInsufficientScopeWhenReadSucceedsButWriteIs403(): void
+    {
+        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', 'jwt-value', 200, 403);
+
+        self::assertSame(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $result->status);
+        self::assertSame(403, $result->httpStatus, 'httpStatus reflects the failing probe (write)');
+        self::assertStringContainsString('R/W/D scope', $result->toGithubActionsLine());
+    }
+
+    public function testInterpretReturnsOkWhenBothReadAndWriteSucceed(): void
+    {
+        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', 'jwt-value', 200, 200);
 
         self::assertSame(DockerHubCredentialCheckStatus::OK, $result->status);
         self::assertTrue($result->isOk());
@@ -45,21 +64,12 @@ final class DockerHubCredentialCheckResultTest extends TestCase
             '::notice::Credential is valid for openemr/openemr',
             $result->toGithubActionsLine(),
         );
+        self::assertStringContainsString('read + no-op write confirmed', $result->toGithubActionsLine());
     }
 
-    public function testInterpretReturnsInsufficientScopeOnHttp403(): void
+    public function testInterpretReturnsUnexpectedForOtherWriteStatus(): void
     {
-        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', 'jwt-value', 403);
-
-        self::assertSame(DockerHubCredentialCheckStatus::INSUFFICIENT_SCOPE, $result->status);
-        self::assertFalse($result->isOk());
-        self::assertStringContainsString('lacks access to openemr/openemr', $result->toGithubActionsLine());
-        self::assertStringContainsString('R/W/D scope', $result->toGithubActionsLine());
-    }
-
-    public function testInterpretReturnsUnexpectedForOtherStatus(): void
-    {
-        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', 'jwt-value', 500);
+        $result = DockerHubCredentialCheckResult::interpret('openemr/openemr', 'jwt-value', 200, 500);
 
         self::assertSame(DockerHubCredentialCheckStatus::UNEXPECTED_RESPONSE, $result->status);
         self::assertSame(500, $result->httpStatus);
