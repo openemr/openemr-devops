@@ -153,6 +153,14 @@ tasks:
         php bin/lint-versions.php
         --repo={{shellQuote (default "../.." .ROTATE_REPO)}}
 
+  ci:check-dockerhub-credential:
+    desc: Smoke-test DOCKERHUB_USERNAME / DOCKERHUB_TOKEN against the readme-push API path
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/check-dockerhub-credential.php
+        {{if .REPOSITORY}}--repository={{shellQuote .REPOSITORY}}{{end}}
+
   release:verify-tag:
     desc: Verify a release tag is annotated and well-formed per #664 spec
     requires:
