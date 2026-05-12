@@ -28,6 +28,7 @@ final readonly class ShipReleaseOrchestrator
     public const STATUS_CONTEXT = 'release/ship-approved';
     public const STATUS_DESCRIPTION = 'Approved by ship-release workflow';
     private const POLL_INTERVAL_SECONDS = 15;
+    private const STATUS_DESCRIPTION_MAX = 140;
 
     public function __construct(
         private PullRequestApi $api,
@@ -93,7 +94,7 @@ final readonly class ShipReleaseOrchestrator
     {
         $out = [];
         foreach ($targets as $target) {
-            $out[$target->roleLabel] = $this->api->findByHead($target->repo, $target->branch);
+            $out[$target->roleLabel->value] = $this->api->findByHead($target->repo, $target->branch);
         }
         return $out;
     }
@@ -115,13 +116,21 @@ final readonly class ShipReleaseOrchestrator
         $readiness = [];
         $blocked = [];
         foreach ($targets as $target) {
-            $snapshot = $snapshots[$target->roleLabel] ?? null;
+            $key = $target->roleLabel->value;
+            $snapshot = $snapshots[$key] ?? null;
             if ($snapshot === null) {
-                $blocked[$target->roleLabel] = ['no PR found for branch ' . $target->branch];
+                $blocked[$key] = ['no PR found for branch ' . $target->branch];
+                continue;
+            }
+            if ($snapshot->isClosedWithoutMerging()) {
+                $blocked[$key] = [sprintf(
+                    'PR #%d is CLOSED without being merged — refusing to ship a closed PR',
+                    $snapshot->number,
+                )];
                 continue;
             }
             if ($snapshot->baseRefName !== $target->expectedBase) {
-                $blocked[$target->roleLabel] = [sprintf(
+                $blocked[$key] = [sprintf(
                     'PR base is %s, expected %s — refusing to merge a PR opened against the wrong base',
                     $snapshot->baseRefName,
                     $target->expectedBase,
@@ -132,15 +141,16 @@ final readonly class ShipReleaseOrchestrator
                 continue;
             }
             $check = $this->api->getReadiness($target->repo, $snapshot->number);
-            $readiness[$target->roleLabel] = $check;
+            $readiness[$key] = $check;
             if (!$check->isReady()) {
-                $blocked[$target->roleLabel] = $check->blockingReasons;
+                $blocked[$key] = $check->blockingReasons;
             }
         }
 
         $steps = [];
         foreach ($targets as $target) {
-            $snapshot = $snapshots[$target->roleLabel] ?? null;
+            $key = $target->roleLabel->value;
+            $snapshot = $snapshots[$key] ?? null;
             if ($snapshot !== null && $snapshot->isMerged()) {
                 $steps[] = new ShipReleaseStepResult(
                     $target,
@@ -151,13 +161,13 @@ final readonly class ShipReleaseOrchestrator
                 );
                 continue;
             }
-            if (isset($blocked[$target->roleLabel])) {
+            if (isset($blocked[$key])) {
                 $steps[] = new ShipReleaseStepResult(
                     $target,
                     ShipReleaseStepStatus::BLOCKED,
                     $snapshot?->number,
                     null,
-                    $blocked[$target->roleLabel],
+                    $blocked[$key],
                 );
                 continue;
             }
@@ -188,7 +198,7 @@ final readonly class ShipReleaseOrchestrator
     {
         $steps = [];
         foreach ($targets as $target) {
-            $snapshot = $snapshots[$target->roleLabel] ?? null;
+            $snapshot = $snapshots[$target->roleLabel->value] ?? null;
             if ($snapshot !== null && $snapshot->isMerged()) {
                 $steps[] = new ShipReleaseStepResult(
                     $target,
@@ -232,11 +242,11 @@ final readonly class ShipReleaseOrchestrator
                 continue;
             }
 
-            $snapshot = $snapshots[$target->roleLabel] ?? null;
+            $snapshot = $snapshots[$target->roleLabel->value] ?? null;
             // Preflight already filtered missing PRs.
             if ($snapshot === null) {
                 $steps[] = $this->blockedStep($target, null, ['no PR found for branch ' . $target->branch]);
-                $stopReason = sprintf('%s PR is missing', $target->roleLabel);
+                $stopReason = sprintf('%s PR is missing', $target->roleLabel->value);
                 continue;
             }
             if ($snapshot->isMerged()) {
@@ -250,36 +260,23 @@ final readonly class ShipReleaseOrchestrator
                 continue;
             }
 
-            // The conductor merge fires repository_dispatch handlers that re-render
-            // the docs PR. Two cases need a fresh state read before merging docs:
-            //   - conductor merged in *this* run: poll until head SHA flips (or
-            //     time out), then re-check readiness against the new SHA.
-            //   - conductor was already merged when we started (recovery case):
-            //     re-check readiness right now in case the previous run's
-            //     downstream re-render is still in flight. Don't poll — if the
-            //     PR isn't ready, fail fast and the operator re-runs.
-            $stepReadiness = $readiness[$target->roleLabel] ?? null;
-            if ($target->roleLabel === 'docs') {
+            $stepReadiness = $readiness[$target->roleLabel->value] ?? null;
+            if ($target->roleLabel === RoleLabel::Docs) {
                 $refresh = $this->refreshDocsBeforeMerge($target, $snapshot, $snapshots, $mergedThisRun);
-                if ($refresh !== null) {
-                    [$refreshedSnapshot, $refreshedReadiness, $refreshStopReason, $blockingReasons] = $refresh;
-                    if ($refreshStopReason !== null) {
-                        $steps[] = $this->blockedStep($target, $refreshedSnapshot?->number, $blockingReasons);
-                        $stopReason = $refreshStopReason;
+                if ($refresh instanceof \OpenEMR\Release\DocsRefreshResult) {
+                    if (!$refresh->isSuccess()) {
+                        $steps[] = $this->blockedStep($target, $refresh->snapshot?->number, $refresh->blockingReasons);
+                        $stopReason = $refresh->stopReason;
                         continue;
                     }
-                    // refresh succeeded — both fields are guaranteed non-null
-                    if (!$refreshedSnapshot instanceof PullRequestSnapshot || $refreshedReadiness === null) {
-                        throw new \LogicException('refreshDocsBeforeMerge returned inconsistent tuple');
-                    }
-                    $snapshot = $refreshedSnapshot;
-                    $stepReadiness = $refreshedReadiness;
+                    $snapshot = $refresh->snapshot;
+                    $stepReadiness = $refresh->readiness;
                 }
             }
 
-            if ($stepReadiness === null) {
+            if ($snapshot === null || $stepReadiness === null) {
                 throw new \LogicException(
-                    "ship-release: missing preflight readiness for {$target->roleLabel}",
+                    "ship-release: missing snapshot or readiness for {$target->roleLabel->value}",
                 );
             }
 
@@ -303,7 +300,7 @@ final readonly class ShipReleaseOrchestrator
                     $snapshot->number,
                     [sprintf('gh call failed: %s', $e->getMessage())],
                 );
-                $stopReason = sprintf('%s merge failed', $target->roleLabel);
+                $stopReason = sprintf('%s merge failed', $target->roleLabel->value);
                 continue;
             }
             $steps[] = new ShipReleaseStepResult(
@@ -325,16 +322,16 @@ final readonly class ShipReleaseOrchestrator
      */
     private function detectDocsFirst(array $targets, array $snapshots): ?string
     {
-        $docs = $snapshots['docs'] ?? null;
-        $conductor = $snapshots['conductor'] ?? null;
+        $docs = $snapshots[RoleLabel::Docs->value] ?? null;
+        $conductor = $snapshots[RoleLabel::Conductor->value] ?? null;
         if ($docs === null || !$docs->isMerged()) {
             return null;
         }
         if ($conductor !== null && $conductor->isMerged()) {
             return null;
         }
-        $conductorTarget = $this->findRequired($targets, 'conductor');
-        $docsTarget = $this->findRequired($targets, 'docs');
+        $conductorTarget = $this->findRequired($targets, RoleLabel::Conductor);
+        $docsTarget = $this->findRequired($targets, RoleLabel::Docs);
         return sprintf(
             'docs PR (%s#%d, branch %s) was merged before conductor PR (%s, branch %s).'
             . ' This is the unrecoverable docs-first case from issue #705 — the docs page'
@@ -350,14 +347,14 @@ final readonly class ShipReleaseOrchestrator
     /**
      * @param list<PullRequestTarget> $targets
      */
-    private function findRequired(array $targets, string $role): PullRequestTarget
+    private function findRequired(array $targets, RoleLabel $role): PullRequestTarget
     {
         foreach ($targets as $target) {
             if ($target->roleLabel === $role) {
                 return $target;
             }
         }
-        throw new \LogicException("ship-release targets list is missing role: {$role}");
+        throw new \LogicException("ship-release targets list is missing role: {$role->value}");
     }
 
     /**
@@ -369,55 +366,47 @@ final readonly class ShipReleaseOrchestrator
      *     is still in flight. Don't poll — if not ready, fail fast and the
      *     operator re-runs.
      *
-     * Returns null when no refresh is needed. Otherwise returns a tuple
-     * [snapshot, readiness, stopReason, blockingReasons]:
-     *   - on success, snapshot + readiness are non-null and stopReason is null
-     *   - on failure, stopReason is non-null and blockingReasons populated;
-     *     snapshot may be null if the PR has disappeared
+     * Returns null when no refresh is needed.
      *
-     * @param  array<string, ?PullRequestSnapshot> $snapshots
-     * @param  list<string>                        $mergedThisRun
-     * @return array{0: ?PullRequestSnapshot, 1: ?PullRequestReadiness, 2: ?string, 3: list<string>}|null
+     * @param array<string, ?PullRequestSnapshot> $snapshots
+     * @param list<RoleLabel>                     $mergedThisRun
      */
     private function refreshDocsBeforeMerge(
         PullRequestTarget $target,
         PullRequestSnapshot $current,
         array $snapshots,
         array $mergedThisRun,
-    ): ?array {
-        $conductorJustMerged = in_array('conductor', $mergedThisRun, true);
-        $conductorPreviouslyMerged = ($snapshots['conductor'] ?? null)?->isMerged() ?? false;
+    ): ?DocsRefreshResult {
+        $conductorJustMerged = in_array(RoleLabel::Conductor, $mergedThisRun, true);
+        $conductorPreviouslyMerged = ($snapshots[RoleLabel::Conductor->value] ?? null)?->isMerged() ?? false;
         if (!$conductorJustMerged && !$conductorPreviouslyMerged) {
             return null;
         }
         if ($conductorJustMerged) {
             $fresh = $this->awaitDownstreamUpdate($target, $current);
             if ($fresh instanceof PullRequestSnapshot && $fresh->headRefOid === $current->headRefOid) {
-                // Timed out waiting for the docs PR to be re-rendered. The
-                // DRAFT→FINAL flip hasn't landed; merging now would ship
-                // stale docs content. Block — operator re-runs once the
-                // downstream workflow completes.
                 $reason = sprintf(
                     'docs PR head SHA did not change after conductor merge (timed out waiting for downstream'
                     . ' re-render — head still %s)',
                     $current->headRefOid,
                 );
-                return [$fresh, null, $reason, [$reason]];
+                return DocsRefreshResult::blocked($fresh, $reason, [$reason]);
             }
         } else {
             $fresh = $this->api->findByHead($target->repo, $target->branch);
         }
         if (!$fresh instanceof PullRequestSnapshot) {
-            return [null, null, 'docs PR disappeared before merge', ['docs PR disappeared before merge']];
+            $disappeared = 'docs PR disappeared before merge';
+            return DocsRefreshResult::blocked(null, $disappeared, [$disappeared]);
         }
         $readiness = $this->api->getReadiness($target->repo, $fresh->number);
         if (!$readiness->isReady()) {
             $stopReason = $conductorJustMerged
                 ? 'docs PR not ready after conductor downstream update'
                 : 'docs PR not ready (re-checked after conductor was already merged)';
-            return [$fresh, null, $stopReason, $readiness->blockingReasons];
+            return DocsRefreshResult::blocked($fresh, $stopReason, $readiness->blockingReasons);
         }
-        return [$fresh, $readiness, null, []];
+        return DocsRefreshResult::success($fresh, $readiness);
     }
 
     /**
@@ -459,13 +448,16 @@ final readonly class ShipReleaseOrchestrator
 
     private function retractApprovalStatus(string $repo, string $sha, string $reason): void
     {
+        $prefix = 'ship-release failed: ';
+        $room = self::STATUS_DESCRIPTION_MAX - mb_strlen($prefix);
+        $description = $prefix . mb_substr($reason, 0, $room);
         try {
             $this->api->postCommitStatus(
                 $repo,
                 $sha,
                 self::STATUS_CONTEXT,
                 'failure',
-                'ship-release failed: ' . substr($reason, 0, 100),
+                $description,
                 $this->statusTargetUrl,
             );
         } catch (\RuntimeException) {

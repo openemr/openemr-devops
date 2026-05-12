@@ -25,7 +25,7 @@ final readonly class ShipReleaseRenderer
             $output->writeln('<error>✗ fatal:</error> ' . $result->fatalReason);
         }
         foreach ($result->steps as $step) {
-            $tag = sprintf('[%s] %s', $step->target->roleLabel, $step->target->repo);
+            $tag = sprintf('[%s] %s', $step->target->roleLabel->value, $step->target->repo);
             $pr = $step->prNumber !== null ? '#' . $step->prNumber : '(no PR)';
             self::renderStep($output, $step, $tag, $pr);
         }

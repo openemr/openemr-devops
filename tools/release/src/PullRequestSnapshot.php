@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Point-in-time snapshot of an open or closed pull request.
+ * Point-in-time snapshot of a pull request.
  *
  * @package   openemr-devops
  * @link      https://www.open-emr.org
@@ -20,12 +20,17 @@ final readonly class PullRequestSnapshot
         public int $number,
         public string $headRefOid,
         public string $baseRefName,
-        public ?\DateTimeImmutable $mergedAt,
+        public PullRequestState $state,
     ) {
     }
 
     public function isMerged(): bool
     {
-        return $this->mergedAt instanceof \DateTimeImmutable;
+        return $this->state === PullRequestState::Merged;
+    }
+
+    public function isClosedWithoutMerging(): bool
+    {
+        return $this->state === PullRequestState::Closed;
     }
 }

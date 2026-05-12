@@ -27,7 +27,7 @@ final readonly class GhPullRequestApi implements PullRequestApi
             '--head', $branch,
             '--state', 'all',
             '--limit', '1',
-            '--json', 'number,headRefOid,baseRefName,mergedAt',
+            '--json', 'number,headRefOid,baseRefName,state',
         ]);
         $process->mustRun();
 
@@ -35,20 +35,17 @@ final readonly class GhPullRequestApi implements PullRequestApi
         if ($output === '' || $output === '[]') {
             return null;
         }
-        /** @var list<array{number: int, headRefOid: string, baseRefName: string, mergedAt: ?string}> $rows */
+        /** @var list<array{number: int, headRefOid: string, baseRefName: string, state: string}> $rows */
         $rows = $this->decodeJson($output, "gh pr list for {$repo}/{$branch}");
         if ($rows === []) {
             return null;
         }
         $row = $rows[0];
-        $mergedAt = ($row['mergedAt'] ?? null) !== null && $row['mergedAt'] !== ''
-            ? new \DateTimeImmutable($row['mergedAt'])
-            : null;
         return new PullRequestSnapshot(
             $row['number'],
             $row['headRefOid'],
             $row['baseRefName'],
-            $mergedAt,
+            PullRequestState::from($row['state']),
         );
     }
 
@@ -99,10 +96,32 @@ final readonly class GhPullRequestApi implements PullRequestApi
                 );
             }
         }
-        foreach ($data['statusCheckRollup'] as $check) {
-            $reasons = array_merge($reasons, $this->checkBlockingReason($check));
-        }
+        $reasons = array_merge(
+            $reasons,
+            self::reasonsFromStatusRollup($data['statusCheckRollup'], ShipReleaseOrchestrator::STATUS_CONTEXT),
+        );
         return new PullRequestReadiness($data['headRefOid'], $reasons);
+    }
+
+    /**
+     * Convert gh's statusCheckRollup into a list of blocking reasons. Skips
+     * any check whose context matches $ownContext — a prior ship-release run
+     * may have posted a failure status there, and the orchestrator must not
+     * gate itself on its own marker.
+     *
+     * @param  list<array<string, mixed>> $rollup
+     * @return list<string>
+     */
+    public static function reasonsFromStatusRollup(array $rollup, string $ownContext): array
+    {
+        $reasons = [];
+        foreach ($rollup as $check) {
+            if (($check['context'] ?? null) === $ownContext) {
+                continue;
+            }
+            $reasons = array_merge($reasons, self::checkBlockingReason($check));
+        }
+        return $reasons;
     }
 
     public function postCommitStatus(
@@ -143,20 +162,23 @@ final readonly class GhPullRequestApi implements PullRequestApi
         $merge->setTimeout(300.0);
         $merge->mustRun();
 
-        $view = new Process([
-            'gh', 'pr', 'view', (string) $number,
-            '--repo', $repo,
-            '--json', 'mergeCommit',
-            '--jq', '.mergeCommit.oid // ""',
-        ]);
-        $view->mustRun();
-        $sha = trim($view->getOutput());
-        if ($sha === '') {
-            throw new \RuntimeException(
-                "Merge of {$repo}#{$number} reported success but mergeCommit is empty",
-            );
+        // Best-effort fetch of the resulting merge commit SHA for the report.
+        // Failure here doesn't roll back the merge — the merge succeeded if
+        // mustRun() above didn't throw — so swallow the error and report a
+        // sentinel rather than failing the whole orchestration.
+        try {
+            $view = new Process([
+                'gh', 'pr', 'view', (string) $number,
+                '--repo', $repo,
+                '--json', 'mergeCommit',
+                '--jq', '.mergeCommit.oid // ""',
+            ]);
+            $view->mustRun();
+            $sha = trim($view->getOutput());
+        } catch (\RuntimeException) {
+            return '<merge-sha-unavailable>';
         }
-        return $sha;
+        return $sha === '' ? '<merge-sha-unavailable>' : $sha;
     }
 
     /**
@@ -181,15 +203,17 @@ final readonly class GhPullRequestApi implements PullRequestApi
      * @param array<string, mixed> $check
      * @return list<string>
      */
-    private function checkBlockingReason(array $check): array
+    private static function checkBlockingReason(array $check): array
     {
         $name = is_string($check['name'] ?? null) ? $check['name'] : 'unknown';
         $context = is_string($check['context'] ?? null) ? $check['context'] : $name;
 
-        // Check runs use status/conclusion; legacy commit statuses use state.
-        if (isset($check['conclusion'])) {
-            $conclusion = is_string($check['conclusion']) ? $check['conclusion'] : '';
-            $status = is_string($check['status'] ?? null) ? $check['status'] : '';
+        // Check runs use status/conclusion (conclusion may be null while in
+        // progress, so use array_key_exists, not isset). Legacy commit
+        // statuses use state.
+        if (array_key_exists('status', $check)) {
+            $status = is_string($check['status']) ? $check['status'] : '';
+            $conclusion = is_string($check['conclusion'] ?? null) ? $check['conclusion'] : '';
             if ($status !== 'COMPLETED') {
                 return [sprintf('check %s status=%s (need COMPLETED)', $name, $status)];
             }

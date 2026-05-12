@@ -14,7 +14,9 @@ namespace OpenEMR\Release\Tests;
 
 use OpenEMR\Release\PullRequestReadiness;
 use OpenEMR\Release\PullRequestSnapshot;
+use OpenEMR\Release\PullRequestState;
 use OpenEMR\Release\PullRequestTarget;
+use OpenEMR\Release\RoleLabel;
 use OpenEMR\Release\ShipReleaseOrchestrator;
 use OpenEMR\Release\ShipReleaseStepResult;
 use OpenEMR\Release\ShipReleaseStepStatus;
@@ -48,12 +50,17 @@ final class ShipReleaseOrchestratorTest extends TestCase
 
     private function open(int $number, string $head, string $base = 'master'): PullRequestSnapshot
     {
-        return new PullRequestSnapshot($number, $head, $base, null);
+        return new PullRequestSnapshot($number, $head, $base, PullRequestState::Open);
     }
 
     private function merged(int $number, string $head, string $base = 'master'): PullRequestSnapshot
     {
-        return new PullRequestSnapshot($number, $head, $base, new \DateTimeImmutable('2026-05-01T00:00:00Z'));
+        return new PullRequestSnapshot($number, $head, $base, PullRequestState::Merged);
+    }
+
+    private function closed(int $number, string $head, string $base = 'master'): PullRequestSnapshot
+    {
+        return new PullRequestSnapshot($number, $head, $base, PullRequestState::Closed);
     }
 
     private function openConductor(): PullRequestSnapshot
@@ -361,6 +368,39 @@ final class ShipReleaseOrchestratorTest extends TestCase
         self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[1]->status);
         self::assertStringContainsString('--match-head-commit does not match', $result->steps[1]->reasons[0]);
         self::assertSame(ShipReleaseStepStatus::NOT_REACHED, $result->steps[2]->status);
+    }
+
+    public function testClosedWithoutMergingPrBlocks(): void
+    {
+        // A PR that was closed without merging (state=CLOSED, mergedAt=null)
+        // must not be treated as "open and ready to merge".
+        $api = new FakePullRequestApi();
+        $api->setSnapshot(self::INFRA_REPO, self::INFRA_BRANCH, $this->closed(101, 'sha-infra'));
+        $api->setSnapshot(self::CONDUCTOR_REPO, self::CONDUCTOR_BRANCH, $this->openConductor());
+        $api->setSnapshot(self::DOCS_REPO, self::DOCS_BRANCH, $this->open(303, 'sha-docs'));
+        $api->setReadiness(self::CONDUCTOR_REPO, 202, $this->ready('sha-conductor'));
+        $api->setReadiness(self::DOCS_REPO, 303, $this->ready('sha-docs'));
+
+        $result = (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($this->targets());
+
+        self::assertFalse($result->wasSuccessful());
+        self::assertSame(ShipReleaseStepStatus::BLOCKED, $result->steps[0]->status);
+        self::assertStringContainsString('CLOSED without being merged', $result->steps[0]->reasons[0]);
+        self::assertSame([], $api->merges);
+    }
+
+    public function testDuplicateMergeOrderThrowsLogicException(): void
+    {
+        $api = new FakePullRequestApi();
+        $targets = [
+            new PullRequestTarget('a/x', 'b1', 'master', RoleLabel::Infra, 1),
+            new PullRequestTarget('a/y', 'b2', 'master', RoleLabel::Conductor, 1),
+            new PullRequestTarget('a/z', 'b3', 'master', RoleLabel::Docs, 2),
+        ];
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('duplicate mergeOrder');
+        (new ShipReleaseOrchestrator($api, new FakeClock()))->ship($targets);
     }
 
     public function testMergeFailureRetractsApprovalStatus(): void

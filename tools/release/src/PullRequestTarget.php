@@ -21,7 +21,7 @@ final readonly class PullRequestTarget
         public string $repo,
         public string $branch,
         public string $expectedBase,
-        public string $roleLabel,
+        public RoleLabel $roleLabel,
         public int $mergeOrder,
     ) {
     }
@@ -37,9 +37,9 @@ final readonly class PullRequestTarget
     public static function forRelease(string $version, string $relBranch): array
     {
         return [
-            new self('openemr/openemr-devops', 'release-rotation/auto', 'master', 'infra', 1),
-            new self('openemr/openemr', "release-prep/{$relBranch}", $relBranch, 'conductor', 2),
-            new self('openemr/website-openemr', "release-docs/{$version}", 'master', 'docs', 3),
+            new self('openemr/openemr-devops', 'release-rotation/auto', 'master', RoleLabel::Infra, 1),
+            new self('openemr/openemr', "release-prep/{$relBranch}", $relBranch, RoleLabel::Conductor, 2),
+            new self('openemr/website-openemr', "release-docs/{$version}", 'master', RoleLabel::Docs, 3),
         ];
     }
 }
