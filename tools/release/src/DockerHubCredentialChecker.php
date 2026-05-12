@@ -151,8 +151,16 @@ final readonly class DockerHubCredentialChecker
         if (!is_array($decoded)) {
             return [$status, null];
         }
-        $description = is_string($decoded['description'] ?? null) ? $decoded['description'] : '';
-        $fullDescription = is_string($decoded['full_description'] ?? null) ? $decoded['full_description'] : '';
+        // Strict: if either field is missing or not a string, treat as a parse
+        // failure rather than substituting empty strings. Substituting and then
+        // PATCHing would clear the live description if the API shape ever
+        // changed (e.g. description becomes nullable or gets renamed). Better
+        // to surface UNEXPECTED_RESPONSE than to write garbage back.
+        $description = $decoded['description'] ?? null;
+        $fullDescription = $decoded['full_description'] ?? null;
+        if (!is_string($description) || !is_string($fullDescription)) {
+            return [$status, null];
+        }
         return [$status, ['description' => $description, 'full_description' => $fullDescription]];
     }
 
