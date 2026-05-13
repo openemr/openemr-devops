@@ -30,6 +30,8 @@ on:
       - 'tools/release/src/TagVerifier.php'
       - 'tools/release/src/TagVerificationResult.php'
       - 'tools/release/tests/fixtures/vendored/**'
+      - 'tools/release/composer.json'
+      - 'tools/release/composer.lock'
 
 permissions:
   contents: read
