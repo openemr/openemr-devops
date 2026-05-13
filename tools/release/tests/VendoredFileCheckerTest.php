@@ -294,6 +294,28 @@ final class VendoredFileCheckerTest extends TestCase
         );
     }
 
+    public function testNonStringOverrideValueThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new VendoredFileChecker(
+            $this->canonicalRoot,
+            $this->consumerDir,
+            ['src/TagVerifier.php' => 123],
+        );
+    }
+
+    public function testNonStringOverrideKeyThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new VendoredFileChecker(
+            $this->canonicalRoot,
+            $this->consumerDir,
+            [42 => 'src/Release/TagVerifier.php'],
+        );
+    }
+
     /**
      * @param list<string>|null $only restrict which paths to write
      */

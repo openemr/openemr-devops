@@ -46,19 +46,32 @@ final readonly class VendoredFileChecker
         'src/TagVerificationResult.php',
     ];
 
+    /** @var array<string, string> */
+    private array $pathOverrides;
+
     /**
-     * @param array<string, string> $pathOverrides Map of canonical relative
-     *     path → consumer relative path. Unmapped entries default to the
-     *     canonical path. Unknown keys (not in VENDORED_PATHS) throw, as do
-     *     values that are absolute or contain `..` segments — overrides must
-     *     stay inside the consumer dir.
+     * @param array<array-key, mixed> $pathOverrides Map of canonical relative
+     *     path → consumer relative path. Validated at runtime since CLI/CI
+     *     callers can produce arbitrary input: keys and values must both be
+     *     strings; unmapped entries default to the canonical path; unknown
+     *     keys (not in VENDORED_PATHS) throw, as do values that are absolute
+     *     or contain `..` segments — overrides must stay inside the
+     *     consumer dir.
      */
     public function __construct(
         private string $canonicalRoot,
         private string $consumerDir,
-        private array $pathOverrides = [],
+        array $pathOverrides = [],
     ) {
+        $validated = [];
         foreach ($pathOverrides as $key => $value) {
+            if (!is_string($key) || !is_string($value)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Override entries must be string=>string, got %s=>%s',
+                    get_debug_type($key),
+                    get_debug_type($value),
+                ));
+            }
             if (!in_array($key, self::VENDORED_PATHS, true)) {
                 throw new \InvalidArgumentException(sprintf(
                     'Unknown override key %s; must be one of: %s',
@@ -73,7 +86,9 @@ final readonly class VendoredFileChecker
                     $value,
                 ));
             }
+            $validated[$key] = $value;
         }
+        $this->pathOverrides = $validated;
     }
 
     /**
