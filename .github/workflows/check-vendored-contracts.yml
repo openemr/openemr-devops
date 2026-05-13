@@ -73,29 +73,9 @@ jobs:
         working-directory: _canonical-openemr-devops/tools/release
         run: composer install --no-interaction --no-progress --no-dev
 
-      - name: Build override flags
-        id: overrides
-        env:
-          PATH_OVERRIDES: ${{ inputs.path_overrides }}
-        run: |
-          flags=''
-          while IFS= read -r line; do
-              line="${line## }"
-              line="${line%% }"
-              [[ -z $line ]] && continue
-              flags+=" --override $line"
-          done <<< "$PATH_OVERRIDES"
-          {
-              echo "flags<<EOF"
-              echo "$flags"
-              echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Check vendored contracts
         env:
           CONSUMER_PATH: ${{ github.workspace }}/${{ inputs.consumer_subpath }}
-          OVERRIDE_FLAGS: ${{ steps.overrides.outputs.flags }}
+          PATH_OVERRIDES: ${{ inputs.path_overrides }}
         working-directory: _canonical-openemr-devops/tools/release
-        run: |
-          # shellcheck disable=SC2086 # OVERRIDE_FLAGS is a flag list; word-split is intentional
-          php bin/check-vendored.php --consumer "$CONSUMER_PATH" $OVERRIDE_FLAGS
+        run: php bin/check-vendored.php --consumer "$CONSUMER_PATH" --overrides "$PATH_OVERRIDES"

@@ -8,8 +8,8 @@ name: Test Vendored Contracts (self-test)
 #                       wiring, composer install, and CLI invocation.
 # good-with-overrides — same content under a website-openemr-style
 #                       src/Release/ layout. Exercises the path_overrides
-#                       input end-to-end (newline-delimited parsing →
-#                       --override flags).
+#                       input end-to-end (newline-delimited string →
+#                       PHP-side parsing in --overrides).
 #
 # Drift-detection failure propagation isn't tested here — exit-code → job
 # status is GHA's intrinsic behavior, so a drifted fixture just turns the
@@ -22,7 +22,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/check-vendored-contracts.yml'
-      - '.github/workflows/_test-vendored-contracts.yml'
+      - '.github/workflows/vendored-contracts-self-test.yml'
       - 'tools/release/bin/check-vendored.php'
       - 'tools/release/src/VendoredFileChecker.php'
       - 'tools/release/src/VendoredDriftIssue.php'
