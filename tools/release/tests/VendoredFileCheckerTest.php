@@ -14,6 +14,7 @@ namespace OpenEMR\Release\Tests;
 
 use OpenEMR\Release\VendoredDriftIssue;
 use OpenEMR\Release\VendoredFileChecker;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class VendoredFileCheckerTest extends TestCase
@@ -266,6 +267,30 @@ final class VendoredFileCheckerTest extends TestCase
             $this->canonicalRoot,
             $this->consumerDir,
             ['not/a/canonical/path.php' => 'irrelevant'],
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unsafeOverrideValueProvider(): iterable
+    {
+        yield 'absolute path' => ['/etc/passwd'];
+        yield 'parent traversal' => ['../outside.php'];
+        yield 'embedded parent traversal' => ['src/../../outside.php'];
+        yield 'trailing parent traversal' => ['src/Release/..'];
+        yield 'empty value' => [''];
+    }
+
+    #[DataProvider('unsafeOverrideValueProvider')]
+    public function testUnsafeOverrideValueThrows(string $unsafeValue): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new VendoredFileChecker(
+            $this->canonicalRoot,
+            $this->consumerDir,
+            ['src/TagVerifier.php' => $unsafeValue],
         );
     }
 

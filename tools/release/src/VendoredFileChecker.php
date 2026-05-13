@@ -49,19 +49,28 @@ final readonly class VendoredFileChecker
     /**
      * @param array<string, string> $pathOverrides Map of canonical relative
      *     path → consumer relative path. Unmapped entries default to the
-     *     canonical path. Unknown keys (not in VENDORED_PATHS) throw.
+     *     canonical path. Unknown keys (not in VENDORED_PATHS) throw, as do
+     *     values that are absolute or contain `..` segments — overrides must
+     *     stay inside the consumer dir.
      */
     public function __construct(
         private string $canonicalRoot,
         private string $consumerDir,
         private array $pathOverrides = [],
     ) {
-        foreach (array_keys($pathOverrides) as $key) {
+        foreach ($pathOverrides as $key => $value) {
             if (!in_array($key, self::VENDORED_PATHS, true)) {
                 throw new \InvalidArgumentException(sprintf(
                     'Unknown override key %s; must be one of: %s',
                     $key,
                     implode(', ', self::VENDORED_PATHS),
+                ));
+            }
+            if ($value === '' || $value[0] === '/' || preg_match('#(^|/)\.\.(/|$)#', $value) === 1) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Override value for %s must be a relative path inside the consumer dir, got: %s',
+                    $key,
+                    $value,
                 ));
             }
         }
