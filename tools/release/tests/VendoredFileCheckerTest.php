@@ -222,6 +222,53 @@ final class VendoredFileCheckerTest extends TestCase
         self::assertContains('src/TagVerificationResult.php', VendoredFileChecker::VENDORED_PATHS);
     }
 
+    public function testPathOverrideMapsCanonicalToConsumerLayout(): void
+    {
+        foreach (VendoredFileChecker::VENDORED_PATHS as $rel) {
+            $consumerRel = $rel === 'src/TagVerifier.php' ? 'src/Release/TagVerifier.php' : $rel;
+            $this->writeFile($this->consumerDir, $consumerRel, $this->canonicalContents($rel));
+        }
+
+        $issues = (new VendoredFileChecker(
+            $this->canonicalRoot,
+            $this->consumerDir,
+            ['src/TagVerifier.php' => 'src/Release/TagVerifier.php'],
+        ))->check();
+
+        self::assertSame([], $issues);
+    }
+
+    public function testOverriddenPathDriftReportsConsumerRelativePath(): void
+    {
+        $this->writeCanonicalFixtures($this->consumerDir);
+        $this->writeFile(
+            $this->consumerDir,
+            'src/Release/TagVerifier.php',
+            sprintf(self::CANONICAL_PHP_TEMPLATE, 'OpenEMR\\Release') . "\n// extra\n",
+        );
+
+        $issues = (new VendoredFileChecker(
+            $this->canonicalRoot,
+            $this->consumerDir,
+            ['src/TagVerifier.php' => 'src/Release/TagVerifier.php'],
+        ))->check();
+
+        self::assertCount(1, $issues);
+        self::assertSame('src/Release/TagVerifier.php', $issues[0]->relativePath);
+        self::assertSame('drift', $issues[0]->kind);
+    }
+
+    public function testUnknownOverrideKeyThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new VendoredFileChecker(
+            $this->canonicalRoot,
+            $this->consumerDir,
+            ['not/a/canonical/path.php' => 'irrelevant'],
+        );
+    }
+
     /**
      * @param list<string>|null $only restrict which paths to write
      */

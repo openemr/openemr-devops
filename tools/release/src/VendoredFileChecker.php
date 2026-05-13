@@ -8,7 +8,9 @@
  * Layout assumption: the consumer mirrors the canonical relative paths under
  * its vendored dir. A consumer that vendors to `vendored/openemr-devops/`
  * therefore has `vendored/openemr-devops/contracts/dispatch.schema.json` and
- * `vendored/openemr-devops/src/TagVerifier.php`.
+ * `vendored/openemr-devops/src/TagVerifier.php`. A consumer that vendored
+ * into a different layout (e.g. `src/Release/TagVerifier.php`) can pass a
+ * `$pathOverrides` map keyed by canonical path → consumer-relative path.
  *
  * Equivalence is per-file-type, per the openemr-devops#664 spec:
  *
@@ -44,10 +46,25 @@ final readonly class VendoredFileChecker
         'src/TagVerificationResult.php',
     ];
 
+    /**
+     * @param array<string, string> $pathOverrides Map of canonical relative
+     *     path → consumer relative path. Unmapped entries default to the
+     *     canonical path. Unknown keys (not in VENDORED_PATHS) throw.
+     */
     public function __construct(
         private string $canonicalRoot,
         private string $consumerDir,
+        private array $pathOverrides = [],
     ) {
+        foreach (array_keys($pathOverrides) as $key) {
+            if (!in_array($key, self::VENDORED_PATHS, true)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Unknown override key %s; must be one of: %s',
+                    $key,
+                    implode(', ', self::VENDORED_PATHS),
+                ));
+            }
+        }
     }
 
     /**
@@ -58,7 +75,8 @@ final readonly class VendoredFileChecker
         $issues = [];
         foreach (self::VENDORED_PATHS as $rel) {
             $canonicalAbs = $this->canonicalRoot . '/' . $rel;
-            $consumerAbs = $this->consumerDir . '/' . $rel;
+            $consumerRel = $this->pathOverrides[$rel] ?? $rel;
+            $consumerAbs = $this->consumerDir . '/' . $consumerRel;
 
             if (!is_file($canonicalAbs)) {
                 $issues[] = new VendoredDriftIssue(
@@ -70,7 +88,7 @@ final readonly class VendoredFileChecker
             }
             if (!is_file($consumerAbs)) {
                 $issues[] = new VendoredDriftIssue(
-                    $rel,
+                    $consumerRel,
                     'missing_consumer',
                     'Consumer copy missing — vendor it from canonical at ' . $canonicalAbs,
                 );
@@ -78,7 +96,7 @@ final readonly class VendoredFileChecker
             }
             if (!$this->equivalent($rel, $canonicalAbs, $consumerAbs)) {
                 $issues[] = new VendoredDriftIssue(
-                    $rel,
+                    $consumerRel,
                     'drift',
                     'Consumer copy differs from canonical — re-vendor from ' . $canonicalAbs,
                 );

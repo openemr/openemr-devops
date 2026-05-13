@@ -42,6 +42,13 @@ use Symfony\Component\Console\SingleCommandApplication;
         InputOption::VALUE_REQUIRED,
         'Path to the consumer repo dir holding the vendored copies',
     )
+    ->addOption(
+        'override',
+        null,
+        InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY,
+        'Map a canonical path to a different consumer-relative path '
+            . '(e.g. --override src/TagVerifier.php=src/Release/TagVerifier.php). Repeatable.',
+    )
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
         $canonical = $input->getOption('canonical');
         if (!is_string($canonical) || $canonical === '') {
@@ -63,7 +70,34 @@ use Symfony\Component\Console\SingleCommandApplication;
             return 1;
         }
 
-        $issues = (new VendoredFileChecker($canonical, $consumer))->check();
+        $rawOverrides = $input->getOption('override');
+        if (!is_array($rawOverrides)) {
+            $rawOverrides = [];
+        }
+        $overrides = [];
+        foreach ($rawOverrides as $entry) {
+            if (!is_string($entry) || !str_contains($entry, '=')) {
+                $output->writeln(sprintf(
+                    '<error>--override expects CANONICAL=CONSUMER, got: %s</error>',
+                    is_string($entry) ? $entry : gettype($entry),
+                ));
+                return 1;
+            }
+            [$canon, $cons] = explode('=', $entry, 2);
+            if ($canon === '' || $cons === '') {
+                $output->writeln(sprintf('<error>--override has empty side: %s</error>', $entry));
+                return 1;
+            }
+            $overrides[$canon] = $cons;
+        }
+
+        try {
+            $checker = new VendoredFileChecker($canonical, $consumer, $overrides);
+        } catch (\InvalidArgumentException $e) {
+            $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
+            return 1;
+        }
+        $issues = $checker->check();
         if ($issues === []) {
             $output->writeln(sprintf(
                 '<info>✓</info> All %d vendored file(s) match canonical.',
