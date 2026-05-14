@@ -30,7 +30,8 @@ on:
         required: false
         type: string
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency:
   group: release-announcements-${{ github.event.client_payload.data.tag || inputs.tag }}

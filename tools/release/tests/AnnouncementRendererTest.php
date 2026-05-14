@@ -29,7 +29,7 @@ final class AnnouncementRendererTest extends TestCase
      *     forum_url: string,
      * }
      */
-    private function context(string $forumUrl = '{{FORUM_URL}}'): array
+    private function context(string $forumUrl = AnnouncementRenderer::FORUM_URL_PLACEHOLDER): array
     {
         return [
             'version' => '8.1.0',
