@@ -54,14 +54,20 @@ final class AnnouncementRendererTest extends TestCase
         }
     }
 
+    /**
+     * Channels that link to the forum and should preserve / substitute the
+     * placeholder. Mailing-list .subject doesn't link to the forum, and the
+     * X channel can't fit the URL within 280 chars, so they're excluded.
+     */
+    private const FORUM_LINKING_CHANNELS = ['chat.md', 'facebook.txt', 'linkedin.txt', 'mail.html'];
+
     public function testForumUrlPlaceholderRoundTrips(): void
     {
         $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context());
 
-        // Channels that link to the forum should preserve the placeholder for
-        // maintainer find/replace once the Discourse thread URL is known.
-        self::assertStringContainsString('{{FORUM_URL}}', $rendered['chat.md']);
-        self::assertStringContainsString('{{FORUM_URL}}', $rendered['mail.html']);
+        foreach (self::FORUM_LINKING_CHANNELS as $channel) {
+            self::assertStringContainsString('{{FORUM_URL}}', $rendered[$channel], "{$channel} dropped placeholder");
+        }
     }
 
     public function testForumUrlSubstitutesWhenProvided(): void
@@ -69,10 +75,10 @@ final class AnnouncementRendererTest extends TestCase
         $url = 'https://community.open-emr.org/t/openemr-8-1-0-released/12345';
         $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context($url));
 
-        self::assertStringContainsString($url, $rendered['chat.md']);
-        self::assertStringContainsString($url, $rendered['mail.html']);
-        self::assertStringNotContainsString('{{FORUM_URL}}', $rendered['chat.md']);
-        self::assertStringNotContainsString('{{FORUM_URL}}', $rendered['mail.html']);
+        foreach (self::FORUM_LINKING_CHANNELS as $channel) {
+            self::assertStringContainsString($url, $rendered[$channel], "{$channel} missing forum URL");
+            self::assertStringNotContainsString('{{FORUM_URL}}', $rendered[$channel], "{$channel} kept placeholder");
+        }
     }
 
     public function testXFitsCharacterLimit(): void
