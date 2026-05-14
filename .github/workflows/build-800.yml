@@ -2,6 +2,8 @@ name: Production 8.0.0 Docker Build
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *' # run at 2 AM UTC
 
 jobs:
   build:
