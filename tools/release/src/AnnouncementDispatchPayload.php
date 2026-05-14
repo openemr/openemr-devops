@@ -37,6 +37,29 @@ final readonly class AnnouncementDispatchPayload
         $this->assertMatches('branch', $branch, self::BRANCH_PATTERN);
     }
 
+    /**
+     * @throws \JsonException|\RuntimeException
+     */
+    public static function fromPayloadFile(string $path): self
+    {
+        if ($path === '-') {
+            $raw = (string) file_get_contents('php://stdin');
+        } else {
+            if (!is_file($path)) {
+                throw new \RuntimeException(sprintf('Payload file not found: %s', $path));
+            }
+            $contents = file_get_contents($path);
+            if ($contents === false) {
+                throw new \RuntimeException(sprintf('Payload file unreadable: %s', $path));
+            }
+            $raw = $contents;
+        }
+        if ($raw === '') {
+            throw new \RuntimeException(sprintf('Empty payload from: %s', $path));
+        }
+        return self::fromEnvelope(json_decode($raw, true, 512, JSON_THROW_ON_ERROR));
+    }
+
     public static function fromEnvelope(mixed $envelope): self
     {
         if (!is_array($envelope)) {

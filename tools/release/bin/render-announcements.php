@@ -30,17 +30,10 @@ use Symfony\Component\Console\SingleCommandApplication;
     ->setName('render-announcements')
     ->setDescription('Render per-channel release-announcement drafts')
     ->addOption(
-        'repo',
-        null,
-        InputOption::VALUE_REQUIRED,
-        'Path to the repo root',
-        getcwd() === false ? '.' : getcwd(),
-    )
-    ->addOption(
         'template-dir',
         null,
         InputOption::VALUE_REQUIRED,
-        'Twig template directory (defaults to <repo>/tools/release/templates)',
+        'Twig template directory (defaults to the binary\'s sibling templates/ dir)',
     )
     ->addOption('output-dir', null, InputOption::VALUE_REQUIRED, 'Directory to write per-channel files into')
     ->addOption('release-version', null, InputOption::VALUE_REQUIRED, 'Release version (e.g. 8.1.0)')
@@ -63,18 +56,12 @@ use Symfony\Component\Console\SingleCommandApplication;
         null,
         InputOption::VALUE_REQUIRED,
         'Per-release Discourse thread URL; left as a placeholder if not supplied',
-        '{{FORUM_URL}}',
+        AnnouncementRenderer::FORUM_URL_PLACEHOLDER,
     )
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
-        $repo = $input->getOption('repo');
-        if (!is_string($repo) || $repo === '') {
-            $output->writeln('<error>--repo is required</error>');
-            return 1;
-        }
-
         $templateDir = $input->getOption('template-dir');
         if (!is_string($templateDir) || $templateDir === '') {
-            $templateDir = $repo . '/tools/release/templates';
+            $templateDir = dirname(__DIR__) . '/templates';
         }
         if (!is_dir($templateDir)) {
             $output->writeln("<error>Template directory not found: {$templateDir}</error>");
@@ -118,7 +105,7 @@ use Symfony\Component\Console\SingleCommandApplication;
 
         $forumUrl = $input->getOption('forum-url');
         if (!is_string($forumUrl) || $forumUrl === '') {
-            $forumUrl = '{{FORUM_URL}}';
+            $forumUrl = AnnouncementRenderer::FORUM_URL_PLACEHOLDER;
         }
 
         $context = [

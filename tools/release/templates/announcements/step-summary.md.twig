@@ -1,0 +1,23 @@
+# Release announcement drafts — OpenEMR {{ version }} ({{ tag }})
+
+{% if forum_url == placeholder %}
+> **Forum URL placeholder.** Find/replace `{{ placeholder }}` in the rendered output once you create the Discourse thread.
+
+{% endif %}
+{% for channel in short_copy_channels %}
+## {{ channel.heading }}
+
+```{{ channel.fence }}
+{{ channel.body }}
+```
+
+{% endfor %}
+## Mailing list
+
+Three artifacts are uploaded with the workflow run:
+
+- `mail.subject.txt` — pass to `oe-sender.js -s`
+- `mail.html` — pass to `oe-sender.js -f`
+- `mail.eml` — preview in a mail client; not used by the sender
+
+Production sender lives in [openemr-registration/oe-sender.js](https://github.com/openemr/openemr-registration/blob/master/oe-sender.js); recipients come from the DynamoDB scan, not from the `.eml` headers.

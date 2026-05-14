@@ -41,12 +41,7 @@ jobs:
     name: Render announcement drafts
     runs-on: ubuntu-24.04
     env:
-      EVENT_NAME: ${{ github.event_name }}
-      CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
-      INPUT_VERSION: ${{ inputs.version }}
-      INPUT_TAG: ${{ inputs.tag }}
-      INPUT_BRANCH: ${{ inputs.branch }}
-      INPUT_FORUM_URL: ${{ inputs.forum_url }}
+      OUTPUT_DIR: ${{ github.workspace }}/out/announcements
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -66,77 +61,43 @@ jobs:
       - name: Derive release inputs
         id: inputs
         working-directory: tools/release
+        env:
+          # repository_dispatch path: PAYLOAD_FILE='-' on stdin, all other vars empty.
+          # workflow_dispatch path:    PAYLOAD_FILE empty, VERSION/TAG/BRANCH/FORUM_URL set.
+          # The PHP CLI rejects mixing the two and validates each field against
+          # the canonical dispatch.schema.json patterns; missing/null/malformed
+          # envelopes abort here instead of producing artifacts that reference "null".
+          PAYLOAD_FILE: ${{ github.event_name == 'repository_dispatch' && '-' || '' }}
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+          BRANCH: ${{ inputs.branch }}
+          FORUM_URL: ${{ inputs.forum_url }}
+          CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
         run: |
-          set -euo pipefail
-          if [[ ${EVENT_NAME} == 'workflow_dispatch' ]]; then
-              {
-                  printf 'version=%s\n' "${INPUT_VERSION}"
-                  printf 'tag=%s\n' "${INPUT_TAG}"
-                  printf 'branch=%s\n' "${INPUT_BRANCH}"
-                  printf 'forum_url=%s\n' "${INPUT_FORUM_URL:-{{FORUM_URL}}}"
-              } >> "${GITHUB_OUTPUT}"
-          else
-              # AnnouncementDispatchPayload validates each field against the
-              # canonical dispatch.schema.json patterns; a missing/null/
-              # malformed envelope aborts the step instead of producing
-              # artifacts that reference "null".
-              printf '%s' "${CLIENT_PAYLOAD}" \
-                  | task release:derive-announcement-inputs PAYLOAD_FILE='-' \
-                  >> "${GITHUB_OUTPUT}"
-              printf 'forum_url=%s\n' '{{FORUM_URL}}' >> "${GITHUB_OUTPUT}"
-          fi
+          printf '%s' "${CLIENT_PAYLOAD}" \
+              | task release:derive-announcement-inputs \
+              >> "${GITHUB_OUTPUT}"
 
       - name: Render announcements
+        working-directory: tools/release
         env:
           VERSION: ${{ steps.inputs.outputs.version }}
           TAG: ${{ steps.inputs.outputs.tag }}
           BRANCH: ${{ steps.inputs.outputs.branch }}
           FORUM_URL: ${{ steps.inputs.outputs.forum_url }}
-        run: |
-          set -euo pipefail
-          mkdir -p out/announcements
-          php tools/release/bin/render-announcements.php \
-              --output-dir=out/announcements \
-              --release-version="${VERSION}" \
-              --release-tag="${TAG}" \
-              --release-branch="${BRANCH}" \
-              --forum-url="${FORUM_URL}"
+        run: task release:render-announcements
 
       - name: Write step summary
+        working-directory: tools/release
         env:
           VERSION: ${{ steps.inputs.outputs.version }}
           TAG: ${{ steps.inputs.outputs.tag }}
           FORUM_URL: ${{ steps.inputs.outputs.forum_url }}
-        run: |
-          set -euo pipefail
-          # shellcheck disable=SC2016  # backticks below are markdown code spans, not command substitution
-          summary() { printf '%s\n' "$@" >> "${GITHUB_STEP_SUMMARY}"; }
-          channel() {
-              local heading=$1 path=$2 fence=${3:-text}
-              summary "## ${heading}" '' "\`\`\`${fence}"
-              cat "out/announcements/${path}" >> "${GITHUB_STEP_SUMMARY}"
-              summary '```' ''
-          }
-          summary "# Release announcement drafts — OpenEMR ${VERSION} (${TAG})" ''
-          if [[ ${FORUM_URL} == '{{FORUM_URL}}' ]]; then
-              summary "> **Forum URL placeholder.** Find/replace \`{{FORUM_URL}}\` in the rendered output once you create the Discourse thread." ''
-          fi
-          channel 'Forum (Discourse)' forum.md markdown
-          channel 'Chat' chat.md markdown
-          channel 'X' x.txt
-          channel 'Facebook' facebook.txt
-          channel 'LinkedIn' linkedin.txt
-          # shellcheck disable=SC2016  # backticks are markdown code spans
-          summary '## Mailing list' '' \
-              'Three artifacts are uploaded with the workflow run:' '' \
-              '- `mail.subject.txt` — pass to `oe-sender.js -s`' \
-              '- `mail.html` — pass to `oe-sender.js -f`' \
-              '- `mail.eml` — preview in a mail client; not used by the sender' '' \
-              'Production sender lives in [openemr-registration/oe-sender.js](https://github.com/openemr/openemr-registration/blob/master/oe-sender.js); recipients come from the DynamoDB scan, not from the `.eml` headers.'
+        run: OUTPUT="${GITHUB_STEP_SUMMARY}" task release:render-announcement-step-summary
 
       - name: Upload announcement drafts
         uses: actions/upload-artifact@v7
         with:
           name: release-announcements
-          path: out/announcements/
+          path: ${{ env.OUTPUT_DIR }}/
           if-no-files-found: error

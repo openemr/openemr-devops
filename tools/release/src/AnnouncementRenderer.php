@@ -25,6 +25,13 @@ use Twig\Loader\FilesystemLoader;
 final readonly class AnnouncementRenderer
 {
     /**
+     * Literal placeholder substituted into channels that link to the forum
+     * when the maintainer hasn't supplied the per-release Discourse URL yet.
+     * Find/replace target after the thread is created.
+     */
+    public const FORUM_URL_PLACEHOLDER = '{{FORUM_URL}}';
+
+    /**
      * Channel name → template filename (relative to the announcements dir).
      *
      * The keys are also the output filenames stripped of `.twig`. mail.eml
