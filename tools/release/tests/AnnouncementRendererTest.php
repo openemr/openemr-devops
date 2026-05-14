@@ -1,0 +1,120 @@
+<?php
+
+/**
+ * @package   openemr-devops
+ * @link      https://www.open-emr.org
+ * @author    Michael A. Smith <michael@opencoreemr.com>
+ * @copyright Copyright (c) 2026 OpenCoreEMR Inc.
+ * @license   https://github.com/openemr/openemr-devops/blob/master/LICENSE GNU General Public License 3
+ */
+
+declare(strict_types=1);
+
+namespace OpenEMR\Release\Tests;
+
+use OpenEMR\Release\AnnouncementRenderer;
+use PHPUnit\Framework\TestCase;
+
+final class AnnouncementRendererTest extends TestCase
+{
+    private const TEMPLATE_DIR = __DIR__ . '/../templates';
+
+    /**
+     * @return array{
+     *     version: string,
+     *     tag: string,
+     *     branch: string,
+     *     release_url: string,
+     *     release_notes_url: string,
+     *     forum_url: string,
+     * }
+     */
+    private function context(string $forumUrl = '{{FORUM_URL}}'): array
+    {
+        return [
+            'version' => '8.1.0',
+            'tag' => 'v8_1_0',
+            'branch' => 'rel-810',
+            'release_url' => 'https://github.com/openemr/openemr/releases/tag/v8_1_0',
+            'release_notes_url' => 'https://www.open-emr.org/wiki/index.php/Release_Features#Version_8.1.0',
+            'forum_url' => $forumUrl,
+        ];
+    }
+
+    public function testRendersAllChannels(): void
+    {
+        $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context());
+
+        self::assertSame(
+            array_keys(AnnouncementRenderer::CHANNELS),
+            array_keys($rendered),
+        );
+        foreach ($rendered as $channel => $body) {
+            self::assertNotSame('', trim($body), "{$channel} rendered empty");
+        }
+    }
+
+    public function testForumUrlPlaceholderRoundTrips(): void
+    {
+        $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context());
+
+        // Channels that link to the forum should preserve the placeholder for
+        // maintainer find/replace once the Discourse thread URL is known.
+        self::assertStringContainsString('{{FORUM_URL}}', $rendered['chat.md']);
+        self::assertStringContainsString('{{FORUM_URL}}', $rendered['mail.html']);
+    }
+
+    public function testForumUrlSubstitutesWhenProvided(): void
+    {
+        $url = 'https://community.open-emr.org/t/openemr-8-1-0-released/12345';
+        $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context($url));
+
+        self::assertStringContainsString($url, $rendered['chat.md']);
+        self::assertStringContainsString($url, $rendered['mail.html']);
+        self::assertStringNotContainsString('{{FORUM_URL}}', $rendered['chat.md']);
+        self::assertStringNotContainsString('{{FORUM_URL}}', $rendered['mail.html']);
+    }
+
+    public function testXFitsCharacterLimit(): void
+    {
+        $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context());
+
+        // X allows 280 characters in a single tweet.
+        self::assertLessThanOrEqual(280, mb_strlen(trim($rendered['x.txt'])));
+    }
+
+    public function testMailSubjectIsSingleLine(): void
+    {
+        $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context());
+
+        $subject = trim($rendered['mail.subject.txt']);
+        self::assertStringNotContainsString("\n", $subject);
+        self::assertStringContainsString('8.1.0', $subject);
+    }
+
+    public function testMailHtmlIncludesVersionAndReleaseNotesLink(): void
+    {
+        $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context());
+
+        self::assertStringContainsString('OpenEMR 8.1.0 Released', $rendered['mail.html']);
+        self::assertStringContainsString(
+            'https://www.open-emr.org/wiki/index.php/Release_Features#Version_8.1.0',
+            $rendered['mail.html'],
+        );
+    }
+
+    public function testRenderIsDeterministic(): void
+    {
+        $renderer = new AnnouncementRenderer(self::TEMPLATE_DIR);
+
+        self::assertSame($renderer->renderAll($this->context()), $renderer->renderAll($this->context()));
+    }
+
+    public function testThrowsOnMissingTemplateDir(): void
+    {
+        $renderer = new AnnouncementRenderer('/no/such/dir');
+
+        $this->expectException(\RuntimeException::class);
+        $renderer->renderAll($this->context());
+    }
+}

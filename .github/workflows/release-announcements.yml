@@ -1,0 +1,138 @@
+name: Release Announcements (drafts)
+
+# Drafts-only first phase of openemr/openemr-devops#711 (tracked in #719).
+# On openemr-tag dispatch (or workflow_dispatch), renders a per-channel
+# announcement for forum/chat/X/Facebook/LinkedIn/mailing-list and surfaces
+# them as a workflow artifact + step summary. Maintainer copy/pastes onto
+# each channel; mailing list is sent separately via openemr-registration's
+# oe-sender.js, which takes the rendered mail.html + mail.subject.txt files
+# this workflow produces. No posting, no SMTP, no API integration.
+
+on:
+  repository_dispatch:
+    types: [openemr-tag]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 8.1.0)'
+        required: true
+        type: string
+      tag:
+        description: 'Annotated release tag (e.g. v8_1_0)'
+        required: true
+        type: string
+      branch:
+        description: 'Release branch (e.g. rel-810)'
+        required: true
+        type: string
+      forum_url:
+        description: 'Per-release Discourse thread URL (optional; placeholder used if blank)'
+        required: false
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: release-announcements-${{ github.event.client_payload.data.tag || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    name: Render announcement drafts
+    runs-on: ubuntu-24.04
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      CLIENT_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+      INPUT_VERSION: ${{ inputs.version }}
+      INPUT_TAG: ${{ inputs.tag }}
+      INPUT_BRANCH: ${{ inputs.branch }}
+      INPUT_FORUM_URL: ${{ inputs.forum_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+
+      - name: Install release-tools dependencies
+        working-directory: tools/release
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Derive release inputs
+        id: inputs
+        run: |
+          set -euo pipefail
+          if [[ ${EVENT_NAME} == 'workflow_dispatch' ]]; then
+              version=${INPUT_VERSION}
+              tag=${INPUT_TAG}
+              branch=${INPUT_BRANCH}
+              forum_url=${INPUT_FORUM_URL}
+          else
+              version=$(jq -r '.data.version' <<<"${CLIENT_PAYLOAD}")
+              tag=$(jq -r '.data.tag' <<<"${CLIENT_PAYLOAD}")
+              branch=$(jq -r '.data.branch' <<<"${CLIENT_PAYLOAD}")
+              forum_url=''
+          fi
+          {
+              printf 'version=%s\n' "${version}"
+              printf 'tag=%s\n' "${tag}"
+              printf 'branch=%s\n' "${branch}"
+              printf 'forum_url=%s\n' "${forum_url:-{{FORUM_URL}}}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Render announcements
+        env:
+          VERSION: ${{ steps.inputs.outputs.version }}
+          TAG: ${{ steps.inputs.outputs.tag }}
+          BRANCH: ${{ steps.inputs.outputs.branch }}
+          FORUM_URL: ${{ steps.inputs.outputs.forum_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/announcements
+          php tools/release/bin/render-announcements.php \
+              --output-dir=out/announcements \
+              --release-version="${VERSION}" \
+              --release-tag="${TAG}" \
+              --release-branch="${BRANCH}" \
+              --forum-url="${FORUM_URL}"
+
+      - name: Write step summary
+        env:
+          VERSION: ${{ steps.inputs.outputs.version }}
+          TAG: ${{ steps.inputs.outputs.tag }}
+          FORUM_URL: ${{ steps.inputs.outputs.forum_url }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC2016  # backticks below are markdown code spans, not command substitution
+          summary() { printf '%s\n' "$@" >> "${GITHUB_STEP_SUMMARY}"; }
+          channel() {
+              local heading=$1 path=$2 fence=${3:-text}
+              summary "## ${heading}" '' "\`\`\`${fence}"
+              cat "out/announcements/${path}" >> "${GITHUB_STEP_SUMMARY}"
+              summary '```' ''
+          }
+          summary "# Release announcement drafts — OpenEMR ${VERSION} (${TAG})" ''
+          if [[ ${FORUM_URL} == '{{FORUM_URL}}' ]]; then
+              summary "> **Forum URL placeholder.** Find/replace \`{{FORUM_URL}}\` in the rendered output once you create the Discourse thread." ''
+          fi
+          channel 'Forum (Discourse)' forum.md markdown
+          channel 'Chat' chat.md markdown
+          channel 'X' x.txt
+          channel 'Facebook' facebook.txt
+          channel 'LinkedIn' linkedin.txt
+          # shellcheck disable=SC2016  # backticks are markdown code spans
+          summary '## Mailing list' '' \
+              'Three artifacts are uploaded with the workflow run:' '' \
+              '- `mail.subject.txt` — pass to `oe-sender.js -s`' \
+              '- `mail.html` — pass to `oe-sender.js -f`' \
+              '- `mail.eml` — preview in a mail client; not used by the sender' '' \
+              'Production sender lives in [openemr-registration/oe-sender.js](https://github.com/openemr/openemr-registration/blob/master/oe-sender.js); recipients come from the DynamoDB scan, not from the `.eml` headers.'
+
+      - name: Upload announcement drafts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-announcements
+          path: out/announcements/
+          if-no-files-found: error
