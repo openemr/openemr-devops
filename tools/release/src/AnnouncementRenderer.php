@@ -28,7 +28,7 @@ final readonly class AnnouncementRenderer
      * Channel name → template filename (relative to the announcements dir).
      *
      * The keys are also the output filenames stripped of `.twig`. mail.eml
-     * is synthesized by the CLI from mail.html + mail.subject.
+     * is synthesized by the CLI from mail.html + mail.subject.txt.
      */
     public const CHANNELS = [
         'forum.md' => 'forum.md.twig',
@@ -62,9 +62,13 @@ final readonly class AnnouncementRenderer
         if (!is_dir($announcementsDir)) {
             throw new \RuntimeException("Announcements template dir not found: {$announcementsDir}");
         }
+        // autoescape: 'name' picks the strategy from the template filename —
+        // *.html.twig gets HTML escaping; *.md.twig and *.txt.twig get none.
+        // The {{FORUM_URL}} placeholder is preserved verbatim because Twig
+        // doesn't touch literal text in templates.
         $twig = new Environment(
             new FilesystemLoader($announcementsDir),
-            ['autoescape' => false],
+            ['autoescape' => 'name'],
         );
 
         $rendered = [];

@@ -131,7 +131,7 @@ jobs:
               'Production sender lives in [openemr-registration/oe-sender.js](https://github.com/openemr/openemr-registration/blob/master/oe-sender.js); recipients come from the DynamoDB scan, not from the `.eml` headers.'
 
       - name: Upload announcement drafts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-announcements
           path: out/announcements/

@@ -79,8 +79,12 @@ final class AnnouncementRendererTest extends TestCase
     {
         $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context());
 
-        // X allows 280 characters in a single tweet.
-        self::assertLessThanOrEqual(280, mb_strlen(trim($rendered['x.txt'])));
+        // X counts URLs as a fixed 23 characters via t.co shortening, so
+        // approximate the real limit by replacing each URL with 23 chars
+        // before measuring. This is a loose sanity check, not an exact
+        // reproduction of X's character-counting rules.
+        $approx = preg_replace('#https?://\S+#', str_repeat('x', 23), trim($rendered['x.txt']));
+        self::assertLessThanOrEqual(280, mb_strlen($approx ?? ''));
     }
 
     public function testMailSubjectIsSingleLine(): void
@@ -88,7 +92,9 @@ final class AnnouncementRendererTest extends TestCase
         $rendered = (new AnnouncementRenderer(self::TEMPLATE_DIR))->renderAll($this->context());
 
         $subject = trim($rendered['mail.subject.txt']);
+        // CR and LF both enable header injection in the .eml — reject either.
         self::assertStringNotContainsString("\n", $subject);
+        self::assertStringNotContainsString("\r", $subject);
         self::assertStringContainsString('8.1.0', $subject);
     }
 
