@@ -70,11 +70,22 @@ jobs:
               branch=${INPUT_BRANCH}
               forum_url=${INPUT_FORUM_URL}
           else
-              version=$(jq -r '.data.version' <<<"${CLIENT_PAYLOAD}")
-              tag=$(jq -r '.data.tag' <<<"${CLIENT_PAYLOAD}")
-              branch=$(jq -r '.data.branch' <<<"${CLIENT_PAYLOAD}")
+              # jq -r emits the literal string "null" for missing fields, so
+              # validate non-empty AND non-"null" before continuing — a
+              # malformed dispatch payload should fail loud, not produce
+              # artifacts referring to "null".
+              version=$(jq -re '.data.version // empty' <<<"${CLIENT_PAYLOAD}")
+              tag=$(jq -re '.data.tag // empty' <<<"${CLIENT_PAYLOAD}")
+              branch=$(jq -re '.data.branch // empty' <<<"${CLIENT_PAYLOAD}")
               forum_url=''
           fi
+          for field in version tag branch; do
+              value=${!field}
+              if [[ -z ${value} || ${value} == 'null' ]]; then
+                  printf '::error::dispatch payload missing or null: %s\n' "${field}"
+                  exit 1
+              fi
+          done
           {
               printf 'version=%s\n' "${version}"
               printf 'tag=%s\n' "${tag}"
