@@ -1,7 +1,8 @@
 name: Release Permissions Check
 
 # Manual probe of the release App's installed permissions on this repo.
-# Mints an App token from RELEASE_APP_ID + RELEASE_APP_PRIVATE_KEY and
+# Mints an App token from the RELEASE_APP_CLIENT_ID org variable +
+# RELEASE_APP_PRIVATE_KEY org secret and
 # exercises only what tools/release/ rotation needs (per docs/release-automation-plan.md).
 # Run after installing the App and after secrets rotations.
 
@@ -34,7 +35,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - name: Probe — installation includes this repo
