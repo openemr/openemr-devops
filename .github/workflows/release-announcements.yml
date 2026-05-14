@@ -56,42 +56,35 @@ jobs:
         with:
           php-version: '8.5'
 
+      - name: Install Task
+        uses: arduino/setup-task@v2
+
       - name: Install release-tools dependencies
         working-directory: tools/release
         run: composer install --no-interaction --no-progress --prefer-dist
 
       - name: Derive release inputs
         id: inputs
+        working-directory: tools/release
         run: |
           set -euo pipefail
           if [[ ${EVENT_NAME} == 'workflow_dispatch' ]]; then
-              version=${INPUT_VERSION}
-              tag=${INPUT_TAG}
-              branch=${INPUT_BRANCH}
-              forum_url=${INPUT_FORUM_URL}
+              {
+                  printf 'version=%s\n' "${INPUT_VERSION}"
+                  printf 'tag=%s\n' "${INPUT_TAG}"
+                  printf 'branch=%s\n' "${INPUT_BRANCH}"
+                  printf 'forum_url=%s\n' "${INPUT_FORUM_URL:-{{FORUM_URL}}}"
+              } >> "${GITHUB_OUTPUT}"
           else
-              # jq -r emits the literal string "null" for missing fields, so
-              # validate non-empty AND non-"null" before continuing — a
-              # malformed dispatch payload should fail loud, not produce
-              # artifacts referring to "null".
-              version=$(jq -re '.data.version // empty' <<<"${CLIENT_PAYLOAD}")
-              tag=$(jq -re '.data.tag // empty' <<<"${CLIENT_PAYLOAD}")
-              branch=$(jq -re '.data.branch // empty' <<<"${CLIENT_PAYLOAD}")
-              forum_url=''
+              # AnnouncementDispatchPayload validates each field against the
+              # canonical dispatch.schema.json patterns; a missing/null/
+              # malformed envelope aborts the step instead of producing
+              # artifacts that reference "null".
+              printf '%s' "${CLIENT_PAYLOAD}" \
+                  | task release:derive-announcement-inputs PAYLOAD_FILE='-' \
+                  >> "${GITHUB_OUTPUT}"
+              printf 'forum_url=%s\n' '{{FORUM_URL}}' >> "${GITHUB_OUTPUT}"
           fi
-          for field in version tag branch; do
-              value=${!field}
-              if [[ -z ${value} || ${value} == 'null' ]]; then
-                  printf '::error::dispatch payload missing or null: %s\n' "${field}"
-                  exit 1
-              fi
-          done
-          {
-              printf 'version=%s\n' "${version}"
-              printf 'tag=%s\n' "${tag}"
-              printf 'branch=%s\n' "${branch}"
-              printf 'forum_url=%s\n' "${forum_url:-{{FORUM_URL}}}"
-          } >> "${GITHUB_OUTPUT}"
 
       - name: Render announcements
         env:

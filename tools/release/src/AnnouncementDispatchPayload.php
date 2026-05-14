@@ -1,0 +1,91 @@
+<?php
+
+/**
+ * Parsed `openemr-tag` repository_dispatch payload for the announcement
+ * workflow.
+ *
+ * Validates each field against the canonical pattern from
+ * tools/release/contracts/dispatch.schema.json so a malformed envelope
+ * fails loudly at parse time instead of producing artifacts that
+ * reference "null" or empty strings further down the pipeline.
+ *
+ * @package   openemr-devops
+ * @link      https://www.open-emr.org
+ * @author    Michael A. Smith <michael@opencoreemr.com>
+ * @copyright Copyright (c) 2026 OpenCoreEMR Inc.
+ * @license   https://github.com/openemr/openemr-devops/blob/master/LICENSE GNU General Public License 3
+ */
+
+declare(strict_types=1);
+
+namespace OpenEMR\Release;
+
+final readonly class AnnouncementDispatchPayload
+{
+    // Patterns mirror dispatch.schema.json's tag/branch/version definitions.
+    private const VERSION_PATTERN = '/^\d+\.\d+\.\d+$/';
+    private const TAG_PATTERN = '/^v\d+_\d+_\d+(-test\.[0-9a-f]{7})?$/';
+    private const BRANCH_PATTERN = '/^rel-[A-Za-z0-9]+$/';
+
+    public function __construct(
+        public string $version,
+        public string $tag,
+        public string $branch,
+    ) {
+        $this->assertMatches('version', $version, self::VERSION_PATTERN);
+        $this->assertMatches('tag', $tag, self::TAG_PATTERN);
+        $this->assertMatches('branch', $branch, self::BRANCH_PATTERN);
+    }
+
+    public static function fromEnvelope(mixed $envelope): self
+    {
+        if (!is_array($envelope)) {
+            throw new \RuntimeException('Dispatch envelope is not a JSON object');
+        }
+        $event = $envelope['event'] ?? null;
+        if ($event !== 'openemr-tag') {
+            throw new \RuntimeException(sprintf(
+                'Expected event=openemr-tag, got: %s',
+                is_string($event) ? $event : '(missing)',
+            ));
+        }
+        $data = $envelope['data'] ?? null;
+        if (!is_array($data)) {
+            throw new \RuntimeException('Dispatch envelope missing data object');
+        }
+        $normalized = [];
+        foreach ($data as $key => $value) {
+            if (is_string($key)) {
+                $normalized[$key] = $value;
+            }
+        }
+        return new self(
+            self::stringField($normalized, 'version'),
+            self::stringField($normalized, 'tag'),
+            self::stringField($normalized, 'branch'),
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function stringField(array $data, string $name): string
+    {
+        $value = $data[$name] ?? null;
+        if (!is_string($value) || $value === '') {
+            throw new \RuntimeException(sprintf('Dispatch payload missing or empty field: data.%s', $name));
+        }
+        return $value;
+    }
+
+    private function assertMatches(string $field, string $value, string $pattern): void
+    {
+        if (preg_match($pattern, $value) !== 1) {
+            throw new \RuntimeException(sprintf(
+                'Dispatch payload field %s does not match expected shape: %s',
+                $field,
+                $value,
+            ));
+        }
+    }
+}

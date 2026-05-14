@@ -205,6 +205,16 @@ tasks:
         --event-type={{shellQuote .EVENT_TYPE}}
         --payload-file={{shellQuote .PAYLOAD_FILE}}
 
+  release:derive-announcement-inputs:
+    desc: Translate an openemr-tag dispatch envelope into version=/tag=/branch= lines
+    vars:
+      PAYLOAD_FILE: '{{.PAYLOAD_FILE | default "-"}}'
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/derive-announcement-inputs.php
+        --payload-file={{shellQuote .PAYLOAD_FILE}}
+
   release:open-rotation-pr:
     desc: Open or update the long-lived rotation draft PR
     requires:
