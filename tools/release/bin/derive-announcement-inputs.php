@@ -26,6 +26,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use OpenEMR\Release\AnnouncementDispatchPayload;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\SingleCommandApplication;
 
@@ -49,6 +50,9 @@ use Symfony\Component\Console\SingleCommandApplication;
         '',
     )
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
+        // Stdout is reserved for the GITHUB_OUTPUT key=value lines the
+        // workflow appends with `>>`. Errors must not pollute it.
+        $err = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
         $str = static function (string $name) use ($input): string {
             $value = $input->getOption($name);
             return is_string($value) ? $value : '';
@@ -63,13 +67,13 @@ use Symfony\Component\Console\SingleCommandApplication;
             static fn (string $v): bool => $v !== '',
         );
         if ($payloadFile !== '' && $flagsProvided !== []) {
-            $output->writeln(
+            $err->writeln(
                 '<error>--payload-file is mutually exclusive with --release-* flags</error>',
             );
             return 1;
         }
         if ($payloadFile === '' && count($flagsProvided) !== 3) {
-            $output->writeln(
+            $err->writeln(
                 '<error>Provide either --payload-file or all of'
                 . ' --release-version/--release-tag/--release-branch</error>',
             );
@@ -81,10 +85,10 @@ use Symfony\Component\Console\SingleCommandApplication;
                 ? AnnouncementDispatchPayload::fromPayloadFile($payloadFile)
                 : new AnnouncementDispatchPayload($version, $tag, $branch);
         } catch (\JsonException $e) {
-            $output->writeln(sprintf('<error>Payload is not valid JSON: %s</error>', $e->getMessage()));
+            $err->writeln(sprintf('<error>Payload is not valid JSON: %s</error>', $e->getMessage()));
             return 1;
         } catch (\RuntimeException $e) {
-            $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
+            $err->writeln(sprintf('<error>%s</error>', $e->getMessage()));
             return 1;
         }
 

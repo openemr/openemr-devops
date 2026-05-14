@@ -24,6 +24,7 @@ use OpenEMR\Release\AnnouncementRenderer;
 use OpenEMR\Release\AnnouncementStepSummaryRenderer;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\SingleCommandApplication;
 
@@ -48,6 +49,7 @@ use Symfony\Component\Console\SingleCommandApplication;
     )
     ->addOption('output', 'o', InputOption::VALUE_REQUIRED, 'Output file (defaults to stdout)')
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
+        $err = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
         $templateDir = $input->getOption('template-dir');
         if (!is_string($templateDir) || $templateDir === '') {
             $templateDir = dirname(__DIR__) . '/templates';
@@ -56,7 +58,7 @@ use Symfony\Component\Console\SingleCommandApplication;
         foreach (['output-dir', 'release-version', 'release-tag'] as $required) {
             $value = $input->getOption($required);
             if (!is_string($value) || $value === '') {
-                $output->writeln(sprintf('<error>--%s is required</error>', $required));
+                $err->writeln(sprintf('<error>--%s is required</error>', $required));
                 return 1;
             }
         }

@@ -23,6 +23,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use OpenEMR\Release\AnnouncementRenderer;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\ConsoleOutputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\SingleCommandApplication;
 
@@ -59,29 +60,30 @@ use Symfony\Component\Console\SingleCommandApplication;
         AnnouncementRenderer::FORUM_URL_PLACEHOLDER,
     )
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
+        $err = $output instanceof ConsoleOutputInterface ? $output->getErrorOutput() : $output;
         $templateDir = $input->getOption('template-dir');
         if (!is_string($templateDir) || $templateDir === '') {
             $templateDir = dirname(__DIR__) . '/templates';
         }
         if (!is_dir($templateDir)) {
-            $output->writeln("<error>Template directory not found: {$templateDir}</error>");
+            $err->writeln("<error>Template directory not found: {$templateDir}</error>");
             return 1;
         }
 
         $outputDir = $input->getOption('output-dir');
         if (!is_string($outputDir) || $outputDir === '') {
-            $output->writeln('<error>--output-dir is required</error>');
+            $err->writeln('<error>--output-dir is required</error>');
             return 1;
         }
         if (!is_dir($outputDir) && !mkdir($outputDir, 0755, true) && !is_dir($outputDir)) {
-            $output->writeln("<error>Failed to create output dir: {$outputDir}</error>");
+            $err->writeln("<error>Failed to create output dir: {$outputDir}</error>");
             return 1;
         }
 
         foreach (['release-version', 'release-tag', 'release-branch'] as $required) {
             $value = $input->getOption($required);
             if (!is_string($value) || $value === '') {
-                $output->writeln("<error>--{$required} is required</error>");
+                $err->writeln("<error>--{$required} is required</error>");
                 return 1;
             }
         }
