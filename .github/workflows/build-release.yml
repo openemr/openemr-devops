@@ -191,8 +191,14 @@ jobs:
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-        if git rev-parse "$tag" > /dev/null 2>&1; then
-          echo "Tag $tag already exists, skipping tag creation"
+        # Check the remote, not the local checkout: the checkout step
+        # uses fetch-depth: 1 and does not fetch tags, so a local
+        # rev-parse always misses an already-published tag. That made
+        # `git push origin "$tag"` fail with "tag already exists in the
+        # remote" when re-firing after the openemr/openemr conductor
+        # had already tagged via its finalize job.
+        if git ls-remote --tags --exit-code origin "refs/tags/$tag" > /dev/null 2>&1; then
+          echo "Tag $tag already exists on origin, skipping tag creation"
         else
           git tag -a -m "Release $tag" "$tag" '${{ inputs.version_branch }}'
           git push origin "$tag"
