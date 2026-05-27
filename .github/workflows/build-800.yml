@@ -29,6 +29,9 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: "{{defaultContext}}:docker/openemr/8.0.0"
+          # DROP the `:8.0.0.3` and `:8.0.0.3-<date>` tags when current moves
+          # off 8.0.0. 8.1.x onward uses plain semver; the 4-part patch tag is
+          # legacy quaternary versioning. See tools/release/versions.yml and #746.
           tags: openemr/openemr:8.0.0, openemr/openemr:8.0.0.3, openemr/openemr:8.0.0.3-${{ steps.build_date.outputs.date }}, openemr/openemr:latest
           platforms: linux/amd64,linux/arm64
           push: true

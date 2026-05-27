@@ -21,6 +21,11 @@ slots:
   current:
     minor: "8.0"
     full: "8.0.0"
+    # DROP THIS LINE when current moves off 8.0.0. The 4-part patch field is
+    # legacy quaternary versioning; 8.1.x onward uses plain semver (8.1.1 is
+    # the next release after 8.1.0, not a 4-part patch). When the 8.1.0 tag
+    # rotation PR opens, remove this line and the `:8.0.0.3` docker tags in
+    # .github/workflows/build-800.yml as part of PR review. See #746.
     patch: "8.0.0.3"
     branch: "rel-800"
     docker_dir: "8.0.0"
