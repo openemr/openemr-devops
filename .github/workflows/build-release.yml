@@ -128,7 +128,31 @@ jobs:
         SKIP_MILESTONE='${{ (inputs.skip_milestone_check || inputs.milestone == '') && '1' || '' }}'
         SKIP_GHSA='${{ inputs.skip_ghsa_check && '1' || '' }}'
 
+    - name: Detect existing prep
+      id: detect-prep
+      working-directory: openemr
+      run: |
+        # `task release:version-bump MODE=full` performs two mutations
+        # (see tools/release/bin/version-bump.php): clears `-dev` from
+        # $v_tag in version.php, and sets the allow_debug_language
+        # globals default to '0'. $v_tag is the canonical signal: a
+        # `-dev` suffix means full-mode prep hasn't run yet (under
+        # either the legacy path or the openemr/openemr conductor).
+        # shellcheck disable=SC2016 # PHP variables, not shell
+        v_tag=$(php -r 'include "version.php"; echo $v_tag;')
+        case "$v_tag" in
+          *-dev*)
+            printf 'v_tag=%q contains -dev — running legacy prep\n' "$v_tag"
+            printf 'prep_done=false\n' >> "$GITHUB_OUTPUT"
+            ;;
+          *)
+            printf 'v_tag=%q is clean — skipping legacy prep\n' "$v_tag"
+            printf 'prep_done=true\n' >> "$GITHUB_OUTPUT"
+            ;;
+        esac
+
     - name: Version bump (full mode)
+      if: "steps.detect-prep.outputs.prep_done != 'true'"
       working-directory: devops-tools
       run: >-
         task release:version-bump
@@ -136,7 +160,7 @@ jobs:
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
 
     - name: Commit and push version changes
-      if: '!inputs.dry_run'
+      if: "!inputs.dry_run && steps.detect-prep.outputs.prep_done != 'true'"
       working-directory: openemr
       run: |
         git config user.name 'github-actions[bot]'
