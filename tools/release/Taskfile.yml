@@ -133,6 +133,18 @@ tasks:
         --output-dir={{shellQuote .OUTPUT_DIR}}
         {{if .COPY_STYLES}}--copy-styles{{end}}
 
+  package:assemble:
+    desc: Build the full distribution tarball + zip for an official release
+    requires:
+      vars: [VERSION, OPENEMR_DIR]
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/package-assemble.php
+        --version={{shellQuote .VERSION}}
+        --openemr-dir={{shellQuote .OPENEMR_DIR}}
+        --output-dir={{shellQuote .OUTPUT_DIR}}
+
   release:rotate:
     desc: Apply 3-slot rotation per versions.yml (idempotent)
     deps: [setup]

@@ -227,29 +227,25 @@ jobs:
             --verify-tag
         fi
 
-    - name: Download source archives and generate checksums
-      if: '!inputs.dry_run'
-      env:
-        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: '24'
+
+    - name: Build distribution package
+      working-directory: devops-tools
+      run: >-
+        task release:package:assemble
+        VERSION='${{ inputs.version }}'
+        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
+
+    - name: Generate checksums
+      working-directory: devops-tools
       run: |
-        tag='${{ inputs.release_tag }}'
-        output_dir='${{ env.DEVOPS_DIR }}/tools/release/release-output'
+        task release:checksum FILE="release-output/openemr-${{ inputs.version }}.tar.gz"
+        task release:checksum FILE="release-output/openemr-${{ inputs.version }}.zip"
 
-        gh release download "$tag" \
-          --repo openemr/openemr \
-          --pattern '*.tar.gz' \
-          --pattern '*.zip' \
-          --dir "$output_dir"
-
-        cd "$output_dir"
-        for archive in *.tar.gz *.zip; do
-          [ -f "$archive" ] || continue
-          md5sum "$archive" > "${archive}.md5"
-          sha256sum "$archive" > "${archive}.sha256"
-          sha512sum "$archive" > "${archive}.sha512"
-        done
-
-    - name: Upload checksums to release
+    - name: Upload package and checksums to release
       if: '!inputs.dry_run'
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
@@ -260,6 +256,8 @@ jobs:
         gh release upload "$tag" \
           --repo openemr/openemr \
           --clobber \
+          "${output_dir}/openemr-${{ inputs.version }}.tar.gz" \
+          "${output_dir}/openemr-${{ inputs.version }}.zip" \
           "${output_dir}"/*.md5 \
           "${output_dir}"/*.sha256 \
           "${output_dir}"/*.sha512 \
@@ -275,13 +273,16 @@ jobs:
         RELEASE_TAG='${{ inputs.release_tag }}'
         DRY_RUN='${{ inputs.dry_run }}'
 
-    - name: Upload changelog artifact (dry run)
+    - name: Upload artifacts (dry run)
       if: inputs.dry_run
       uses: actions/upload-artifact@v7
       with:
         name: release-${{ inputs.version }}
         path: |
           ${{ env.TOOLS_DIR }}/release-output/changelog.md
+          ${{ env.TOOLS_DIR }}/release-output/*.md5
+          ${{ env.TOOLS_DIR }}/release-output/*.sha256
+          ${{ env.TOOLS_DIR }}/release-output/*.sha512
         retention-days: 7
 
     - name: Create CHANGELOG PRs
