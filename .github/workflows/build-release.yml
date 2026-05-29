@@ -197,12 +197,26 @@ jobs:
         # `git push origin "$tag"` fail with "tag already exists in the
         # remote" when re-firing after the openemr/openemr conductor
         # had already tagged via its finalize job.
-        if git ls-remote --tags --exit-code origin "refs/tags/$tag" > /dev/null 2>&1; then
-          echo "Tag $tag already exists on origin, skipping tag creation"
-        else
-          git tag -a -m "Release $tag" "$tag" '${{ inputs.version_branch }}'
-          git push origin "$tag"
-        fi
+        #
+        # `git ls-remote --exit-code` returns 0 when the tag exists and 2
+        # when it does not. Any other status is a real lookup failure
+        # (auth, transport) and must abort rather than fall through to a
+        # tag push that would mask the underlying error.
+        tag_lookup_status=0
+        git ls-remote --tags --exit-code origin "refs/tags/$tag" > /dev/null 2>&1 || tag_lookup_status=$?
+        case "$tag_lookup_status" in
+          0)
+            echo "Tag $tag already exists on origin, skipping tag creation"
+            ;;
+          2)
+            git tag -a -m "Release $tag" "$tag" '${{ inputs.version_branch }}'
+            git push origin "$tag"
+            ;;
+          *)
+            echo "::error::Failed to query origin for tag $tag (git ls-remote exit $tag_lookup_status)" >&2
+            exit "$tag_lookup_status"
+            ;;
+        esac
 
         if ! gh release view "$tag" --repo openemr/openemr > /dev/null 2>&1; then
           echo "Creating release $tag"
