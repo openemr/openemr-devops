@@ -179,6 +179,27 @@ jobs:
         HEAD_REF='${{ inputs.version_branch }}'
         TITLE='${{ inputs.version }}'
 
+    # Build and checksum the package before creating the tag/release. If any
+    # build step fails, the job aborts before a release exists — never publish
+    # a release that has no distribution assets attached.
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: '24'
+
+    - name: Build distribution package
+      working-directory: devops-tools
+      run: >-
+        task release:package:assemble
+        VERSION='${{ inputs.version }}'
+        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
+
+    - name: Generate checksums
+      working-directory: devops-tools
+      run: |
+        task release:checksum FILE="release-output/openemr-${{ inputs.version }}.tar.gz"
+        task release:checksum FILE="release-output/openemr-${{ inputs.version }}.zip"
+
     - name: Create annotated tag and GitHub release
       if: '!inputs.dry_run'
       working-directory: openemr
@@ -226,24 +247,6 @@ jobs:
             --notes-file "${output_dir}/changelog.md" \
             --verify-tag
         fi
-
-    - name: Setup Node
-      uses: actions/setup-node@v6
-      with:
-        node-version: '24'
-
-    - name: Build distribution package
-      working-directory: devops-tools
-      run: >-
-        task release:package:assemble
-        VERSION='${{ inputs.version }}'
-        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
-
-    - name: Generate checksums
-      working-directory: devops-tools
-      run: |
-        task release:checksum FILE="release-output/openemr-${{ inputs.version }}.tar.gz"
-        task release:checksum FILE="release-output/openemr-${{ inputs.version }}.zip"
 
     - name: Upload package and checksums to release
       if: '!inputs.dry_run'

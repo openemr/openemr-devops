@@ -82,14 +82,22 @@ final readonly class PackageAssembler
 
         // Prune vendor/asset cruft via the openemr build.xml targets. Driving
         // these through phing keeps the prune list owned by openemr/openemr
-        // (single source of truth) rather than duplicated here.
-        $this->run(['composer', 'global', 'require', 'phing/phing', '--no-interaction', '--no-progress']);
-        $homeProcess = new Process(['composer', 'global', 'config', 'home']);
-        $homeProcess->mustRun();
-        $phing = trim($homeProcess->getOutput()) . '/vendor/bin/phing';
+        // (single source of truth) rather than duplicated here. Point
+        // COMPOSER_HOME at a throwaway dir so `composer global` installs phing
+        // there instead of mutating the caller's real global environment — no
+        // `remove` cleanup step that could be skipped on a clean-target failure.
+        $composerHome = "{$this->outputDir}/{$packageName}-composer-home";
+        mkdir($composerHome, 0755, true);
+        $composerEnv = ['COMPOSER_HOME' => $composerHome];
+        $this->run(
+            ['composer', 'global', 'require', 'phing/phing', '--no-interaction', '--no-progress'],
+            null,
+            $composerEnv,
+        );
+        $phing = "{$composerHome}/vendor/bin/phing";
         $this->run([$phing, 'vendor-clean'], $stageDir);
         $this->run([$phing, 'assets-clean'], $stageDir);
-        $this->run(['composer', 'global', 'remove', 'phing/phing', '--no-interaction', '--no-progress']);
+        $this->run(['rm', '-rf', $composerHome]);
 
         // Drop node_modules and regenerate the optimized production autoloader.
         $this->run(['rm', '-rf', "{$stageDir}/node_modules"]);
@@ -129,12 +137,13 @@ final readonly class PackageAssembler
     /**
      * Run a command, streaming its output. No timeout — builds are slow.
      *
-     * @param list<string> $command
+     * @param list<string>              $command
+     * @param array<string, string>|null $env extra environment, merged over the inherited environment
      */
-    private function run(array $command, ?string $cwd = null): void
+    private function run(array $command, ?string $cwd = null, ?array $env = null): void
     {
         $this->output->writeln('<comment>$ ' . implode(' ', $command) . '</comment>');
-        $process = new Process($command, $cwd, null, null, null);
+        $process = new Process($command, $cwd, $env, null, null);
         $process->mustRun(function (string $type, string $buffer): void {
             $this->output->write($buffer);
         });
