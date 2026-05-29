@@ -3,10 +3,15 @@
 /**
  * Build the full distribution tarball + zip for an official OpenEMR release.
  *
- * Ports the long-standing manual release-package process: take a checked-out
+ * Ports the long-standing manual release-package process: export a checked-out
  * release branch, install production-only dependencies, build front-end assets,
  * prune dev/test cruft, and emit `openemr-<version>.tar.gz` and
  * `openemr-<version>.zip` ready to attach to the GitHub release.
+ *
+ * The staging tree is produced with `git archive`, so `export-ignore` entries in
+ * openemr/openemr's .gitattributes (.github, ci, docker, tests, tools, large
+ * docs, …) are the single source of truth for what ships — no exclude list is
+ * duplicated here.
  *
  * Unlike PatchAssembler (a changed-files overlay), this produces a complete,
  * standalone install that end users extract and run without composer or npm.
@@ -57,10 +62,18 @@ final readonly class PackageAssembler
             mkdir($this->outputDir, 0755, true);
         }
 
-        // Copy the pristine checkout (minus VCS metadata) so the build never
-        // mutates the caller's working tree and the archive's top-level
-        // directory is openemr-<version>/.
-        $this->run(['rsync', '-a', '--exclude', '.git', "{$this->openemrDir}/", "{$stageDir}/"]);
+        // Export the committed tree (honoring .gitattributes export-ignore) into
+        // a fresh openemr-<version>/ staging dir. git archive can't pipe through
+        // our no-shell Process runner, so stage via an intermediate tar. HEAD is
+        // the release commit — in a real release the version bump is already
+        // committed before this step runs.
+        $sourceTar = "{$this->outputDir}/{$packageName}-source.tar";
+        $this->run(
+            ['git', 'archive', '--format=tar', '--prefix', "{$packageName}/", '-o', $sourceTar, 'HEAD'],
+            $this->openemrDir,
+        );
+        $this->run(['tar', '-xf', $sourceTar, '-C', $this->outputDir]);
+        unlink($sourceTar);
 
         // Production dependencies + built front-end assets.
         $this->run(['composer', 'install', '--no-dev', '--no-interaction', '--no-progress'], $stageDir);
