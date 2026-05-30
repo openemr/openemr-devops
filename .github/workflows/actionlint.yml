@@ -5,12 +5,14 @@ on:
     branches:
       - master
     paths:
+      - '.github/actionlint.yaml'
       - '.github/actions/**'
       - '.github/workflows/**'
   pull_request:
     branches:
       - master
     paths:
+      - '.github/actionlint.yaml'
       - '.github/actions/**'
       - '.github/workflows/**'
 
