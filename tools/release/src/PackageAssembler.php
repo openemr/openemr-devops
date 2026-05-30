@@ -51,6 +51,19 @@ final readonly class PackageAssembler
             return 1;
         }
 
+        // `git archive HEAD` below ships the committed tree, so an uncommitted
+        // version bump would silently package stale content. Fail fast on a dirty
+        // checkout. (The workflow commits the bump locally before this step, even
+        // in dry runs, so the package validates the exact tree a release ships.)
+        $status = new Process(['git', 'status', '--porcelain'], $this->openemrDir);
+        $status->mustRun();
+        $dirty = trim($status->getOutput());
+        if ($dirty !== '') {
+            $this->output->writeln("<error>Refusing to package a dirty checkout in {$this->openemrDir}:</error>");
+            $this->output->writeln($dirty);
+            return 1;
+        }
+
         $packageName = "openemr-{$this->version}";
         $stageDir = "{$this->outputDir}/{$packageName}";
 
@@ -65,8 +78,8 @@ final readonly class PackageAssembler
         // Export the committed tree (honoring .gitattributes export-ignore) into
         // a fresh openemr-<version>/ staging dir. git archive can't pipe through
         // our no-shell Process runner, so stage via an intermediate tar. HEAD is
-        // the release commit — in a real release the version bump is already
-        // committed before this step runs.
+        // the release commit — the dirty-checkout guard above guarantees the
+        // version bump is committed (in every run, dry included).
         $sourceTar = "{$this->outputDir}/{$packageName}-source.tar";
         $this->run(
             ['git', 'archive', '--format=tar', '--prefix', "{$packageName}/", '-o', $sourceTar, 'HEAD'],

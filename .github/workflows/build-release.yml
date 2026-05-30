@@ -159,15 +159,22 @@ jobs:
         MODE=full
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
 
-    - name: Commit and push version changes
-      if: "!inputs.dry_run && steps.detect-prep.outputs.prep_done != 'true'"
+    # Commit the bump locally in every run (dry included) so the package build's
+    # `git archive HEAD` ships the exact bumped tree. The push to the release
+    # branch is gated on a real release below.
+    - name: Commit version changes
+      if: "steps.detect-prep.outputs.prep_done != 'true'"
       working-directory: openemr
       run: |
         git config user.name 'github-actions[bot]'
         git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
         git add version.php library/globals.inc.php
         git commit -m 'chore: prepare ${{ inputs.version }} for release'
-        git push origin HEAD:'${{ inputs.version_branch }}'
+
+    - name: Push version changes
+      if: "!inputs.dry_run && steps.detect-prep.outputs.prep_done != 'true'"
+      working-directory: openemr
+      run: git push origin HEAD:'${{ inputs.version_branch }}'
 
     - name: Generate changelog
       working-directory: devops-tools

@@ -15,6 +15,7 @@ namespace OpenEMR\Release\Tests;
 use OpenEMR\Release\PackageAssembler;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Process\Process;
 
 final class PackageAssemblerTest extends TestCase
 {
@@ -31,7 +32,7 @@ final class PackageAssemblerTest extends TestCase
     protected function tearDown(): void
     {
         if (is_dir($this->tmpDir)) {
-            rmdir($this->tmpDir);
+            (new Process(['rm', '-rf', $this->tmpDir]))->run();
         }
     }
 
@@ -51,5 +52,33 @@ final class PackageAssemblerTest extends TestCase
 
         self::assertSame(1, $assembler->assemble());
         self::assertStringContainsString('build.xml not found', $output->fetch());
+    }
+
+    public function testDirtyCheckoutReturnsError(): void
+    {
+        $repo = $this->tmpDir . '/openemr';
+        mkdir($repo, 0700, true);
+        $this->git($repo, ['init', '-q']);
+        $this->git($repo, ['config', 'user.email', 'test@example.com']);
+        $this->git($repo, ['config', 'user.name', 'Test']);
+        file_put_contents("{$repo}/build.xml", "<project/>\n");
+        $this->git($repo, ['add', 'build.xml']);
+        $this->git($repo, ['commit', '-qm', 'init']);
+        // Leave an uncommitted change, mimicking an uncommitted version bump.
+        file_put_contents("{$repo}/build.xml", "<project name=\"dirty\"/>\n");
+
+        $output = new BufferedOutput();
+        $assembler = new PackageAssembler('8.1.0', $repo, $this->tmpDir . '/out', $output);
+
+        self::assertSame(1, $assembler->assemble());
+        self::assertStringContainsString('dirty checkout', $output->fetch());
+    }
+
+    /**
+     * @param list<string> $args
+     */
+    private function git(string $cwd, array $args): void
+    {
+        (new Process(['git', ...$args], $cwd))->mustRun();
     }
 }
