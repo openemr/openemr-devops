@@ -101,6 +101,12 @@ probes only what this repo's rotation workflow needs:
 - `GET /repos/openemr/openemr-devops` — confirm the App can read the repo.
 - Create + delete a throwaway branch `release-permissions-check/<run-id>` —
   confirm `contents:write`.
+- Commit an inert stub under `.github/workflows/` on that branch — confirm
+  `workflows:write`. Rotation rewrites `.github/workflows/build-{800,810,811}.yml`
+  per `tools/release/versions.yml` (entries with `kind: build_workflow`), so
+  the App must be able to update workflow files; a plain-dotfile probe
+  doesn't exercise this permission and the gap surfaced as a push rejection
+  in release-rotation.yml (see openemr-devops#758).
 - Open + close a draft PR from that branch — confirm `pull-requests:write`.
 
 Fails loudly with the missing permission name. Run after installing the App;
