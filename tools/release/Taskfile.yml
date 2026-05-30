@@ -234,6 +234,17 @@ tasks:
         {{if .BRANCH}}--release-branch={{shellQuote .BRANCH}}{{end}}
         {{if .FORUM_URL}}--forum-url={{shellQuote .FORUM_URL}}{{end}}
 
+  release:derive-build-inputs:
+    desc: Emit version/version_branch/release_tag lines for the build-release workflow
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/derive-build-inputs.php
+        {{if .PAYLOAD_FILE}}--payload-file={{shellQuote .PAYLOAD_FILE}}{{end}}
+        {{if .VERSION}}--release-version={{shellQuote .VERSION}}{{end}}
+        {{if .TAG}}--release-tag={{shellQuote .TAG}}{{end}}
+        {{if .BRANCH}}--release-branch={{shellQuote .BRANCH}}{{end}}
+
   release:render-announcements:
     desc: Render per-channel release-announcement drafts to a directory
     requires:

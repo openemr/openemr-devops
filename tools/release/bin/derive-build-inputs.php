@@ -2,11 +2,11 @@
 <?php
 
 /**
- * Emit the `version=` / `tag=` / `branch=` / `forum_url=` lines the
- * release-announcements workflow appends to $GITHUB_OUTPUT, regardless
- * of whether the trigger was an `openemr-tag` repository_dispatch
+ * Emit the `version=` / `version_branch=` / `release_tag=` lines the
+ * build-release workflow appends to $GITHUB_OUTPUT, regardless of
+ * whether the trigger was an `openemr-tag` repository_dispatch
  * (--payload-file) or a manual workflow_dispatch (--release-version /
- * --release-tag / --release-branch / --forum-url).
+ * --release-tag / --release-branch).
  *
  * Validation lives in TagDispatchPayload (mirrors the canonical
  * dispatch.schema.json patterns); a missing or malformed field aborts
@@ -31,8 +31,8 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\SingleCommandApplication;
 
 (new SingleCommandApplication())
-    ->setName('derive-announcement-inputs')
-    ->setDescription('Emit version/tag/branch/forum_url lines for the announcements workflow')
+    ->setName('derive-build-inputs')
+    ->setDescription('Emit version/version_branch/release_tag lines for the build-release workflow')
     ->addOption(
         'payload-file',
         null,
@@ -42,13 +42,6 @@ use Symfony\Component\Console\SingleCommandApplication;
     ->addOption('release-version', null, InputOption::VALUE_REQUIRED, 'Release version (e.g. 8.1.0)')
     ->addOption('release-tag', null, InputOption::VALUE_REQUIRED, 'Annotated release tag (e.g. v8_1_0)')
     ->addOption('release-branch', null, InputOption::VALUE_REQUIRED, 'Release branch (e.g. rel-810)')
-    ->addOption(
-        'forum-url',
-        null,
-        InputOption::VALUE_REQUIRED,
-        'Per-release Discourse thread URL; empty value falls back to the placeholder',
-        '',
-    )
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
         // Stdout is reserved for the GITHUB_OUTPUT key=value lines the
         // workflow appends with `>>`. Errors must not pollute it.
@@ -92,15 +85,9 @@ use Symfony\Component\Console\SingleCommandApplication;
             return 1;
         }
 
-        // Emit forum_url verbatim (possibly empty); downstream renderers
-        // substitute their own placeholder when the maintainer hasn't
-        // supplied a real URL. Keeping the placeholder string out of the
-        // pipeline avoids Taskfile/Go-template confusion over the literal
-        // braces.
         $output->writeln(sprintf('version=%s', $payload->version));
-        $output->writeln(sprintf('tag=%s', $payload->tag));
-        $output->writeln(sprintf('branch=%s', $payload->branch));
-        $output->writeln(sprintf('forum_url=%s', $str('forum-url')));
+        $output->writeln(sprintf('version_branch=%s', $payload->branch));
+        $output->writeln(sprintf('release_tag=%s', $payload->tag));
         return 0;
     })
     ->run();

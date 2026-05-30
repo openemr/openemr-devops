@@ -12,10 +12,10 @@ declare(strict_types=1);
 
 namespace OpenEMR\Release\Tests;
 
-use OpenEMR\Release\AnnouncementDispatchPayload;
+use OpenEMR\Release\TagDispatchPayload;
 use PHPUnit\Framework\TestCase;
 
-final class AnnouncementDispatchPayloadTest extends TestCase
+final class TagDispatchPayloadTest extends TestCase
 {
     private const VALID_DATA = ['version' => '8.1.0', 'tag' => 'v8_1_0', 'branch' => 'rel-810'];
 
@@ -36,7 +36,7 @@ final class AnnouncementDispatchPayloadTest extends TestCase
 
     public function testParsesValidEnvelope(): void
     {
-        $payload = AnnouncementDispatchPayload::fromEnvelope($this->envelope());
+        $payload = TagDispatchPayload::fromEnvelope($this->envelope());
 
         self::assertSame('8.1.0', $payload->version);
         self::assertSame('v8_1_0', $payload->tag);
@@ -50,7 +50,7 @@ final class AnnouncementDispatchPayloadTest extends TestCase
             'tag' => 'v8_1_0-test.abcdef0',
             'branch' => 'rel-test',
         ]);
-        $payload = AnnouncementDispatchPayload::fromEnvelope($envelope);
+        $payload = TagDispatchPayload::fromEnvelope($envelope);
 
         self::assertSame('v8_1_0-test.abcdef0', $payload->tag);
         self::assertSame('rel-test', $payload->branch);
@@ -60,14 +60,14 @@ final class AnnouncementDispatchPayloadTest extends TestCase
     {
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('not a JSON object');
-        AnnouncementDispatchPayload::fromEnvelope('not-an-object');
+        TagDispatchPayload::fromEnvelope('not-an-object');
     }
 
     public function testRejectsWrongEvent(): void
     {
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Expected event=openemr-tag');
-        AnnouncementDispatchPayload::fromEnvelope($this->envelope('openemr-rel-cut'));
+        TagDispatchPayload::fromEnvelope($this->envelope('openemr-rel-cut'));
     }
 
     public function testRejectsMissingDataObject(): void
@@ -77,7 +77,7 @@ final class AnnouncementDispatchPayloadTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('missing data object');
-        AnnouncementDispatchPayload::fromEnvelope($envelope);
+        TagDispatchPayload::fromEnvelope($envelope);
     }
 
     public function testRejectsMissingVersionField(): void
@@ -86,7 +86,7 @@ final class AnnouncementDispatchPayloadTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('missing or empty field: data.version');
-        AnnouncementDispatchPayload::fromEnvelope($envelope);
+        TagDispatchPayload::fromEnvelope($envelope);
     }
 
     public function testRejectsEmptyTagField(): void
@@ -95,7 +95,7 @@ final class AnnouncementDispatchPayloadTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('missing or empty field: data.tag');
-        AnnouncementDispatchPayload::fromEnvelope($envelope);
+        TagDispatchPayload::fromEnvelope($envelope);
     }
 
     public function testRejectsNullField(): void
@@ -106,7 +106,7 @@ final class AnnouncementDispatchPayloadTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('missing or empty field: data.branch');
-        AnnouncementDispatchPayload::fromEnvelope($envelope);
+        TagDispatchPayload::fromEnvelope($envelope);
     }
 
     public function testRejectsMalformedVersion(): void
@@ -115,7 +115,7 @@ final class AnnouncementDispatchPayloadTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('field version does not match expected shape');
-        AnnouncementDispatchPayload::fromEnvelope($envelope);
+        TagDispatchPayload::fromEnvelope($envelope);
     }
 
     public function testRejectsMalformedTag(): void
@@ -124,7 +124,7 @@ final class AnnouncementDispatchPayloadTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('field tag does not match expected shape');
-        AnnouncementDispatchPayload::fromEnvelope($envelope);
+        TagDispatchPayload::fromEnvelope($envelope);
     }
 
     public function testRejectsMalformedBranch(): void
@@ -133,6 +133,6 @@ final class AnnouncementDispatchPayloadTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('field branch does not match expected shape');
-        AnnouncementDispatchPayload::fromEnvelope($envelope);
+        TagDispatchPayload::fromEnvelope($envelope);
     }
 }

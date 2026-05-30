@@ -52,6 +52,60 @@ on:
         description: Create PR in website-openemr repo
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      version_branch:
+        description: Release branch (e.g., rel-800)
+        required: true
+        type: string
+      version:
+        description: Human-readable version (e.g., 8.0.0)
+        required: true
+        type: string
+      release_tag:
+        description: Git tag (e.g., v8_0_0). Required unless dry run.
+        required: false
+        type: string
+      base_ref:
+        description: Previous release tag for changelog (e.g., v7_3_7)
+        required: true
+        type: string
+      milestone:
+        description: GitHub milestone name for preflight check (e.g., 8.0.0)
+        required: false
+        type: string
+      dry_run:
+        description: Dry run — build only, skip release
+        type: boolean
+        default: true
+      validate_token:
+        description: Generate and verify the app token (use with dry run to test permissions)
+        type: boolean
+        default: false
+      skip_milestone_check:
+        description: Skip milestone open-items check
+        type: boolean
+        default: false
+      skip_ghsa_check:
+        description: Skip unpublished GHSA check
+        type: boolean
+        default: false
+      upload_sourceforge:
+        description: Upload to SourceForge (requires SF secrets)
+        type: boolean
+        default: false
+      docker_prep:
+        description: Create PR for Docker version bumps in openemr-devops
+        type: boolean
+        default: false
+      update_website:
+        description: Create PR in website-openemr repo
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-release-${{ inputs.release_tag || inputs.version }}
+  cancel-in-progress: false
 
 jobs:
   build-release:

@@ -1,8 +1,11 @@
 <?php
 
 /**
- * Parsed `openemr-tag` repository_dispatch payload for the announcement
- * workflow.
+ * Parsed `openemr-tag` repository_dispatch payload.
+ *
+ * The generic value object for the `openemr-tag` envelope: any consumer
+ * (announcements, build-release) reuses it to normalize the dispatch into
+ * {version, tag, branch}.
  *
  * Validates each field against the canonical pattern from
  * tools/release/contracts/dispatch.schema.json so a malformed envelope
@@ -20,7 +23,7 @@ declare(strict_types=1);
 
 namespace OpenEMR\Release;
 
-final readonly class AnnouncementDispatchPayload
+final readonly class TagDispatchPayload
 {
     // Patterns mirror dispatch.schema.json's tag/branch/version definitions.
     private const VERSION_PATTERN = '/^\d+\.\d+\.\d+$/';
