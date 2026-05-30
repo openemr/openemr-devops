@@ -204,8 +204,8 @@ jobs:
     - name: Generate checksums
       working-directory: devops-tools
       run: |
-        task release:checksum FILE="release-output/openemr-${{ inputs.version }}.tar.gz"
-        task release:checksum FILE="release-output/openemr-${{ inputs.version }}.zip"
+        task release:checksum FILE="openemr-${{ inputs.version }}.tar.gz"
+        task release:checksum FILE="openemr-${{ inputs.version }}.zip"
 
     - name: Create annotated tag and GitHub release
       if: '!inputs.dry_run'

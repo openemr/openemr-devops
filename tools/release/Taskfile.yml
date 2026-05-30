@@ -65,6 +65,11 @@ tasks:
     desc: Generate checksum sidecar files
     requires:
       vars: [FILE]
+    # Run from OUTPUT_DIR and checksum the basename FILE so the sidecar records
+    # `openemr-x.tar.gz`, not `release-output/openemr-x.tar.gz`. Otherwise
+    # `sha256sum -c` fails once users download the assets into a flat directory
+    # and the recorded path's `release-output/` prefix is absent.
+    dir: '{{.OUTPUT_DIR}}'
     cmds:
       - md5sum {{shellQuote .FILE}} > {{shellQuote .FILE}}.md5
       - sha256sum {{shellQuote .FILE}} > {{shellQuote .FILE}}.sha256
