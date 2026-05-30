@@ -28,6 +28,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+
       - name: Install Task
         uses: arduino/setup-task@v2
 

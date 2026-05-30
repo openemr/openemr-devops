@@ -323,28 +323,33 @@ tasks:
 
   release:probe-app-installation:
     desc: Verify the release App is installed on $OWNER/$REPO_NAME
+    deps: [setup]
     cmds:
-      - scripts/probe-app-installation.sh
+      - php bin/probe-app.php --check=installation
 
   release:probe-app-metadata:
     desc: Verify the release App has metadata:read on $OWNER/$REPO_NAME
+    deps: [setup]
     cmds:
-      - scripts/probe-app-metadata.sh
+      - php bin/probe-app.php --check=metadata
 
   release:probe-app-contents-write:
     desc: Verify the release App can create a branch and commit a stub
+    deps: [setup]
     cmds:
-      - scripts/probe-app-contents-write.sh
+      - php bin/probe-app.php --check=contents-write
 
   release:probe-app-pull-requests-write:
     desc: Verify the release App can open and close a draft PR
+    deps: [setup]
     cmds:
-      - scripts/probe-app-pull-requests-write.sh
+      - php bin/probe-app.php --check=pull-requests-write
 
   release:probe-app-cleanup:
     desc: Best-effort delete the throwaway probe branch
+    deps: [setup]
     cmds:
-      - scripts/probe-app-cleanup.sh
+      - php bin/probe-app.php --check=cleanup
 
   summary:
     desc: Generate release summary
