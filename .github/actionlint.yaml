@@ -3,7 +3,7 @@
 # demands the now-deprecated `app-id`. Remove once the fix lands upstream:
 # https://github.com/rhysd/actionlint/pull/652
 paths:
-  .github/workflows/*.yml:
+  .github/workflows/*.{yml,yaml}:
     ignore:
       - 'missing input "app-id" which is required by action "actions/create-github-app-token@[^"]+"'
       - 'input "client-id" is not defined in action "actions/create-github-app-token@[^"]+"'
