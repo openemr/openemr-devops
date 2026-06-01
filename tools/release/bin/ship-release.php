@@ -23,16 +23,21 @@ use OpenEMR\Release\PullRequestTarget;
 use OpenEMR\Release\ShipReleaseOptions;
 use OpenEMR\Release\ShipReleaseOrchestrator;
 use OpenEMR\Release\ShipReleaseRenderer;
+use OpenEMR\Release\ShipReleaseSummaryRenderer;
 use OpenEMR\Release\SystemClock;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\SingleCommandApplication;
+use Symfony\Component\Filesystem\Filesystem;
 
 (new SingleCommandApplication())
     ->setName('ship-release')
     ->setDescription('Merge the three release PRs in order (issue #705)')
-    ->addOption('version', null, InputOption::VALUE_REQUIRED, 'Release version (e.g. 8.1.0)')
+    // Option is `--release-version`, not `--version`: Symfony Console reserves
+    // `--version`/`-V` as a global flag that prints the app name and exits 0
+    // before the command runs, so `--version=8.1.0` would silently no-op.
+    ->addOption('release-version', null, InputOption::VALUE_REQUIRED, 'Release version (e.g. 8.1.0)')
     ->addOption('rel-branch', null, InputOption::VALUE_REQUIRED, 'Release branch name (e.g. rel-810)')
     ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Check readiness without merging or posting status')
     ->addOption(
@@ -43,11 +48,12 @@ use Symfony\Component\Console\SingleCommandApplication;
         '600',
     )
     ->addOption('status-target-url', null, InputOption::VALUE_REQUIRED, 'target_url for the ship-approved status', '')
+    ->addOption('summary-file', null, InputOption::VALUE_REQUIRED, 'Write a Markdown run summary to this path', '')
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
-        $version = ShipReleaseOptions::asString($input, 'version');
+        $version = ShipReleaseOptions::asString($input, 'release-version');
         $relBranch = ShipReleaseOptions::asString($input, 'rel-branch');
         if ($version === '' || $relBranch === '') {
-            $output->writeln('<error>--version and --rel-branch are required</error>');
+            $output->writeln('<error>--release-version and --rel-branch are required</error>');
             return 1;
         }
         $timeoutRaw = ShipReleaseOptions::asString($input, 'timeout-seconds');
@@ -65,6 +71,18 @@ use Symfony\Component\Console\SingleCommandApplication;
         );
         $result = $orchestrator->ship(PullRequestTarget::forRelease($version, $relBranch));
         ShipReleaseRenderer::render($output, $result);
+
+        $summaryFile = ShipReleaseOptions::asString($input, 'summary-file');
+        if ($summaryFile !== '') {
+            $markdown = ShipReleaseSummaryRenderer::render(
+                $version,
+                $relBranch,
+                (bool) $input->getOption('dry-run'),
+                $result,
+            );
+            (new Filesystem())->appendToFile($summaryFile, $markdown);
+        }
+
         return $result->wasSuccessful() ? 0 : 1;
     })
     ->run();

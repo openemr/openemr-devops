@@ -27,16 +27,19 @@ use Symfony\Component\Console\SingleCommandApplication;
 (new SingleCommandApplication())
     ->setName('package-assemble')
     ->setDescription('Build the full distribution tarball + zip for an official release')
-    ->addOption('version', null, InputOption::VALUE_REQUIRED, 'Release version (e.g., 8.1.0)')
+    // `--release-version`, not `--version`: Symfony Console reserves `--version`
+    // as a global flag that prints the app name and exits 0 before the command
+    // runs, so `--version=8.1.0` would silently no-op.
+    ->addOption('release-version', null, InputOption::VALUE_REQUIRED, 'Release version (e.g., 8.1.0)')
     ->addOption('openemr-dir', null, InputOption::VALUE_REQUIRED, 'Path to the checked-out openemr release branch')
     ->addOption('output-dir', null, InputOption::VALUE_REQUIRED, 'Output directory', './release-output')
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
-        $versionOption = $input->getOption('version');
+        $versionOption = $input->getOption('release-version');
         $openemrDirOption = $input->getOption('openemr-dir');
         $outputDirOption = $input->getOption('output-dir');
 
         if (!is_string($versionOption) || $versionOption === '') {
-            $output->writeln('<error>--version is required</error>');
+            $output->writeln('<error>--release-version is required</error>');
             return 1;
         }
         if (!is_string($openemrDirOption) || $openemrDirOption === '') {

@@ -117,7 +117,7 @@ tasks:
     cmds:
       - >-
         php bin/changelog-pr.php
-        --version={{shellQuote .VERSION}}
+        --release-version={{shellQuote .VERSION}}
         --branches={{shellQuote .BRANCHES}}
         --openemr-dir={{shellQuote .OPENEMR_DIR}}
         --changelog-file={{shellQuote .OUTPUT_DIR}}/changelog.md
@@ -146,7 +146,7 @@ tasks:
     cmds:
       - >-
         php bin/package-assemble.php
-        --version={{shellQuote .VERSION}}
+        --release-version={{shellQuote .VERSION}}
         --openemr-dir={{shellQuote .OPENEMR_DIR}}
         --output-dir={{shellQuote .OUTPUT_DIR}}
 
@@ -315,10 +315,11 @@ tasks:
     cmds:
       - >-
         php bin/ship-release.php
-        --version={{shellQuote .VERSION}}
+        --release-version={{shellQuote .VERSION}}
         --rel-branch={{shellQuote .REL_BRANCH}}
         {{if .TIMEOUT_SECONDS}}--timeout-seconds={{shellQuote .TIMEOUT_SECONDS}}{{end}}
         {{if .STATUS_TARGET_URL}}--status-target-url={{shellQuote .STATUS_TARGET_URL}}{{end}}
+        {{if .SUMMARY_FILE}}--summary-file={{shellQuote .SUMMARY_FILE}}{{end}}
         {{if eq .DRY_RUN "1"}}--dry-run{{end}}
 
   release:probe-app-installation:
