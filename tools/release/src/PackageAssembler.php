@@ -65,14 +65,27 @@ final readonly class PackageAssembler
         }
 
         $packageName = "openemr-{$this->version}";
-        $stageDir = "{$this->outputDir}/{$packageName}";
+
+        // Resolve the output dir to an absolute path before any command runs.
+        // The git archive below runs with cwd = openemrDir, so a relative output
+        // path (the default ./release-output) would resolve against the openemr
+        // checkout — where the dir does not exist — and fail to open. Create the
+        // dir, then canonicalize, so every command writes here regardless of its
+        // own cwd.
+        if (!is_dir($this->outputDir)) {
+            mkdir($this->outputDir, 0755, true);
+        }
+        $outputDir = realpath($this->outputDir);
+        if ($outputDir === false) {
+            $this->output->writeln("<error>Could not resolve output directory: {$this->outputDir}</error>");
+            return 1;
+        }
+
+        $stageDir = "{$outputDir}/{$packageName}";
 
         // Fresh staging directory.
         if (is_dir($stageDir)) {
             $this->run(['rm', '-rf', $stageDir]);
-        }
-        if (!is_dir($this->outputDir)) {
-            mkdir($this->outputDir, 0755, true);
         }
 
         // Export the committed tree (honoring .gitattributes export-ignore) into
@@ -80,12 +93,12 @@ final readonly class PackageAssembler
         // our no-shell Process runner, so stage via an intermediate tar. HEAD is
         // the release commit — the dirty-checkout guard above guarantees the
         // version bump is committed (in every run, dry included).
-        $sourceTar = "{$this->outputDir}/{$packageName}-source.tar";
+        $sourceTar = "{$outputDir}/{$packageName}-source.tar";
         $this->run(
             ['git', 'archive', '--format=tar', '--prefix', "{$packageName}/", '-o', $sourceTar, 'HEAD'],
             $this->openemrDir,
         );
-        $this->run(['tar', '-xf', $sourceTar, '-C', $this->outputDir]);
+        $this->run(['tar', '-xf', $sourceTar, '-C', $outputDir]);
         unlink($sourceTar);
 
         // Production dependencies + built front-end assets.
@@ -99,7 +112,7 @@ final readonly class PackageAssembler
         // COMPOSER_HOME at a throwaway dir so `composer global` installs phing
         // there instead of mutating the caller's real global environment — no
         // `remove` cleanup step that could be skipped on a clean-target failure.
-        $composerHome = "{$this->outputDir}/{$packageName}-composer-home";
+        $composerHome = "{$outputDir}/{$packageName}-composer-home";
         mkdir($composerHome, 0755, true);
         $composerEnv = ['COMPOSER_HOME' => $composerHome];
         $this->run(
@@ -128,14 +141,14 @@ final readonly class PackageAssembler
         }
 
         // Build archives from the output dir so each unpacks to openemr-<version>/.
-        $this->run(['tar', '-zcpf', "{$packageName}.tar.gz", $packageName], $this->outputDir);
-        $this->run(['zip', '-r', '-q', "{$packageName}.zip", $packageName], $this->outputDir);
+        $this->run(['tar', '-zcpf', "{$packageName}.tar.gz", $packageName], $outputDir);
+        $this->run(['zip', '-r', '-q', "{$packageName}.zip", $packageName], $outputDir);
 
         // Drop the staging tree; only the archives need to survive.
         $this->run(['rm', '-rf', $stageDir]);
 
         foreach (["{$packageName}.tar.gz", "{$packageName}.zip"] as $artifact) {
-            $path = "{$this->outputDir}/{$artifact}";
+            $path = "{$outputDir}/{$artifact}";
             $size = filesize($path);
             $this->output->writeln(sprintf(
                 '<info>Built</info> %s (%s bytes)',
