@@ -120,9 +120,17 @@ final readonly class PackageAssembler
             null,
             $composerEnv,
         );
+        // build.xml is export-ignore'd in openemr's .gitattributes, so git
+        // archive strips it from the staged tree. Its prune targets resolve
+        // ${project.basedir}/vendor and .../public/assets against the staged
+        // tree (phing runs there), so copy the buildfile in for the prune run
+        // and remove it afterward — it must not ship in the distribution.
+        $buildXml = "{$stageDir}/build.xml";
+        copy("{$this->openemrDir}/build.xml", $buildXml);
         $phing = "{$composerHome}/vendor/bin/phing";
         $this->run([$phing, 'vendor-clean'], $stageDir);
         $this->run([$phing, 'assets-clean'], $stageDir);
+        unlink($buildXml);
         $this->run(['rm', '-rf', $composerHome]);
 
         // Drop node_modules and regenerate the optimized production autoloader.
