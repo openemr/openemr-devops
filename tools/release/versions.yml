@@ -122,17 +122,6 @@ files:
     slot: all
     kinds: [dependabot_directory]
 
-  # In-container init scripts; reference their own dir as shellcheck source
-  # comments, so they rotate with the slot's docker_dir. Only the 8.0.0/*.sh
-  # files currently have these refs; the next/dev variants have no path
-  # comments and will be picked up by the linter only if added later.
-  - path: docker/openemr/8.0.0/openemr.sh
-    slot: current
-    kinds: [shellcheck_source]
-  - path: docker/openemr/8.0.0/ssl.sh
-    slot: current
-    kinds: [shellcheck_source]
-
   # Container-benchmarking docs reference the next-slot version as defaults.
   - path: utilities/container_benchmarking/README.md
     slot: next

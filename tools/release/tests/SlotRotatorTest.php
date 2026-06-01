@@ -195,6 +195,37 @@ final class SlotRotatorTest extends TestCase
         self::assertStringContainsString('rel-820', $after);
     }
 
+    public function testRotationLeavesScriptdirShellcheckDirectiveIntact(): void
+    {
+        $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
+
+        $rotator->rotate([
+            'current' => [
+                'minor' => '8.2',
+                'full' => '8.2.0',
+                'branch' => 'rel-820',
+                'docker_dir' => '8.2.0',
+            ],
+        ]);
+
+        $script = (string) file_get_contents($this->tmpDir . '/docker/openemr/8.0.0/openemr.sh');
+        self::assertStringContainsString(
+            '# shellcheck source=SCRIPTDIR/env.stub',
+            $script,
+            'self-referential SCRIPTDIR directive must survive rotation byte-for-byte',
+        );
+        self::assertStringNotContainsString(
+            'source=docker/openemr',
+            $script,
+            'rotation must never inject a version path into a shellcheck source directive',
+        );
+        self::assertStringContainsString(
+            "echo 'init for docker/openemr/8.2.0'",
+            $script,
+            'sanity: the genuine rotating docker_dir token should have been rewritten',
+        );
+    }
+
     private function seedFixtures(): void
     {
         $this->writeFile('tools/release/versions.yml', <<<'YAML'
@@ -230,6 +261,9 @@ final class SlotRotatorTest extends TestCase
           - path: docker/openemr/8.0.0/Dockerfile
             slot: current
             kinds: [docker_clone_branch]
+          - path: docker/openemr/8.0.0/openemr.sh
+            slot: current
+            kinds: [docker_dir_ref]
           - path: docker/openemr/8.1.0/Dockerfile
             slot: next
             kinds: [docker_arg_branch]
@@ -255,6 +289,14 @@ final class SlotRotatorTest extends TestCase
         );
         $this->writeFile('docker/openemr/8.1.0/Dockerfile', "FROM alpine:3.21\nARG OPENEMR_VERSION=rel-810\n");
         $this->writeFile('docker/openemr/8.1.1/Dockerfile', "FROM alpine:3.21\nARG OPENEMR_VERSION=master\n");
+
+        // In-container init script for the current slot. It carries a rotating
+        // docker_dir token (the comment path) alongside a self-referential
+        // `SCRIPTDIR` shellcheck directive that must never be rewritten.
+        $this->writeFile(
+            'docker/openemr/8.0.0/openemr.sh',
+            "#!/bin/sh\nset -e\n# shellcheck source=SCRIPTDIR/env.stub\n. /root/env.stub\necho 'init for docker/openemr/8.0.0'\n",
+        );
 
         $this->writeFile(
             'docker/openemr/OVERVIEW.md',
