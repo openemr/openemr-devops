@@ -136,7 +136,7 @@ final readonly class PackageAssembler
         // Fail hard if the staged copy can't be removed: otherwise it would ship
         // in the archives below, defeating the export-ignore intent.
         if (!unlink($buildXml)) {
-            $this->output->writeln("<error>Failed to remove staged build.xml; refusing to ship it: {$buildXml}</error>");
+            $this->output->writeln("<error>Failed to remove staged build.xml; refusing to ship: {$buildXml}</error>");
             return 1;
         }
         $this->run(['rm', '-rf', $composerHome]);
