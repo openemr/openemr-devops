@@ -291,8 +291,9 @@ final class SlotRotatorTest extends TestCase
         $this->writeFile('docker/openemr/8.1.1/Dockerfile', "FROM alpine:3.21\nARG OPENEMR_VERSION=master\n");
 
         // In-container init script for the current slot. It carries a rotating
-        // docker_dir token (the comment path) alongside a self-referential
-        // `SCRIPTDIR` shellcheck directive that must never be rewritten.
+        // docker_dir token (the path in the echo line) alongside a
+        // self-referential `SCRIPTDIR` shellcheck directive that must never be
+        // rewritten.
         $this->writeFile(
             'docker/openemr/8.0.0/openemr.sh',
             "#!/bin/sh\nset -e\n"
