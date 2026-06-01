@@ -295,7 +295,9 @@ final class SlotRotatorTest extends TestCase
         // `SCRIPTDIR` shellcheck directive that must never be rewritten.
         $this->writeFile(
             'docker/openemr/8.0.0/openemr.sh',
-            "#!/bin/sh\nset -e\n# shellcheck source=SCRIPTDIR/env.stub\n. /root/env.stub\necho 'init for docker/openemr/8.0.0'\n",
+            "#!/bin/sh\nset -e\n"
+            . "# shellcheck source=SCRIPTDIR/env.stub\n. /root/env.stub\n"
+            . "echo 'init for docker/openemr/8.0.0'\n",
         );
 
         $this->writeFile(
