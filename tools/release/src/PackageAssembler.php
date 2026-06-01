@@ -126,11 +126,19 @@ final readonly class PackageAssembler
         // tree (phing runs there), so copy the buildfile in for the prune run
         // and remove it afterward — it must not ship in the distribution.
         $buildXml = "{$stageDir}/build.xml";
-        copy("{$this->openemrDir}/build.xml", $buildXml);
+        if (!copy("{$this->openemrDir}/build.xml", $buildXml)) {
+            $this->output->writeln("<error>Failed to stage build.xml for prune: {$buildXml}</error>");
+            return 1;
+        }
         $phing = "{$composerHome}/vendor/bin/phing";
         $this->run([$phing, 'vendor-clean'], $stageDir);
         $this->run([$phing, 'assets-clean'], $stageDir);
-        unlink($buildXml);
+        // Fail hard if the staged copy can't be removed: otherwise it would ship
+        // in the archives below, defeating the export-ignore intent.
+        if (!unlink($buildXml)) {
+            $this->output->writeln("<error>Failed to remove staged build.xml; refusing to ship it: {$buildXml}</error>");
+            return 1;
+        }
         $this->run(['rm', '-rf', $composerHome]);
 
         // Drop node_modules and regenerate the optimized production autoloader.
