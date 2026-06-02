@@ -78,6 +78,16 @@ use Symfony\Component\Process\Process;
                 continue;
             }
 
+            // Fetch the target branch's ref. The release build checks out only
+            // the release branch (fetch-depth: 1), so sibling targets like
+            // master have no origin/<branch> ref yet. Use an explicit refspec
+            // so origin/<branch> is created regardless of the checkout's
+            // configured fetch refspec.
+            (new Process(
+                ['git', 'fetch', '--depth=1', 'origin', "{$branch}:refs/remotes/origin/{$branch}"],
+                $openemrDir,
+            ))->mustRun();
+
             // Create branch from target
             (new Process(['git', 'checkout', '-b', $prBranch, "origin/{$branch}"], $openemrDir))->mustRun();
 
