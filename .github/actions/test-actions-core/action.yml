@@ -76,7 +76,13 @@ runs:
 
     - name: Install
       run: |
+        # Run as apache, not root: openemr/openemr#12267 added RootCliGuard,
+        # which aborts the installer when it runs as root (UID 0). apache owns
+        # the baked source in every slot's Dockerfile, so it can write sqlconf.php
+        # and generated keys. --user is portable across all slots (unlike su-exec,
+        # which #743 only added to flex/8.1.1/binary).
         docker compose exec \
+          --user apache \
           --env OPENEMR_ENABLE_INSTALLER_AUTO=1 \
           --workdir /var/www/localhost/htdocs/openemr/contrib/util/installScripts \
           "${OPENEMR_SERVICE_NAME}" sh -c 'sed -e "s@^exit;@ @" InstallerAuto.php |
