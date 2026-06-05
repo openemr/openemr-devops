@@ -18,7 +18,7 @@ set -euo pipefail
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.39"
+VERSION="1.0.40"
 
 # ============================================================================
 # WORKTREE STATE MANAGEMENT
@@ -150,9 +150,14 @@ wt_validate_dir() {
         wt_die "Worktree path '${dir_real}' is not within expected parent '${worktree_parent_real}'"
     fi
 
-    # 3. Ensure it is a registered git worktree of OPENEMR_ROOT
-    if ! git -C "${OPENEMR_ROOT}" worktree list --porcelain 2>/dev/null \
-            | grep -Fqx "worktree ${dir_real}"; then
+    # 3. Ensure it is a registered git worktree of OPENEMR_ROOT.
+    # Capture the listing first rather than piping into grep: under pipefail,
+    # 'grep -q' exits on first match and SIGPIPEs git mid-write, which git
+    # reports as failure (141) once its output exceeds the pipe buffer (many
+    # worktrees). A herestring avoids the pipe entirely.
+    local worktrees
+    worktrees=$(git -C "${OPENEMR_ROOT}" worktree list --porcelain 2>/dev/null)
+    if ! grep -Fqx "worktree ${dir_real}" <<< "${worktrees}"; then
         wt_die "Path '${dir_real}' is not a registered git worktree of '${OPENEMR_ROOT}'"
     fi
 }
@@ -171,7 +176,9 @@ wt_validate_dir_safe() {
         return 1
     fi
 
-    if ! git -C "${OPENEMR_ROOT}" worktree list --porcelain 2>/dev/null             | grep -Fqx "worktree ${dir_real}"; then
+    local worktrees
+    worktrees=$(git -C "${OPENEMR_ROOT}" worktree list --porcelain 2>/dev/null)
+    if ! grep -Fqx "worktree ${dir_real}" <<< "${worktrees}"; then
         return 1
     fi
 }
