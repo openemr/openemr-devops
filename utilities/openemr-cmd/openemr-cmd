@@ -18,7 +18,7 @@ set -euo pipefail
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.38"
+VERSION="1.0.39"
 
 # ============================================================================
 # WORKTREE STATE MANAGEMENT
@@ -57,6 +57,20 @@ wt_require_cmd() {
         if ! command -v "${cmd}" &>/dev/null; then wt_die "'${cmd}' is required but not found"; fi
     done
 }
+
+# realpath flag support differs by platform: GNU coreutils has -e/-m; the
+# BSD realpath on macOS has neither. BSD's bare realpath already resolves
+# symlinks and errors on a missing path (== GNU -e), and every -m call site
+# here resolves a path that already exists, so bare realpath is equivalent.
+# These are command arrays (not a wrapper function) so realpath stays an
+# external command — a function in an || condition trips shellcheck SC2310.
+if realpath --version >/dev/null 2>&1; then
+    OE_REALPATH_E=(realpath -e)
+    OE_REALPATH_M=(realpath -m)
+else
+    OE_REALPATH_E=(realpath)
+    OE_REALPATH_M=(realpath)
+fi
 
 wt_init_state() {
     [[ -f "${WT_STATE_FILE}" ]] || echo '{}' > "${WT_STATE_FILE}"
@@ -126,11 +140,11 @@ wt_validate_dir() {
     local dir_real worktree_parent_real
 
     # 1. Resolve to real path — fails if path does not exist
-    dir_real=$(realpath -e "${dir}" 2>/dev/null) \
+    dir_real=$("${OE_REALPATH_E[@]}" "${dir}" 2>/dev/null) \
         || wt_die "Worktree path does not exist or cannot be resolved: '${dir}'"
 
     # 2. Ensure it is within WORKTREE_PARENT
-    worktree_parent_real=$(realpath -e "${WORKTREE_PARENT}" 2>/dev/null) \
+    worktree_parent_real=$("${OE_REALPATH_E[@]}" "${WORKTREE_PARENT}" 2>/dev/null) \
         || wt_die "Cannot resolve WORKTREE_PARENT: '${WORKTREE_PARENT}'"
     if [[ "${dir_real}" != "${worktree_parent_real}/"* ]]; then
         wt_die "Worktree path '${dir_real}' is not within expected parent '${worktree_parent_real}'"
@@ -150,9 +164,9 @@ wt_validate_dir_safe() {
     local dir=$1
     local dir_real worktree_parent_real
 
-    dir_real=$(realpath -e "${dir}" 2>/dev/null) || return 1
+    dir_real=$("${OE_REALPATH_E[@]}" "${dir}" 2>/dev/null) || return 1
 
-    worktree_parent_real=$(realpath -e "${WORKTREE_PARENT}" 2>/dev/null) || return 1
+    worktree_parent_real=$("${OE_REALPATH_E[@]}" "${WORKTREE_PARENT}" 2>/dev/null) || return 1
     if [[ "${dir_real}" != "${worktree_parent_real}/"* ]]; then
         return 1
     fi
@@ -171,12 +185,12 @@ wt_validate_dir_safe() {
 wt_resolve_container_from_cwd() {
     local toplevel toplevel_real branch slug d_real
     toplevel=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
-    toplevel_real=$(realpath -m "${toplevel}" 2>/dev/null) || return 0
+    toplevel_real=$("${OE_REALPATH_M[@]}" "${toplevel}" 2>/dev/null) || return 0
     [[ -f "${WT_STATE_FILE}" ]] || return 0
 
     while IFS=$'\t' read -r b d; do
         [[ -z "${b}" ]] && continue
-        d_real=$(realpath -m "${d}" 2>/dev/null) || continue
+        d_real=$("${OE_REALPATH_M[@]}" "${d}" 2>/dev/null) || continue
         if [[ "${d_real}" = "${toplevel_real}" ]]; then
             branch="${b}"
             break
@@ -247,18 +261,18 @@ wt_write_override() {
 
     local lib_root env_root wt_root_real
     # Resolve the worktree root once for bounds checking below
-    wt_root_real=$(realpath -e "${dir}")
+    wt_root_real=$("${OE_REALPATH_E[@]}" "${dir}")
 
     # Guard against nested symlinks that could resolve volume mount sources
     # outside the worktree (e.g., docker/library -> /etc).
     [[ -L "${dir}/docker/library" ]] && wt_die "Refusing: '${dir}/docker/library' is a symlink"
-    lib_root=$(realpath -e "${dir}/docker/library")         || wt_die "Missing directory: '${dir}/docker/library'"
+    lib_root=$("${OE_REALPATH_E[@]}" "${dir}/docker/library")         || wt_die "Missing directory: '${dir}/docker/library'"
     if [[ "${lib_root}/" != "${wt_root_real}/"* ]]; then
         wt_die "Refusing: docker/library resolves outside worktree: '${lib_root}'"
     fi
 
     [[ -L "${dir}/${compose_subdir}" ]] && wt_die "Refusing: '${dir}/${compose_subdir}' is a symlink"
-    env_root=$(realpath -e "${dir}/${compose_subdir}")         || wt_die "Missing directory: '${dir}/${compose_subdir}'"
+    env_root=$("${OE_REALPATH_E[@]}" "${dir}/${compose_subdir}")         || wt_die "Missing directory: '${dir}/${compose_subdir}'"
     if [[ "${env_root}/" != "${wt_root_real}/"* ]]; then
         wt_die "Refusing: compose subdir resolves outside worktree: '${env_root}'"
     fi
@@ -269,7 +283,7 @@ wt_write_override() {
         if [[ -e "${php_ini}" ]]; then
             [[ -L "${php_ini}" ]] && wt_die "Refusing: '${php_ini}' is a symlink"
             local php_ini_real
-            php_ini_real=$(realpath -e "${php_ini}") \
+            php_ini_real=$("${OE_REALPATH_E[@]}" "${php_ini}") \
                 || wt_die "Cannot resolve: '${php_ini}'"
             if [[ "${php_ini_real}" != "${wt_root_real}" && "${php_ini_real}/" != "${wt_root_real}/"* ]]; then
                 wt_die "Refusing: php.ini resolves outside worktree: '${php_ini_real}'"
@@ -287,10 +301,10 @@ wt_write_override() {
     # and fails. We bind-mount the primary's .git at the same absolute host
     # path inside the container so the existing pointer resolves transparently.
     local primary_root_real primary_git_real
-    primary_root_real=$(realpath -e "${OPENEMR_ROOT}") \
+    primary_root_real=$("${OE_REALPATH_E[@]}" "${OPENEMR_ROOT}") \
         || wt_die "Cannot resolve OPENEMR_ROOT: '${OPENEMR_ROOT}'"
     [[ -L "${primary_root_real}/.git" ]] && wt_die "Refusing: '${primary_root_real}/.git' is a symlink"
-    primary_git_real=$(realpath -e "${primary_root_real}/.git") \
+    primary_git_real=$("${OE_REALPATH_E[@]}" "${primary_root_real}/.git") \
         || wt_die "Cannot resolve primary .git: '${primary_root_real}/.git'"
     [[ -d "${primary_git_real}" ]] || wt_die "Primary .git is not a directory: '${primary_git_real}'"
 
@@ -497,8 +511,8 @@ cmd_worktree_add() {
 
     # Verify the compose subdir resolved within the worktree root (no traversal)
     local wt_root_real compose_dir_real
-    wt_root_real=$(realpath -e "${dir}")
-    compose_dir_real=$(realpath -m "${dir}/${compose_subdir}")
+    wt_root_real=$("${OE_REALPATH_E[@]}" "${dir}")
+    compose_dir_real=$("${OE_REALPATH_M[@]}" "${dir}/${compose_subdir}")
     if [[ "${compose_dir_real}/" != "${wt_root_real}/"* ]]; then
         git -C "${OPENEMR_ROOT}" worktree remove --force "${dir}" 2>/dev/null || true
         wt_die "Refusing: compose directory '${compose_dir_real}' is outside worktree root '${wt_root_real}'"
@@ -971,7 +985,7 @@ prek_hooks_dir() {
     if [[ "${git_common_dir}" != /* ]]; then
         git_common_dir="$(pwd)/${git_common_dir}"
     fi
-    git_common_dir=$(realpath -m "${git_common_dir}") \
+    git_common_dir=$("${OE_REALPATH_M[@]}" "${git_common_dir}") \
         || { echo "Error: cannot resolve git-common-dir" >&2 ; return 1 ; }
     echo "${git_common_dir}/hooks"
 }
@@ -1047,7 +1061,7 @@ cmd_prek_install() {
     # (the path the user invoked) -- this matches what's actually running
     # right now. Fall back to PATH lookup if $0 cannot be canonicalized.
     local cmd_path
-    cmd_path=$(realpath -e "$0" 2>/dev/null) \
+    cmd_path=$("${OE_REALPATH_E[@]}" "$0" 2>/dev/null) \
         || cmd_path=$(command -v openemr-cmd 2>/dev/null) \
         || { echo "Error: cannot resolve absolute path to openemr-cmd; pass it explicitly?" >&2 ; exit 1 ; }
 
