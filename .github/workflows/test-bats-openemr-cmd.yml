@@ -16,8 +16,12 @@ on:
 
 jobs:
   bats-openemr-cmd:
-    name: BATS openemr-cmd
-    runs-on: ubuntu-22.04
+    name: BATS openemr-cmd (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
       - name: Install Bats

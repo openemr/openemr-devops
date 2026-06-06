@@ -62,7 +62,7 @@ STUB
 # If the script is restructured, bump this constant — the test
 # 'OC_SCRIPT_FUNCS_END points at end of function defs' in helpers_pure.bats
 # will fail loudly when it drifts.
-OC_SCRIPT_FUNCS_END=1467
+OC_SCRIPT_FUNCS_END=1468
 
 # Source ONLY the function definitions of openemr-cmd into the current shell.
 # Caller is responsible for setting OPENEMR_ROOT (and WT_STATE_FILE / others
@@ -75,8 +75,10 @@ OC_SCRIPT_FUNCS_END=1467
 oc_source_funcs() {
     local script
     script=$(oc_script_path) || return 1
-    # shellcheck disable=SC1090,SC2312
-    source <(head -n "${OC_SCRIPT_FUNCS_END}" "${script}")
+    # eval, not 'source <(...)': process substitution is broken under macOS
+    # system bash 3.2, where <() fails to define the sourced functions.
+    # shellcheck disable=SC2312
+    eval "$(head -n "${OC_SCRIPT_FUNCS_END}" "${script}")"
 }
 
 # Initialize $1 as a real git repo with one commit, so commands like

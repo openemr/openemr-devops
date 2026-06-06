@@ -28,8 +28,9 @@ oc_run_in_funcs() {
     local tmp_root=$4
     run env OPENEMR_ROOT="${tmp_root}" bash -c "
         set -euo pipefail
-        # shellcheck disable=SC1090
-        source <(head -n ${funcs_end} '${script_path}')
+        # eval, not 'source <(...)': process substitution is broken under
+        # macOS system bash 3.2, where <() fails to define the functions.
+        eval \"\$(head -n ${funcs_end} '${script_path}')\"
         ${snippet}
     "
 }

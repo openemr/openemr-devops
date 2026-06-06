@@ -1458,7 +1458,8 @@ docker-pull-image(){
     while IFS= read -r SERVICE; do
         [[ -z "${SERVICE}" ]] && continue
         read -r -e -p "Do you wish to pull ${SERVICE} ? [Y/n] " RESP </dev/tty
-        if [[ -z "${RESP}" || "${RESP,,}" = y ]]; then
+        # [Yy] glob keeps this bash 3.2 (system macOS bash) compatible; ${var,,} is bash 4+.
+        if [[ -z "${RESP}" || "${RESP}" = [Yy] ]]; then
             run_docker_compose -f "${COMPOSE_FILE}" pull "${SERVICE}"
         else
             echo "Skipping ${SERVICE}"

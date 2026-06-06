@@ -28,8 +28,9 @@ oc_run_state() {
         WT_STATE_FILE="${TMP_STATE}" \
         bash -c "
             set -euo pipefail
-            # shellcheck disable=SC1090
-            source <(head -n ${OC_SCRIPT_FUNCS_END} '${SCRIPT}')
+            # eval, not 'source <(...)': process substitution is broken under
+            # macOS system bash 3.2, where <() fails to define the functions.
+            eval \"\$(head -n ${OC_SCRIPT_FUNCS_END} '${SCRIPT}')\"
             # Re-export WT_STATE_FILE after sourcing: the script's top-level
             # WT_STATE_FILE=... line overrides our env var when sourced.
             WT_STATE_FILE='${TMP_STATE}'
