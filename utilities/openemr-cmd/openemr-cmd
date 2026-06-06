@@ -156,7 +156,8 @@ wt_validate_dir() {
     # reports as failure (141) once its output exceeds the pipe buffer (many
     # worktrees). A herestring avoids the pipe entirely.
     local worktrees
-    worktrees=$(git -C "${OPENEMR_ROOT}" worktree list --porcelain 2>/dev/null)
+    worktrees=$(git -C "${OPENEMR_ROOT}" worktree list --porcelain 2>/dev/null) \
+        || wt_die "Cannot list git worktrees of '${OPENEMR_ROOT}'"
     if ! grep -Fqx "worktree ${dir_real}" <<< "${worktrees}"; then
         wt_die "Path '${dir_real}' is not a registered git worktree of '${OPENEMR_ROOT}'"
     fi
@@ -177,7 +178,7 @@ wt_validate_dir_safe() {
     fi
 
     local worktrees
-    worktrees=$(git -C "${OPENEMR_ROOT}" worktree list --porcelain 2>/dev/null)
+    worktrees=$(git -C "${OPENEMR_ROOT}" worktree list --porcelain 2>/dev/null) || return 1
     if ! grep -Fqx "worktree ${dir_real}" <<< "${worktrees}"; then
         return 1
     fi
