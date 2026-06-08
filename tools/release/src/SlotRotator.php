@@ -15,6 +15,12 @@
  * negative-lookarounds preventing partial matches across version boundaries
  * (e.g. "8.1" inside "8.1.0").
  *
+ * Additionally, when a slot's docker_dir changes, the slot symlink
+ * docker/openemr/<slot> is re-pointed at the new version dir. That symlink is
+ * the source of truth the consolidated build workflow (build-openemr.yml)
+ * reads to resolve each slot's version, so flipping it is how a rotation moves
+ * the build — no version strings live in the workflow itself.
+ *
  * @package   openemr-devops
  * @link      https://www.open-emr.org
  * @author    Michael A. Smith <michael@opencoreemr.com>
@@ -77,6 +83,16 @@ final readonly class SlotRotator
                 }
                 $changed[] = $relPath;
                 $snapshots[$relPath] = ['before' => $before, 'after' => $after];
+            }
+
+            $newDockerDir = $newDef['docker_dir'] ?? '';
+            if ($newDockerDir !== '' && $newDockerDir !== ($oldDef['docker_dir'] ?? '')) {
+                $linkRel = 'docker/openemr/' . $slotName;
+                $snapshot = $this->repointSlotSymlink($linkRel, $newDockerDir, $dryRun);
+                if ($snapshot !== null) {
+                    $changed[] = $linkRel;
+                    $snapshots[$linkRel] = $snapshot;
+                }
             }
         }
 
@@ -205,6 +221,37 @@ final readonly class SlotRotator
             }
         }
         return implode("\n", $lines);
+    }
+
+    /**
+     * Re-point a slot symlink (docker/openemr/<slot>) at the slot's new
+     * docker_dir. This is the source of truth the consolidated build workflow
+     * reads, replacing the old per-slot build-workflow pin rewriting. Returns a
+     * before/after snapshot of the symlink target, or null if already correct
+     * (idempotence).
+     *
+     * @return array{before: string, after: string}|null
+     */
+    private function repointSlotSymlink(string $linkRel, string $newTarget, bool $dryRun): ?array
+    {
+        $linkPath = $this->repoDir . '/' . $linkRel;
+        $current = null;
+        if (is_link($linkPath)) {
+            $target = readlink($linkPath);
+            $current = $target === false ? null : $target;
+        }
+        if ($current === $newTarget) {
+            return null;
+        }
+        if (!$dryRun) {
+            if (is_link($linkPath) || file_exists($linkPath)) {
+                unlink($linkPath);
+            }
+            if (!symlink($newTarget, $linkPath)) {
+                throw new \RuntimeException("Failed to re-point symlink: {$linkRel}");
+            }
+        }
+        return ['before' => $current ?? '', 'after' => $newTarget];
     }
 
     private function relativePath(string $absPath): string

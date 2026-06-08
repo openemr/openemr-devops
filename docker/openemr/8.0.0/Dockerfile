@@ -90,8 +90,9 @@ RUN ln -sf /usr/bin/php${PHP_VERSION_ABBR} /usr/bin/php
 # Install composer for openemr package building
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer
 
+ARG OPENEMR_VERSION=rel-800
 RUN apk add --no-cache build-base \
-    && git clone https://github.com/openemr/openemr.git --branch rel-800 --depth 1 \
+    && git clone https://github.com/openemr/openemr.git --branch "${OPENEMR_VERSION}" --depth 1 \
     && rm -rf openemr/.git \
     && cd openemr \
     && composer install --no-dev \

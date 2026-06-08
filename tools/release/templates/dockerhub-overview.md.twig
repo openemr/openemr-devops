@@ -4,7 +4,7 @@
 
 Supported tags:
 
-* `{{ current.full }}`, `{{ current.patch }}`, `latest` [Dockerfile](https://github.com/openemr/openemr-devops/blob/master/docker/openemr/{{ current.docker_dir }}/Dockerfile) | [Instructions](https://github.com/openemr/openemr-devops/tree/master/docker/openemr/{{ current.docker_dir }}/#openemr-official-docker-image)
+* `{{ current.docker_dir }}`, `{{ current.full }}`, `latest` [Dockerfile](https://github.com/openemr/openemr-devops/blob/master/docker/openemr/{{ current.docker_dir }}/Dockerfile) | [Instructions](https://github.com/openemr/openemr-devops/tree/master/docker/openemr/{{ current.docker_dir }}/#openemr-official-docker-image)
 * `7.0.4`, `7.0.4.0` [Dockerfile](https://github.com/openemr/openemr-devops/blob/master/docker/openemr/7.0.4/Dockerfile) | [Instructions](https://github.com/openemr/openemr-devops/tree/master/docker/openemr/7.0.4/#openemr-official-docker-image)
 * `{{ next.full }}`, `next` [Dockerfile](https://github.com/openemr/openemr-devops/blob/master/docker/openemr/{{ next.docker_dir }}/Dockerfile) | [Instructions](https://github.com/openemr/openemr-devops/tree/master/docker/openemr/{{ next.docker_dir }}/#openemr-official-docker-image)
 * `{{ dev.full }}`, `dev` [Dockerfile](https://github.com/openemr/openemr-devops/blob/master/docker/openemr/{{ dev.docker_dir }}/Dockerfile) | [Instructions](https://github.com/openemr/openemr-devops/tree/master/docker/openemr/{{ dev.docker_dir }}/#openemr-official-docker-image)
@@ -18,7 +18,7 @@ Supported tags:
 * `flex-edge-php-8.4` [Dockerfile](https://github.com/openemr/openemr-devops/blob/master/docker/openemr/flex/Dockerfile) | [Instructions](https://github.com/openemr/openemr-devops/tree/master/docker/openemr/flex/#openemr-official-docker-image)
 * `flex-edge-php-8.3` [Dockerfile](https://github.com/openemr/openemr-devops/blob/master/docker/openemr/flex/Dockerfile) | [Instructions](https://github.com/openemr/openemr-devops/tree/master/docker/openemr/flex/#openemr-official-docker-image)
 
-Each production build also pushes an immutable `X.Y.Z-YYYY-MM-DD` tag (e.g. `{{ current.patch }}-2026-03-25`) so a deployment can pin a specific build and survive future rebuilds of the same version. See the [Tags page](https://hub.docker.com/r/openemr/openemr/tags) for the most recent dated tag of each track.
+Each production build also pushes an immutable `X.Y.Z-YYYY-MM-DD` tag (e.g. `{{ current.full }}-2026-03-25`) so a deployment can pin a specific build and survive future rebuilds of the same version. See the [Tags page](https://hub.docker.com/r/openemr/openemr/tags) for the most recent dated tag of each track.
 
 This [OpenEMR](http://www.open-emr.org) official docker supports automated installation/configuration of OpenEMR. It requires a companion mysql/mariadb container to work.
 

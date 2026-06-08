@@ -35,7 +35,8 @@ Per #638, the matrix collapses to three rotating slots:
 
 Today the matrix is hardcoded across files like:
 
-- `.github/workflows/build-810.yml`, `build-811.yml`, `build-800.yml`, …
+- the three rotating build workflows — now consolidated into one
+  `build-openemr.yml` whose matrix is the stable slot names (see step #5)
 - `.github/workflows/test-flex-322.yml`, `test-flex-323.yml`, `test-flex-edge.yml`
 - `.github/workflows/build-edge.yml`, `build-flex-core.yml`, `build-release.yml`
 - `docker/**` Dockerfiles that pin OpenEMR version
@@ -85,10 +86,21 @@ host most of the rewrite logic.
    this repo, accepted via `repository_dispatch` from openemr/openemr.
 
 5. **Workflow consolidation (#638 follow-on).**
-   - Collapse `build-810.yml` / `build-811.yml` / `build-800.yml` etc. into one
-     `build-current.yml` / `build-next.yml` / `build-dev.yml` driven by the
-     registry. Reduces what the rotation script has to touch.
-   - Same for `test-flex-*.yml` matrices.
+   - Done: the three rotating build workflows collapsed into a single
+     `build-openemr.yml`. Its matrix is the **stable slot names**
+     `[current, next, dev]` × platform — never rotated. Each job resolves the
+     slot's real version at runtime from the slot symlink
+     `docker/openemr/{current,next,dev}` (e.g. `current → 8.0.0`) and builds
+     from the resolved version dir. Because the workflow holds no version
+     strings, rotation never rewrites it; instead `SlotRotator` re-points the
+     symlink when a slot's `docker_dir` changes. The merge job derives the
+     published `:<ver>` from `version.php` (fetched at the slot Dockerfile's
+     `OPENEMR_VERSION` ref), so `current` publishes its true `8.0.0.3` and
+     `dev` self-identifies as `8.1.1-dev`. Each slot publishes its floating tag
+     (`current → :latest`, `next → :next`, `dev → :dev`) plus `:<ver>` and
+     `:<ver>-<date>`, and `current`/`next` (never `dev`) additionally publish
+     the bare-dir tag (`8.0.0` / `8.1.0`) when it differs from `:<ver>`.
+   - Remaining: same matrix-collapse for the `test-flex-*.yml` matrices.
 
 ## Permissions self-check
 
@@ -102,11 +114,14 @@ probes only what this repo's rotation workflow needs:
 - Create + delete a throwaway branch `release-permissions-check/<run-id>` —
   confirm `contents:write`.
 - Commit an inert stub under `.github/workflows/` on that branch — confirm
-  `workflows:write`. Rotation rewrites `.github/workflows/build-{800,810,811}.yml`
-  per `tools/release/versions.yml` (entries with `kind: build_workflow`), so
-  the App must be able to update workflow files; a plain-dotfile probe
-  doesn't exercise this permission and the gap surfaced as a push rejection
-  in release-rotation.yml (see openemr-devops#758).
+  `workflows:write`. Rotation still rewrites workflow files —
+  `.github/workflows/test-bats.yml` and `test-container-functionality.yml`
+  carry rotating `docker/openemr/<dir>/**` path filters per
+  `tools/release/versions.yml` — so the App must be able to update workflow
+  files; a plain-dotfile probe doesn't exercise this permission and the gap
+  surfaced as a push rejection in release-rotation.yml (see openemr-devops#758).
+  (The consolidated `build-openemr.yml` is no longer rewritten — it resolves
+  versions via slot symlinks — but the test-path rewrites keep this needed.)
 - Open + close a draft PR from that branch — confirm `pull-requests:write`.
 
 Fails loudly with the missing permission name. Run after installing the App;
@@ -123,8 +138,8 @@ to probe.
 
 ## Open questions
 
-- Do we keep `build-edge.yml` separate or fold it into `build-dev.yml`? Naming
-  consistency vs. churn in CI history.
+- Do we keep `build-edge.yml` separate or fold it into `build-openemr.yml`'s
+  `dev` slot? Naming consistency vs. churn in CI history.
 - Should the rotation PR auto-merge on green CI, or always require a human?
   Default: human-merge, since this gates the release.
 - Where does `raspberrypi/` live in the rotation? Its release cadence has

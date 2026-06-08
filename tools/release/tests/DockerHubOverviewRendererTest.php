@@ -42,12 +42,12 @@ final class DockerHubOverviewRendererTest extends TestCase
     {
         $rendered = (new DockerHubOverviewRenderer($this->registryPath, self::TEMPLATE_DIR))->render();
 
-        self::assertStringContainsString('Current production OpenEMR version is 8.0.0', $rendered);
+        self::assertStringContainsString('Current production OpenEMR version is 8.0.0.3', $rendered);
         self::assertStringContainsString('`8.0.0`, `8.0.0.3`, `latest`', $rendered);
         self::assertStringContainsString('docker/openemr/8.0.0/Dockerfile', $rendered);
         self::assertStringContainsString('`8.1.0`, `next`', $rendered);
         self::assertStringContainsString('docker/openemr/8.1.0/Dockerfile', $rendered);
-        self::assertStringContainsString('`8.1.1`, `dev`', $rendered);
+        self::assertStringContainsString('`8.1.1-dev`, `dev`', $rendered);
         self::assertStringContainsString('docker/openemr/8.1.1/Dockerfile', $rendered);
     }
 
@@ -102,8 +102,7 @@ final class DockerHubOverviewRendererTest extends TestCase
         slots:
           current:
             minor: "8.0"
-            full: "8.0.0"
-            patch: "8.0.0.3"
+            full: "8.0.0.3"
             branch: "rel-800"
             docker_dir: "8.0.0"
           next:
@@ -113,7 +112,7 @@ final class DockerHubOverviewRendererTest extends TestCase
             docker_dir: "8.1.0"
           dev:
             minor: "8.1"
-            full: "8.1.1"
+            full: "8.1.1-dev"
             branch: "master"
             docker_dir: "8.1.1"
         YAML;

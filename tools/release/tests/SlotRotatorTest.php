@@ -50,7 +50,7 @@ final class SlotRotatorTest extends TestCase
 
         self::assertFalse($result->isNoOp(), 'Rotation should have changed files');
         self::assertContains('docker/openemr/8.1.0/Dockerfile', $result->changedFiles);
-        self::assertContains('.github/workflows/build-810.yml', $result->changedFiles);
+        self::assertContains('docker/openemr/next', $result->changedFiles);
         self::assertContains('docker/openemr/OVERVIEW.md', $result->changedFiles);
         self::assertContains('tools/release/versions.yml', $result->changedFiles);
 
@@ -58,14 +58,96 @@ final class SlotRotatorTest extends TestCase
         self::assertStringContainsString('ARG OPENEMR_VERSION=rel-820', $dockerfile);
         self::assertStringNotContainsString('rel-810', $dockerfile);
 
-        $workflow = (string) file_get_contents($this->tmpDir . '/.github/workflows/build-810.yml');
-        self::assertStringContainsString('docker/openemr/8.2.0', $workflow);
-        self::assertStringContainsString('openemr/openemr:8.2.0', $workflow);
-        self::assertStringContainsString('openemr/openemr:next', $workflow, 'Floating tag :next stays on slot');
+        self::assertSame(
+            '8.2.0',
+            readlink($this->tmpDir . '/docker/openemr/next'),
+            'next symlink follows the slot docker_dir',
+        );
 
         $registry = (string) file_get_contents($this->registryPath);
         self::assertStringContainsString('full: "8.2.0"', $registry);
         self::assertStringContainsString('branch: "rel-820"', $registry);
+    }
+
+    public function testRotationRepointsSlotSymlinkAndLeavesOtherSlotsAlone(): void
+    {
+        $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
+
+        $result = $rotator->rotate([
+            'next' => [
+                'minor' => '8.2',
+                'full' => '8.2.0',
+                'branch' => 'rel-820',
+                'docker_dir' => '8.2.0',
+            ],
+        ]);
+
+        self::assertContains('docker/openemr/next', $result->changedFiles);
+        self::assertSame(
+            ['before' => '8.1.0', 'after' => '8.2.0'],
+            $result->snapshots['docker/openemr/next'],
+        );
+
+        $next = $this->tmpDir . '/docker/openemr/next';
+        self::assertTrue(is_link($next), 'next must remain a symlink, not a regular file');
+        self::assertSame('8.2.0', readlink($next));
+
+        self::assertSame('8.0.0', readlink($this->tmpDir . '/docker/openemr/current'));
+        self::assertSame('8.1.1', readlink($this->tmpDir . '/docker/openemr/dev'));
+    }
+
+    public function testSymlinkRepointIsIdempotent(): void
+    {
+        $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
+        $newNext = [
+            'minor' => '8.2',
+            'full' => '8.2.0',
+            'branch' => 'rel-820',
+            'docker_dir' => '8.2.0',
+        ];
+
+        $rotator->rotate(['next' => $newNext]);
+        $second = $rotator->rotate(['next' => $newNext]);
+
+        self::assertTrue($second->isNoOp(), 'Re-running with the same target must not touch the symlink');
+        self::assertSame('8.2.0', readlink($this->tmpDir . '/docker/openemr/next'));
+    }
+
+    public function testSymlinkUntouchedWhenDockerDirUnchanged(): void
+    {
+        $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
+
+        // Move only the branch (an `edge`-style override); docker_dir stays put.
+        $result = $rotator->rotate([
+            'dev' => ['branch' => 'rel-820'],
+        ]);
+
+        self::assertNotContains('docker/openemr/dev', $result->changedFiles);
+        self::assertSame('8.1.1', readlink($this->tmpDir . '/docker/openemr/dev'));
+    }
+
+    public function testDryRunDoesNotRepointSymlink(): void
+    {
+        $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
+
+        $result = $rotator->rotate(
+            [
+                'next' => [
+                    'minor' => '8.2',
+                    'full' => '8.2.0',
+                    'branch' => 'rel-820',
+                    'docker_dir' => '8.2.0',
+                ],
+            ],
+            true,
+        );
+
+        self::assertArrayHasKey('docker/openemr/next', $result->snapshots);
+        self::assertSame(
+            '8.1.0',
+            readlink($this->tmpDir . '/docker/openemr/next'),
+            'dry-run must not move the symlink',
+        );
     }
 
     public function testRotationIsIdempotent(): void
@@ -249,15 +331,6 @@ final class SlotRotatorTest extends TestCase
             docker_dir: "8.1.1"
 
         files:
-          - path: .github/workflows/build-800.yml
-            slot: current
-            kinds: [build_workflow]
-          - path: .github/workflows/build-810.yml
-            slot: next
-            kinds: [build_workflow]
-          - path: .github/workflows/build-811.yml
-            slot: dev
-            kinds: [build_workflow]
           - path: docker/openemr/8.0.0/Dockerfile
             slot: current
             kinds: [docker_clone_branch]
@@ -276,12 +349,6 @@ final class SlotRotatorTest extends TestCase
 
         excludes: []
         YAML);
-
-        $workflowTemplate = "context: \"{{defaultContext}}:docker/openemr/%s\"\n"
-            . "tags: openemr/openemr:%s, openemr/openemr:%s\n";
-        $this->writeFile('.github/workflows/build-800.yml', sprintf($workflowTemplate, '8.0.0', '8.0.0', 'latest'));
-        $this->writeFile('.github/workflows/build-810.yml', sprintf($workflowTemplate, '8.1.0', '8.1.0', 'next'));
-        $this->writeFile('.github/workflows/build-811.yml', sprintf($workflowTemplate, '8.1.1', '8.1.1', 'dev'));
 
         $this->writeFile(
             'docker/openemr/8.0.0/Dockerfile',
@@ -305,6 +372,13 @@ final class SlotRotatorTest extends TestCase
             'docker/openemr/OVERVIEW.md',
             "| 8.0.0 | latest |\n| 8.1.0 | next |\n| 8.1.1 | dev |\n",
         );
+
+        // Slot symlinks: the source of truth the consolidated build workflow
+        // resolves each slot's version from. Rotation re-points these (see
+        // SlotRotator::repointSlotSymlink). Relative targets, as in the repo.
+        symlink('8.0.0', $this->tmpDir . '/docker/openemr/current');
+        symlink('8.1.0', $this->tmpDir . '/docker/openemr/next');
+        symlink('8.1.1', $this->tmpDir . '/docker/openemr/dev');
     }
 
     private function writeFile(string $relPath, string $contents): void

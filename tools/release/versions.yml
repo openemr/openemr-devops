@@ -20,13 +20,10 @@ version: 1
 slots:
   current:
     minor: "8.0"
-    full: "8.0.0"
-    # DROP THIS LINE when current moves off 8.0.0. The 4-part patch field is
-    # legacy quaternary versioning; 8.1.x onward uses plain semver (8.1.1 is
-    # the next release after 8.1.0, not a 4-part patch). When the 8.1.0 tag
-    # rotation PR opens, remove this line and the `:8.0.0.3` docker tags in
-    # .github/workflows/build-800.yml as part of PR review. See #746.
-    patch: "8.0.0.3"
+    # "8.0.0.3" is legacy quaternary (4-part) versioning. 8.1.x onward uses
+    # plain semver. When current rotates off the 8.0.0.x line, this becomes a
+    # plain 3-part version. See #746.
+    full: "8.0.0.3"
     branch: "rel-800"
     docker_dir: "8.0.0"
   next:
@@ -36,7 +33,7 @@ slots:
     docker_dir: "8.1.0"
   dev:
     minor: "8.1"
-    full: "8.1.1"
+    full: "8.1.1-dev"
     branch: "master"
     docker_dir: "8.1.1"
 
@@ -44,8 +41,12 @@ slots:
 # `kind` per pin to decide the rewrite strategy; the linter uses these entries
 # to verify no version-looking string lives in a non-listed location.
 #
+# The build workflow is intentionally NOT listed: build-openemr.yml is a single
+# slot-named matrix carrying zero version strings. It resolves each slot's
+# version at runtime from the docker/openemr/{current,next,dev} symlinks, which
+# rotation re-points (see tools/release/src/SlotRotator.php). Nothing to rewrite.
+#
 # `kind` taxonomy:
-#   build_workflow             — .github/workflows/build-*.yml docker build job
 #   docker_arg_branch          — Dockerfile `ARG OPENEMR_VERSION=<rel-branch>`
 #   docker_clone_branch        — Dockerfile `git clone … --branch <rel-branch>`
 #   docker_image_tag           — markdown/yaml `openemr/openemr:<tag>` reference
@@ -53,21 +54,9 @@ slots:
 #   container_func_test_paths  — workflow path filter + script arg
 #   benchmarking_default       — utilities/container_benchmarking default variant
 files:
-  - path: .github/workflows/build-800.yml
-    slot: current
-    kinds: [build_workflow]
-
-  - path: .github/workflows/build-810.yml
-    slot: next
-    kinds: [build_workflow]
-
-  - path: .github/workflows/build-811.yml
-    slot: dev
-    kinds: [build_workflow]
-
   - path: docker/openemr/8.0.0/Dockerfile
     slot: current
-    kinds: [docker_clone_branch]
+    kinds: [docker_arg_branch]
 
   - path: docker/openemr/8.1.0/Dockerfile
     slot: next

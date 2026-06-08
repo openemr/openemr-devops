@@ -1,0 +1,146 @@
+name: OpenEMR Docker Build (current/next/dev)
+
+# One workflow for all three rotating slots. The matrix is the STABLE slot
+# names — never rotated. The actual OpenEMR version for each slot is carried by
+# the slot-named symlinks docker/openemr/{current,next,dev} -> the real version
+# dirs (e.g. 8.0.0). Rotation flips the symlinks (tools/release/SlotRotator),
+# so this file holds no version strings and never needs rewriting.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *' # run at 2 AM UTC
+
+jobs:
+  build:
+    if: github.repository_owner == 'openemr' && github.repository == 'openemr/openemr-devops' && github.ref == 'refs/heads/master'
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [current, next, dev]
+        platform:
+          - arch: linux/amd64
+            runner: ubuntu-24.04
+          - arch: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve slot version
+        id: resolve
+        run: |
+          dir="$(basename "$(readlink "docker/openemr/${{ matrix.slot }}")")"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare platform pair
+        run: |
+          platform=${{ matrix.platform.arch }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: docker/openemr/${{ steps.resolve.outputs.dir }}
+          platforms: ${{ matrix.platform.arch }}
+          outputs: type=image,name=openemr/openemr,push-by-digest=true,name-canonical=true,push=true
+          no-cache: true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.slot }}-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    if: github.repository_owner == 'openemr' && github.repository == 'openemr/openemr-devops' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slot: current
+            float: latest
+            bare_dir: true
+          - slot: next
+            float: next
+            bare_dir: true
+          - slot: dev
+            float: dev
+            bare_dir: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve slot version
+        id: resolve
+        run: |
+          dir="$(basename "$(readlink "docker/openemr/${{ matrix.slot }}")")"
+          ref="$(grep -oE '^ARG OPENEMR_VERSION=[A-Za-z0-9._-]+' "docker/openemr/${dir}/Dockerfile" | head -1 | cut -d= -f2)"
+          curl -fsSL "https://raw.githubusercontent.com/openemr/openemr/${ref}/version.php" -o /tmp/version.php
+          # shellcheck disable=SC2016 # PHP variables, not shell
+          ver="$(php -r 'require "/tmp/version.php"; $rp = $v_realpatch > 0 ? "." . $v_realpatch : ""; echo $v_major . "." . $v_minor . "." . $v_patch . $rp . $v_tag;')"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.slot }}-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Get build date
+        id: build_date
+        run: echo "date=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Create manifest and push
+        working-directory: /tmp/digests
+        env:
+          VER: ${{ steps.resolve.outputs.ver }}
+          DIR: ${{ steps.resolve.outputs.dir }}
+          FLOAT: ${{ matrix.float }}
+          BUILD_DATE: ${{ steps.build_date.outputs.date }}
+          BARE_DIR: ${{ matrix.bare_dir }}
+        run: |
+          mapfile -t digests < <(find . -maxdepth 1 -type f -printf 'openemr/openemr@sha256:%f\n')
+          tags=(-t "openemr/openemr:${VER}" -t "openemr/openemr:${FLOAT}" -t "openemr/openemr:${VER}-${BUILD_DATE}")
+          if [ "${BARE_DIR}" = "true" ] && [ "${DIR}" != "${VER}" ]; then
+            tags+=(-t "openemr/openemr:${DIR}")
+          fi
+          docker buildx imagetools create "${tags[@]}" "${digests[@]}"
+
+      - name: Push Docker Hub readme
+        uses: ./.github/actions/push-dockerhub-readme
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}

@@ -37,12 +37,15 @@ jobs:
       # Use that output as a test matrix in github actions.
       run: |
         shopt -s nullglob
-        dirs=( docker/openemr/*/Dockerfile )
+        dirs=()
+        for f in docker/openemr/*/Dockerfile; do
+          d=${f%/Dockerfile}
+          [ -L "$d" ] || dirs+=( "$d" )
+        done
         if (( "${#dirs[@]}" == 0 )); then
           echo 'No Dockerfiles found in docker/openemr subdirectories.' >&2
           exit 1
         fi
-        dirs=( "${dirs[@]%/Dockerfile}" )
         dirs=( "${dirs[@]#docker/openemr/}" )
         # Use jq to ensure that the output is valid JSON or fail trying.
         # The output (after '=') must be valid JSON for GitHub Actions to use it as a matrix.
