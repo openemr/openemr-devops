@@ -531,9 +531,13 @@ cmd_worktree_add() {
 
     # The base-dir .env (e.g., OPENEMR__ENVIRONMENT=dev) is gitignored, so
     # 'git worktree add' does not bring it across. Copy it from the primary so
-    # the new worktree's runtime environment matches.
-    if [[ -f "${OPENEMR_ROOT}/.env" && ! -L "${OPENEMR_ROOT}/.env" && ! -e "${dir}/.env" ]]; then
-        cp "${OPENEMR_ROOT}/.env" "${dir}/.env"
+    # the new worktree's runtime environment matches. The dest check uses both
+    # ! -e and ! -L because a broken symlink fails -e but cp would still follow
+    # it and write outside the worktree. cp -p preserves mode so a 0600 .env
+    # on the primary doesn't get widened by umask.
+    if [[ -f "${OPENEMR_ROOT}/.env" && ! -L "${OPENEMR_ROOT}/.env" \
+       && ! -e "${dir}/.env" && ! -L "${dir}/.env" ]]; then
+        cp -p "${OPENEMR_ROOT}/.env" "${dir}/.env"
         wt_info "Copied base .env from primary repo"
     fi
 
