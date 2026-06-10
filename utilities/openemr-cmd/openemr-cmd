@@ -223,6 +223,26 @@ wt_resolve_container_from_cwd() {
 # COMPOSE FILE GENERATORS
 # ============================================================================
 
+# Copy the primary repo's base .env into a worktree if (and only if):
+#   - source is a regular file (not a symlink — a symlinked source could
+#     point outside the primary, allowing a copy of arbitrary content),
+#   - dest does not exist as any kind of entry (regular file OR broken
+#     symlink — the broken-symlink case fails -e but cp would follow it
+#     and write at the link target, potentially outside the worktree).
+# Uses cp -p so a 0600 .env on the primary is not widened to 0644 by
+# the umask on the copy.
+wt_copy_base_env() {
+    local primary_root=$1 dest_dir=$2
+    local src="${primary_root}/.env"
+    local dst="${dest_dir}/.env"
+
+    [[ -f "${src}" && ! -L "${src}" ]] || return 0
+    [[ ! -e "${dst}" && ! -L "${dst}" ]] || return 0
+
+    cp -p "${src}" "${dst}"
+    wt_info "Copied base .env from primary repo"
+}
+
 # shellcheck disable=SC2004
 wt_write_env() {
     local dir=$1 branch=$2 offset=$3 env=$4
@@ -531,15 +551,8 @@ cmd_worktree_add() {
 
     # The base-dir .env (e.g., OPENEMR__ENVIRONMENT=dev) is gitignored, so
     # 'git worktree add' does not bring it across. Copy it from the primary so
-    # the new worktree's runtime environment matches. The dest check uses both
-    # ! -e and ! -L because a broken symlink fails -e but cp would still follow
-    # it and write outside the worktree. cp -p preserves mode so a 0600 .env
-    # on the primary doesn't get widened by umask.
-    if [[ -f "${OPENEMR_ROOT}/.env" && ! -L "${OPENEMR_ROOT}/.env" \
-       && ! -e "${dir}/.env" && ! -L "${dir}/.env" ]]; then
-        cp -p "${OPENEMR_ROOT}/.env" "${dir}/.env"
-        wt_info "Copied base .env from primary repo"
-    fi
+    # the new worktree's runtime environment matches.
+    wt_copy_base_env "${OPENEMR_ROOT}" "${dir}"
 
     wt_state_set "${branch}" "${offset}" "${dir}" "${env}"
 
