@@ -54,33 +54,6 @@ slots:
 #   container_func_test_paths  — workflow path filter + script arg
 #   benchmarking_default       — utilities/container_benchmarking default variant
 files:
-  - path: docker/openemr/8.0.0/Dockerfile
-    slot: current
-    kinds: [docker_arg_branch]
-
-  - path: docker/openemr/8.1.0/Dockerfile
-    slot: next
-    kinds: [docker_arg_branch]
-
-  - path: docker/openemr/8.1.1/Dockerfile
-    slot: dev
-    kinds: [docker_arg_branch]
-
-  - path: docker/openemr/8.0.0/README.md
-    slot: current
-    kinds: [docker_image_tag]
-    # FIXME: line 33 currently reads `image: openemr/openemr:7.0.5` — a stale
-    # copy-paste from before 8.0.0 was tagged. Rotator should overwrite to
-    # match slot.full on next run; flagged in PR #665 for human confirmation.
-
-  - path: docker/openemr/8.1.0/README.md
-    slot: next
-    kinds: [docker_image_tag]
-
-  - path: docker/openemr/8.1.1/README.md
-    slot: dev
-    kinds: [docker_image_tag]
-
   - path: .github/workflows/test-bats.yml
     slot: next
     kinds: [bats_test_paths]
@@ -105,12 +78,6 @@ files:
     slot: next
     kinds: [benchmarking_default]
 
-  # Dependabot enumerates each rotating Docker dir explicitly; rotation needs
-  # to add/remove entries when slot dirs change.
-  - path: .github/dependabot.yml
-    slot: all
-    kinds: [dependabot_directory]
-
   # Container-benchmarking docs reference the next-slot version as defaults.
   - path: utilities/container_benchmarking/README.md
     slot: next
@@ -125,6 +92,22 @@ excludes:
     reason: "legacy 7.0.4 support track; manual rotation only"
   - path: docker/openemr/7.0.4
     reason: "legacy 7.0.4 support track (entire dir)"
+
+  # Dependabot enumerates one entry per build dir; entries are added at
+  # dir-scaffold time and never renamed by rotation (rotation flips the
+  # docker/openemr/{current,next,dev} symlink, not the per-dir config).
+  - path: .github/dependabot.yml
+    reason: "one entry per build dir, added at dir-scaffold time; never rotated"
+
+  # Immutable per-version build dirs (entire dir). Each is pinned to its release
+  # branch and never rotated — slot rotation flips the
+  # docker/openemr/{current,next,dev} symlink instead.
+  - path: docker/openemr/8.0.0
+    reason: "immutable per-version build dir; pinned to its release branch, never rotated — slot rotation flips the docker/openemr/{current,next,dev} symlink instead"
+  - path: docker/openemr/8.1.0
+    reason: "immutable per-version build dir; pinned to its release branch, never rotated — slot rotation flips the docker/openemr/{current,next,dev} symlink instead"
+  - path: docker/openemr/8.1.1
+    reason: "immutable per-version build dir; pinned to its release branch, never rotated — slot rotation flips the docker/openemr/{current,next,dev} symlink instead"
 
   # Frozen historical builds.
   - path: docker/openemr/obsolete

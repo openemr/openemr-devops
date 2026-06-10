@@ -49,14 +49,17 @@ final class SlotRotatorTest extends TestCase
         ]);
 
         self::assertFalse($result->isNoOp(), 'Rotation should have changed files');
-        self::assertContains('docker/openemr/8.1.0/Dockerfile', $result->changedFiles);
+        // External slot-tracking files follow the next slot.
+        self::assertContains('.github/workflows/test-bats.yml', $result->changedFiles);
+        self::assertContains('utilities/container_benchmarking/benchmark.sh', $result->changedFiles);
         self::assertContains('docker/openemr/next', $result->changedFiles);
-        self::assertContains('docker/openemr/OVERVIEW.md', $result->changedFiles);
         self::assertContains('tools/release/versions.yml', $result->changedFiles);
+        // The per-version build dir is immutable: never rewritten by rotation.
+        self::assertNotContains('docker/openemr/8.1.0/Dockerfile', $result->changedFiles);
 
-        $dockerfile = (string) file_get_contents($this->tmpDir . '/docker/openemr/8.1.0/Dockerfile');
-        self::assertStringContainsString('ARG OPENEMR_VERSION=rel-820', $dockerfile);
-        self::assertStringNotContainsString('rel-810', $dockerfile);
+        $bats = (string) file_get_contents($this->tmpDir . '/.github/workflows/test-bats.yml');
+        self::assertStringContainsString('docker/openemr/8.2.0/**', $bats);
+        self::assertStringNotContainsString('docker/openemr/8.1.0/**', $bats);
 
         self::assertSame(
             '8.2.0',
@@ -67,6 +70,43 @@ final class SlotRotatorTest extends TestCase
         $registry = (string) file_get_contents($this->registryPath);
         self::assertStringContainsString('full: "8.2.0"', $registry);
         self::assertStringContainsString('branch: "rel-820"', $registry);
+    }
+
+    public function testCurrentRotationLeavesVersionDirAndDependabotUntouched(): void
+    {
+        $dockerfilePath = $this->tmpDir . '/docker/openemr/8.0.0/Dockerfile';
+        $dependabotPath = $this->tmpDir . '/.github/dependabot.yml';
+        $dockerfileBefore = (string) file_get_contents($dockerfilePath);
+        $dependabotBefore = (string) file_get_contents($dependabotPath);
+
+        $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
+
+        $result = $rotator->rotate([
+            'current' => [
+                'minor' => '8.1',
+                'full' => '8.1.0',
+                'branch' => 'rel-810',
+                'docker_dir' => '8.1.0',
+            ],
+        ]);
+
+        // Rotating current flips only the symlink + registry.
+        self::assertContains('docker/openemr/current', $result->changedFiles);
+        self::assertContains('tools/release/versions.yml', $result->changedFiles);
+        self::assertNotContains('docker/openemr/8.0.0/Dockerfile', $result->changedFiles);
+        self::assertNotContains('.github/dependabot.yml', $result->changedFiles);
+
+        self::assertSame('8.1.0', readlink($this->tmpDir . '/docker/openemr/current'));
+        self::assertSame(
+            $dockerfileBefore,
+            (string) file_get_contents($dockerfilePath),
+            'immutable per-version Dockerfile must be byte-for-byte unchanged',
+        );
+        self::assertSame(
+            $dependabotBefore,
+            (string) file_get_contents($dependabotPath),
+            'dependabot config must be byte-for-byte unchanged',
+        );
     }
 
     public function testRotationRepointsSlotSymlinkAndLeavesOtherSlotsAlone(): void
@@ -197,6 +237,8 @@ final class SlotRotatorTest extends TestCase
             ],
         ]);
 
+        // Excluded per-version dirs must never be touched, regardless of which
+        // slot rotates.
         $currentPath = $this->tmpDir . '/docker/openemr/8.0.0/Dockerfile';
         $current = (string) file_get_contents($currentPath);
         self::assertStringContainsString('--branch rel-800', $current, 'current slot Dockerfile must not change');
@@ -209,7 +251,8 @@ final class SlotRotatorTest extends TestCase
     public function testDryRunReturnsDiffWithoutWritingFiles(): void
     {
         $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
-        $before = (string) file_get_contents($this->tmpDir . '/docker/openemr/8.1.0/Dockerfile');
+        $batsPath = $this->tmpDir . '/.github/workflows/test-bats.yml';
+        $before = (string) file_get_contents($batsPath);
 
         $result = $rotator->rotate(
             [
@@ -224,9 +267,9 @@ final class SlotRotatorTest extends TestCase
         );
 
         self::assertFalse($result->isNoOp());
-        $after = (string) file_get_contents($this->tmpDir . '/docker/openemr/8.1.0/Dockerfile');
+        $after = (string) file_get_contents($batsPath);
         self::assertSame($before, $after, 'dry-run must not touch the file');
-        self::assertArrayHasKey('docker/openemr/8.1.0/Dockerfile', $result->snapshots);
+        self::assertArrayHasKey('.github/workflows/test-bats.yml', $result->snapshots);
     }
 
     public function testUnknownSlotThrows(): void
@@ -239,7 +282,7 @@ final class SlotRotatorTest extends TestCase
 
     public function testMissingPinFileThrows(): void
     {
-        unlink($this->tmpDir . '/docker/openemr/8.1.0/Dockerfile');
+        unlink($this->tmpDir . '/.github/workflows/test-bats.yml');
         $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
 
         $this->expectException(\RuntimeException::class);
@@ -258,8 +301,8 @@ final class SlotRotatorTest extends TestCase
     public function testReplacementAvoidsPartialVersionMatches(): void
     {
         file_put_contents(
-            $this->tmpDir . '/docker/openemr/8.1.0/Dockerfile',
-            "FROM alpine:3.21\nARG OPENEMR_VERSION=rel-810\n# version-like-but-not: 8.1.10 should stay\n",
+            $this->tmpDir . '/utilities/container_benchmarking/benchmark.sh',
+            "#!/bin/sh\nIMAGE=openemr/openemr:8.1.0\nBRANCH=rel-810\n# version-like-but-not: 8.1.10 should stay\n",
         );
         $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
 
@@ -272,7 +315,7 @@ final class SlotRotatorTest extends TestCase
             ],
         ]);
 
-        $after = (string) file_get_contents($this->tmpDir . '/docker/openemr/8.1.0/Dockerfile');
+        $after = (string) file_get_contents($this->tmpDir . '/utilities/container_benchmarking/benchmark.sh');
         self::assertStringContainsString('8.1.10', $after, '8.1 inside 8.1.10 must NOT be rewritten');
         self::assertStringContainsString('rel-820', $after);
     }
@@ -282,7 +325,7 @@ final class SlotRotatorTest extends TestCase
         $rotator = new SlotRotator($this->tmpDir, $this->registryPath);
 
         $rotator->rotate([
-            'current' => [
+            'next' => [
                 'minor' => '8.2',
                 'full' => '8.2.0',
                 'branch' => 'rel-820',
@@ -290,7 +333,7 @@ final class SlotRotatorTest extends TestCase
             ],
         ]);
 
-        $script = (string) file_get_contents($this->tmpDir . '/docker/openemr/8.0.0/openemr.sh');
+        $script = (string) file_get_contents($this->tmpDir . '/utilities/container_benchmarking/benchmark.sh');
         self::assertStringContainsString(
             '# shellcheck source=SCRIPTDIR/env.stub',
             $script,
@@ -302,7 +345,7 @@ final class SlotRotatorTest extends TestCase
             'rotation must never inject a version path into a shellcheck source directive',
         );
         self::assertStringContainsString(
-            "echo 'init for docker/openemr/8.2.0'",
+            "echo 'benchmarking docker/openemr/8.2.0'",
             $script,
             'sanity: the genuine rotating docker_dir token should have been rewritten',
         );
@@ -330,26 +373,48 @@ final class SlotRotatorTest extends TestCase
             branch: "master"
             docker_dir: "8.1.1"
 
+        # Only genuinely external files that track a slot are rotated. The
+        # per-version build dirs and dependabot config are immutable; rotation
+        # flips the docker/openemr/{current,next,dev} symlink, not their contents.
         files:
-          - path: docker/openemr/8.0.0/Dockerfile
-            slot: current
-            kinds: [docker_clone_branch]
-          - path: docker/openemr/8.0.0/openemr.sh
-            slot: current
-            kinds: [docker_dir_ref]
-          - path: docker/openemr/8.1.0/Dockerfile
+          - path: .github/workflows/test-bats.yml
             slot: next
-            kinds: [docker_arg_branch]
-          - path: docker/openemr/8.1.1/Dockerfile
-            slot: dev
-            kinds: [docker_arg_branch]
-          - path: docker/openemr/OVERVIEW.md
-            slot: all
-            kinds: [overview_table]
+            kinds: [bats_test_paths]
+          - path: utilities/container_benchmarking/benchmark.sh
+            slot: next
+            kinds: [benchmarking_default]
 
-        excludes: []
+        excludes:
+          - path: docker/openemr/8.0.0
+            reason: "immutable per-version build dir; never rotated"
+          - path: docker/openemr/8.1.0
+            reason: "immutable per-version build dir; never rotated"
+          - path: docker/openemr/8.1.1
+            reason: "immutable per-version build dir; never rotated"
+          - path: .github/dependabot.yml
+            reason: "one entry per build dir; never rotated"
         YAML);
 
+        // External slot-tracking files (in `files:`, next-slotted). These follow
+        // the next slot when it rotates.
+        $this->writeFile(
+            '.github/workflows/test-bats.yml',
+            "on:\n  pull_request:\n    paths:\n      - 'docker/openemr/8.1.0/**'\n",
+        );
+
+        // A benchmarking-style script carrying a rotating docker_dir token (the
+        // echo path) and a self-referential SCRIPTDIR shellcheck directive that
+        // must never be rewritten.
+        $this->writeFile(
+            'utilities/container_benchmarking/benchmark.sh',
+            "#!/bin/sh\nset -e\n"
+            . "# shellcheck source=SCRIPTDIR/env.stub\n. /root/env.stub\n"
+            . "echo 'benchmarking docker/openemr/8.1.0'\n"
+            . "IMAGE=openemr/openemr:8.1.0\n",
+        );
+
+        // Immutable per-version build dirs (in `excludes:`). Seeded so tests can
+        // assert rotation leaves them byte-for-byte unchanged.
         $this->writeFile(
             'docker/openemr/8.0.0/Dockerfile',
             "FROM alpine:3.21\nRUN git clone https://github.com/openemr/openemr.git --branch rel-800 --depth 1\n",
@@ -357,21 +422,22 @@ final class SlotRotatorTest extends TestCase
         $this->writeFile('docker/openemr/8.1.0/Dockerfile', "FROM alpine:3.21\nARG OPENEMR_VERSION=rel-810\n");
         $this->writeFile('docker/openemr/8.1.1/Dockerfile', "FROM alpine:3.21\nARG OPENEMR_VERSION=master\n");
 
-        // In-container init script for the current slot. It carries a rotating
-        // docker_dir token (the path in the echo line) alongside a
-        // self-referential `SCRIPTDIR` shellcheck directive that must never be
-        // rewritten.
-        $this->writeFile(
-            'docker/openemr/8.0.0/openemr.sh',
-            "#!/bin/sh\nset -e\n"
-            . "# shellcheck source=SCRIPTDIR/env.stub\n. /root/env.stub\n"
-            . "echo 'init for docker/openemr/8.0.0'\n",
-        );
-
-        $this->writeFile(
-            'docker/openemr/OVERVIEW.md',
-            "| 8.0.0 | latest |\n| 8.1.0 | next |\n| 8.1.1 | dev |\n",
-        );
+        // Dependabot config (in `excludes:`). One entry per build dir, added at
+        // dir-scaffold time, never renamed by rotation.
+        $this->writeFile('.github/dependabot.yml', <<<'YAML'
+        version: 2
+        updates:
+          # Docker - docker/openemr/8.0.0
+          - package-ecosystem: "docker"
+            directory: "/docker/openemr/8.0.0"
+            schedule:
+              interval: "daily"
+          # Docker - docker/openemr/8.1.0
+          - package-ecosystem: "docker"
+            directory: "/docker/openemr/8.1.0"
+            schedule:
+              interval: "daily"
+        YAML);
 
         // Slot symlinks: the source of truth the consolidated build workflow
         // resolves each slot's version from. Rotation re-points these (see
