@@ -19,13 +19,13 @@ version: 1
 
 slots:
   current:
-    minor: "8.0"
+    minor: "8.1"
     # "8.0.0.3" is legacy quaternary (4-part) versioning. 8.1.x onward uses
     # plain semver. When current rotates off the 8.0.0.x line, this becomes a
     # plain 3-part version. See #746.
-    full: "8.0.0.3"
-    branch: "rel-800"
-    docker_dir: "8.0.0"
+    full: "8.1.0"
+    branch: "rel-810"
+    docker_dir: "8.1.0"
   next:
     minor: "8.1"
     full: "8.1.0"

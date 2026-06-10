@@ -12,9 +12,9 @@ updates:
     schedule:
       interval: "daily"
 
-  # Docker - docker/openemr/8.0.0
+  # Docker - docker/openemr/8.1.0
   - package-ecosystem: "docker"
-    directory: "/docker/openemr/8.0.0"
+    directory: "/docker/openemr/8.1.0"
     schedule:
       interval: "daily"
 
