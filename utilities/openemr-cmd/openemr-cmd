@@ -529,6 +529,14 @@ cmd_worktree_add() {
     wt_write_env      "${dir}" "${branch}" "${offset}" "${env}"
     wt_write_override "${dir}" "${branch}" "${offset}" "${env}"
 
+    # The base-dir .env (e.g., OPENEMR__ENVIRONMENT=dev) is gitignored, so
+    # 'git worktree add' does not bring it across. Copy it from the primary so
+    # the new worktree's runtime environment matches.
+    if [[ -f "${OPENEMR_ROOT}/.env" && ! -L "${OPENEMR_ROOT}/.env" && ! -e "${dir}/.env" ]]; then
+        cp "${OPENEMR_ROOT}/.env" "${dir}/.env"
+        wt_info "Copied base .env from primary repo"
+    fi
+
     wt_state_set "${branch}" "${offset}" "${dir}" "${env}"
 
     echo ""
