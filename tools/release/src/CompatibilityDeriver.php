@@ -1,26 +1,26 @@
 <?php
 
 /**
- * Derive a per-release tested-compatibility manifest from the openemr/openemr
- * CI test matrix.
+ * Derive the minimum tested runtime version per component from the
+ * openemr/openemr CI test matrix.
  *
  * The matrix is the source of truth for what a release was actually exercised
  * against: CI globs `ci/!(compose-shared-*)/docker-compose.yml` and runs one
  * job per directory. This class reads the same directories, decodes the PHP
  * version from each directory name and the database type/version from each
  * compose file's `services.mysql.image`, and reports the minimum tested version
- * per component. The full tested matrix is not duplicated here; the manifest
- * carries a `tested_matrix_url` pointing at the release branch's `ci/` directory
- * so the exact set of tested combinations lives in the repo, not the asset.
+ * per component. The full tested matrix is not reproduced here; the release
+ * notes link to the release branch's `ci/` directory so the exact set of tested
+ * combinations lives in the repo.
  *
  * Decode rules mirror ci/parse_docker_dir.sh in openemr/openemr (the canonical
- * decoder) so the manifest can never disagree with what CI ran:
+ * decoder) so the result can never disagree with what CI ran:
  *   - PHP from the dir name's 2nd `_`-delimited field: `82` -> `8.2`
  *     (first char major, remainder minor).
  *   - DB type + version from `services.mysql.image`: strip the `@sha256:` digest,
  *     split on `:`, e.g. `mariadb:11.8.6` -> `mariadb` / `11.8.6`.
  *
- * Versions are keyed to MAJOR.MINOR (the image patch is dropped) so the manifest
+ * Versions are keyed to MAJOR.MINOR (the image patch is dropped) so the result
  * stays stable across patch-image bumps, and the minimum is computed with
  * version_compare (version-aware, not lexical: `8.10` > `8.9`).
  *
@@ -38,20 +38,20 @@ namespace OpenEMR\Release;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * @phpstan-type ComponentMinimum array{min: string}
- * @phpstan-type Manifest array<string, string|ComponentMinimum>
+ * @phpstan-type Minimums array<string, string>
  */
 final readonly class CompatibilityDeriver
 {
     public function __construct(
         private string $ciDir,
-        private string $version,
-        private string $testedMatrixUrl,
     ) {
     }
 
     /**
-     * @return Manifest
+     * Minimum tested version per component, keyed `php` first then db types
+     * in alphabetical order (e.g. `mariadb` before `mysql`).
+     *
+     * @return Minimums
      */
     public function derive(): array
     {
@@ -90,16 +90,14 @@ final readonly class CompatibilityDeriver
             throw new \RuntimeException("No CI matrix directories found under: {$this->ciDir}");
         }
 
-        $manifest = ['version' => $this->version];
-        $manifest['php'] = $this->minimum($phpVersions);
+        $minimums = ['php' => $this->minimum($phpVersions)];
         // Sort db types for deterministic output (mariadb before mysql).
         ksort($dbVersions);
         foreach ($dbVersions as $dbType => $versions) {
-            $manifest[$dbType] = $this->minimum($versions);
+            $minimums[$dbType] = $this->minimum($versions);
         }
-        $manifest['tested_matrix_url'] = $this->testedMatrixUrl;
 
-        return $manifest;
+        return $minimums;
     }
 
     /**
@@ -177,9 +175,8 @@ final readonly class CompatibilityDeriver
      * Fold a list of versions into the minimum using version-aware ordering.
      *
      * @param list<string> $versions
-     * @return ComponentMinimum
      */
-    private function minimum(array $versions): array
+    private function minimum(array $versions): string
     {
         $min = $versions[0];
         foreach ($versions as $version) {
@@ -187,6 +184,6 @@ final readonly class CompatibilityDeriver
                 $min = $version;
             }
         }
-        return ['min' => $min];
+        return $min;
     }
 }

@@ -151,18 +151,17 @@ tasks:
         --output-dir={{shellQuote .OUTPUT_DIR}}
 
   compatibility:
-    desc: Derive the tested-compatibility manifest from the openemr CI matrix
+    desc: Inject the minimum-supported-versions section into the release notes
     requires:
-      vars: [VERSION, VERSION_BRANCH, OPENEMR_DIR]
+      vars: [VERSION_BRANCH, OPENEMR_DIR]
     deps: [setup]
     cmds:
       - >-
         php bin/derive-compatibility.php
-        --release-version={{shellQuote .VERSION}}
         --version-branch={{shellQuote .VERSION_BRANCH}}
         --openemr-dir={{shellQuote .OPENEMR_DIR}}
         --repo={{shellQuote .REPO}}
-        --out={{shellQuote .OUTPUT_DIR}}/compatibility.json
+        --notes-file={{shellQuote .OUTPUT_DIR}}/changelog.md
 
   release:rotate:
     desc: Apply 3-slot rotation per versions.yml (idempotent)

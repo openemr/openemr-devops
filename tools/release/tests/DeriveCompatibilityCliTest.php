@@ -36,88 +36,124 @@ final class DeriveCompatibilityCliTest extends TestCase
         }
     }
 
-    public function testWritesManifestWithMinimumsAndMatrixUrl(): void
+    public function testInjectsSectionAfterVersionHeading(): void
     {
         $openemrDir = $this->tmpDir . '/openemr';
         $this->matrixDir($openemrDir, 'apache_82_mariadb', 'mariadb:11.8.6');
         $this->matrixDir($openemrDir, 'apache_84_mysql', 'mysql:8.4.0');
-        $out = $this->tmpDir . '/compatibility.json';
 
-        $process = new Process([
-            'php',
-            self::BIN,
-            '--release-version=8.1.0',
+        $notes = $this->tmpDir . '/changelog.md';
+        file_put_contents($notes, "## [8.1.0] - 2026-06-10\n\n### Fixed\n\n- something\n");
+
+        $process = $this->runCli([
             '--version-branch=rel-810',
             '--openemr-dir=' . $openemrDir,
-            '--out=' . $out,
+            '--notes-file=' . $notes,
         ]);
-        $process->run();
 
         self::assertSame(0, $process->getExitCode(), $process->getOutput());
-        self::assertFileExists($out);
 
-        $manifest = json_decode((string) file_get_contents($out), true, 512, JSON_THROW_ON_ERROR);
-        self::assertSame([
-            'version' => '8.1.0',
-            'php' => ['min' => '8.2'],
-            'mariadb' => ['min' => '11.8'],
-            'mysql' => ['min' => '8.4'],
-            'tested_matrix_url' => 'https://github.com/openemr/openemr/tree/rel-810/ci',
-        ], $manifest);
+        $result = (string) file_get_contents($notes);
+        $url = 'https://github.com/openemr/openemr/tree/rel-810/ci';
+        $expected = implode("\n", [
+            '## [8.1.0] - 2026-06-10',
+            '',
+            '### Minimum supported versions',
+            '',
+            '- **PHP** 8.2+',
+            '- **MariaDB** 11.8+',
+            '- **MySQL** 8.4+',
+            '',
+            'See the [tested CI matrix](' . $url . ') for all tested version combinations.',
+            '',
+            '### Fixed',
+            '',
+            '- something',
+            '',
+        ]);
+        self::assertSame($expected, $result);
+    }
+
+    public function testPrependsWhenNoVersionHeading(): void
+    {
+        $openemrDir = $this->tmpDir . '/openemr';
+        $this->matrixDir($openemrDir, 'apache_82_mariadb', 'mariadb:11.8.6');
+
+        $notes = $this->tmpDir . '/changelog.md';
+        file_put_contents($notes, "- bare body, no heading\n");
+
+        $process = $this->runCli([
+            '--version-branch=rel-810',
+            '--openemr-dir=' . $openemrDir,
+            '--notes-file=' . $notes,
+        ]);
+
+        self::assertSame(0, $process->getExitCode(), $process->getOutput());
+
+        $result = (string) file_get_contents($notes);
+        self::assertStringStartsWith('### Minimum supported versions', $result);
+        self::assertStringContainsString('- bare body, no heading', $result);
     }
 
     public function testCustomRepoChangesMatrixUrlHost(): void
     {
         $openemrDir = $this->tmpDir . '/openemr';
         $this->matrixDir($openemrDir, 'apache_82_mariadb', 'mariadb:11.8.6');
-        $out = $this->tmpDir . '/compatibility.json';
 
-        $process = new Process([
-            'php',
-            self::BIN,
-            '--release-version=8.1.0',
+        $notes = $this->tmpDir . '/changelog.md';
+        file_put_contents($notes, "## [8.1.0]\n\nbody\n");
+
+        $process = $this->runCli([
             '--version-branch=rel-721',
             '--repo=openemr/openemr-fork',
             '--openemr-dir=' . $openemrDir,
-            '--out=' . $out,
+            '--notes-file=' . $notes,
         ]);
-        $process->run();
 
         self::assertSame(0, $process->getExitCode(), $process->getOutput());
-        $manifest = json_decode((string) file_get_contents($out), true, 512, JSON_THROW_ON_ERROR);
-        self::assertIsArray($manifest);
-        self::assertSame(
+        self::assertStringContainsString(
             'https://github.com/openemr/openemr-fork/tree/rel-721/ci',
-            $manifest['tested_matrix_url'],
+            (string) file_get_contents($notes),
         );
     }
 
     public function testMissingVersionBranchFails(): void
     {
-        $process = new Process([
-            'php',
-            self::BIN,
-            '--release-version=8.1.0',
+        $notes = $this->tmpDir . '/changelog.md';
+        file_put_contents($notes, "## [8.1.0]\n\nbody\n");
+
+        $process = $this->runCli([
             '--openemr-dir=' . $this->tmpDir,
+            '--notes-file=' . $notes,
         ]);
-        $process->run();
 
         self::assertSame(1, $process->getExitCode());
         self::assertStringContainsString('--version-branch is required', $process->getOutput());
     }
 
-    public function testMissingReleaseVersionFails(): void
+    public function testMissingNotesFileFails(): void
     {
-        $process = new Process([
-            'php',
-            self::BIN,
+        $openemrDir = $this->tmpDir . '/openemr';
+        $this->matrixDir($openemrDir, 'apache_82_mariadb', 'mariadb:11.8.6');
+
+        $process = $this->runCli([
             '--version-branch=rel-810',
-            '--openemr-dir=' . $this->tmpDir,
+            '--openemr-dir=' . $openemrDir,
+            '--notes-file=' . $this->tmpDir . '/does-not-exist.md',
         ]);
-        $process->run();
 
         self::assertSame(1, $process->getExitCode());
-        self::assertStringContainsString('--release-version is required', $process->getOutput());
+        self::assertStringContainsString('Notes file not found', $process->getOutput());
+    }
+
+    /**
+     * @param list<string> $args
+     */
+    private function runCli(array $args): Process
+    {
+        $process = new Process(['php', self::BIN, ...$args]);
+        $process->run();
+        return $process;
     }
 
     private function matrixDir(string $openemrDir, string $name, string $image): void

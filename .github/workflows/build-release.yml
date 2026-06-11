@@ -240,6 +240,16 @@ jobs:
         HEAD_REF='${{ inputs.version_branch }}'
         TITLE='${{ inputs.version }}'
 
+    # Inject the minimum-supported-versions section into the changelog so it
+    # rides along into the release notes (--notes-file below). Runs after the
+    # changelog exists and before the release is created.
+    - name: Add compatibility section to release notes
+      working-directory: devops-tools
+      run: >-
+        task release:compatibility
+        VERSION_BRANCH='${{ inputs.version_branch }}'
+        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
+
     # Build and checksum the package before creating the tag/release. If any
     # build step fails, the job aborts before a release exists — never publish
     # a release that has no distribution assets attached.
@@ -253,14 +263,6 @@ jobs:
       run: >-
         task release:package:assemble
         VERSION='${{ inputs.version }}'
-        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
-
-    - name: Derive compatibility manifest
-      working-directory: devops-tools
-      run: >-
-        task release:compatibility
-        VERSION='${{ inputs.version }}'
-        VERSION_BRANCH='${{ inputs.version_branch }}'
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
 
     - name: Generate checksums
@@ -333,8 +335,7 @@ jobs:
           "${output_dir}"/*.md5 \
           "${output_dir}"/*.sha256 \
           "${output_dir}"/*.sha512 \
-          "${output_dir}/changelog.md" \
-          "${output_dir}/compatibility.json"
+          "${output_dir}/changelog.md"
 
     - name: Build summary
       working-directory: devops-tools
@@ -353,7 +354,6 @@ jobs:
         name: release-${{ inputs.version }}
         path: |
           ${{ env.TOOLS_DIR }}/release-output/changelog.md
-          ${{ env.TOOLS_DIR }}/release-output/compatibility.json
           ${{ env.TOOLS_DIR }}/release-output/*.md5
           ${{ env.TOOLS_DIR }}/release-output/*.sha256
           ${{ env.TOOLS_DIR }}/release-output/*.sha512

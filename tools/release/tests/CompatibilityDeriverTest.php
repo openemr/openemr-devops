@@ -18,8 +18,6 @@ use Symfony\Component\Process\Process;
 
 final class CompatibilityDeriverTest extends TestCase
 {
-    private const URL = 'https://github.com/openemr/openemr/tree/rel-810/ci';
-
     private string $ciDir = '';
 
     protected function setUp(): void
@@ -37,22 +35,20 @@ final class CompatibilityDeriverTest extends TestCase
         }
     }
 
-    public function testDerivesMinimumPerComponentAndMatrixUrl(): void
+    public function testDerivesMinimumPerComponentPhpFirstThenSortedDbTypes(): void
     {
         $this->matrixDir('apache_82_mariadb', 'mariadb:11.8.6');
         $this->matrixDir('apache_84_mariadb', 'mariadb:10.6.4');
         $this->matrixDir('nginx_83_mysql', 'mysql:8.4.0');
         $this->matrixDir('apache_810_mysql', 'mysql:5.7.44');
 
-        $manifest = (new CompatibilityDeriver($this->ciDir, '8.1.0', self::URL))->derive();
+        $minimums = (new CompatibilityDeriver($this->ciDir))->derive();
 
         self::assertSame([
-            'version' => '8.1.0',
-            'php' => ['min' => '8.2'],
-            'mariadb' => ['min' => '10.6'],
-            'mysql' => ['min' => '5.7'],
-            'tested_matrix_url' => self::URL,
-        ], $manifest);
+            'php' => '8.2',
+            'mariadb' => '10.6',
+            'mysql' => '5.7',
+        ], $minimums);
     }
 
     public function testComparesVersionsNumericallyNotLexically(): void
@@ -61,9 +57,9 @@ final class CompatibilityDeriverTest extends TestCase
         $this->matrixDir('apache_89_mariadb', 'mariadb:11.0.0');
         $this->matrixDir('apache_810_mariadb', 'mariadb:11.0.0');
 
-        $manifest = (new CompatibilityDeriver($this->ciDir, '8.1.0', self::URL))->derive();
+        $minimums = (new CompatibilityDeriver($this->ciDir))->derive();
 
-        self::assertSame(['min' => '8.9'], $manifest['php']);
+        self::assertSame('8.9', $minimums['php']);
     }
 
     public function testStripsImageDigestBeforeDecoding(): void
@@ -73,9 +69,9 @@ final class CompatibilityDeriverTest extends TestCase
             'mariadb:11.8.6@sha256:' . str_repeat('a', 64),
         );
 
-        $manifest = (new CompatibilityDeriver($this->ciDir, '8.1.0', self::URL))->derive();
+        $minimums = (new CompatibilityDeriver($this->ciDir))->derive();
 
-        self::assertSame(['min' => '11.8'], $manifest['mariadb']);
+        self::assertSame('11.8', $minimums['mariadb']);
     }
 
     public function testSkipsComposeSharedDirs(): void
@@ -83,10 +79,10 @@ final class CompatibilityDeriverTest extends TestCase
         $this->matrixDir('apache_82_mariadb', 'mariadb:11.8.6');
         $this->matrixDir('compose-shared-foo', 'mariadb:9.9.9');
 
-        $manifest = (new CompatibilityDeriver($this->ciDir, '8.1.0', self::URL))->derive();
+        $minimums = (new CompatibilityDeriver($this->ciDir))->derive();
 
-        self::assertSame(['min' => '8.2'], $manifest['php']);
-        self::assertSame(['min' => '11.8'], $manifest['mariadb']);
+        self::assertSame('8.2', $minimums['php']);
+        self::assertSame('11.8', $minimums['mariadb']);
     }
 
     public function testSkipsDirsWithoutDockerComposeYml(): void
@@ -97,10 +93,10 @@ final class CompatibilityDeriverTest extends TestCase
         file_put_contents($this->ciDir . '/inferno/compose.yml', "services: {}\n");
         mkdir($this->ciDir . '/nginx', 0700, true);
 
-        $manifest = (new CompatibilityDeriver($this->ciDir, '8.1.0', self::URL))->derive();
+        $minimums = (new CompatibilityDeriver($this->ciDir))->derive();
 
-        self::assertSame(['min' => '8.2'], $manifest['php']);
-        self::assertArrayNotHasKey('inferno', $manifest);
+        self::assertSame('8.2', $minimums['php']);
+        self::assertArrayNotHasKey('inferno', $minimums);
     }
 
     public function testMissingCiDirThrows(): void
@@ -108,7 +104,7 @@ final class CompatibilityDeriverTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('CI directory not found');
 
-        (new CompatibilityDeriver($this->ciDir . '/nope', '8.1.0', self::URL))->derive();
+        (new CompatibilityDeriver($this->ciDir . '/nope'))->derive();
     }
 
     public function testEmptyMatrixThrows(): void
@@ -116,7 +112,7 @@ final class CompatibilityDeriverTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('No CI matrix directories found');
 
-        (new CompatibilityDeriver($this->ciDir, '8.1.0', self::URL))->derive();
+        (new CompatibilityDeriver($this->ciDir))->derive();
     }
 
     public function testUndecodablePhpDirNameThrows(): void
@@ -126,7 +122,7 @@ final class CompatibilityDeriverTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Cannot decode PHP version');
 
-        (new CompatibilityDeriver($this->ciDir, '8.1.0', self::URL))->derive();
+        (new CompatibilityDeriver($this->ciDir))->derive();
     }
 
     public function testMissingImageThrows(): void
@@ -138,7 +134,7 @@ final class CompatibilityDeriverTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Missing services.mysql.image');
 
-        (new CompatibilityDeriver($this->ciDir, '8.1.0', self::URL))->derive();
+        (new CompatibilityDeriver($this->ciDir))->derive();
     }
 
     private function matrixDir(string $name, string $image): void

@@ -2,11 +2,13 @@
 <?php
 
 /**
- * Emit a per-release tested-compatibility manifest (compatibility.json) derived
- * from a checked-out openemr/openemr release branch's CI test matrix.
+ * Inject a "Minimum supported versions" section into a release-notes file,
+ * derived from a checked-out openemr/openemr release branch's CI test matrix.
  *
- * Thin CLI wrapper around OpenEMR\Release\CompatibilityDeriver; see that class
- * for the decode rules and rationale (they mirror ci/parse_docker_dir.sh).
+ * Thin CLI wrapper around OpenEMR\Release\CompatibilityDeriver (decode rules,
+ * mirroring ci/parse_docker_dir.sh) and CompatibilityNotesRenderer (markdown).
+ * The section is inserted just after the first `## ` version heading in the
+ * notes file, or prepended if the file has no such heading.
  *
  * @package   openemr-devops
  * @link      https://www.open-emr.org
@@ -20,6 +22,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/vendor/autoload.php';
 
 use OpenEMR\Release\CompatibilityDeriver;
+use OpenEMR\Release\CompatibilityNotesRenderer;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -27,14 +30,13 @@ use Symfony\Component\Console\SingleCommandApplication;
 
 (new SingleCommandApplication())
     ->setName('derive-compatibility')
-    ->setDescription('Derive the tested-compatibility manifest from the openemr CI matrix')
+    ->setDescription('Inject the minimum-supported-versions section into the release notes')
     ->addOption(
         'openemr-dir',
         null,
         InputOption::VALUE_REQUIRED,
         'Path to the checked-out openemr release branch (defaults to $OPENEMR_DIR)',
     )
-    ->addOption('release-version', null, InputOption::VALUE_REQUIRED, 'Release version (e.g., 8.1.0)')
     ->addOption(
         'version-branch',
         null,
@@ -42,7 +44,7 @@ use Symfony\Component\Console\SingleCommandApplication;
         'Release branch for the CI matrix link (e.g., rel-810)',
     )
     ->addOption('repo', null, InputOption::VALUE_REQUIRED, 'GitHub repo hosting the CI matrix', 'openemr/openemr')
-    ->addOption('out', null, InputOption::VALUE_REQUIRED, 'Output file path', './release-output/compatibility.json')
+    ->addOption('notes-file', null, InputOption::VALUE_REQUIRED, 'Release-notes markdown file to inject into')
     ->setCode(function (InputInterface $input, OutputInterface $output): int {
         $openemrDirOption = $input->getOption('openemr-dir');
         $envOpenemrDir = getenv('OPENEMR_DIR');
@@ -54,55 +56,50 @@ use Symfony\Component\Console\SingleCommandApplication;
             return 1;
         }
 
-        $versionOption = $input->getOption('release-version');
-        if (!is_string($versionOption) || $versionOption === '') {
-            $output->writeln('<error>--release-version is required</error>');
-            return 1;
-        }
-
         $versionBranchOption = $input->getOption('version-branch');
         if (!is_string($versionBranchOption) || $versionBranchOption === '') {
             $output->writeln('<error>--version-branch is required</error>');
             return 1;
         }
 
+        $notesFileOption = $input->getOption('notes-file');
+        if (!is_string($notesFileOption) || $notesFileOption === '') {
+            $output->writeln('<error>--notes-file is required</error>');
+            return 1;
+        }
+        if (!is_file($notesFileOption)) {
+            $output->writeln("<error>Notes file not found: {$notesFileOption}</error>");
+            return 1;
+        }
+
         $repoOption = $input->getOption('repo');
         $repo = is_string($repoOption) && $repoOption !== '' ? $repoOption : 'openemr/openemr';
 
-        $testedMatrixUrl = sprintf(
-            'https://github.com/%s/tree/%s/ci',
-            $repo,
-            $versionBranchOption,
-        );
-
-        $outOption = $input->getOption('out');
-        $outPath = is_string($outOption) && $outOption !== ''
-            ? $outOption
-            : './release-output/compatibility.json';
+        $testedMatrixUrl = sprintf('https://github.com/%s/tree/%s/ci', $repo, $versionBranchOption);
 
         $ciDir = rtrim($openemrDir, '/') . '/ci';
 
+        $notes = file_get_contents($notesFileOption);
+        if ($notes === false) {
+            $output->writeln("<error>Could not read notes file: {$notesFileOption}</error>");
+            return 1;
+        }
+
         try {
-            $manifest = (new CompatibilityDeriver($ciDir, $versionOption, $testedMatrixUrl))->derive();
+            $minimums = (new CompatibilityDeriver($ciDir))->derive();
+            $renderer = new CompatibilityNotesRenderer();
+            $merged = $renderer->inject($notes, $renderer->render($minimums, $testedMatrixUrl));
         } catch (\RuntimeException $e) {
             $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
             return 1;
         }
 
-        $json = json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
-
-        $outDir = dirname($outPath);
-        if (!is_dir($outDir) && !mkdir($outDir, 0755, true) && !is_dir($outDir)) {
-            $output->writeln("<error>Could not create output directory: {$outDir}</error>");
-            return 1;
-        }
-        if (file_put_contents($outPath, $json) === false) {
-            $output->writeln("<error>Could not write manifest to: {$outPath}</error>");
+        if (file_put_contents($notesFileOption, $merged) === false) {
+            $output->writeln("<error>Could not write notes file: {$notesFileOption}</error>");
             return 1;
         }
 
-        $output->writeln("<info>Wrote</info> {$outPath}");
-        $output->write($json);
+        $output->writeln("<info>Injected compatibility section into</info> {$notesFileOption}");
         return 0;
     })
     ->run();
