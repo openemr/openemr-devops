@@ -150,6 +150,20 @@ tasks:
         --openemr-dir={{shellQuote .OPENEMR_DIR}}
         --output-dir={{shellQuote .OUTPUT_DIR}}
 
+  compatibility:
+    desc: Derive the tested-compatibility manifest from the openemr CI matrix
+    requires:
+      vars: [VERSION, VERSION_BRANCH, OPENEMR_DIR]
+    deps: [setup]
+    cmds:
+      - >-
+        php bin/derive-compatibility.php
+        --release-version={{shellQuote .VERSION}}
+        --version-branch={{shellQuote .VERSION_BRANCH}}
+        --openemr-dir={{shellQuote .OPENEMR_DIR}}
+        --repo={{shellQuote .REPO}}
+        --out={{shellQuote .OUTPUT_DIR}}/compatibility.json
+
   release:rotate:
     desc: Apply 3-slot rotation per versions.yml (idempotent)
     deps: [setup]

@@ -255,6 +255,14 @@ jobs:
         VERSION='${{ inputs.version }}'
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
 
+    - name: Derive compatibility manifest
+      working-directory: devops-tools
+      run: >-
+        task release:compatibility
+        VERSION='${{ inputs.version }}'
+        VERSION_BRANCH='${{ inputs.version_branch }}'
+        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
+
     - name: Generate checksums
       working-directory: devops-tools
       run: |
@@ -325,7 +333,8 @@ jobs:
           "${output_dir}"/*.md5 \
           "${output_dir}"/*.sha256 \
           "${output_dir}"/*.sha512 \
-          "${output_dir}/changelog.md"
+          "${output_dir}/changelog.md" \
+          "${output_dir}/compatibility.json"
 
     - name: Build summary
       working-directory: devops-tools
@@ -344,6 +353,7 @@ jobs:
         name: release-${{ inputs.version }}
         path: |
           ${{ env.TOOLS_DIR }}/release-output/changelog.md
+          ${{ env.TOOLS_DIR }}/release-output/compatibility.json
           ${{ env.TOOLS_DIR }}/release-output/*.md5
           ${{ env.TOOLS_DIR }}/release-output/*.sha256
           ${{ env.TOOLS_DIR }}/release-output/*.sha512

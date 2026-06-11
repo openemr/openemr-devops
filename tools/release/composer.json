@@ -5,6 +5,7 @@
     "license": "GPL-2.0-or-later",
     "require": {
         "php": "^8.5",
+        "ext-ctype": "*",
         "ext-curl": "*",
         "ext-mbstring": "*",
         "nikic/php-parser": "^5.0",
