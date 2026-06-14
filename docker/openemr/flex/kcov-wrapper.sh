@@ -52,8 +52,14 @@ mkdir -p /var/www/localhost/htdocs/coverage
 # Pass 1: build outside kcov
 FLEX_BUILD_ONLY=yes /var/www/localhost/htdocs/openemr.sh
 
-# Pass 2: orchestration under kcov, build already done
-FORCE_NO_BUILD_MODE=yes kcov \
+# Pass 2: orchestration under kcov, build already done. FLEX_SKIP_APACHE_EXEC
+# is critical here: if openemr.sh's `exec /usr/sbin/httpd -D FOREGROUND`
+# succeeds, bash gets replaced by apache and kcov never sees an exit signal
+# from its tracee, so the coverage buffer never finalizes. We saw this on
+# the first iteration of this PR — only 1/497 lines recorded. Setting
+# FLEX_SKIP_APACHE_EXEC=yes makes openemr.sh exit cleanly; kcov writes the
+# full report; the wrapper then execs apache itself below.
+FORCE_NO_BUILD_MODE=yes FLEX_SKIP_APACHE_EXEC=yes kcov \
     --include-path=/var/www/localhost/htdocs/openemr.sh,/root/devtoolsLibrary.source \
     /var/www/localhost/htdocs/coverage \
     /var/www/localhost/htdocs/openemr.sh
@@ -61,7 +67,6 @@ FORCE_NO_BUILD_MODE=yes kcov \
 # ============================================================================
 # START APACHE SERVER
 # ============================================================================
-# Pass 2's openemr.sh execs apache directly (see end of openemr.sh), so
-# under normal circumstances control does not reach this line. Kept as a
-# defensive fallback in case openemr.sh returns without execing.
+# Pass 2's openemr.sh skips its own apache exec (see FLEX_SKIP_APACHE_EXEC
+# above) so kcov can finalize. Wrapper takes over here.
 exec /usr/sbin/httpd -D FOREGROUND

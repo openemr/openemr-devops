@@ -1163,6 +1163,13 @@ echo
 if [[ "${OPERATOR}" = "yes" ]]; then
     flex_timing 'apache exec'
     echo 'Starting apache!'
+    # FLEX_SKIP_APACHE_EXEC is set by kcov-wrapper.sh's pass 2 so kcov can
+    # see the script exit cleanly and finalize its coverage buffer; if we
+    # exec apache here, bash gets replaced and kcov never gets the exit
+    # signal (openemr-devops#797). Wrapper execs apache itself afterward.
+    if [[ "${FLEX_SKIP_APACHE_EXEC:-}" = "yes" ]]; then
+        exit 0
+    fi
     exec /usr/sbin/httpd -D FOREGROUND
 fi
 
