@@ -350,7 +350,18 @@ Four complementary checks assert that the image baked from `openemr_version_ref`
    5. Every `openemr_version_ref` resolves to a real ref in openemr/openemr (catches typos like `rel-8100` or `v8_1_0_`).
    6. The first version-number `docker_tag` in each row aligns with the `major.minor.patch` composed from `version.php` at that row's `openemr_version_ref`. Catches the drift bug where master bumps `version.php` from `8.1.1-dev` to `8.1.2-dev` but `release-targets.yml` still says `docker_tags: 8.1.1,dev,next`.
 
-Together: the four checks make every published image self-documenting, assert build-time alignment, and assert config-time alignment. A release-management PR that bumps any of `version.php` / `release-targets.yml` / Dockerfile fails at PR time if the three drift apart.
+5. **Byte-identical drift canary across rel branches** (`docker-validate-byte-identical.yml`). The orchestrator-driven pipeline depends on six files being character-for-character identical across master and every rel branch:
+
+   * `.github/workflows/docker-build-release.yml`
+   * `.github/workflows/docker-test-core.yml`
+   * `.github/actions/test-actions-core/action.yml`
+   * `docker/compose.yml`
+   * `docker/.gitignore`
+   * `docker/COVERAGE.md`
+
+   If any drift, the orchestrator can dispatch the same logical build against two branches and silently get different behaviors. This workflow asserts the invariant via three triggers: PR on master gated to changes in any of those files (catches a PR that updates master without sync PRs to rel branches), daily cron at 07:00 UTC (catches latent drift via unrelated rel-branch PRs), and `workflow_dispatch` for ad-hoc investigation. Rel branches come from `release-targets.yml` at runtime, so adding a new rel branch automatically extends the check. Files that are intentionally non-identical (`docker/release/Dockerfile`, `docker-test-release.yml`, `docker-test-bats.yml`, `docker-test-container-functionality.yml`) are deliberately excluded from the watched set.
+
+Together: the five checks make every published image self-documenting, assert build-time alignment, assert config-time alignment, AND assert the cross-branch invariant. A release-management PR that bumps any of `version.php` / `release-targets.yml` / Dockerfile fails at PR time if the three drift apart; a PR that quietly forks one of the byte-identical files on a rel branch fails at the next daily canary run.
 
 ## Per rel-branch port: what each branch gets in phase 2
 
