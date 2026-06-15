@@ -319,7 +319,7 @@ So no Dependabot migration is required for the production Dockerfiles -- the ent
 | 1a. Foundation on master | **✅ Landed in openemr/openemr#12482.** Path layout resolved (use `docker/<thing>/` to match existing openemr core convention). Docker Hub credentials provisioned at the openemr org level. `docker-release-orchestrator.yml` skeleton committed -- inert until phase 1c wires `docker-build-release.yml` for it to dispatch. | ~1 day |
 | 1b. Flex + binary migration | **✅ Landed in openemr/openemr#12482, 8 commits.** Ports of `docker/{flex,binary}/`, `tests/bats/docker/{flex,binary}/`, `utilities/container_benchmarking/`, `.github/actions/test-actions-core/`, all flex build workflows (`docker-build-{flex-core,322,323,edge}.yml`), test workflows (`docker-test-{core,flex-322,flex-323,flex-edge,bats,container-functionality}.yml`), and `hadolint.yml` → `docker-lint-hadolint.yml` (plus README badge URL). Five intentional deviations from pure lift-and-shift: (1) the 50 MB `demo_5_0_0_5.sql` is **fetched at build time** from `raw.githubusercontent.com` pinned to a devops commit SHA with SHA256 verification (see "Large asset handling" section below), (2) a typo fix in `docker/flex/openemr.sh` (`defauly` → `default` in a code comment), (3) a codespell-driven style nudge in `docker/binary/utilities/devtoolsLibrary.source` (`runN` → `run1, run2, run3, ...` ellipsis to match the rest of the docstring), (4) `ubuntu-22.04` → `ubuntu-24.04` in `docker-test-bats.yml` to match repo convention, and (5) 8.1.0 paths + jobs deliberately dropped from `docker-test-bats.yml` and `docker-test-container-functionality.yml` -- restored in phase 1c when `docker/release/` lands. | ~1 day |
 | 1c. Master's release Dockerfile + orchestrator | Add `docker/release/`, `docker-build-release.yml`, `docker-test-release.yml`, `tests/bats/docker/release/` skeleton. Restore the `bats-release` and `functionality-release` jobs deferred in phase 1b. Externalize release config to `.github/release-targets.yml`. Centralize `openemr_version_ref` so `docker/release/Dockerfile` is byte-identical across branches. Add four verification checks: OCI labels, version.php-derived `IMAGE_VERSION`, post-push label verification, `docker-validate-release-targets.yml` workflow (schema + git-ref-resolves + docker_tag↔version.php alignment guards). Apply `runN`→ellipsis fix and any other codespell hits during the port. | ~1.5 days |
-| 2. Per rel-branch migration | For each rel-X.Y.Z: cherry-pick Dockerfile + the byte-identical `docker-build-release.yml` + `docker-test-release.yml` + `docker-test-bats.yml`, rename `tests/bats/X.Y.Z/` → `tests/bats/docker/release/`, strip hard-coded version prefixes, smoke-test via workflow_dispatch, add the new branch to master's orchestrator, then delete the matching `build-XXX.yml` and `tests/bats/X.Y.Z/` from devops. Apply the phase 1b deviations to each rel branch's port: SHA-pinned `demo_5_0_0_5.sql` fetch, the `runN` → ellipsis comment fix in `docker/release/utilities/devtoolsLibrary.source` (rel-810's file is at line 668 not 702 -- different because the function is at a different position in that older version), and any other codespell hits the rel-branch source happens to have. | ~0.5-1 day × N |
+| 2. Per rel-branch migration | One PR per active rel branch targeting that branch in upstream. **rel-810** (full port): cherry-pick the version-pinned Dockerfile from devops's `docker/openemr/8.1.0/`, port `tests/bats/8.1.0/` → `tests/bats/docker/release/` with version-prefix stripping, port `docker-build-release.yml` / `docker-test-release.yml` / `docker-test-bats.yml` (single bats-release job) / `docker-test-container-functionality.yml` (single functionality-release job) byte-identical from master, smoke-test, add a row to master's `release-targets.yml`. **rel-800 and rel-704** (lighter port, no BATS): same as rel-810 minus the BATS dir, helpers.bash, docker-test-bats.yml, docker-test-container-functionality.yml, and utilities/container_benchmarking/ -- matching devops's current behavior where those tests don't exist for those older releases. Apply the `runN` → ellipsis comment fix to each `docker/release/utilities/devtoolsLibrary.source` (note: rel-810's line is 668, not 702 -- different position in the older file). See "Per rel-branch port" section below for the full coverage matrix. | ~1 day rel-810 + ~0.5 day × 2 (rel-800, rel-704) = ~2 days |
 | 3. Release tag automation | Replace cross-repo `repository_dispatch openemr-tag` (core → devops) with the in-repo `on: push: tags:` trigger already present on each rel branch's `docker-build-release.yml`. Sort out the existing devops `build-release.yml` (release packaging / tarballs) -- distinct from the docker build workflow; needs migration to core under a non-colliding name like `package-release.yml`. | ~1 day |
 | 4. Consumer auto-sync | Add an in-repo auto-PR step for digest pins in `docker/development-*` compose files after each push. | ~1 day |
 | 5. Devops cleanup | Delete migrated docker paths, BATS dirs, workflows. Remove dead dependabot entries. Add README banner pointing at new locations. Keep `openemr-cmd/`, `kubernetes/`, `tests/bats/openemr-cmd/`, and their workflows. | ~0.5 day |
@@ -351,6 +351,30 @@ Four complementary checks assert that the image baked from `openemr_version_ref`
    6. The first version-number `docker_tag` in each row aligns with the `major.minor.patch` composed from `version.php` at that row's `openemr_version_ref`. Catches the drift bug where master bumps `version.php` from `8.1.1-dev` to `8.1.2-dev` but `release-targets.yml` still says `docker_tags: 8.1.1,dev,next`.
 
 Together: the four checks make every published image self-documenting, assert build-time alignment, and assert config-time alignment. A release-management PR that bumps any of `version.php` / `release-targets.yml` / Dockerfile fails at PR time if the three drift apart.
+
+## Per rel-branch port: what each branch gets in phase 2
+
+Not every rel branch has the same test coverage in devops today. Phase 2 mirrors that state -- branches without BATS dirs or container-functionality coverage in devops don't gain them during the migration. They still get `docker-test-release.yml`, which is the heavier integration test (builds the Dockerfile, starts the container, asserts healthcheck), so the production image path stays well-validated.
+
+| File / Dir | master | rel-810 | rel-800 | rel-704 |
+|---|:---:|:---:|:---:|:---:|
+| `docker/release/Dockerfile` (version-pinned) | ✓ | ✓ | ✓ | ✓ |
+| `docker/compose.yml` | ✓ | ✓ | ✓ | ✓ |
+| `docker-build-release.yml` (byte-identical) | ✓ | ✓ | ✓ | ✓ |
+| `docker-test-release.yml` (production Dockerfile test) | ✓ | ✓ | ✓ | ✓ |
+| `docker-test-core.yml` (reusable) | ✓ | ✓ | ✓ | ✓ |
+| `.github/actions/test-actions-core/` | ✓ | ✓ | ✓ | ✓ |
+| `tests/bats/docker/release/` | ✓ (from devops 8.1.1) | ✓ (from devops 8.1.0) | ✗ | ✗ |
+| `tests/bats/docker/helpers.bash` | ✓ | ✓ | ✗ | ✗ |
+| `docker-test-bats.yml` | ✓ (3 jobs: release+binary+flex) | ✓ (1 job: release) | ✗ | ✗ |
+| `docker-test-container-functionality.yml` | ✓ (3 jobs) | ✓ (1 job: release) | ✗ | ✗ |
+| `utilities/container_benchmarking/` | ✓ | ✓ | ✗ | ✗ |
+| `docker/flex/`, `docker/binary/` + their BATS dirs | ✓ | ✗ | ✗ | ✗ |
+| All flex/binary build + test workflows | ✓ | ✗ | ✗ | ✗ |
+| `docker-release-orchestrator.yml` + `release-targets.yml` | ✓ | ✗ | ✗ | ✗ |
+| `docker-validate-release-targets.yml` | ✓ | ✗ | ✗ | ✗ |
+
+rel-800 and rel-704 explicitly do NOT get BATS or container-functionality testing -- in devops today there are no `tests/bats/8.0.0/` or `tests/bats/7.0.4/` dirs, and `test-container-functionality.yml` only targets 8.1.0 + binary + flex. The migration preserves that asymmetry rather than expanding test coverage for older releases as a side effect (those would be separate enhancements).
 
 ## Branch-cut process under the final model
 
