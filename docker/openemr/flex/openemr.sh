@@ -814,6 +814,13 @@ fi
 # the build block above short-circuits. Avoids kcov's ptrace following
 # webpack's worker tree (openemr-devops#797).
 if [[ "${FLEX_BUILD_ONLY:-}" = "yes" ]]; then
+    # ssl.sh was forked above (line ~575) and we'd normally wait on SSL_PID
+    # near the end of the script. Wait here so pass 1 doesn't leave a
+    # cert-generating subprocess running while pass 2 forks its own ssl.sh.
+    if [[ -n "${SSL_PID:-}" ]] && ! wait "${SSL_PID}" 2>/dev/null; then
+        echo "Warning: ssl.sh failed in FLEX_BUILD_ONLY mode (continuing)"
+    fi
+    unset SSL_PID
     flex_timing 'build-only mode exit'
     exit 0
 fi

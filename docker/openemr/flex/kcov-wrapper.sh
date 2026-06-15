@@ -41,13 +41,21 @@ mkdir -p /var/www/localhost/htdocs/coverage
 #
 # Workaround: run the heavy build OUTSIDE kcov, then run the rest UNDER kcov.
 # Both passes use the same openemr.sh; env vars gate the behavior.
-#   Pass 1 (FLEX_BUILD_ONLY=yes):    composer + npm + napa + webpack + phing,
-#                                    then exit before SSL/sqlconf/swarm/apache.
-#   Pass 2 (FORCE_NO_BUILD_MODE=yes): build block short-circuits, everything
-#                                    else runs under kcov to apache exec.
+#   Pass 1 (FLEX_BUILD_ONLY=yes):    runs the early setup (swarm coord,
+#                                    ssl.sh background fork, source fetch)
+#                                    PLUS the heavy build block, then waits
+#                                    for ssl.sh and exits before the
+#                                    sqlconf / auto_setup / redis / apache
+#                                    tail.
+#   Pass 2 (FORCE_NO_BUILD_MODE=yes  + FLEX_SKIP_APACHE_EXEC=yes): build
+#                                    block short-circuits, everything else
+#                                    runs under kcov; pass 2 returns cleanly
+#                                    instead of exec-ing apache so kcov can
+#                                    finalize the coverage report (this
+#                                    wrapper then execs apache itself).
 # Coverage on the build-block bash branches is dropped, but those lines are
 # mostly bare command invocations; the meaningful orchestration paths
-# (SSL, sqlconf, swarm, redis, AUTHORITY, apache exec) are fully covered.
+# (sqlconf, redis, AUTHORITY tail, apache start) are fully covered.
 
 # Pass 1: build outside kcov
 FLEX_BUILD_ONLY=yes /var/www/localhost/htdocs/openemr.sh
