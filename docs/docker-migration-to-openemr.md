@@ -501,6 +501,14 @@ These were flagged on every migration PR but applying only to migration files wo
 - **`persist-credentials: false` on checkout actions.** Same reasoning -- not currently set on existing workflows.
 - **Pin BATS dependencies to commit SHAs** (instead of tag pins). Contradicts the prior reviewer's recommendation that we just landed (`v1.13.0` / `v0.3.0` / `v2.2.4`). Tags-vs-SHAs is a tradeoff; current state is a reasonable hardening level. Revisit when the repo-wide pass happens.
 
+### Dockerfile architecture (deferred design discussions)
+
+Raised in review by a separate contributor commenting on the existing `docker/release/Dockerfile` lift-and-shift state. Independent of any current critical issue; tracked here so they don't fall off the radar.
+
+- **`tests/` ships in the production image.** The Dockerfile already has a 6-stage layout (`base` -> `openemr-source` / `openemr-composer` / `openemr-assets` -> `production` -> `final` + a parallel `kcov` stage), but `production` does `COPY --from=openemr-source /openemr /tmp/openemr` against the full tree -- only `.git` is stripped in the `openemr-source` stage. A small in-place tightening (either aggressive cleanup in `openemr-source`, or explicit per-directory COPYs in `production` instead of a full-tree COPY) excludes `tests/`, `.github/`, `ci/`, etc. from the published image without restructuring. Self-contained follow-up PR.
+
+- **Switch source acquisition from `git clone` to `COPY` from build context.** Bigger design discussion. The current `git clone --branch ${OPENEMR_VERSION}` pattern decouples *what workflow branch is dispatching* from *what source goes in the image* -- `release-targets.yml` can carry `branch: rel-810` with `openemr_version_ref: v8_1_0`, so the workflow runs on rel-810 HEAD but the image bakes the `v8_1_0` tag. This decoupling is load-bearing for the post-release patch flow (bump that row to `v8_1_0_1` when the patch tag lands; rel-810 HEAD keeps advancing with subsequent work). `COPY . /openemr` would tie source-shipped to workflow-checkout; replicating the decoupling would require the orchestrator (or each workflow) to do a `checkout` of the specific ref before `docker build`. Performance/determinism wins are real (no network during build, no `--depth 1 master` mutability, no race against upstream openemr/openemr), and `.gitignore` semantics matter (`git clone` already excludes ignored files; `COPY` relies on `.dockerignore` to enumerate the same surface). Worth a deliberate decision rather than a drive-by swap.
+
 ### Tracking
 
 - This issue (openemr-devops#790) -- master debt list, for visibility and prioritization.
