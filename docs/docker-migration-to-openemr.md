@@ -5,6 +5,28 @@ Living planning doc for the docker-image migration proposed in
 Discussion happens in the issue thread; this file tracks the agreed-upon
 shape of the work and gets updated as PRs land.
 
+## Contents
+
+- [Goal](#goal)
+- [Proposed model](#proposed-model)
+- [Validated foundation](#validated-foundation)
+- [Master orchestrates schedule AND tag assignment](#master-orchestrates-schedule-and-tag-assignment)
+- [What moves where (concrete)](#what-moves-where-concrete)
+- [Hard-coded version paths that get wiped](#hard-coded-version-paths-that-get-wiped)
+- [Dependabot](#dependabot)
+- [Phased plan](#phased-plan)
+- [Beyond the migration](#beyond-the-migration)
+- [Verification: how we know the right thing got built and pushed](#verification-how-we-know-the-right-thing-got-built-and-pushed)
+- [Per rel-branch port: what each branch gets in phase 2](#per-rel-branch-port-what-each-branch-gets-in-phase-2)
+- [Branch-cut process under the final model](#branch-cut-process-under-the-final-model)
+- [Large asset handling pattern (established in phase 1b)](#large-asset-handling-pattern-established-in-phase-1b)
+- [Decisions to lock before phase 1](#decisions-to-lock-before-phase-1)
+- [What stays in `openemr-devops`](#what-stays-in-openemr-devops)
+- [Risks and wrinkles to plan for](#risks-and-wrinkles-to-plan-for)
+- [Rollback](#rollback)
+- [Deferred / known debt (tracked for follow-up)](#deferred--known-debt-tracked-for-follow-up)
+- [Feedback wanted](#feedback-wanted)
+
 ## Goal
 
 Migrate the production OpenEMR docker images and their build/test pipelines from `openemr/openemr-devops` into `openemr/openemr`, with each production version's Dockerfile living on its corresponding `rel-X.Y.Z` branch and master holding the dev/flex/binary infrastructure. `openemr-cmd` and the Kubernetes manifests stay in this repo.
