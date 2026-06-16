@@ -453,6 +453,60 @@ When phase 5 cleans up `docker/openemr/flex/` from devops master, the SHA-pinned
 
 Reversible at any phase. Each devops `build-XXX.yml` can be restored from git history if a per-branch migration goes wrong. Docker Hub registry names don't change at any point, so consumers (kubernetes manifests, development-* compose files, third-party docs) keep working throughout the transition.
 
+## Deferred / known debt (tracked for follow-up)
+
+Items identified during reviews of the migration PRs (openemr/openemr#12482, #12495, #12496, #12497) that are deferred because they fall outside the migration's lift-and-shift scope. Most are pre-existing in openemr-devops; preserving existing behavior is the correct migration choice. Filing here so they don't fall through the cracks after phase 5 cleanup deletes the devops-side versions.
+
+### Pre-existing openemr-devops content (preserved by lift-and-shift)
+
+**Critical — fail-open in upgrade scripts (all 4 branches).** `docker/release/upgrade/fsupgrade-{1,2,3,5,9,...}.sh` use `cat ... || true` without `set -e`. SQL upgrade payload generation can silently fail and the version marker advances on incomplete DB upgrades. Worth a separate scoped PR rather than bundling.
+
+**Critical — rel-810-specific:**
+- `docker/release/upgrade/fsupgrade-6.sh:15` -- brace expansion `{certificates,couchdb,...}` won't work in Alpine's sh; change invocation to bash or rewrite the mkdir for POSIX.
+- `docker/release/utilities/devtoolsLibrary.source:140` -- SQL injection in `setGlobalSettings()`; setting names/values from env need escaping before SQL UPDATE construction.
+
+**Major — security posture (all branches):**
+- `session.cookie_httponly` blank in all PHP configs (binary, flex 8.2/8.3/8.4/8.5, release).
+- HTTP→HTTPS redirect commented out in `docker/{flex,binary,release}/openemr.conf` :80 vhosts.
+- `chmod 666 sqlconf.php` in binary Dockerfile.
+- `chmod 744` on cert private keys in `openemr.sh`.
+- Composer installer not hash-verified across all Dockerfiles (curl | php pattern).
+- kcov cloned from HEAD in flex Dockerfile (same pattern we already fixed for BATS — pin to v43 or current).
+- php-fpm/php-cli/phar downloads not SHA256-verified in binary Dockerfile (size-check only).
+- Final images run as root (per-branch + flex + binary).
+
+**Major — correctness:**
+- `explode("=", $argv[$i])` truncation in `auto_configure.php` (binary + flex + per-branch release variants). Same file uses `explode(..., 2)` correctly in the `-f` flag handler.
+- `openemr.sh` returns 0 when `auto_configure.php` missing (binary :574); `OPERATOR` not propagated to `ssl.sh` (rel-704); Redis path with auth credentials logged on verify failure; `sh` vs `bash` for fsupgrade invocation; `auto_setup()` retry not idempotent.
+- `ssl.sh` `EMAIL_ARG` quoting bug -- `-m foo@example.com` becomes one arg instead of two; certbot rejects.
+- Redis extension build pinned to PHP 8.3 tooling while image configured for PHP 8.4 (rel-800/rel-704 `openemr.sh:313`).
+- `container_benchmarking/benchmark.sh:792-809` -- load test orchestration produces misleading metrics (concurrent run + sample-after-load).
+- `container_benchmarking/test_suite.sh:617` -- SSL pass condition operator precedence allows 302 through when SSL isn't configured.
+- `container_benchmarking/test_suite.sh:920-922 + 1078-1080` -- drops `flex_env_vars` overrides on Kubernetes/XDebug compose tests.
+- `container_benchmarking/compare_results.sh:195-223` -- inverted "lower is better" diff logic + `peak_mem` never counted in winner tally.
+- `fsupgrade-1.sh` various: unmatched-glob loops, document-name collision during legacy layout move, temp SQL files in htdocs (should use CLI wrapper).
+
+**Minor:**
+- README typos: flex `MYSQL_PASS`→`OE_PASS` duplicate, "reach out to us at via" wording, binary version refs 7.0.4 vs 7.0.5 mixed.
+- `rm /tmp/setup_dump.sql` missing `-f` in `devtoolsLibrary.source` (errors if file already absent).
+- `unlock_admin.php` missing argv validation.
+- Fenced code blocks missing language tag in `container_benchmarking/README.md`.
+- `container_benchmarking/export_to_csv.sh:97-99` -- no `mkdir -p` before writing CSV.
+
+### Repo-wide hardening (deferred — divergence from convention)
+
+These were flagged on every migration PR but applying only to migration files would diverge from the rest of openemr core's established practice. Better handled as a separate repo-wide hardening pass coordinated with maintainers.
+
+- **Pin GitHub Actions to commit SHAs** (instead of `@v<major>` tag pinning). All 50+ non-migration workflows in the repo use `@v<major>` tags.
+- **`persist-credentials: false` on checkout actions.** Same reasoning -- not currently set on existing workflows.
+- **Pin BATS dependencies to commit SHAs** (instead of tag pins). Contradicts the prior reviewer's recommendation that we just landed (`v1.13.0` / `v0.3.0` / `v2.2.4`). Tags-vs-SHAs is a tradeoff; current state is a reasonable hardening level. Revisit when the repo-wide pass happens.
+
+### Tracking
+
+- This issue (openemr-devops#790) -- master debt list, for visibility and prioritization.
+- After phase 5 cleanup deletes the devops-side versions, file fresh issues against openemr/openemr per item.
+- Fail-open upgrade scripts deserve their own scoped PR independent of the migration -- it's a real security/correctness bug, not a stylistic preference.
+
 ## Feedback wanted
 
 - Thoughts on path naming (item 2 above)?
