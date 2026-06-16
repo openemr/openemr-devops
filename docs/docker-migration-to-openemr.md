@@ -441,7 +441,7 @@ rel-800 and rel-704 explicitly do NOT get BATS or container-functionality testin
 1. Cut `rel-X.Y.Z` from master
 2. Append one row to master's `.github/release-targets.yml` with the new branch's `docker_tags` and `openemr_version_ref`
 
-`docker-build-release.yml`, `docker-test-release.yml`, `docker-test-bats.yml`, `docker/release/Dockerfile`, BATS contents, dependabot, hadolint paths, lint configs -- **none** change at branch-cut. The Dockerfile is byte-identical because the openemr source ref is passed in as a build-arg, not baked into the file.
+`docker-build-release.yml`, `docker-test-release.yml`, `docker-test-bats.yml`, `docker/release/Dockerfile`, BATS contents, dependabot, hadolint paths, lint configs -- **none** change at branch-cut. The Dockerfile carries forward whatever Alpine + PHP versions master had at cut time; the openemr source ref is supplied at build time via `OPENEMR_VERSION` from `release-targets.yml`, not baked into the Dockerfile.
 
 Tag-rotation, release promotion, and post-release patch handling are all one-line edits in `release-targets.yml`:
 
