@@ -1595,7 +1595,6 @@ if [[ $# -eq 0 || "${FIRST_ARG}" = '--help' || "${FIRST_ARG}" = '-h' ]]; then
     echo 'ssl-management:'
     echo "  fh, force-https                    Force https"
     echo "  ufh, un-force-https                Removing forcing of https"
-    echo "  ossc, on-self-signed-cert          Toggle on self signed certificates (on by default)"
     echo "  ss, sql-ssl                        Use testing sql ssl CA cert"
     echo "  sso, sql-ssl-off                   Remove testing sql ssl CA cert"
     echo "  ssc, sql-ssl-client                Use testing sql ssl client certs"
@@ -1943,9 +1942,6 @@ case "${FIRST_ARG}" in
         ;;
     ufh)
         run_devtools_in_docker "${CONTAINER_ID}" un-force-https
-        ;;
-    ossc)
-        run_devtools_in_docker "${CONTAINER_ID}" on-self-signed-cert
         ;;
     ss)
         run_devtools_in_docker "${CONTAINER_ID}" sql-ssl

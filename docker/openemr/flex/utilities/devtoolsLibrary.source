@@ -407,35 +407,6 @@ unForceHttps() {
     sed -i 's@[^#]RewriteRule (\.\*) https://%{HTTP_HOST}/\$1 \[R,L\]@#RewriteRule (.*) https://%{HTTP_HOST}/$1 [R,L]@' /etc/apache2/conf.d/openemr.conf
 }
 
-# Reverts to self-signed certificate configuration.
-# Disables client certificate authentication and switches back to standard
-# self-signed server certificate.
-#
-# Process:
-#   1. Links self-signed certificates as default
-#   2. Disables Apache client certificate verification
-#   3. Updates OpenEMR globals to disable client SSL
-#
-# Note: Requires Apache restart for changes to take effect.
-# Must call prepareVariables() before calling this function.
-toggleOnSelfSignedCert() {
-    # server certificate
-    rm -f /etc/ssl/certs/webserver.cert.pem
-    ln -s /etc/ssl/certs/selfsigned.cert.pem /etc/ssl/certs/webserver.cert.pem
-    # server key
-    rm -f /etc/ssl/private/webserver.key.pem
-    ln -s /etc/ssl/private/selfsigned.key.pem /etc/ssl/private/webserver.key.pem
-    # configure apache
-    sed -i "s@[^#]SSLVerifyClient@#SSLVerifyClient@" /etc/apache2/conf.d/openemr.conf
-    sed -i "s@[^#]SSLVerifyDepth@#SSLVerifyDepth@" /etc/apache2/conf.d/openemr.conf
-    sed -i "s@[^#]SSLOptions@#SSLOptions@" /etc/apache2/conf.d/openemr.conf
-    sed -i "s@[^#]SSLCACertificateFile@#SSLCACertificateFile@" /etc/apache2/conf.d/openemr.conf
-    # configure openemr
-    mariadb --skip-ssl -u "${CUSTOM_USER}" --password="${CUSTOM_PASSWORD}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e "UPDATE globals SET gl_value = 0 WHERE gl_name = 'is_client_ssl_enabled'" "${CUSTOM_DATABASE}"
-    mariadb --skip-ssl -u "${CUSTOM_USER}" --password="${CUSTOM_PASSWORD}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_crt'" "${CUSTOM_DATABASE}"
-    mariadb --skip-ssl -u "${CUSTOM_USER}" --password="${CUSTOM_PASSWORD}" -h "${MYSQL_HOST}" -P "${CUSTOM_PORT}" -e "UPDATE globals SET gl_value = '' WHERE gl_name = 'certificate_authority_key'" "${CUSTOM_DATABASE}"
-}
-
 # ============================================================================
 # TEST DATA GENERATION
 # ============================================================================
