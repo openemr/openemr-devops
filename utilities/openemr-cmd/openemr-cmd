@@ -1383,37 +1383,6 @@ change_db_character_set_and_collation(){
     fi
 }
 
-setup-client-cert(){
-    local CERT_PACKAGE="$1"
-    local CERT_PACKAGE_CODE=30
-    if [[ $# != 1 ]]; then
-        echo 'Please provide a certificate package name.'
-        echo 'e.g. openemr-cmd [scc|setup-client-cert] sll'
-        exit "${CERT_PACKAGE_CODE}"
-    else
-        # Use the devtools function
-        run_devtools_in_docker "${CONTAINER_ID}" setup-client-cert "${CERT_PACKAGE}"
-    fi
-}
-
-put-client-cert(){
-    # Need a capsule parameter
-    local CERT_PACKAGE_FILE="$1"
-    local PUT_CLIENT_CERT_CODE=32
-    local CERT_PACKAGE_FILE_CODE=31
-    if [[ $# != 1 ]]; then
-        echo 'Please provide the certificate package file name (including path if applicable).'
-        echo 'e.g. openemr-cmd [pcc|put-client-cert] sll.zip'
-        exit "${CERT_PACKAGE_FILE_CODE}"
-    else
-        if ! ls "${CERT_PACKAGE_FILE}" &>/dev/null; then
-            echo 'Please check whether the certificate package file exists or not'
-            exit "${PUT_CLIENT_CERT_CODE}"
-        else
-            docker cp "${CERT_PACKAGE_FILE}" "${CONTAINER_ID}:/certs/"
-        fi
-    fi
-}
 
 import-random-patients(){
     # Use the devtools function, passing all arguments ($@)
@@ -1627,9 +1596,6 @@ if [[ $# -eq 0 || "${FIRST_ARG}" = '--help' || "${FIRST_ARG}" = '-h' ]]; then
     echo "  fh, force-https                    Force https"
     echo "  ufh, un-force-https                Removing forcing of https"
     echo "  ossc, on-self-signed-cert          Toggle on self signed certificates (on by default)"
-    echo "  scc, setup-client-cert             Turn on client based cert with designated package"
-    echo "  lcc, list-client-certs             To list the certificate packages"
-    echo "  pcc, put-client-cert               To copy certificate package into the docker"
     echo "  ss, sql-ssl                        Use testing sql ssl CA cert"
     echo "  sso, sql-ssl-off                   Remove testing sql ssl CA cert"
     echo "  ssc, sql-ssl-client                Use testing sql ssl client certs"
@@ -1812,12 +1778,6 @@ case "${FIRST_ARG}" in
     ec|encoding-collation)
         change_db_character_set_and_collation "$@"
         ;;
-    scc|setup-client-cert)
-        setup-client-cert "$@"
-        ;;
-    pcc|put-client-cert)
-        put-client-cert "$@"
-        ;;
     irp|import-random-patients)
         import-random-patients "$@"
         ;;
@@ -1986,9 +1946,6 @@ case "${FIRST_ARG}" in
         ;;
     ossc)
         run_devtools_in_docker "${CONTAINER_ID}" on-self-signed-cert
-        ;;
-    lcc)
-        run_devtools_in_docker "${CONTAINER_ID}" list-client-certs
         ;;
     ss)
         run_devtools_in_docker "${CONTAINER_ID}" sql-ssl
