@@ -396,17 +396,18 @@ Four complementary checks assert that the image baked from `openemr_version_ref`
    5. Every `openemr_version_ref` resolves to a real ref in openemr/openemr (catches typos like `rel-8100` or `v8_1_0_`).
    6. The first version-number `docker_tag` in each row aligns with the `major.minor.patch` composed from `version.php` at that row's `openemr_version_ref`. Catches the drift bug where master bumps `version.php` from `8.1.1-dev` to `8.1.2-dev` but `release-targets.yml` still says `docker_tags: 8.1.1,dev,next`.
 
-5. **Byte-identical drift canary across rel branches** (`docker-validate-byte-identical.yml`). The orchestrator-driven pipeline depends on seven files being character-for-character identical across master and every rel branch:
+5. **Byte-identical drift canary across rel branches** (`docker-validate-byte-identical.yml`). The orchestrator-driven pipeline depends on eight files being character-for-character identical across master and every rel branch:
 
    * `.github/workflows/docker-build-release.yml`
    * `.github/workflows/docker-test-core.yml`
+   * `.github/workflows/docker-test-release.yml`
    * `.github/actions/test-actions-core/action.yml`
    * `docker/compose.yml`
    * `docker/.gitignore`
    * `docker/COVERAGE.md`
    * `docker/README.md`
 
-   If any drift, the orchestrator can dispatch the same logical build against two branches and silently get different behaviors. This workflow asserts the invariant via three triggers: PR on master or any rel-* branch gated to changes in any of those files (catches a PR that updates one without sync PRs to the others), daily cron at 07:00 UTC (catches latent drift via unrelated rel-branch PRs), and `workflow_dispatch` for ad-hoc investigation. Rel branches come from `release-targets.yml` at runtime, so adding a new rel branch automatically extends the check. Files that are intentionally non-identical (`docker/release/Dockerfile`, `docker-test-release.yml`, `docker-test-bats.yml`, `docker-test-container-functionality.yml`) are deliberately excluded from the watched set.
+   If any drift, the orchestrator can dispatch the same logical build against two branches and silently get different behaviors. This workflow asserts the invariant via three triggers: PR on master or any rel-* branch gated to changes in any of those files (catches a PR that updates one without sync PRs to the others), daily cron at 07:00 UTC (catches latent drift via unrelated rel-branch PRs), and `workflow_dispatch` for ad-hoc investigation. Rel branches come from `release-targets.yml` at runtime, so adding a new rel branch automatically extends the check. Files that are intentionally non-identical (`docker/release/Dockerfile`, `docker-test-bats.yml`, `docker-test-container-functionality.yml`) are deliberately excluded from the watched set.
 
 Together: the five checks make every published image self-documenting, assert build-time alignment, assert config-time alignment, AND assert the cross-branch invariant. A release-management PR that bumps any of `version.php` / `release-targets.yml` / Dockerfile fails at PR time if the three drift apart; a PR that quietly forks one of the byte-identical files on a rel branch fails at the next daily canary run.
 
@@ -440,20 +441,12 @@ When cutting a new `rel-X.Y.Z` from master:
 
 1. **Cut `rel-X.Y.Z` from master.**
 
-2. **On the new rel branch, update the per-branch trigger + default-ref values** that were copied from master at the cut:
-   - `.github/workflows/docker-test-release.yml` -- change `branches: [master]` to `branches: [rel-X.Y.Z]` in both the `push:` and `pull_request:` `paths:` blocks. Without this the release test would fire on master's PRs (where it doesn't belong) and not on the new branch's PRs (where it does).
+2. **On the new rel branch, update the Dockerfile's default-ref value** that was copied from master at the cut:
    - `docker/release/Dockerfile` -- change `ARG OPENEMR_VERSION=master` to `ARG OPENEMR_VERSION=rel-X.Y.Z`. CI always overrides this via `--build-arg` (the orchestrator passes `openemr_version_ref` from `release-targets.yml`), so the value only matters for hand-built `docker build` runs against the new branch -- but it should reflect the branch's identity so a local build produces a sensible image.
 
-3. **Update the rest of the per-branch trigger refs** that came over from master at the cut. These workflows came along with their full BATS + container-functionality content (since master carries them); just retarget their triggers:
-   - `.github/workflows/docker-test-bats.yml` -- change `branches: [master]` to `branches: [rel-X.Y.Z]`.
-   - `.github/workflows/docker-test-container-functionality.yml` -- same edit.
-   (The rel-800 and rel-704 branches don't carry these files at all -- that's a one-time historical asymmetry preserved during the migration because devops never had BATS for those older releases. Every new branch cut from master keeps them.)
+3. **On master, append one row to `.github/release-targets.yml`** with the new branch's `docker_tags` and `openemr_version_ref`. This is what starts the orchestrator dispatching nightly builds against the new branch.
 
-4. **On master, append one row to `.github/release-targets.yml`** with the new branch's `docker_tags` and `openemr_version_ref`. This is what starts the orchestrator dispatching nightly builds against the new branch.
-
-What does NOT change at branch-cut: `docker-build-release.yml`, `docker-test-core.yml`, the `test-actions-core` composite, `docker/compose.yml`, `docker/COVERAGE.md`, `docker/README.md`, `docker/.gitignore` -- all in the byte-identical `FILES_ALL` set, all carry forward from master verbatim. The Dockerfile carries forward whatever Alpine + PHP versions master had at cut time. Dependabot, hadolint paths, lint configs -- unchanged. The openemr source ref is supplied at build time via `OPENEMR_VERSION` from `release-targets.yml`, not baked into the Dockerfile.
-
-(The deferred CodeRabbit item 9 -- hoist `docker-test-release.yml`'s per-branch `branches:` trigger into a thin shim that calls a byte-identical reusable core -- would eliminate the step-2 trigger edit and let `docker-test-release.yml` join the byte-identical set, reducing the per-branch surface to just the Dockerfile's default ARG.)
+What does NOT change at branch-cut: every byte-identical `FILES_ALL` file (see the Verification section above for the list) carries forward from master verbatim -- including `docker-test-release.yml`, which has no `branches:` filter on its triggers. Branch scoping is implicit -- the workflow file only exists on the branches that need it, and push/pull_request events use the workflow at the relevant ref. `docker-test-bats.yml` and `docker-test-container-functionality.yml` also have no `branches:` filter -- they come over from master with their full content and fire on the new branch automatically. The Dockerfile carries forward whatever Alpine + PHP versions master had at cut time. Dependabot, hadolint paths, lint configs -- unchanged. The openemr source ref is supplied at build time via `OPENEMR_VERSION` from `release-targets.yml`, not baked into the Dockerfile.
 
 Tag-rotation, release promotion, and post-release patch handling are all one-line edits in `release-targets.yml`:
 
