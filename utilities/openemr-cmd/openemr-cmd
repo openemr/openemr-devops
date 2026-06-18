@@ -18,7 +18,7 @@ set -euo pipefail
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.41"
+VERSION="1.0.42"
 
 # ============================================================================
 # WORKTREE STATE MANAGEMENT
@@ -1461,6 +1461,89 @@ docker-pull-image(){
     done <<< "${services}"
 }
 
+# Walk the developer through creating/updating the .env file for the easydev
+# docker-compose environment, so that secrets like GITHUB_COMPOSER_TOKEN are
+# never committed to the repository in plaintext.
+setup_composer_env() {
+    local ENV_FILE
+
+    if [[ ! -f "docker-compose.yml" ]]; then
+        echo "Error: docker-compose.yml not found in current directory." >&2
+        echo "Please run this command from any docker/development-* directory." >&2
+        exit 1
+    fi
+
+    ENV_FILE="../../.env"
+
+    echo ""
+    echo "=== OpenEMR Easydev Composer Token Setup ==="
+    echo ""
+    echo "A GitHub Personal Access Token lets Composer avoid GitHub API rate limits"
+    echo "when pulling dependencies. It should never be committed to the repository."
+    echo "This writes the GITHUB_COMPOSER_TOKEN to: ${ENV_FILE}"
+    echo ""
+
+    # Show current state if .env already exists
+    if [[ -f "${ENV_FILE}" ]]; then
+        local existing_token
+        existing_token=$(grep "^GITHUB_COMPOSER_TOKEN=" "${ENV_FILE}" | cut -d= -f2 || true)
+        if [[ -n "${existing_token}" ]]; then
+            echo "Current token in .env: ${existing_token:0:12}... (truncated for display)"
+        else
+            echo "Found existing .env but no GITHUB_COMPOSER_TOKEN entry."
+        fi
+        local RESP
+        read -r -e -p "Update it? [y/N] " RESP </dev/tty
+        if [[ -z "${RESP}" || "${RESP,,}" != "y" ]]; then
+            echo "No changes made."
+            return
+        fi
+        echo ""
+    fi
+
+    echo "Generate a fine-grained personal access token at: https://github.com/settings/tokens"
+    echo "you only need the default, read-only access for public repos, selected."
+    echo ""
+
+    local TOKEN
+    read -r -s -p "Paste your GitHub Personal Access Token: " TOKEN </dev/tty
+
+    if [[ -z "${TOKEN}" ]]; then
+        echo "Error: No token provided. Aborting." >&2
+        exit 1
+    fi
+
+    if [[ "${TOKEN}" != ghp_* && "${TOKEN}" != github_pat_* ]]; then
+        echo ""
+        echo "Warning: Token does not look like a standard GitHub PAT"
+        echo "         (expected ghp_... or github_pat_... prefix)."
+        local RESP
+        read -r -e -p "Continue anyway? [y/N] " RESP </dev/tty
+        if [[ -z "${RESP}" || "${RESP,,}" != "y" ]]; then
+            echo "Aborting."
+            exit 1
+        fi
+    fi
+
+    # Write token to .env (overwrite if already present)
+    {
+        grep -v "^GITHUB_COMPOSER_TOKEN=" "${ENV_FILE}" 2>/dev/null || true
+    } > "${ENV_FILE}.tmp"
+    cat >> "${ENV_FILE}.tmp" << EOF
+    # OpenEMR easydev environment variables
+    # DO NOT COMMIT THIS FILE — contains sensitive credentials
+    GITHUB_COMPOSER_TOKEN=${TOKEN}
+EOF
+    mv "${ENV_FILE}.tmp" "${ENV_FILE}"
+
+    echo ""
+    echo "✓ Written to ${ENV_FILE}: GITHUB_COMPOSER_TOKEN = ${TOKEN:0:12}..."
+    echo "  (.env is covered by the root .gitignore)"
+    echo ""
+    echo "Run: openemr-cmd up"
+    echo ""
+}
+
 USAGE_EXIT_CODE=13
 VERSION_EXIT_CODE=14
 FINAL_EXIT_CODE=0
@@ -1629,6 +1712,7 @@ if [[ $# -eq 0 || "${FIRST_ARG}" = '--help' || "${FIRST_ARG}" = '-h' ]]; then
     echo "  el, enable-ldap                    Turn on support for LDAP - login credentials are admin:admin"
     echo "  dld, disable-ldap                  Turn off support for LDAP - standard login credentials"
     echo "  ec, encoding-collation             Change the database character set and collation"
+    echo "  sce, setup-composer-env            Create/update .env with GITHUB_COMPOSER_TOKEN (keeps secrets out of git)"
 
     exit "${USAGE_EXIT_CODE}"
 
@@ -1712,7 +1796,7 @@ MARIADB_CONTAINER_ID="${mariadb_id:-}" # Set to empty if not found
 # Check if a target container ID was determined or provided before proceeding with commands that need it
 # (Allow proceeding if the command doesn't require a container, like up, down, start, stop, --help, --version)
 case "${FIRST_ARG}" in
-    up|down|start|stop|--help|-h|--version|-v)
+    up|down|start|stop|--help|-h|--version|-v|sce|setup-composer-env)
         # These commands don't necessarily need a running container ID determined here
         ;;
     *)
@@ -1732,6 +1816,10 @@ esac
 # For the shift usage, it used to cover the insane env.
 case "${FIRST_ARG}" in
     up)
+        if [[ ! -f "../../.env" ]] || ! grep -q "^GITHUB_COMPOSER_TOKEN=." "../../.env" 2>/dev/null; then
+            echo "No GITHUB_COMPOSER_TOKEN found in ../../.env — running setup first."
+            setup_composer_env
+        fi
         run_docker_compose up -d
         ;;
     down)
@@ -1797,6 +1885,9 @@ case "${FIRST_ARG}" in
         ;;
     ms|maria-shell)
         quick_open_a_maria_docker_shell
+        ;;
+    sce|setup-composer-env)
+        setup_composer_env
         ;;
     bt)
         run_devtools_in_docker "${CONTAINER_ID}" build-themes

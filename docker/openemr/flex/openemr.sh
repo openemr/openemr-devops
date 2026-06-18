@@ -707,38 +707,11 @@ if [[ "${NEED_COMPOSER_BUILD}" = "true" ]] || [[ "${NEED_NPM_BUILD}" = "true" ]]
             return 1
         }
 
-        token_configured=false
-
-        # if there is a raw github composer token supplied, then try to use it
+        # if there is a github composer token supplied, then try to use it
         if [[ -n ${GITHUB_COMPOSER_TOKEN} ]]; then
-            echo 'trying raw github composer token'
+            echo 'trying github composer token'
             # shellcheck disable=SC2310
-            if try_github_token "${GITHUB_COMPOSER_TOKEN}" 'raw github composer token'; then
-                token_configured=true
-            fi
-        fi
-
-        # if there is no raw github composer token supplied or it was invalid, try a base64 encoded one (if it was supplied)
-        if [[ ${token_configured} != true && -n ${GITHUB_COMPOSER_TOKEN_ENCODED} ]]; then
-            echo 'trying encoded github composer token'
-            decoded_token=$(base64 -d <<< "${GITHUB_COMPOSER_TOKEN_ENCODED}")
-            # shellcheck disable=SC2310
-            if try_github_token "${decoded_token}" 'encoded github composer token'; then
-                token_configured=true
-            fi
-        fi
-
-        # if there is no raw github composer token and/or base64 encoded one supplied or they were invalid, then try a character code encoded one (if it was supplied)
-        if [[ ${token_configured} != true && -n ${GITHUB_COMPOSER_TOKEN_ENCODED_ALTERNATE} ]]; then
-            echo 'trying alternate encoded github composer token'
-            # Word splitting is intentional here to convert space-separated string to array
-            # shellcheck disable=SC2206
-            codes=(${GITHUB_COMPOSER_TOKEN_ENCODED_ALTERNATE})
-            decoded_token=$(printf '%b' "$(printf '\\%03o' "${codes[@]}")")
-            # shellcheck disable=SC2310
-            if try_github_token "${decoded_token}" 'alternate encoded github composer token'; then
-                token_configured=true
-            fi
+            try_github_token "${GITHUB_COMPOSER_TOKEN}" 'github composer token' || true
         fi
 
         # install php dependencies
