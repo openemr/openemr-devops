@@ -432,7 +432,7 @@ Not every rel branch has the same test coverage in devops today. Phase 2 mirrors
 | `docker-release-orchestrator.yml` + `release-targets.yml` | ✓ | ✗ | ✗ | ✗ |
 | `docker-validate-release-targets.yml` | ✓ | ✗ | ✗ | ✗ |
 
-rel-800 and rel-704 explicitly do NOT get BATS or container-functionality testing -- in devops today there are no `tests/bats/8.0.0/` or `tests/bats/7.0.4/` dirs, and `test-container-functionality.yml` only targets 8.1.0 + binary + flex. The migration preserves that asymmetry rather than expanding test coverage for older releases as a side effect (those would be separate enhancements).
+rel-800 and rel-704 explicitly do NOT get BATS or container-functionality testing -- in devops today there are no `tests/bats/8.0.0/` or `tests/bats/7.0.4/` dirs, and `test-container-functionality.yml` only targets 8.1.0 + binary + flex. The migration preserves that asymmetry rather than expanding test coverage for older releases as a side effect (those would be separate enhancements). This is a **one-time historical preservation**, not a model going forward: new rel branches cut from master always inherit BATS + container-functionality (since master carries both), and the branch-cut process keeps them.
 
 ## Branch-cut process under the final model
 
@@ -444,9 +444,10 @@ When cutting a new `rel-X.Y.Z` from master:
    - `.github/workflows/docker-test-release.yml` -- change `branches: [master]` to `branches: [rel-X.Y.Z]` in both the `push:` and `pull_request:` `paths:` blocks. Without this the release test would fire on master's PRs (where it doesn't belong) and not on the new branch's PRs (where it does).
    - `docker/release/Dockerfile` -- change `ARG OPENEMR_VERSION=master` to `ARG OPENEMR_VERSION=rel-X.Y.Z`. CI always overrides this via `--build-arg` (the orchestrator passes `openemr_version_ref` from `release-targets.yml`), so the value only matters for hand-built `docker build` runs against the new branch -- but it should reflect the branch's identity so a local build produces a sensible image.
 
-3. **Decide full-port vs lighter-port and prune accordingly** (see "Per rel-branch port: what each branch gets in phase 2" above):
-   - **Full port** (master + rel-810 today): keep `docker-test-bats.yml` and `docker-test-container-functionality.yml`, update each of their `branches:` triggers to `[rel-X.Y.Z]`. Keep `tests/bats/docker/release/` + `tests/bats/docker/helpers.bash`. Keep `docker/container_benchmarking/`.
-   - **Lighter port** (rel-800 + rel-704 today): delete those two workflows entirely from the new branch; delete `tests/bats/docker/`; delete `docker/container_benchmarking/`. The release test still runs (via the kept `docker-test-release.yml`), which is the heavier integration test; only the BATS suites and container-functionality benchmarks get skipped.
+3. **Update the rest of the per-branch trigger refs** that came over from master at the cut. These workflows came along with their full BATS + container-functionality content (since master carries them); just retarget their triggers:
+   - `.github/workflows/docker-test-bats.yml` -- change `branches: [master]` to `branches: [rel-X.Y.Z]`.
+   - `.github/workflows/docker-test-container-functionality.yml` -- same edit.
+   (The rel-800 and rel-704 branches don't carry these files at all -- that's a one-time historical asymmetry preserved during the migration because devops never had BATS for those older releases. Every new branch cut from master keeps them.)
 
 4. **On master, append one row to `.github/release-targets.yml`** with the new branch's `docker_tags` and `openemr_version_ref`. This is what starts the orchestrator dispatching nightly builds against the new branch.
 
