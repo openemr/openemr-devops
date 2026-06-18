@@ -436,12 +436,23 @@ rel-800 and rel-704 explicitly do NOT get BATS or container-functionality testin
 
 ## Branch-cut process under the final model
 
-**2 steps** when cutting a new `rel-X.Y.Z`:
+When cutting a new `rel-X.Y.Z` from master:
 
-1. Cut `rel-X.Y.Z` from master
-2. Append one row to master's `.github/release-targets.yml` with the new branch's `docker_tags` and `openemr_version_ref`
+1. **Cut `rel-X.Y.Z` from master.**
 
-`docker-build-release.yml`, `docker-test-release.yml`, `docker-test-bats.yml`, `docker/release/Dockerfile`, BATS contents, dependabot, hadolint paths, lint configs -- **none** change at branch-cut. The Dockerfile carries forward whatever Alpine + PHP versions master had at cut time; the openemr source ref is supplied at build time via `OPENEMR_VERSION` from `release-targets.yml`, not baked into the Dockerfile.
+2. **On the new rel branch, update the per-branch trigger + default-ref values** that were copied from master at the cut:
+   - `.github/workflows/docker-test-release.yml` -- change `branches: [master]` to `branches: [rel-X.Y.Z]` in both the `push:` and `pull_request:` `paths:` blocks. Without this the release test would fire on master's PRs (where it doesn't belong) and not on the new branch's PRs (where it does).
+   - `docker/release/Dockerfile` -- change `ARG OPENEMR_VERSION=master` to `ARG OPENEMR_VERSION=rel-X.Y.Z`. CI always overrides this via `--build-arg` (the orchestrator passes `openemr_version_ref` from `release-targets.yml`), so the value only matters for hand-built `docker build` runs against the new branch -- but it should reflect the branch's identity so a local build produces a sensible image.
+
+3. **Decide full-port vs lighter-port and prune accordingly** (see "Per rel-branch port: what each branch gets in phase 2" above):
+   - **Full port** (master + rel-810 today): keep `docker-test-bats.yml` and `docker-test-container-functionality.yml`, update each of their `branches:` triggers to `[rel-X.Y.Z]`. Keep `tests/bats/docker/release/` + `tests/bats/docker/helpers.bash`. Keep `docker/container_benchmarking/`.
+   - **Lighter port** (rel-800 + rel-704 today): delete those two workflows entirely from the new branch; delete `tests/bats/docker/`; delete `docker/container_benchmarking/`. The release test still runs (via the kept `docker-test-release.yml`), which is the heavier integration test; only the BATS suites and container-functionality benchmarks get skipped.
+
+4. **On master, append one row to `.github/release-targets.yml`** with the new branch's `docker_tags` and `openemr_version_ref`. This is what starts the orchestrator dispatching nightly builds against the new branch.
+
+What does NOT change at branch-cut: `docker-build-release.yml`, `docker-test-core.yml`, the `test-actions-core` composite, `docker/compose.yml`, `docker/COVERAGE.md`, `docker/README.md`, `docker/.gitignore` -- all in the byte-identical `FILES_ALL` set, all carry forward from master verbatim. The Dockerfile carries forward whatever Alpine + PHP versions master had at cut time. Dependabot, hadolint paths, lint configs -- unchanged. The openemr source ref is supplied at build time via `OPENEMR_VERSION` from `release-targets.yml`, not baked into the Dockerfile.
+
+(The deferred CodeRabbit item 9 -- hoist `docker-test-release.yml`'s per-branch `branches:` trigger into a thin shim that calls a byte-identical reusable core -- would eliminate the step-2 trigger edit and let `docker-test-release.yml` join the byte-identical set, reducing the per-branch surface to just the Dockerfile's default ARG.)
 
 Tag-rotation, release promotion, and post-release patch handling are all one-line edits in `release-targets.yml`:
 
