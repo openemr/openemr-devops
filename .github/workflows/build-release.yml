@@ -142,7 +142,7 @@ jobs:
         echo 'App token verified.'
 
     - name: Checkout openemr release branch
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         repository: openemr/openemr
         ref: ${{ inputs.version_branch }}
@@ -152,7 +152,7 @@ jobs:
         fetch-depth: 1
 
     - name: Checkout openemr-devops (release tools)
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         path: devops-tools
         sparse-checkout: tools/release

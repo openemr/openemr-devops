@@ -23,7 +23,7 @@ jobs:
         os: [ubuntu-22.04, macos-14]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install Bats
         run: |
           git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
