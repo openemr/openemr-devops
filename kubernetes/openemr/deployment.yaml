@@ -81,7 +81,7 @@ spec:
         #   tls (no client certs): change FORCE_DATABASE_X509_CONNECT to FORCE_DATABASE_SSL_CONNECT
         #     and remove mysql cert/key volume mounts below
         #   tcp (no encryption): also remove the env var above and remove mysql ca volume mount below
-        image: openemr/openemr:8.1.0@sha256:31871603821110e80e52c75c0821ed58cbe2a5837c6dffa645fecd040fe370ca
+        image: openemr/openemr:8.1.0@sha256:11d52ea11b31a47c6b3fc2d6cdb42667288afca7f98c0bb818761f5d4cdcdd91
         name: openemr
         ports:
         - containerPort: 80
