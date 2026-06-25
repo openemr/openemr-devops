@@ -18,7 +18,7 @@ set -euo pipefail
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.47"
+VERSION="1.0.48"
 
 # ============================================================================
 # WORKTREE STATE MANAGEMENT
@@ -835,10 +835,42 @@ cmd_worktree_remove() {
         return 0
     fi
 
-    # Probe for permission issues BEFORE any destructive op. The openemr
-    # container writes files into the bind-mounted worktree as a non-host
-    # uid (root/apache), which makes subdirectories unwritable for the host
-    # user. If we proceed without catching that, we'd:
+    # Best-effort auto-chown: when the openemr container is still running,
+    # ask it (as root) to chown the bind-mounted worktree back to the host
+    # uid/gid before we try to remove anything. The container writes files
+    # as root during install / drid / other admin paths; on hosts where
+    # the operator's uid != the container's apache uid, those files become
+    # unreadable + unremovable from the host side. Doing the chown from
+    # INSIDE the container (where it has root) sidesteps the manual
+    # `sudo chown -R` step that users would otherwise hit. The probe below
+    # is still the safety net — it catches anything chown missed (container
+    # not running, root-owned files outside the openemr workdir, etc.).
+    local slug=""
+    slug=$(wt_slug "${branch}")
+    local autochown_id=""
+    autochown_id=$(docker ps \
+        --filter "label=com.docker.compose.project=openemr-${slug}" \
+        --filter "label=com.docker.compose.service=openemr" \
+        --format '{{.ID}}' 2>/dev/null | head -n 1 || true)
+    if [[ -n "${autochown_id}" ]]; then
+        # Capture uid/gid once (shellcheck SC2312: don't mask command
+        # substitution return values inside an expanded string).
+        local host_uid host_gid
+        host_uid=$(id -u)
+        host_gid=$(id -g)
+        wt_info "Auto-chowning bind mount via container (uid=${host_uid} gid=${host_gid})"
+        # `|| true`: chown failures are non-fatal; the probe below catches
+        # any unwritable dirs the chown couldn't fix.
+        docker exec -u root "${autochown_id}" \
+            chown -R "${host_uid}:${host_gid}" /var/www/localhost/htdocs/openemr \
+            2>/dev/null || true
+    fi
+
+    # Probe for permission issues BEFORE any destructive op. After the
+    # auto-chown step above, this usually passes — but it remains as the
+    # safety net for: (a) container wasn't running, (b) root-owned files
+    # outside /var/www/localhost/htdocs/openemr, (c) chown itself failed.
+    # If we proceed without catching that, we'd:
     #   1. purge the compose volumes (wt_compose_cmd down --volumes),
     #   2. let `git worktree remove --force` unregister the worktree, and
     #   3. fail mid-rm with EACCES — leaving partial state on disk + a

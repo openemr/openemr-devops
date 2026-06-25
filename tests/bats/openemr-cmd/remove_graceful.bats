@@ -202,6 +202,111 @@ setup_full_worktree() {
     assert_output "false"
 }
 
+# --- Auto-chown via container before destruction --------------------------
+# When the openemr container is still running, cmd_worktree_remove asks it
+# (as root, in-container) to chown the bind-mounted worktree back to the
+# host uid/gid BEFORE the destructive ops. This eliminates the manual
+# `sudo chown -R` step that users would otherwise hit when the container
+# wrote root-owned files (e.g. after drid). The A5 probe remains the
+# safety net for cases where the chown wasn't possible.
+
+@test "remove: when container is running, docker exec chown is invoked with host uid:gid" {
+    setup_full_worktree feature-rm-autochown -b
+    : > "${STUB_DIR}/docker.log"
+    # DOCKER_PS_OUTPUT is what the stub returns for any `docker ps ...`
+    # query; the openemr-cmd auto-chown step uses that filter to find the
+    # worktree's openemr container.
+    local uid gid
+    uid=$(id -u)
+    gid=$(id -g)
+    run bash -c "echo y | env \
+        PATH='${STUB_DIR}:${PATH}' \
+        OPENEMR_ROOT='${TMP_OPENEMR_ROOT}' \
+        WORKTREE_PARENT='${TMP_WT_PARENT}' \
+        DOCKER_PS_OUTPUT='fake-openemr-container-id' \
+        '${SCRIPT}' worktree remove feature-rm-autochown"
+    assert_success
+    # User-facing message confirms the auto-chown ran.
+    assert_output --partial "Auto-chowning bind mount via container"
+    assert_output --partial "uid=${uid}"
+    # The recorded docker invocation is the chown with the right shape:
+    # exec -u root <id> chown -R <uid>:<gid> /var/www/.../openemr
+    grep -Fq "exec -u root fake-openemr-container-id chown -R ${uid}:${gid} /var/www/localhost/htdocs/openemr" \
+        "${STUB_DIR}/docker.log" \
+        || { cat "${STUB_DIR}/docker.log"; fail "expected docker exec chown invocation not recorded"; }
+}
+
+@test "remove: when container is NOT running, auto-chown step is skipped silently" {
+    setup_full_worktree feature-rm-no-container -b
+    : > "${STUB_DIR}/docker.log"
+    # DOCKER_PS_OUTPUT empty → the chown lookup returns nothing → step skipped.
+    run bash -c "echo y | env \
+        PATH='${STUB_DIR}:${PATH}' \
+        OPENEMR_ROOT='${TMP_OPENEMR_ROOT}' \
+        WORKTREE_PARENT='${TMP_WT_PARENT}' \
+        '${SCRIPT}' worktree remove feature-rm-no-container"
+    assert_success
+    # No "Auto-chowning" message; no chown invocation in log.
+    refute_output --partial "Auto-chowning bind mount via container"
+    if grep -F "exec -u root" "${STUB_DIR}/docker.log" >/dev/null 2>&1; then
+        cat "${STUB_DIR}/docker.log"
+        fail "auto-chown ran despite no container being detected"
+    fi
+    # And remove still succeeded — state entry gone, dir gone.
+    run jq -r 'has("feature-rm-no-container")' "${STATE_FILE}"
+    assert_output "false"
+}
+
+@test "remove: auto-chown failure is non-fatal — probe is still the safety net" {
+    # Use a stub variant where `docker exec` returns non-zero (simulating a
+    # chown failure inside the container). The remove flow should still
+    # complete: chown failure is logged + ignored, probe finds no
+    # unwritable dirs (since the fixture doesn't have any), destructive
+    # ops proceed.
+    local failing_stub
+    failing_stub=$(oc_mktempdir)
+    cat > "${failing_stub}/docker" <<'STUB'
+#!/bin/sh
+echo "$@" >> STUBLOG
+# Plugin probe must succeed so check_docker_compose_install picks compose.
+if [ "$1" = "compose" ] && [ "$#" = "1" ]; then exit 0; fi
+# `ps` queries return the fake container id so the auto-chown reaches exec.
+case " $* " in
+    *' ps '*) echo 'fake-id-but-exec-will-fail' ;;
+esac
+# Fail `docker exec ...` so the auto-chown returns non-zero. The script's
+# `|| true` should swallow this and continue.
+if [ "$1" = "exec" ]; then exit 17; fi
+exit 0
+STUB
+    sed -i.bak "s|STUBLOG|${failing_stub}/docker.log|g" "${failing_stub}/docker" 2>/dev/null \
+        || sed -i "" "s|STUBLOG|${failing_stub}/docker.log|g" "${failing_stub}/docker"
+    rm -f "${failing_stub}/docker.bak"
+    : > "${failing_stub}/docker.log"
+    chmod +x "${failing_stub}/docker"
+
+    setup_full_worktree feature-rm-chown-fails -b
+    # Re-record the docker log against the failing stub (setup_full_worktree
+    # used the original STUB_DIR for the `add`; the remove below uses the
+    # failing stub).
+    run bash -c "echo y | env \
+        PATH='${failing_stub}:${PATH}' \
+        OPENEMR_ROOT='${TMP_OPENEMR_ROOT}' \
+        WORKTREE_PARENT='${TMP_WT_PARENT}' \
+        '${SCRIPT}' worktree remove feature-rm-chown-fails"
+    assert_success
+    # The chown invocation WAS attempted (proves the failure wasn't a
+    # silent skip), even though it returned non-zero.
+    grep -Fq "exec -u root fake-id-but-exec-will-fail chown" "${failing_stub}/docker.log" \
+        || { cat "${failing_stub}/docker.log"; fail "auto-chown attempt not recorded"; }
+    # Remove still succeeded — state gone, dir gone.
+    run jq -r 'has("feature-rm-chown-fails")' "${STATE_FILE}"
+    assert_output "false"
+    rm -rf "${failing_stub}"
+}
+
+# --- existing tamper guard ------------------------------------------------
+
 @test "remove: when state dir is outside WORKTREE_PARENT, validation refuses early (no destructive action)" {
     # Tamper with the state file so dir points OUTSIDE WORKTREE_PARENT.
     # wt_validate_dir (invoked inside wt_compose_cmd before any docker or
