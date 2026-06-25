@@ -283,16 +283,21 @@ jobs:
         working-directory: openemr
         run: openemr-cmd worktree down test-e2e --keep-volumes
 
-      - name: "worktree list: confirms test-e2e shows status=stopped"
+      - name: "worktree list: confirms test-e2e shows status=none"
         working-directory: openemr
         run: |
-          # Stack containers exist (--keep-volumes) but are stopped — list
-          # should render status=stopped (compose ps --services --filter
-          # status=running returns empty, but ps -aq returns container ids).
+          # After `worktree down --keep-volumes` the containers are
+          # REMOVED (only volumes preserved); compose ps -aq returns
+          # empty, so cmd_worktree_list renders status=none — not
+          # `stopped`. `stopped` is what you'd get from `worktree stop`
+          # (docker compose stop, which preserves containers); we don't
+          # use that path in this job. set-env's "stack must be down"
+          # check requires `ps -aq` empty, so `none` is exactly the
+          # state we need next.
           out=$(openemr-cmd worktree list 2>&1)
           echo "${out}"
-          grep -E '^test-e2e[[:space:]]+.*[[:space:]]stopped[[:space:]]' <<< "${out}" \
-              || { echo "FAIL: 'test-e2e' not listed with status=stopped"; exit 1; }
+          grep -E '^test-e2e[[:space:]]+.*[[:space:]]none[[:space:]]' <<< "${out}" \
+              || { echo "FAIL: 'test-e2e' not listed with status=none"; exit 1; }
 
       - name: One-shot chown back to runner (enables host-side regen + set-env)
         run: |
