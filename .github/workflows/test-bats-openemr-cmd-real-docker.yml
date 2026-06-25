@@ -43,11 +43,19 @@ on:
 permissions:
   contents: read
 
-# Multiple in-flight runs would race on docker daemon resources (image
-# pull, container names, port allocation). Serialize per ref.
+# On PR pushes: cancel any in-flight run for the same ref so the new SHA's
+# workflow registers as a check immediately. This keeps the All Checks
+# Passed rollup honest — without it, a queued workflow doesn't register
+# its jobs as checks on the new SHA, and the rollup (which waits for
+# whatever checks exist) goes green prematurely. On master pushes: keep
+# the in-flight run so sequential master history isn't lost. Matches the
+# pattern in vendored-contracts-self-test.yml.
+#
+# Cross-run docker daemon contention isn't a concern here: each workflow
+# run gets its own ephemeral GitHub-hosted runner with its own daemon.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   worktree-lifecycle-e2e:
