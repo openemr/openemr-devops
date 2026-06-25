@@ -212,6 +212,8 @@ setup_full_worktree() {
 
 @test "remove: when container is running, docker exec chown is invoked with host uid:gid" {
     setup_full_worktree feature-rm-autochown -b
+    local wt_dir
+    wt_dir=$(jq -r '.["feature-rm-autochown"].dir' "${STATE_FILE}")
     : > "${STUB_DIR}/docker.log"
     # DOCKER_PS_OUTPUT is what the stub returns for any `docker ps ...`
     # query; the openemr-cmd auto-chown step uses that filter to find the
@@ -234,10 +236,14 @@ setup_full_worktree() {
     grep -Fq "exec -u root fake-openemr-container-id chown -R ${uid}:${gid} /var/www/localhost/htdocs/openemr" \
         "${STUB_DIR}/docker.log" \
         || { cat "${STUB_DIR}/docker.log"; fail "expected docker exec chown invocation not recorded"; }
+    # And the core outcome: the worktree directory itself is gone.
+    [[ ! -e "${wt_dir}" ]] || fail "worktree directory still exists: ${wt_dir}"
 }
 
 @test "remove: when container is NOT running, auto-chown step is skipped silently" {
     setup_full_worktree feature-rm-no-container -b
+    local wt_dir
+    wt_dir=$(jq -r '.["feature-rm-no-container"].dir' "${STATE_FILE}")
     : > "${STUB_DIR}/docker.log"
     # DOCKER_PS_OUTPUT empty → the chown lookup returns nothing → step skipped.
     run bash -c "echo y | env \
@@ -255,6 +261,7 @@ setup_full_worktree() {
     # And remove still succeeded — state entry gone, dir gone.
     run jq -r 'has("feature-rm-no-container")' "${STATE_FILE}"
     assert_output "false"
+    [[ ! -e "${wt_dir}" ]] || fail "worktree directory still exists: ${wt_dir}"
 }
 
 @test "remove: auto-chown failure is non-fatal — probe is still the safety net" {
@@ -286,6 +293,8 @@ STUB
     chmod +x "${failing_stub}/docker"
 
     setup_full_worktree feature-rm-chown-fails -b
+    local wt_dir
+    wt_dir=$(jq -r '.["feature-rm-chown-fails"].dir' "${STATE_FILE}")
     # Re-record the docker log against the failing stub (setup_full_worktree
     # used the original STUB_DIR for the `add`; the remove below uses the
     # failing stub).
@@ -302,6 +311,7 @@ STUB
     # Remove still succeeded — state gone, dir gone.
     run jq -r 'has("feature-rm-chown-fails")' "${STATE_FILE}"
     assert_output "false"
+    [[ ! -e "${wt_dir}" ]] || fail "worktree directory still exists: ${wt_dir}"
     rm -rf "${failing_stub}"
 }
 
