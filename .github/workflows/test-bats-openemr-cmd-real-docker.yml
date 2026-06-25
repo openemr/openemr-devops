@@ -279,28 +279,7 @@ jobs:
           grep -E '^test-e2e[[:space:]]+.*[[:space:]]running[[:space:]]' <<< "${out}" \
               || { echo "FAIL: 'test-e2e' not listed with status=running"; exit 1; }
 
-      - name: "worktree regen: rewrites a stomped .env back to canonical contents"
-        working-directory: openemr
-        run: |
-          # regen calls wt_write_env + wt_write_override against the current
-          # state entry — useful when the user manually edits these files
-          # or they get out of sync. Stomp the .env, regen, confirm
-          # restored.
-          env_file="${{ github.workspace }}/openemr-wt-test-e2e/docker/development-easy/.env"
-          [[ -f "${env_file}" ]] || { echo "FAIL: .env missing before stomp"; exit 1; }
-          # Snapshot pre-stomp so we can verify regen restored byte-for-byte.
-          cp "${env_file}" /tmp/test-e2e-env.before
-          echo "STOMPED_BY_E2E=1" > "${env_file}"
-          openemr-cmd worktree regen test-e2e
-          # The .env-writer is deterministic given (branch, offset, env)
-          # so regen output equals the pre-stomp snapshot.
-          if ! diff -u /tmp/test-e2e-env.before "${env_file}"; then
-              echo "FAIL: regen did not restore .env to original contents"
-              exit 1
-          fi
-          echo "regen restored .env correctly"
-
-      - name: worktree down test-e2e --keep-volumes (prep for set-env switch)
+      - name: worktree down test-e2e --keep-volumes (prep for host-side ops)
         working-directory: openemr
         run: openemr-cmd worktree down test-e2e --keep-volumes
 
@@ -314,6 +293,37 @@ jobs:
           echo "${out}"
           grep -E '^test-e2e[[:space:]]+.*[[:space:]]stopped[[:space:]]' <<< "${out}" \
               || { echo "FAIL: 'test-e2e' not listed with status=stopped"; exit 1; }
+
+      - name: One-shot chown back to runner (enables host-side regen + set-env)
+        run: |
+          # openemr's container startup chowned the whole bind mount to
+          # apache during install, so host-side host-uid operations
+          # (regen writing .env, set-env creating new env dir files)
+          # would fail with EACCES. Chown back to runner once now (stack
+          # is down, no race). The auto-chown step on the eventual
+          # `worktree remove` (when stack is back up) will handle any
+          # further apache-writes between then and now.
+          sudo chown -R "$(id -u):$(id -g)" "${{ github.workspace }}/openemr-wt-test-e2e"
+
+      - name: "worktree regen: rewrites a stomped .env back to canonical contents"
+        working-directory: openemr
+        run: |
+          # regen calls wt_write_env + wt_write_override against the
+          # current state entry — useful when the user manually edits
+          # these files or they get out of sync. Stomp the .env, regen,
+          # confirm restored byte-for-byte.
+          env_file="${{ github.workspace }}/openemr-wt-test-e2e/docker/development-easy/.env"
+          [[ -f "${env_file}" ]] || { echo "FAIL: .env missing before stomp"; exit 1; }
+          cp "${env_file}" /tmp/test-e2e-env.before
+          echo "STOMPED_BY_E2E=1" > "${env_file}"
+          openemr-cmd worktree regen test-e2e
+          # The .env-writer is deterministic given (branch, offset, env)
+          # so regen output equals the pre-stomp snapshot.
+          if ! diff -u /tmp/test-e2e-env.before "${env_file}"; then
+              echo "FAIL: regen did not restore .env to original contents"
+              exit 1
+          fi
+          echo "regen restored .env correctly"
 
       - name: "worktree set-env: switch test-e2e from easy to easy-light (with stack down)"
         working-directory: openemr
