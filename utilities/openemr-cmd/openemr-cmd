@@ -835,6 +835,11 @@ cmd_worktree_remove() {
         return 0
     fi
 
+    echo "This will remove worktree '${branch}' at ${dir}."
+    if ! ${purge}; then echo "  --keep-volumes: Docker volumes will be preserved."; fi
+    read -rp "Continue? [y/N] " confirm
+    [[ "${confirm}" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+
     # Best-effort auto-chown: when the openemr container is still running,
     # ask it (as root) to chown the bind-mounted worktree back to the host
     # uid/gid before we try to remove anything. The container writes files
@@ -845,6 +850,13 @@ cmd_worktree_remove() {
     # `sudo chown -R` step that users would otherwise hit. The probe below
     # is still the safety net — it catches anything chown missed (container
     # not running, root-owned files outside the openemr workdir, etc.).
+    #
+    # Runs AFTER the user's y/N confirmation, not before. The chown is
+    # observable side effect for hosts where host-uid != container-apache-uid
+    # (the bind mount's ownership changes to the host user; apache in the
+    # container then cannot write to those files). On abort, that side
+    # effect would leave the stack effectively broken for continued use.
+    # Confirming first means abort genuinely leaves no trace.
     local slug=""
     slug=$(wt_slug "${branch}")
     local autochown_id=""
@@ -866,7 +878,7 @@ cmd_worktree_remove() {
             2>/dev/null || true
     fi
 
-    # Probe for permission issues BEFORE any destructive op. After the
+    # Probe for permission issues before the destructive ops. After the
     # auto-chown step above, this usually passes — but it remains as the
     # safety net for: (a) container wasn't running, (b) root-owned files
     # outside /var/www/localhost/htdocs/openemr, (c) chown itself failed.
@@ -876,7 +888,7 @@ cmd_worktree_remove() {
     #   3. fail mid-rm with EACCES — leaving partial state on disk + a
     #      state entry pointing at a no-longer-registered worktree, which
     #      a chown+retry can't recover from (wt_validate_dir rejects the
-    #      now-orphan dir). Bail early with a clear chown hint instead.
+    #      now-orphan dir). Bail with a clear chown hint instead.
     # `[[ -w ${d} ]]` uses access(2) for the current uid; we walk every
     # subdir because `rm` needs write+execute on each PARENT to unlink
     # children. Not using `find -writable` (GNU-only — BSD/macOS lacks it).
@@ -895,11 +907,6 @@ This usually means the docker container wrote files into the worktree as a
 different uid (root/apache). Restore ownership and retry:
     sudo chown -R \"\$(id -u):\$(id -g)\" '${dir}'"
     fi
-
-    echo "This will remove worktree '${branch}' at ${dir}."
-    if ! ${purge}; then echo "  --keep-volumes: Docker volumes will be preserved."; fi
-    read -rp "Continue? [y/N] " confirm
-    [[ "${confirm}" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 
     wt_info "Stopping Docker stack"
     if ${purge}; then

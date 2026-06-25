@@ -210,6 +210,41 @@ setup_full_worktree() {
 # wrote root-owned files (e.g. after drid). The A5 probe remains the
 # safety net for cases where the chown wasn't possible.
 
+@test "remove: aborted at the prompt leaves NO side effects (no auto-chown, no destruction)" {
+    # The auto-chown sequence runs AFTER the user's y/N confirmation.
+    # If the user aborts, the container's ownership of bind-mounted files
+    # must stay exactly as it was — chowning to the host uid would leave
+    # apache (inside the container) unable to write to its own files on
+    # hosts where host-uid != container-apache-uid (uid 1000), effectively
+    # breaking the stack for continued use.
+    setup_full_worktree feature-rm-abort -b
+    local wt_dir
+    wt_dir=$(jq -r '.["feature-rm-abort"].dir' "${STATE_FILE}")
+    : > "${STUB_DIR}/docker.log"
+    # Pipe 'n' to the prompt to abort; DOCKER_PS_OUTPUT is set so that
+    # IF the auto-chown step were misplaced before the prompt, the chown
+    # invocation would be recorded — its absence below proves the reorder.
+    run bash -c "echo n | env \
+        PATH='${STUB_DIR}:${PATH}' \
+        OPENEMR_ROOT='${TMP_OPENEMR_ROOT}' \
+        WORKTREE_PARENT='${TMP_WT_PARENT}' \
+        DOCKER_PS_OUTPUT='fake-openemr-container-id' \
+        '${SCRIPT}' worktree remove feature-rm-abort"
+    assert_success
+    assert_output --partial "Aborted."
+    # The auto-chown banner must NOT have fired.
+    refute_output --partial "Auto-chowning bind mount via container"
+    # The chown docker exec must NOT have been recorded.
+    if grep -F "exec -u root" "${STUB_DIR}/docker.log" >/dev/null 2>&1; then
+        cat "${STUB_DIR}/docker.log"
+        fail "auto-chown fired before the prompt; aborted remove left side effects"
+    fi
+    # And nothing destructive: dir still on disk, state entry still present.
+    [[ -d "${wt_dir}" ]] || fail "worktree dir gone after aborted remove"
+    run jq -r 'has("feature-rm-abort")' "${STATE_FILE}"
+    assert_output "true"
+}
+
 @test "remove: when container is running, docker exec chown is invoked with host uid:gid" {
     setup_full_worktree feature-rm-autochown -b
     local wt_dir
