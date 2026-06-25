@@ -674,7 +674,7 @@ wt_precreate_volume_mountpoints() {
         # next remove — no worse than today. Don't abort `worktree
         # add` for a non-fatal pre-create failure.
         mkdir -p "${host_path}" 2>/dev/null || true
-    done < <(sed -nE 's|^[[:space:]]+- [^:[:space:]]+:(/var/www/localhost/htdocs/openemr/[^:]+):(rw|ro)[[:space:]]*$|\1|p' "${compose_file}" || true)
+    done < <(sed -nE 's#^[[:space:]]+- [^:[:space:]]+:(/var/www/localhost/htdocs/openemr/[^:]+):(rw|ro)[[:space:]]*$#\1#p' "${compose_file}" || true)
 }
 
 # Runs docker compose against a specific worktree's stack
