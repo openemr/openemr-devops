@@ -3,25 +3,27 @@ name: openemr-cmd e2e (real docker)
 # Tier 2 of the openemr-cmd test coverage roadmap. Unlike the hermetic
 # bats suite (test-bats-openemr-cmd.yml), this workflow exercises
 # openemr-cmd against a real openemr/openemr image. Four parallel jobs:
-#   - worktree-lifecycle-e2e: single-worktree happy path on env=easy,
-#     `worktree exec` end-to-end, the A5 container-uid-on-remove probe
-#     contract, the set-env-while-running refusal, and a down→up
-#     restart cycle proving volumes persist.
+#   - worktree-lifecycle-e2e: full worktree lifecycle on a single
+#     worktree — add → exec → set-env refusal → down/up restart →
+#     list status → regen → set-env env-switch (easy → easy-light) →
+#     auto-chown-driven remove. Covers all the user-facing worktree
+#     operations against a real running stack.
 #   - worktree-multi-concurrent-e2e: two worktrees on env=easy-light
 #     running side-by-side, distinct ports + compose projects, exec
 #     routes each to its own container (no cross-talk).
 #   - nonworktree-lifecycle-e2e: the plain `openemr-cmd up` / `down`
 #     path against the standard openemr/docker/development-easy stack
 #     (no worktree). Confirms top-level lifecycle, container auto-
-#     detection, exec via auto-detected id, prek-in-container, and
-#     dl/dn admin commands against a real running stack.
+#     detection, exec via auto-detected id, dn admin command, and
+#     prek-in-container against a real running stack.
 #   - functional-roundtrip-e2e: the data-flow contract between
 #     openemr-cmd and the in-container `/root/devtools` scripts —
-#     irp inserts patients, bs produces a real snapshot, gc+pc shuttle
-#     the capsule out and back in, rs restores data on a FRESH stack.
-#     Catches cross-repo contract drift (openemr-cmd's CLI assumes a
-#     particular /root/devtools interface; this job confirms the
-#     in-container scripts still match it end-to-end).
+#     drid loads demo data, irp adds random patients, bs produces a
+#     real snapshot, gc+pc shuttle the capsule out and back in, rs
+#     restores data on a FRESH stack. Catches cross-repo contract
+#     drift (openemr-cmd's CLI assumes a particular /root/devtools
+#     interface; this job confirms the in-container scripts still
+#     match it end-to-end).
 #
 # Cost: ~10-20 min per job for the first three; the functional
 # round-trip job is heavier (~30-40 min, two stack startups). All four
@@ -66,12 +68,14 @@ concurrency:
 
 jobs:
   worktree-lifecycle-e2e:
-    name: e2e — add --start → healthy → down → remove
+    name: e2e — full worktree lifecycle (add → restart → set-env → regen → auto-chown remove)
     runs-on: ubuntu-22.04
-    # Bumped from 25 → 35 to accommodate the additional set-env-refusal
-    # check (cheap) and the down→up restart cycle (a second healthy-poll
-    # window — typically ~3-5 min once volumes are warm but bounded at 15).
-    timeout-minutes: 35
+    # 45 min to absorb three healthy-poll windows (initial add --start,
+    # post-restart, post-set-env-switch to easy-light) plus the new
+    # list/regen/auto-chown steps. In practice the second + third
+    # healthy waits are fast (~3-5 min) since the base layer is cached,
+    # but each is bounded at 15.
+    timeout-minutes: 45
     steps:
       - name: Checkout openemr-devops (for openemr-cmd)
         uses: actions/checkout@v7
@@ -260,66 +264,134 @@ jobs:
           echo "FAIL: openemr did not respond on port 8301 after restart"
           exit 1
 
-      - name: worktree down test-e2e --keep-volumes (second cycle — prep for A5 probe)
+      - name: "worktree list: confirms test-e2e shows status=running"
+        working-directory: openemr
+        run: |
+          # cmd_worktree_list walks state, runs `compose ps --filter
+          # status=running` per entry, and renders STATUS=running for any
+          # whose openemr service is up. With test-e2e currently up after
+          # the restart cycle, the rendered row must say `running`. Quick
+          # assertion of the status detection path against a real stack.
+          out=$(openemr-cmd worktree list 2>&1)
+          echo "${out}"
+          # Match a line that has the test-e2e branch + status running on
+          # the same line (column-aligned by printf).
+          grep -E '^test-e2e[[:space:]]+.*[[:space:]]running[[:space:]]' <<< "${out}" \
+              || { echo "FAIL: 'test-e2e' not listed with status=running"; exit 1; }
+
+      - name: "worktree regen: rewrites a stomped .env back to canonical contents"
+        working-directory: openemr
+        run: |
+          # regen calls wt_write_env + wt_write_override against the current
+          # state entry — useful when the user manually edits these files
+          # or they get out of sync. Stomp the .env, regen, confirm
+          # restored.
+          env_file="${{ github.workspace }}/openemr-wt-test-e2e/docker/development-easy/.env"
+          [[ -f "${env_file}" ]] || { echo "FAIL: .env missing before stomp"; exit 1; }
+          # Snapshot pre-stomp so we can verify regen restored byte-for-byte.
+          cp "${env_file}" /tmp/test-e2e-env.before
+          echo "STOMPED_BY_E2E=1" > "${env_file}"
+          openemr-cmd worktree regen test-e2e
+          # The .env-writer is deterministic given (branch, offset, env)
+          # so regen output equals the pre-stomp snapshot.
+          if ! diff -u /tmp/test-e2e-env.before "${env_file}"; then
+              echo "FAIL: regen did not restore .env to original contents"
+              exit 1
+          fi
+          echo "regen restored .env correctly"
+
+      - name: worktree down test-e2e --keep-volumes (prep for set-env switch)
         working-directory: openemr
         run: openemr-cmd worktree down test-e2e --keep-volumes
 
-      - name: "worktree remove WITHOUT chown (expected: probe refuses, nothing destroyed)"
+      - name: "worktree list: confirms test-e2e shows status=stopped"
         working-directory: openemr
         run: |
-          # A5 contract: the openemr container writes files into the
-          # worktree's bind-mount as root/apache uids during startup. Before
-          # the permission-probe fix, the script would proceed past compose
-          # down --volumes + git worktree remove --force and only fail
-          # mid-rm — leaving partial state on disk. With the probe in place,
-          # remove must bail BEFORE any destructive op, with a clear chown
-          # hint and ALL state intact for retry.
-          set +e
-          echo y | openemr-cmd worktree remove test-e2e > /tmp/remove-out.txt 2>&1
-          rc=$?
-          set -e
-          cat /tmp/remove-out.txt
-          if [[ "${rc}" = "0" ]]; then
-              echo "FAIL: remove unexpectedly succeeded without sudo chown"
-              exit 1
-          fi
-          grep -q "is not writable by you" /tmp/remove-out.txt \
-              || { echo "FAIL: probe did not surface the writability hint"; exit 1; }
-          grep -q "sudo chown -R" /tmp/remove-out.txt \
-              || { echo "FAIL: probe did not surface the chown command"; exit 1; }
-          # Nothing destroyed: state entry preserved, dir preserved, volumes
-          # preserved (compose down --volumes never ran), lockfile released.
-          if ! jq -e '."test-e2e"' .worktrees.json >/dev/null; then
-              echo "FAIL: state entry missing after probe-refused remove"
-              cat .worktrees.json
-              exit 1
-          fi
-          if [[ ! -d "${{ github.workspace }}/openemr-wt-test-e2e" ]]; then
-              echo "FAIL: worktree dir gone after probe-refused remove"
-              exit 1
-          fi
-          if [[ -e ".worktrees.json.lock" ]]; then
-              echo "FAIL: state lockfile lingered after probe-refused remove"
-              ls -la .worktrees.json.lock
-              exit 1
-          fi
-          # Volumes still around (compose down --volumes did NOT run).
-          remaining=$(docker volume ls -q --filter "name=openemr-test-e2e_" | wc -l)
-          if [[ "${remaining}" = "0" ]]; then
-              echo "FAIL: volumes were purged despite probe refusing"
-              docker volume ls
-              exit 1
-          fi
-          echo "as expected: probe refused, ${remaining} volumes preserved, state intact"
+          # Stack containers exist (--keep-volumes) but are stopped — list
+          # should render status=stopped (compose ps --services --filter
+          # status=running returns empty, but ps -aq returns container ids).
+          out=$(openemr-cmd worktree list 2>&1)
+          echo "${out}"
+          grep -E '^test-e2e[[:space:]]+.*[[:space:]]stopped[[:space:]]' <<< "${out}" \
+              || { echo "FAIL: 'test-e2e' not listed with status=stopped"; exit 1; }
 
-      - name: worktree remove test-e2e (with chown workaround)
+      - name: "worktree set-env: switch test-e2e from easy to easy-light (with stack down)"
         working-directory: openemr
         run: |
-          # Documented workaround: chown the worktree dir back to the runner
-          # uid so the probe + downstream destructive ops can succeed.
-          sudo chown -R "$(id -u):$(id -g)" "${{ github.workspace }}/openemr-wt-test-e2e"
-          # `remove` prompts; pipe 'y' to confirm.
-          echo y | openemr-cmd worktree remove test-e2e
+          # set-env requires status=none/stopped (the bats-covered refusal
+          # we already tested upstream). With the stack down, the switch
+          # should succeed and update the state's env field + rewrite the
+          # compose files for the new env.
+          openemr-cmd worktree set-env test-e2e easy-light
+          # State env updated.
+          new_env=$(jq -r '."test-e2e".env' .worktrees.json)
+          [[ "${new_env}" = "easy-light" ]] \
+              || { echo "FAIL: state env still '${new_env}' after set-env easy-light"; exit 1; }
+          # easy-light's compose files now exist in the worktree.
+          [[ -f "${{ github.workspace }}/openemr-wt-test-e2e/docker/development-easy-light/.env" ]] \
+              || { echo "FAIL: easy-light/.env missing after set-env"; exit 1; }
+          [[ -f "${{ github.workspace }}/openemr-wt-test-e2e/docker/development-easy-light/docker-compose.override.yml" ]] \
+              || { echo "FAIL: easy-light/override missing after set-env"; exit 1; }
+
+      - name: worktree up test-e2e (bring up the new easy-light env)
+        working-directory: openemr
+        run: openemr-cmd worktree up test-e2e
+
+      - name: Wait for openemr container to become healthy on easy-light
+        run: |
+          # The container is recreated under the new compose project — same
+          # name pattern (openemr-test-e2e-openemr-1) since compose project
+          # name is derived from the worktree slug, not the env.
+          cname="openemr-test-e2e-openemr-1"
+          for i in $(seq 1 90); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' "${cname}" 2>/dev/null || echo "missing")
+            echo "[easy-light ${i}/90 @ $((i*10))s] status=${status}"
+            case "${status}" in
+              healthy) echo "healthy on easy-light"; exit 0 ;;
+              unhealthy) echo "FAIL: unhealthy on easy-light"; docker logs "${cname}" --tail 200; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "FAIL: easy-light stack never became healthy in ~15 min"
+          docker ps -a
+          exit 1
+
+      - name: HTTP smoke after env-switch (still responds on port 8301)
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+                --connect-timeout 5 --max-time 10 \
+                "http://localhost:8301/" || true)
+            echo "[easy-light ${i}/12] HTTP ${code}"
+            case "${code}" in
+              200|302|303) exit 0 ;;
+            esac
+            sleep 5
+          done
+          echo "FAIL: easy-light openemr did not respond on port 8301"
+          exit 1
+
+      - name: "worktree remove (container still running → auto-chown handles root files)"
+        working-directory: openemr
+        run: |
+          # Stack is up. The container has written root-owned files into
+          # the bind mount during startup/install. With the auto-chown step
+          # added in openemr-devops#833, `worktree remove` should now
+          # detect the running container, exec into it as root to chown
+          # the bind mount back to the host uid, then proceed with the
+          # destructive ops — without the user needing a manual
+          # `sudo chown -R` on the host. If the auto-chown ever breaks,
+          # the probe would fire here and remove would fail with the
+          # writability hint instead of succeeding.
+          echo y | openemr-cmd worktree remove test-e2e 2>&1 | tee /tmp/remove-out.txt
+          # Confirm the auto-chown step ran (banner present).
+          grep -q "Auto-chowning bind mount via container" /tmp/remove-out.txt \
+              || { echo "FAIL: auto-chown banner missing — script may have skipped the step"; exit 1; }
+          # Remove succeeded (no probe-refused hint).
+          if grep -q "is not writable by you" /tmp/remove-out.txt; then
+              echo "FAIL: probe fired despite container being available for auto-chown"
+              exit 1
+          fi
 
       - name: Verify state hygiene
         working-directory: openemr
@@ -573,7 +645,7 @@ jobs:
     # No -d flag — the container is auto-detected via
     # `docker ps --filter name=openemr[_\-]1` (matches the substring
     # 'openemr-1' inside 'development-easy-openemr-1').
-    name: e2e — standard stack — up → healthy → exec → down
+    name: e2e — standard stack (up → exec → dn → prek → down)
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -754,7 +826,7 @@ jobs:
     # mandatory --format flag, restore changes its arg order), this
     # job fails — catching the regression before users hit it at
     # restore-from-backup time, which is the worst possible time.
-    name: e2e — functional round-trip — irp + bs + gc + pc + rs
+    name: e2e — functional round-trip (drid → irp → bs → gc → pc → rs)
     runs-on: ubuntu-22.04
     # Two full healthy-waits + irp + bs + restore + db verification.
     # Restart (stack-B) is from a clean slate, so as slow as first boot.
