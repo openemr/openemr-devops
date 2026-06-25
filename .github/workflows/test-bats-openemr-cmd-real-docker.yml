@@ -45,7 +45,8 @@ name: openemr-cmd e2e (real docker)
 # separate runners, so wall time is bounded by the slowest. Runs on
 # every PR that touches openemr-cmd or this workflow file — slower
 # PR cycle is the deliberate trade for catching regressions before
-# merge rather than after.
+# merge rather than after. Also runs once daily on master (see
+# schedule trigger below) to catch upstream drift between PRs.
 
 on:
   push:
@@ -60,6 +61,21 @@ on:
       - '.github/workflows/test-bats-openemr-cmd-real-docker.yml'
       - 'utilities/openemr-cmd/openemr-cmd'
       - 'utilities/openemr-cmd/openemr-cmd-h'
+  # Daily run on the default branch to catch upstream drift that the
+  # path-filtered push/pull_request triggers miss:
+  #   - openemr/openemr master rewrites the /root/devtools interface
+  #     (the kind of cross-repo contract drift that produced #832 /
+  #     openemr#12632)
+  #   - openemr container image republish (apache uid, alpine version,
+  #     pre-commit toolchain)
+  #   - GitHub-hosted runner image updates (docker daemon, jq, etc.)
+  # 06:17 UTC = ~1am ET / ~7am CET — quiet for both US and EU. The
+  # off-the-minute (17) avoids the cron-stampede at minute :00 across
+  # GH Actions globally. Public-repo runners are unmetered, so the
+  # 5-job parallel run is free; only cost is reviewer attention on
+  # genuine upstream-drift failures.
+  schedule:
+    - cron: '17 6 * * *'
   workflow_dispatch:
 
 # Read-only GITHUB_TOKEN — the workflow only clones public repos, pulls a
