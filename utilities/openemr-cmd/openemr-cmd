@@ -629,6 +629,54 @@ OVEOF
     fi
 }
 
+# Pre-create host-side dirs for named-volume mount points that target paths
+# under the webroot bind mount. When docker compose first attaches a named
+# volume at /var/www/localhost/htdocs/openemr/<subpath> and that subpath
+# doesn't exist on the host, the docker daemon creates the missing dir on
+# the host as root:root 0755. After `compose down --volumes` removes the
+# volume, the empty root-owned dir reappears on the host and fails the
+# writability probe in cmd_worktree_remove (and accumulates as cruft over
+# multiple up/down cycles even when remove eventually succeeds).
+#
+# Pre-creating the dirs as the runner user (default umask) means docker
+# sees them already present and just attaches the volume — host ownership
+# is preserved across the volume's lifetime. Idempotent: mkdir -p is safe
+# on existing dirs (including ones already checked into the repo like
+# public/assets, sites, public/themes).
+#
+# Parses each env's docker-compose.yml for `- <vol>:<container_path>:<mode>`
+# entries whose container_path is under /var/www/localhost/htdocs/openemr/.
+# Excludes the bind mount itself (path ends without a trailing component
+# after openemr/) and out-of-webroot mounts (/var/log, /couchdb/data, etc.).
+wt_precreate_volume_mountpoints() {
+    local dir=$1 env=$2
+    local compose_subdir compose_file
+    compose_subdir=$(wt_compose_subdir "${env}")
+    compose_file="${dir}/${compose_subdir}/docker-compose.yml"
+    [[ -f "${compose_file}" ]] || return 0
+
+    local container_path rel_path host_path
+    while IFS= read -r container_path; do
+        rel_path="${container_path#/var/www/localhost/htdocs/openemr/}"
+        # Defense: refuse `..` components in the relative path — a
+        # malicious compose file could try to traverse outside the
+        # worktree via `/var/www/localhost/htdocs/openemr/../../etc`.
+        # The regex below requires `/openemr/` followed by `[^:]+` so
+        # the parser already filters most pathological inputs, but
+        # belt+suspenders here costs nothing.
+        if [[ "${rel_path}" == *..* ]] || [[ -z "${rel_path}" ]]; then
+            continue
+        fi
+        host_path="${dir}/${rel_path}"
+        # `|| true`: pre-create is best-effort. If it fails (e.g.,
+        # dir is a file, or perms issue), the worst case is the
+        # previously-known root-owned-dir problem reappears on the
+        # next remove — no worse than today. Don't abort `worktree
+        # add` for a non-fatal pre-create failure.
+        mkdir -p "${host_path}" 2>/dev/null || true
+    done < <(sed -nE 's|^[[:space:]]+- [^:[:space:]]+:(/var/www/localhost/htdocs/openemr/[^:]+):(rw|ro)[[:space:]]*$|\1|p' "${compose_file}" || true)
+}
+
 # Runs docker compose against a specific worktree's stack
 wt_compose_cmd() {
     local branch=$1
@@ -762,6 +810,7 @@ cmd_worktree_add() {
 
     wt_write_env      "${dir}" "${branch}" "${offset}" "${env}"
     wt_write_override "${dir}" "${branch}" "${offset}" "${env}"
+    wt_precreate_volume_mountpoints "${dir}" "${env}"
 
     # The base-dir .env (e.g., OPENEMR__ENVIRONMENT=dev) is gitignored, so
     # 'git worktree add' does not bring it across. Copy it from the primary so
@@ -893,8 +942,33 @@ cmd_worktree_remove() {
     # subdir because `rm` needs write+execute on each PARENT to unlink
     # children. Not using `find -writable` (GNU-only — BSD/macOS lacks it).
     local unwritable=""
+    local first_child parent
     while IFS= read -r -d '' d; do
         if [[ ! -w "${d}" ]]; then
+            # `rm -rf` doesn't always require write on the unwritable
+            # dir itself: removing an EMPTY child dir only needs
+            # write+execute on the PARENT (it's an rmdir, not an
+            # unlink of contents). So a root-owned empty dir under a
+            # writable parent is fine — the actual `git worktree
+            # remove --force` would succeed. The most common case is
+            # the docker daemon creating volume mount-point dirs on
+            # the host as root:root 0755 when first attaching a named
+            # volume over a webroot subpath that wasn't pre-created
+            # (covered by wt_precreate_volume_mountpoints, but kept
+            # as a safety net for any drift in openemr's compose).
+            #
+            # Skip the empty-removable case; flag everything else.
+            # We require read+execute on the dir to confirm emptiness
+            # via find; if we can't even read it (e.g., mode 0700),
+            # be conservative and treat as blocking — actual rm could
+            # silently leave content behind.
+            if [[ -r "${d}" && -x "${d}" ]]; then
+                first_child=$(find "${d}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null || true)
+                parent=$(dirname "${d}")
+                if [[ -z "${first_child}" ]] && [[ -w "${parent}" ]]; then
+                    continue
+                fi
+            fi
             unwritable="${d}"
             break
         fi
@@ -1067,6 +1141,7 @@ cmd_worktree_regen() {
     wt_info "Regenerating compose files for '${branch}' (env=${env})"
     wt_write_env      "${dir}" "${branch}" "${offset}" "${env}"
     wt_write_override "${dir}" "${branch}" "${offset}" "${env}"
+    wt_precreate_volume_mountpoints "${dir}" "${env}"
     wt_info "Done."
 }
 

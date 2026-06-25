@@ -670,44 +670,19 @@ jobs:
               fi
           done
 
-      - name: Pre-remove host-side chown (covers volume-shadowed mount-point dirs)
-        run: |
-          # #833's auto-chown via `docker exec` chowns files INSIDE the
-          # bind mount, but it cannot reach the host-side dirs that
-          # docker created as root when first mounting named volumes
-          # OVER bind-mount paths (ccdaservice/node_modules,
-          # ccdaservice/packages/oe-cqm-service/node_modules — both
-          # volumes shadow worktree dirs). Those dirs persist on the
-          # host owned by root; when `git worktree remove --force`
-          # runs, the writability probe correctly catches them and
-          # refuses to proceed.
-          #
-          # Fix: pre-emptively sudo chown each worktree dir before
-          # remove. This handles both the volume-shadow case AND any
-          # apache-uid-owned bind-mount files (the latter is what
-          # auto-chown also handles; the two paths are complementary
-          # but harmless overlap). The lifecycle job sidesteps this
-          # by sudo-chowning between env switches (line ~325); multi-3
-          # doesn't have a natural env-switch hook, so we do it here.
-          #
-          # Longer-term fix is the HOST_UID-passthrough work tracked
-          # against the openemr container — once apache inside the
-          # container adopts the runner's uid, the volume mount points
-          # would be created with runner ownership in the first place.
-          for dir in openemr-wt-multi-easy openemr-wt-multi-light openemr-wt-multi-redis; do
-              sudo chown -R "$(id -u):$(id -g)" "${{ github.workspace }}/${dir}"
-          done
-
       - name: Down + remove all three worktrees (auto-chown handles container-written files)
         working-directory: openemr
         run: |
           # Stacks still running → openemr-cmd's auto-chown step from
           # #833 fires before each compose down to handle any apache-
-          # written files that the pre-remove sudo chown missed (the
-          # interval between that step and this one is short, but the
-          # container could have written log/cache files in that
-          # window). Volume-shadowed host dirs were already handled
-          # by the pre-remove chown above.
+          # written files in the bind mount.
+          #
+          # Volume mount-point dirs (ccdaservice/node_modules etc.)
+          # are now host-owned from the start: `worktree add` pre-
+          # creates them via wt_precreate_volume_mountpoints so docker
+          # attaches the named volumes without creating root-owned
+          # host dirs. The previous CI workaround (a pre-remove
+          # `sudo chown -R`) is no longer needed.
           echo y | openemr-cmd worktree remove multi-easy
           echo y | openemr-cmd worktree remove multi-light
           echo y | openemr-cmd worktree remove multi-redis
