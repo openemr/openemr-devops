@@ -279,9 +279,18 @@ jobs:
           grep -E '^test-e2e[[:space:]]+.*[[:space:]]running[[:space:]]' <<< "${out}" \
               || { echo "FAIL: 'test-e2e' not listed with status=running"; exit 1; }
 
-      - name: worktree down test-e2e --keep-volumes (prep for host-side ops)
+      - name: worktree down test-e2e (purge easy volumes before env switch)
         working-directory: openemr
-        run: openemr-cmd worktree down test-e2e --keep-volumes
+        run: |
+          # Plain `down` (no --keep-volumes) purges easy's volumes before
+          # we switch to easy-light. set-env doesn't migrate volumes
+          # across env switches — the easy-only mailpit/couchdb volumes
+          # would be orphaned otherwise and the final hygiene check
+          # would catch them. The restart-with-preserved-volumes path
+          # was already validated upstream in this job (the second
+          # healthy + smoke after `worktree up test-e2e`); we don't
+          # need those volumes anymore.
+          openemr-cmd worktree down test-e2e
 
       - name: "worktree list: confirms test-e2e shows status=none"
         working-directory: openemr
