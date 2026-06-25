@@ -165,10 +165,14 @@ setup_full_worktree() {
     chmod 0700 "${sub}" 2>/dev/null || true
 
     assert_failure
-    # Clear, actionable error mentioning the unwritable dir + chown hint.
+    # Clear, actionable error mentioning the unwritable dir + BOTH
+    # recovery options (start-stack auto-chown OR manual sudo chown).
     assert_output --partial "is not writable by you"
-    assert_output --partial "sudo chown -R"
     assert_output --partial "${sub}"
+    # Option 1: start the stack first, auto-chown handles it.
+    assert_output --partial "openemr-cmd worktree up"
+    # Option 2: manual host-side sudo chown.
+    assert_output --partial "sudo chown -R"
     # Nothing destructive ran: no compose down, no rm of dir, state intact.
     if grep -F -e " down " "${STUB_DIR}/docker.log" >/dev/null 2>&1; then
         cat "${STUB_DIR}/docker.log"
