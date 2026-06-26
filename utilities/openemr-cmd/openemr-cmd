@@ -2199,15 +2199,27 @@ case "${FIRST_ARG}" in
         # mountpoints) — without this, docker daemon creates the
         # missing mount-point dirs on the host as root:root 0755 on
         # first attach, accumulating cruft in the base repo that
-        # later sudo-chown is needed to clean up. The compose file
-        # is in cwd; the bind mount root is ../.. per the
-        # ${OPENEMR_DIR:-../..} default in the dev compose files.
-        if [[ -f "${PWD}/docker-compose.yml" ]] && [[ -d "${PWD}/../.." ]]; then
-            # Resolve bind root once (avoid SC2312 inside the call).
-            bind_root_resolved=$("${OE_REALPATH_M[@]}" "${PWD}/../..")
-            precreate_volume_mountpoints_at \
-                "${PWD}/docker-compose.yml" \
-                "${bind_root_resolved}"
+        # later sudo-chown is needed to clean up.
+        #
+        # The compose file is in cwd; the bind mount root follows
+        # ${OPENEMR_DIR:-../..} from the dev compose files. Respecting
+        # OPENEMR_DIR means a user who points the openemr checkout
+        # elsewhere via that env var gets their REAL checkout pre-
+        # created, not a phantom one at cwd/../..
+        if [[ -f "${PWD}/docker-compose.yml" ]]; then
+            bind_root_input="${OPENEMR_DIR:-../..}"
+            # Resolve relative paths against cwd (compose's own
+            # interpretation of relative volume sources).
+            if [[ "${bind_root_input}" != /* ]]; then
+                bind_root_input="${PWD}/${bind_root_input}"
+            fi
+            if [[ -d "${bind_root_input}" ]]; then
+                # Resolve once (avoid SC2312 inside the call).
+                bind_root_resolved=$("${OE_REALPATH_M[@]}" "${bind_root_input}")
+                precreate_volume_mountpoints_at \
+                    "${PWD}/docker-compose.yml" \
+                    "${bind_root_resolved}"
+            fi
         fi
         run_docker_compose up -d
         ;;

@@ -232,7 +232,10 @@ setup_full_worktree() {
     # No `docker exec` invocation of any kind (proves the script
     # didn't sneak any side effects past the prompt; also serves as
     # a regression guard against any future shim re-introduction).
-    if grep -F "exec -u root" "${STUB_DIR}/docker.log" >/dev/null 2>&1; then
+    # Match the `exec` subcommand broadly (any flags, any user) — the
+    # earlier `exec -u root` check was too narrow and would miss a
+    # `docker exec --tty <id> chown ...` variant.
+    if grep -qE '^(exec|exec[[:space:]])' "${STUB_DIR}/docker.log"; then
         cat "${STUB_DIR}/docker.log"
         fail "remove fired a docker exec before the prompt; aborted remove left side effects"
     fi
@@ -264,9 +267,11 @@ setup_full_worktree() {
     refute_output --partial "Auto-chowning bind mount via container"
     # No `docker exec` of any kind (chown or otherwise) should have
     # been issued by the remove flow itself. compose down is invoked
-    # via `docker compose`, not `docker exec`, so this remains a
-    # specific shim guard.
-    if grep -F "exec -u root" "${STUB_DIR}/docker.log" >/dev/null 2>&1; then
+    # via `docker compose` (compose subcommand), not `docker exec`,
+    # so matching the `exec` subcommand broadly remains a specific
+    # shim guard against any future `docker exec` re-introduction
+    # regardless of flag shape.
+    if grep -qE '^(exec|exec[[:space:]])' "${STUB_DIR}/docker.log"; then
         cat "${STUB_DIR}/docker.log"
         fail "remove invoked docker exec for chown — shim re-introduced?"
     fi
