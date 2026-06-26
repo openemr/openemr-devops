@@ -1744,6 +1744,19 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      - name: Show macOS runner resources (pre-colima)
+        run: |
+          # Helpful when colima start fails: tells us if the runner has
+          # enough free disk / memory to host the VM. macos-14 runners
+          # ship with ~14GB free disk; colima default disk is 60GB
+          # which won't fit, so we explicitly cap it below.
+          df -h
+          echo "---"
+          # macOS-equivalent of free -h
+          vm_stat || true
+          echo "---"
+          sysctl -n hw.memsize 2>/dev/null || true
+
       - name: Install Docker via colima (macOS GH-hosted runners ship no Docker)
         run: |
           # macos-14 has brew preinstalled. colima brings up a Lima VM
@@ -1752,11 +1765,19 @@ jobs:
           # docker-compose-v2 ships the `docker compose` plugin form
           # the script uses via run_docker_compose's check.
           brew install colima docker docker-compose
-          # Default colima: 2 CPU / 2GB RAM / 60GB disk. openemr's
-          # composer/npm install + apache + mysql + selenium needs
-          # more breathing room. Apple Silicon = arm64; openemr images
-          # are amd64, so qemu translation kicks in (slow but works).
-          colima start --cpu 4 --memory 8 --disk 30
+          # Conservative resources for the macos-14 runner (~14GB free
+          # disk after the OS + preinstalled tools; default colima
+          # disk of 60GB won't fit). The openemr image (~3GB) + mysql
+          # + selenium + composer artifacts should fit in 12GB. Apple
+          # Silicon = arm64; openemr images are amd64, so qemu
+          # translation kicks in (slow but works).
+          colima start --cpu 4 --memory 6 --disk 12 || {
+              echo "===== colima start failed; dumping logs ====="
+              cat ~/.colima/_lima/colima/ha.stderr.log 2>/dev/null || true
+              cat ~/.colima/_lima/colima/serial.log 2>/dev/null | tail -100 || true
+              colima status || true
+              exit 1
+          }
           docker --version
           docker compose version
 
