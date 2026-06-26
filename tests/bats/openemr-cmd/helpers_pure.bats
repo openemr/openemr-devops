@@ -180,7 +180,16 @@ oc_run_in_funcs() {
     # Without the env var, direct execution must work as before:
     # --version exits with VERSION_EXIT_CODE (14) and prints the
     # canonical "openemr-cmd <ver>" banner.
-    run "$SCRIPT" --version
+    #
+    # Note: the script's docker-availability check (DOCKER_CODE=16)
+    # runs BEFORE --version parsing — macOS GH-hosted runners don't
+    # have docker installed, so we stub it via the same helper the
+    # other hermetic tests use. The stub satisfies `command -v docker`
+    # without invoking real docker.
+    local stub_dir
+    stub_dir=$(oc_make_docker_stub_dir)
+    run env PATH="${stub_dir}:${PATH}" "$SCRIPT" --version
+    rm -rf "${stub_dir}"
     [[ "${status}" -eq 14 ]] || fail "expected exit 14 (VERSION_EXIT_CODE), got ${status}"
     [[ "${output}" =~ ^openemr-cmd[[:space:]] ]] || fail "expected version banner, got: ${output}"
 }

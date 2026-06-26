@@ -67,18 +67,32 @@ oc_add() {
     local override="${TMP_PARENT}/openemr-wt-hu-shape/docker/development-easy/docker-compose.override.yml"
     [[ -f "${override}" ]] || fail "override file missing"
 
-    # Confirm the structural shape using yq-via-python. (The repo doesn't
-    # require yq; using python+pyyaml since it's already a test-env dep.)
-    python3 - "${override}" <<'PY'
-import sys, yaml
-override = yaml.safe_load(open(sys.argv[1]))
-env = override['services']['openemr']['environment']
-assert 'HOST_UID' in env, f"HOST_UID not in services.openemr.environment, got keys: {list(env.keys())}"
-assert 'HOST_GID' in env, f"HOST_GID not in services.openemr.environment, got keys: {list(env.keys())}"
-# Values are strings (YAML quoting); check they're digit-only.
-assert env['HOST_UID'].isdigit(), f"HOST_UID = {env['HOST_UID']!r} (not digits)"
-assert env['HOST_GID'].isdigit(), f"HOST_GID = {env['HOST_GID']!r} (not digits)"
-PY
+    # Structural check via awk (instead of yq / pyyaml, both of which
+    # are inconsistently available across runners — macos GH-hosted
+    # runners ship neither). Walk the file linearly:
+    #   - Find the start of `services:`
+    #   - Inside it, find `openemr:`
+    #   - Inside that, find `environment:` before `volumes:`
+    #   - Confirm HOST_UID and HOST_GID are nested under environment
+    # If `environment:` appears AFTER `volumes:`, the awk's seen_env
+    # check would still pass (both blocks belong to openemr), but the
+    # standard ordering used by wt_write_override puts env first.
+    local result
+    result=$(awk '
+        /^services:/                   { in_services = 1; next }
+        in_services && /^  openemr:/   { in_openemr = 1; next }
+        in_openemr && /^  [a-zA-Z]/    { in_openemr = 0; in_env = 0 }
+        in_openemr && /^    environment:/ { in_env = 1; next }
+        in_openemr && /^    [a-zA-Z]/  { in_env = 0 }
+        in_env && /HOST_UID:[[:space:]]+"[0-9]+"/ { seen_uid = 1 }
+        in_env && /HOST_GID:[[:space:]]+"[0-9]+"/ { seen_gid = 1 }
+        END {
+            if (!seen_uid) print "missing HOST_UID under services.openemr.environment"
+            else if (!seen_gid) print "missing HOST_GID under services.openemr.environment"
+            else print "OK"
+        }
+    ' "${override}")
+    [[ "${result}" = "OK" ]] || { echo "--- override.yml ---"; cat "${override}"; fail "${result}"; }
 }
 
 @test "host_uid: emitted for every env (easy / easy-light / easy-redis)" {
