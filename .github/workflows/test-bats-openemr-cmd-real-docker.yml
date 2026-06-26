@@ -566,11 +566,12 @@ jobs:
     # / resource allocator under realistic mixed-workflow load.
     name: e2e — four concurrent stacks (3 worktrees + 1 non-worktree base)
     runs-on: ubuntu-22.04
-    # Bumped from 40 → 50 to absorb the fourth stack's parallel start.
-    # Healthy-poll budget per stack is ~15 min and they boot in parallel,
-    # but the docker daemon serializes layer pulls and the runner shares
-    # CPU/disk across all four composer-install passes.
-    timeout-minutes: 50
+    # Bumped from 40 → 60 to absorb the fourth stack's parallel boot.
+    # Under 4-way contention the composer install per stack takes
+    # ~15-20 min (vs ~5 min single-stack). Inner healthy-poll budget
+    # is 30 min; rest of the steps (smoke, exec, ownership, teardown,
+    # hygiene) add ~15 min — call it 60 with margin.
+    timeout-minutes: 60
     steps:
       - name: Checkout openemr-devops (for openemr-cmd)
         uses: actions/checkout@v7
@@ -652,47 +653,42 @@ jobs:
         run: |
           # All four stacks' openemr containers share the same healthcheck
           # contract (start_period: 3m, then interval: 1m, retries: 3).
-          # Poll all four up to ~15 min; require SUSTAINED unhealthy
-          # (≥6 consecutive polls = ~60s) before bailing — under 4-stack
-          # concurrent load, the composer install phase can exceed
-          # start_period and trigger a transient unhealthy reading on
-          # one container while the others are still progressing. The
-          # 3-stack version bailed on first unhealthy because 3 stacks
-          # always finished installing inside start_period; with 4 the
-          # serialized layer pulls + shared CPU push past that. The
-          # 15-min job timeout is still the final guard.
+          # Under 4-stack concurrent load, composer install on each
+          # stack takes much longer than the single-stack baseline
+          # (~5 min becomes ~15-20 min when 4 share CPU + disk + image
+          # pulls); during the slow install phase, /meta/health/readyz
+          # probes fail because apache isn't fully serving yet, and
+          # ALL FOUR containers can cascade into "unhealthy" state
+          # simultaneously even though they're all still progressing.
+          #
+          # So: no unhealthy-bail. Just keep polling until either all
+          # four are healthy or the inner loop times out at 30 min.
+          # The 50-min job-level timeout is the final guard against
+          # a genuinely-broken container. The 3-stack version bailed
+          # on first unhealthy and worked because 3 stacks finished
+          # install inside start_period; 4 stacks don't fit.
           cname_e="openemr-multi-easy-openemr-1"
           cname_l="openemr-multi-light-openemr-1"
           cname_r="openemr-multi-redis-openemr-1"
           cname_n="development-easy-openemr-1"
-          unhealthy_streak=0
-          for i in $(seq 1 90); do
+          for i in $(seq 1 180); do
             se=$(docker inspect --format='{{.State.Health.Status}}' "${cname_e}" 2>/dev/null || echo missing)
             sl=$(docker inspect --format='{{.State.Health.Status}}' "${cname_l}" 2>/dev/null || echo missing)
             sr=$(docker inspect --format='{{.State.Health.Status}}' "${cname_r}" 2>/dev/null || echo missing)
             sn=$(docker inspect --format='{{.State.Health.Status}}' "${cname_n}" 2>/dev/null || echo missing)
-            echo "[${i}/90 @ $((i*10))s] easy=${se} light=${sl} redis=${sr} nonwt=${sn} (unhealthy_streak=${unhealthy_streak})"
+            echo "[${i}/180 @ $((i*10))s] easy=${se} light=${sl} redis=${sr} nonwt=${sn}"
             if [[ "${se}" = "healthy" && "${sl}" = "healthy" && "${sr}" = "healthy" && "${sn}" = "healthy" ]]; then
                 echo "all four containers healthy"
                 exit 0
             fi
-            if [[ "${se}" = "unhealthy" || "${sl}" = "unhealthy" || "${sr}" = "unhealthy" || "${sn}" = "unhealthy" ]]; then
-                unhealthy_streak=$((unhealthy_streak + 1))
-                if [[ "${unhealthy_streak}" -ge 6 ]]; then
-                    echo "FAIL: a container has been unhealthy for ~60s straight"
-                    docker logs "${cname_e}" --tail 200 || true
-                    docker logs "${cname_l}" --tail 200 || true
-                    docker logs "${cname_r}" --tail 200 || true
-                    docker logs "${cname_n}" --tail 200 || true
-                    exit 1
-                fi
-            else
-                unhealthy_streak=0
-            fi
             sleep 10
           done
-          echo "FAIL: all four containers did not reach healthy in ~15 min"
+          echo "FAIL: all four containers did not reach healthy in ~30 min"
           docker ps -a
+          docker logs "${cname_e}" --tail 200 || true
+          docker logs "${cname_l}" --tail 200 || true
+          docker logs "${cname_r}" --tail 200 || true
+          docker logs "${cname_n}" --tail 200 || true
           exit 1
 
       - name: HTTP smoke on all four ports (no cross-talk)
