@@ -677,6 +677,19 @@ jobs:
             sr=$(docker inspect --format='{{.State.Health.Status}}' "${cname_r}" 2>/dev/null || echo missing)
             sn=$(docker inspect --format='{{.State.Health.Status}}' "${cname_n}" 2>/dev/null || echo missing)
             echo "[${i}/180 @ $((i*10))s] easy=${se} light=${sl} redis=${sr} nonwt=${sn}"
+            # Bail fast on `missing` — the container literally doesn't
+            # exist (compose failed to create it, or the name/project
+            # naming contract changed). Distinct from `unhealthy`,
+            # which is the expected transient state during slow
+            # composer install under 4-way contention. Compose up -d
+            # returned before this poll started, so by iteration 1 all
+            # four containers should exist; if any is missing, no
+            # amount of waiting fixes it.
+            if [[ "${se}" = "missing" || "${sl}" = "missing" || "${sr}" = "missing" || "${sn}" = "missing" ]]; then
+                echo "FAIL: expected openemr container missing (easy=${se} light=${sl} redis=${sr} nonwt=${sn})"
+                docker ps -a
+                exit 1
+            fi
             if [[ "${se}" = "healthy" && "${sl}" = "healthy" && "${sr}" = "healthy" && "${sn}" = "healthy" ]]; then
                 echo "all four containers healthy"
                 exit 0
