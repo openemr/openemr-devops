@@ -1719,7 +1719,16 @@ jobs:
     # schedule-only (drop the pull_request clause) in the final
     # pre-merge commit on this branch.
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' }}
-    runs-on: macos-14
+    # macos-13 (Intel) instead of macos-14 (Apple Silicon arm64):
+    # macos-14 runners on the free GH-hosted pool can't run Linux VMs
+    # reliably — VZ requires nested virtualization (not supported),
+    # and QEMU panics in Lima's host agent with abort traps. macos-13
+    # uses HVF directly on Intel hardware without the nested-virt
+    # requirement, AND openemr images are amd64 so no qemu-user
+    # translation needed either. Tradeoff: macos-13 is being phased
+    # out by GitHub; revisit when it's deprecated (or pay for the
+    # larger macos-14 runners which do have nested virt).
+    runs-on: macos-13
     # macOS colima + image pulls + slow VM disk = ~3-5x Linux. Inner
     # healthy poll budget is 30 min, outer job 60 min with margin for
     # colima install + brew + cleanup.
