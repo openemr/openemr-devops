@@ -1714,7 +1714,11 @@ jobs:
     # If this job ever proves stable enough to gate PRs, the if-guard
     # below can drop the schedule-only restriction.
     name: e2e — macOS smoke (colima, daily-cron only)
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    # TEMPORARY: include pull_request so this PR can validate the job
+    # actually works on a macOS runner before merging. Revert to
+    # schedule-only (drop the pull_request clause) in the final
+    # pre-merge commit on this branch.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' }}
     runs-on: macos-14
     # macOS colima + image pulls + slow VM disk = ~3-5x Linux. Inner
     # healthy poll budget is 30 min, outer job 60 min with margin for
