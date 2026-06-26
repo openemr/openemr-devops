@@ -1764,7 +1764,10 @@ jobs:
           # Desktop on GH-hosted runners but colima is unrestricted.
           # docker-compose-v2 ships the `docker compose` plugin form
           # the script uses via run_docker_compose's check.
-          brew install colima docker docker-compose
+          # qemu is required for `--vm-type qemu` below (colima brew
+          # package doesn't pull it in by default; colima errors with
+          # "qemu-img not found" without it).
+          brew install colima docker docker-compose qemu
           # `--vm-type qemu` (NOT the default `vz` on macOS arm64):
           # GH-hosted macOS runners don't support nested virtualization,
           # so Apple's Virtualization framework refuses to start
