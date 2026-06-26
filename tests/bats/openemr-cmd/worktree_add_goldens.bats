@@ -63,9 +63,17 @@ mask_paths() {
     local tmp_parent=$1
     local tmp_parent_real
     tmp_parent_real=$(realpath "${tmp_parent}" 2>/dev/null || echo "${tmp_parent}")
+    local host_uid host_gid
+    host_uid=$(id -u)
+    host_gid=$(id -g)
     # Longer (resolved) form first so it can't be partially matched by the shorter one.
+    # HOST_UID/HOST_GID values are masked to __HOST_UID__/__HOST_GID__ so
+    # goldens stay stable across runner uids (CI=1001, dev box=1000, etc.)
+    # without UPDATE_GOLDENS needing to run on each contributor's machine.
     sed -e "s|${tmp_parent_real}|__TMP_PARENT__|g" \
-        -e "s|${tmp_parent}|__TMP_PARENT__|g"
+        -e "s|${tmp_parent}|__TMP_PARENT__|g" \
+        -e "s|HOST_UID: \"${host_uid}\"|HOST_UID: \"__HOST_UID__\"|g" \
+        -e "s|HOST_GID: \"${host_gid}\"|HOST_GID: \"__HOST_GID__\"|g"
 }
 
 # Compare ${actual_file} against the golden at ${golden_path}. If

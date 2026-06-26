@@ -29,6 +29,9 @@ volumes:
 
 services:
   openemr:
+    environment:
+      HOST_UID: "__HOST_UID__"
+      HOST_GID: "__HOST_GID__"
     volumes:
       - "__TMP_PARENT__/primary/.git:__TMP_PARENT__/primary/.git:rw"
 
