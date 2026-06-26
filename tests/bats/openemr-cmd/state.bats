@@ -30,7 +30,8 @@ oc_run_state() {
             set -euo pipefail
             # eval, not 'source <(...)': process substitution is broken under
             # macOS system bash 3.2, where <() fails to define the functions.
-            eval \"\$(head -n ${OC_SCRIPT_FUNCS_END} '${SCRIPT}')\"
+            __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1
+        source '${SCRIPT}'
             # Re-export WT_STATE_FILE after sourcing: the script's top-level
             # WT_STATE_FILE=... line overrides our env var when sourced.
             WT_STATE_FILE='${TMP_STATE}'

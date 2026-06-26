@@ -49,7 +49,8 @@ run_locked() {
         WT_STATE_LOCK_TIMEOUT_S="${WT_STATE_LOCK_TIMEOUT_S:-300}" \
         bash -c "
             set -uo pipefail
-            eval \"\$(head -n ${OC_SCRIPT_FUNCS_END} '${SCRIPT}')\"
+            __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1
+        source '${SCRIPT}'
             # Re-export WT_STATE_FILE so the lock helpers see our tmp file
             # (the script's top-level assignment otherwise overrides our env).
             WT_STATE_FILE='${TMP_STATE}'
@@ -156,7 +157,8 @@ run_locked() {
             WT_STATE_LOCK_TIMEOUT_S=60 \
             bash -c "
                 set -uo pipefail
-                eval \"\$(head -n ${OC_SCRIPT_FUNCS_END} '${SCRIPT}')\"
+                __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1
+        source '${SCRIPT}'
                 WT_STATE_FILE='${TMP_STATE}'
                 WT_STATE_LOCK_FILE='${nowhere}'
                 wt_acquire_state_lock 2>&1
@@ -192,7 +194,8 @@ run_locked() {
             WT_STATE_LOCK_TIMEOUT_S=10 \
             bash -c "
                 set -uo pipefail
-                eval \"\$(head -n ${OC_SCRIPT_FUNCS_END} '${SCRIPT}')\"
+                __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1
+        source '${SCRIPT}'
                 WT_STATE_FILE='${TMP_STATE}'
                 WT_STATE_LOCK_FILE='${LOCK_FILE}'
                 if wt_acquire_state_lock 2>/dev/null; then

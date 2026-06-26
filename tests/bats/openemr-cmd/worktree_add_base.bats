@@ -46,7 +46,8 @@ run_resolve() {
         WT_CANONICAL_URL="https://github.com/openemr/openemr.git" \
         bash -c "
             set -uo pipefail
-            eval \"\$(head -n ${OC_SCRIPT_FUNCS_END} '${SCRIPT}')\"
+            __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1
+        source '${SCRIPT}'
             wt_resolve_base '${arg}' 2>&1
         "
 }

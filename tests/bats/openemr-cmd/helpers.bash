@@ -72,19 +72,17 @@ STUB
     echo "${d}"
 }
 
-# Line number that marks the end of function definitions in the script
-# (the last '}' before USAGE_EXIT_CODE=13 and the dispatch logic). Sourcing
-# only the first OC_SCRIPT_FUNCS_END lines gives us a library-like view of
-# the script: every function defined, no main-line dispatch executed.
-# If the script is restructured, bump this constant — the test
-# 'OC_SCRIPT_FUNCS_END points at end of function defs' in helpers_pure.bats
-# will fail loudly when it drifts.
-OC_SCRIPT_FUNCS_END=1882
-
 # Source ONLY the function definitions of openemr-cmd into the current shell.
 # Caller is responsible for setting OPENEMR_ROOT (and WT_STATE_FILE / others
 # as needed) BEFORE calling, since the script's top-level OPENEMR_ROOT
 # assignment runs while sourcing.
+#
+# Mechanism: set __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1 before sourcing. The
+# script has a guard right after the last function definition that
+# `return 0`s when the flag is set, short-circuiting the dispatch /
+# top-level statements. Replaces an earlier head -n N approach that
+# required a magic line-number constant kept in sync with end-of-
+# functions via a drift sentinel — broke on every refactor.
 #
 # Usage (inside a 'bash -c' inside @test):
 #   oc_source_funcs
@@ -92,10 +90,7 @@ OC_SCRIPT_FUNCS_END=1882
 oc_source_funcs() {
     local script
     script=$(oc_script_path) || return 1
-    # eval, not 'source <(...)': process substitution is broken under macOS
-    # system bash 3.2, where <() fails to define the sourced functions.
-    # shellcheck disable=SC2312
-    eval "$(head -n "${OC_SCRIPT_FUNCS_END}" "${script}")"
+    __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1 source "${script}"
 }
 
 # Initialize $1 as a real git repo with one commit, so commands like

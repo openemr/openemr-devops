@@ -18,7 +18,7 @@ set -euo pipefail
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.48"
+VERSION="1.0.49"
 
 # ============================================================================
 # WORKTREE STATE MANAGEMENT
@@ -1905,6 +1905,28 @@ docker-pull-image(){
         fi
     done <<< "${services}"
 }
+
+# ============================================================================
+# SOURCE-ONLY GUARD (for hermetic tests)
+# ============================================================================
+# When hermetic bats tests want to exercise an individual function in
+# isolation, they source this script so its definitions land in the
+# test shell. Without a guard, sourcing also runs the dispatch code
+# below as a side effect — which probes for docker, parses argv,
+# wires the worktree subcommand router, etc. — all unwanted noise.
+#
+# Set __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1 before sourcing to stop the
+# script right here, after the function defs and before the dispatch.
+# Direct invocation (./openemr-cmd ...) is unaffected since the flag
+# isn't in the runtime environment.
+#
+# Replaces an earlier head -n N approach where tests sourced only the
+# first N lines: that required a magic line-number constant kept in
+# sync with end-of-functions via a drift sentinel, which broke on
+# every refactor that added or removed lines in this area.
+if [[ "${__OPENEMR_CMD_SOURCE_FUNCS_ONLY:-0}" = "1" ]]; then
+    return 0
+fi
 
 USAGE_EXIT_CODE=13
 VERSION_EXIT_CODE=14

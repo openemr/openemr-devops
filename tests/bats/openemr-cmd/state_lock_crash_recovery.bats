@@ -47,7 +47,8 @@ teardown() {
     WT_STATE_FILE="${STATE_FILE}" \
     bash -c "
         set -uo pipefail
-        eval \"\$(head -n ${OC_SCRIPT_FUNCS_END} '${SCRIPT}')\"
+        __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1
+        source '${SCRIPT}'
         WT_STATE_FILE='${STATE_FILE}'
         WT_STATE_LOCK_FILE='${LOCK_FILE}'
         wt_acquire_state_lock
@@ -77,7 +78,8 @@ teardown() {
         WT_STATE_LOCK_TIMEOUT_S=1 \
         bash -c "
             set -uo pipefail
-            eval \"\$(head -n ${OC_SCRIPT_FUNCS_END} '${SCRIPT}')\"
+            __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1
+        source '${SCRIPT}'
             WT_STATE_FILE='${STATE_FILE}'
             WT_STATE_LOCK_FILE='${LOCK_FILE}'
             wt_acquire_state_lock 2>&1

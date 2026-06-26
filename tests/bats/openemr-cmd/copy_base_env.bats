@@ -31,11 +31,11 @@ teardown() {
 oc_run_in_funcs() {
     local snippet=$1
     local script_path=$2
-    local funcs_end=$3
-    local tmp_root=$4
+    local tmp_root=$3
     run env OPENEMR_ROOT="${tmp_root}" bash -c "
         set -euo pipefail
-        eval \"\$(head -n ${funcs_end} '${script_path}')\"
+        __OPENEMR_CMD_SOURCE_FUNCS_ONLY=1
+        source '${script_path}'
         ${snippet}
     "
 }
@@ -52,7 +52,7 @@ oc_file_mode() {
 
 @test "wt_copy_base_env: no-op when source .env is missing" {
     oc_run_in_funcs "wt_copy_base_env '${PRIMARY}' '${DEST}'" \
-        "$SCRIPT" "${OC_SCRIPT_FUNCS_END}" "$TMP_ROOT"
+        "$SCRIPT" "$TMP_ROOT"
     assert_success
     [[ ! -e "${DEST}/.env" ]]
 }
@@ -62,7 +62,7 @@ oc_file_mode() {
     echo "EVIL=1" > "${TMP_ROOT}/outside"
     ln -s "${TMP_ROOT}/outside" "${PRIMARY}/.env"
     oc_run_in_funcs "wt_copy_base_env '${PRIMARY}' '${DEST}'" \
-        "$SCRIPT" "${OC_SCRIPT_FUNCS_END}" "$TMP_ROOT"
+        "$SCRIPT" "$TMP_ROOT"
     assert_success
     [[ ! -e "${DEST}/.env" ]]
 }
@@ -71,7 +71,7 @@ oc_file_mode() {
     printf 'OPENEMR__ENVIRONMENT=dev\n' > "${PRIMARY}/.env"
     chmod 600 "${PRIMARY}/.env"
     oc_run_in_funcs "wt_copy_base_env '${PRIMARY}' '${DEST}'" \
-        "$SCRIPT" "${OC_SCRIPT_FUNCS_END}" "$TMP_ROOT"
+        "$SCRIPT" "$TMP_ROOT"
     assert_success
     assert_output --partial "Copied base .env"
     [[ -f "${DEST}/.env" ]]
@@ -84,7 +84,7 @@ oc_file_mode() {
     printf 'NEW=1\n' > "${PRIMARY}/.env"
     printf 'OLD=1\n' > "${DEST}/.env"
     oc_run_in_funcs "wt_copy_base_env '${PRIMARY}' '${DEST}'" \
-        "$SCRIPT" "${OC_SCRIPT_FUNCS_END}" "$TMP_ROOT"
+        "$SCRIPT" "$TMP_ROOT"
     assert_success
     refute_output --partial "Copied base .env"
     grep -q "^OLD=1$" "${DEST}/.env"
@@ -97,7 +97,7 @@ oc_file_mode() {
     printf 'NEW=1\n' > "${PRIMARY}/.env"
     ln -s "${TMP_ROOT}/should-not-exist" "${DEST}/.env"
     oc_run_in_funcs "wt_copy_base_env '${PRIMARY}' '${DEST}'" \
-        "$SCRIPT" "${OC_SCRIPT_FUNCS_END}" "$TMP_ROOT"
+        "$SCRIPT" "$TMP_ROOT"
     assert_success
     refute_output --partial "Copied base .env"
     [[ -L "${DEST}/.env" ]]
