@@ -18,7 +18,7 @@ set -euo pipefail
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.49"
+VERSION="1.0.50"
 
 # ============================================================================
 # WORKTREE STATE MANAGEMENT
@@ -668,37 +668,47 @@ OVEOF
 # after openemr/) and out-of-webroot mounts (/var/log, /couchdb/data, etc.).
 wt_precreate_volume_mountpoints() {
     local dir=$1 env=$2
-    local compose_subdir compose_file
+    local compose_subdir
     compose_subdir=$(wt_compose_subdir "${env}")
-    compose_file="${dir}/${compose_subdir}/docker-compose.yml"
+    precreate_volume_mountpoints_at "${dir}/${compose_subdir}/docker-compose.yml" "${dir}"
+}
+
+# Lower-level version of wt_precreate_volume_mountpoints used by both
+# the worktree (wt_precreate_volume_mountpoints) and non-worktree
+# (run_docker_compose's up path) call sites. Takes the compose file
+# path + the host-side bind-mount root, parses named-volume mounts
+# targeting paths under /var/www/localhost/htdocs/openemr/, and
+# pre-creates the matching host dirs as the current user.
+#
+# Walks rel_path component-by-component instead of `mkdir -p
+# ${root}/${rel_path}` — plain mkdir -p follows existing symlink
+# components, so a malicious branch that committed e.g.
+# `public -> /etc` would cause us to create `etc/assets` on the host.
+# The walk refuses to descend through any symlink or non-directory.
+# Abandons the current mount target (continue 2) on any mismatch
+# without aborting the whole pre-create pass.
+#
+# Idempotent: existing host-owned dirs are accepted. Existing root-
+# owned dirs are also accepted (mkdir fails-EEXIST, fall-through
+# verifies it's a real dir) — we don't sudo-chown them because that
+# would require host root and surprise the user. Documented one-shot
+# cleanup for existing root-owned cruft in the base repo:
+# `sudo chown -R "$(id -u):$(id -g)" <openemr-checkout-dir>`.
+precreate_volume_mountpoints_at() {
+    local compose_file=$1 bind_root=$2
     [[ -f "${compose_file}" ]] || return 0
+    [[ -d "${bind_root}" ]] || return 0
 
     local container_path rel_path cur part
     local -a rel_parts
     while IFS= read -r container_path; do
         rel_path="${container_path#/var/www/localhost/htdocs/openemr/}"
-        # Refuse `..` components in the relative path — a malicious
-        # compose file could try to traverse outside the worktree via
-        # `/var/www/localhost/htdocs/openemr/../../etc`. The regex
-        # below requires `/openemr/` followed by `[^:]+` so the parser
-        # filters most pathological inputs, but belt+suspenders here.
+        # Refuse `..` components — defense-in-depth (the regex below
+        # already filters most pathological inputs).
         if [[ "${rel_path}" == *..* ]] || [[ -z "${rel_path}" ]]; then
             continue
         fi
-        # Walk the rel_path component-by-component instead of `mkdir -p
-        # ${dir}/${rel_path}`. Plain mkdir -p follows existing symlink
-        # components, so a malicious branch that committed e.g.
-        # `public -> /etc` would cause us to create `etc/assets` on
-        # the host. The wt_write_override symlink guards (for docker/
-        # and the compose subdir) don't cover this surface; this
-        # walk extends the same defense to every volume mount target.
-        #
-        # For each component: refuse if it exists as a symlink or as
-        # a non-directory regular file/special; otherwise mkdir (or
-        # accept that it already exists as a real dir). On any
-        # mismatch, abandon this mount target (continue 2 to the next
-        # while-loop iteration) without aborting the whole pre-create.
-        cur="${dir}"
+        cur="${bind_root}"
         rel_parts=()
         IFS=/ read -r -a rel_parts <<< "${rel_path}"
         for part in "${rel_parts[@]}"; do
@@ -709,7 +719,9 @@ wt_precreate_volume_mountpoints() {
             fi
             mkdir "${cur}" 2>/dev/null || {
                 # mkdir failed: tolerate the "already exists as real
-                # dir" case (idempotent); abandon on anything else.
+                # dir" case (idempotent — including the root-owned
+                # case for legacy base-repo users); abandon on anything
+                # else.
                 [[ -d "${cur}" && ! -L "${cur}" ]] || continue 2
             }
         done
@@ -928,55 +940,20 @@ cmd_worktree_remove() {
     read -rp "Continue? [y/N] " confirm
     [[ "${confirm}" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
 
-    # Best-effort auto-chown: when the openemr container is still running,
-    # ask it (as root) to chown the bind-mounted worktree back to the host
-    # uid/gid before we try to remove anything. The container writes files
-    # as root during install / drid / other admin paths; on hosts where
-    # the operator's uid != the container's apache uid, those files become
-    # unreadable + unremovable from the host side. Doing the chown from
-    # INSIDE the container (where it has root) sidesteps the manual
-    # `sudo chown -R` step that users would otherwise hit. The probe below
-    # is still the safety net — it catches anything chown missed (container
-    # not running, root-owned files outside the openemr workdir, etc.).
+    # Probe for permission issues before the destructive ops. With
+    # HOST_UID/HOST_GID now passed through compose (openemr-devops#840
+    # for worktree, openemr-devops#TBD for non-worktree) and adopted by
+    # apache inside the container (openemr/openemr#12642), the bind mount
+    # stays host-owned throughout — the probe is the safety net for
+    # users still on pre-HOST_UID openemr images. The probe loosening
+    # accepts empty root-owned mount-point dirs left over from older
+    # docker runs (openemr-devops#838), so the only remaining failure
+    # case is genuinely unwritable non-empty content — recoverable via
+    # the sudo-chown hint in the error message below.
     #
-    # Status note: with HOST_UID/HOST_GID now passed through compose
-    # (wt_write_override, requires openemr image with the entrypoint
-    # change from openemr#12642+), apache adopts the host uid at boot
-    # and this chown is a no-op (chowning host-uid → host-uid). Kept
-    # as a back-compat shim for users still on pre-HOST_UID images
-    # and for any drift cases the entrypoint adoption misses.
-    #
-    # Runs AFTER the user's y/N confirmation, not before. The chown is
-    # observable side effect for hosts where host-uid != container-apache-uid
-    # (the bind mount's ownership changes to the host user; apache in the
-    # container then cannot write to those files). On abort, that side
-    # effect would leave the stack effectively broken for continued use.
-    # Confirming first means abort genuinely leaves no trace.
-    local slug=""
-    slug=$(wt_slug "${branch}")
-    local autochown_id=""
-    autochown_id=$(docker ps \
-        --filter "label=com.docker.compose.project=openemr-${slug}" \
-        --filter "label=com.docker.compose.service=openemr" \
-        --format '{{.ID}}' 2>/dev/null | head -n 1 || true)
-    if [[ -n "${autochown_id}" ]]; then
-        # Capture uid/gid once (shellcheck SC2312: don't mask command
-        # substitution return values inside an expanded string).
-        local host_uid host_gid
-        host_uid=$(id -u)
-        host_gid=$(id -g)
-        wt_info "Auto-chowning bind mount via container (uid=${host_uid} gid=${host_gid})"
-        # `|| true`: chown failures are non-fatal; the probe below catches
-        # any unwritable dirs the chown couldn't fix.
-        docker exec -u root "${autochown_id}" \
-            chown -R "${host_uid}:${host_gid}" /var/www/localhost/htdocs/openemr \
-            2>/dev/null || true
-    fi
-
-    # Probe for permission issues before the destructive ops. After the
-    # auto-chown step above, this usually passes — but it remains as the
-    # safety net for: (a) container wasn't running, (b) root-owned files
-    # outside /var/www/localhost/htdocs/openemr, (c) chown itself failed.
+    # (The earlier #833 in-container auto-chown shim was removed once
+    # HOST_UID adoption made it a permanent no-op — chown host-uid →
+    # host-uid was just wasted docker exec time on every remove.)
     # If we proceed without catching that, we'd:
     #   1. purge the compose volumes (wt_compose_cmd down --volumes),
     #   2. let `git worktree remove --force` unregister the worktree, and
@@ -1655,6 +1632,22 @@ run_docker_compose() {
         echo "Error: Docker Compose command not determined." >&2
         exit 1
     fi
+    # Export HOST_UID/HOST_GID so the openemr service's compose-side
+    # environment block (added in openemr/openemr#12647) can interpolate
+    # them. Apache inside the container then adopts these uids at startup
+    # via the entrypoint from openemr/openemr#12642, eliminating bind-mount
+    # uid-mismatch bugs for any host whose uid != 1000 (CI runners, multi-
+    # user dev boxes, distros that start uids at 1001+, macOS via Docker
+    # Desktop). Respects user pre-exports (e.g. `export HOST_UID=...` in
+    # ~/.profile) — only auto-derives from id -u when unset.
+    #
+    # Worktree mode already bakes these into wt_write_override's
+    # override.yml (openemr-devops#840); this covers the non-worktree path
+    # (`openemr-cmd up`/`down`/`start`/`stop` invoked from a docker/*/ dir).
+    # Pre-HOST_UID-aware compose files silently drop the env vars —
+    # backwards compatible.
+    export HOST_UID="${HOST_UID:-$(id -u)}"
+    export HOST_GID="${HOST_GID:-$(id -g)}"
     # Execute the stored command with provided arguments
     "${DOCKER_COMPOSE_CMD[@]}" "$@"
 }
@@ -2203,6 +2196,22 @@ esac
 # For the shift usage, it used to cover the insane env.
 case "${FIRST_ARG}" in
     up)
+        # Pre-create host-side dirs for any named-volume mount points
+        # targeting paths under the webroot bind mount, BEFORE compose
+        # up. Same defense as worktree mode (wt_precreate_volume_
+        # mountpoints) — without this, docker daemon creates the
+        # missing mount-point dirs on the host as root:root 0755 on
+        # first attach, accumulating cruft in the base repo that
+        # later sudo-chown is needed to clean up. The compose file
+        # is in cwd; the bind mount root is ../.. per the
+        # ${OPENEMR_DIR:-../..} default in the dev compose files.
+        if [[ -f "${PWD}/docker-compose.yml" ]] && [[ -d "${PWD}/../.." ]]; then
+            # Resolve bind root once (avoid SC2312 inside the call).
+            bind_root_resolved=$("${OE_REALPATH_M[@]}" "${PWD}/../..")
+            precreate_volume_mountpoints_at \
+                "${PWD}/docker-compose.yml" \
+                "${bind_root_resolved}"
+        fi
         run_docker_compose up -d
         ;;
     down)

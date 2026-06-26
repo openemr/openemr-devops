@@ -422,25 +422,53 @@ jobs:
           echo "FAIL: easy-light openemr did not respond on port 8301"
           exit 1
 
-      - name: "worktree remove (container still running → auto-chown handles root files)"
+      - name: "Verify bind mount is host-owned (HOST_UID adoption working)"
+        run: |
+          # Pin the actual end-state of the HOST_UID passthrough chain:
+          # apache inside the container should have adopted the runner's
+          # uid via the entrypoint (openemr/openemr#12642 + #12647),
+          # which means files apache wrote during install should be
+          # owned by the runner on the host (NOT uid=1000).
+          #
+          # sites/default/sqlconf.php is touched by the openemr install
+          # path (writes DB credentials), so it's a reliable apache-
+          # written probe file. If HOST_UID adoption is broken, this
+          # file would still be owned by uid=1000 and the assertion
+          # below would fail loudly.
+          probe_file="${{ github.workspace }}/openemr-wt-test-e2e/sites/default/sqlconf.php"
+          if [[ ! -f "${probe_file}" ]]; then
+              echo "FAIL: probe file (sqlconf.php) missing — install may not have completed"
+              ls -la "${{ github.workspace }}/openemr-wt-test-e2e/sites/default/" || true
+              exit 1
+          fi
+          owner_uid=$(stat -c '%u' "${probe_file}")
+          runner_uid=$(id -u)
+          if [[ "${owner_uid}" != "${runner_uid}" ]]; then
+              echo "FAIL: bind-mount file owned by uid=${owner_uid} (expected runner uid=${runner_uid})"
+              echo "HOST_UID adoption is NOT working — apache may have stayed at uid=1000"
+              ls -la "${probe_file}"
+              exit 1
+          fi
+          echo "OK: bind-mount file owned by uid=${runner_uid} (apache adopted host uid)"
+
+      - name: "worktree remove (probe-only, no shim — HOST_UID adoption did the heavy lifting)"
         working-directory: openemr
         run: |
-          # Stack is up. The container has written root-owned files into
-          # the bind mount during startup/install. With the auto-chown step
-          # added in openemr-devops#833, `worktree remove` should now
-          # detect the running container, exec into it as root to chown
-          # the bind mount back to the host uid, then proceed with the
-          # destructive ops — without the user needing a manual
-          # `sudo chown -R` on the host. If the auto-chown ever breaks,
-          # the probe would fire here and remove would fail with the
-          # writability hint instead of succeeding.
+          # With HOST_UID adoption shipping universally, the apache-uid
+          # mismatch is gone at the source. The earlier #833 in-container
+          # auto-chown shim was removed — chowning host-uid → host-uid
+          # was a permanent no-op wasting docker exec time. The writability
+          # probe + the pre-create + the probe-loosening (from #838) are
+          # the safety net for any drift cases.
           echo y | openemr-cmd worktree remove test-e2e 2>&1 | tee /tmp/remove-out.txt
-          # Confirm the auto-chown step ran (banner present).
-          grep -q "Auto-chowning bind mount via container" /tmp/remove-out.txt \
-              || { echo "FAIL: auto-chown banner missing — script may have skipped the step"; exit 1; }
           # Remove succeeded (no probe-refused hint).
           if grep -q "is not writable by you" /tmp/remove-out.txt; then
-              echo "FAIL: probe fired despite container being available for auto-chown"
+              echo "FAIL: probe fired despite HOST_UID adoption being in place"
+              exit 1
+          fi
+          # Auto-chown banner should NOT appear (the shim is gone).
+          if grep -q "Auto-chowning bind mount via container" /tmp/remove-out.txt; then
+              echo "FAIL: auto-chown banner present — shim removal didn't apply"
               exit 1
           fi
 
@@ -694,19 +722,18 @@ jobs:
               fi
           done
 
-      - name: Down + remove all three worktrees (auto-chown handles container-written files)
+      - name: Down + remove all three worktrees (HOST_UID adoption covers everything)
         working-directory: openemr
         run: |
-          # Stacks still running → openemr-cmd's auto-chown step from
-          # #833 fires before each compose down to handle any apache-
-          # written files in the bind mount.
+          # Stacks still running. With HOST_UID adoption working end-to-
+          # end (openemr-devops#840 + openemr#12642), apache writes bind-
+          # mount files as the runner uid — nothing needs chowning before
+          # remove. The earlier #833 auto-chown shim was removed.
           #
-          # Volume mount-point dirs (ccdaservice/node_modules etc.)
-          # are now host-owned from the start: `worktree add` pre-
-          # creates them via wt_precreate_volume_mountpoints so docker
-          # attaches the named volumes without creating root-owned
-          # host dirs. The previous CI workaround (a pre-remove
-          # `sudo chown -R`) is no longer needed.
+          # Volume mount-point dirs (ccdaservice/node_modules etc.) are
+          # host-owned from the start via wt_precreate_volume_mountpoints
+          # (#838). Probe loosening (#838) accepts any empty root-owned
+          # legacy dirs. Together: clean remove with no chown dance.
           echo y | openemr-cmd worktree remove multi-easy
           echo y | openemr-cmd worktree remove multi-light
           echo y | openemr-cmd worktree remove multi-redis
@@ -864,6 +891,30 @@ jobs:
           done
           echo "FAIL: openemr did not respond with 2xx/3xx on port 8300"
           exit 1
+
+      - name: "Verify bind mount is host-owned (HOST_UID adoption working in non-worktree)"
+        run: |
+          # Same assertion as the worktree-lifecycle-e2e job's bind-mount-
+          # ownership check, but for the non-worktree path: `openemr-cmd
+          # up` from openemr/docker/development-easy/ should auto-export
+          # HOST_UID/HOST_GID via run_docker_compose, so apache adopts
+          # the runner's uid and writes bind-mount files as runner —
+          # NOT uid=1000.
+          probe_file="${{ github.workspace }}/openemr/sites/default/sqlconf.php"
+          if [[ ! -f "${probe_file}" ]]; then
+              echo "FAIL: probe file (sqlconf.php) missing — install may not have completed"
+              ls -la "${{ github.workspace }}/openemr/sites/default/" || true
+              exit 1
+          fi
+          owner_uid=$(stat -c '%u' "${probe_file}")
+          runner_uid=$(id -u)
+          if [[ "${owner_uid}" != "${runner_uid}" ]]; then
+              echo "FAIL: bind-mount file owned by uid=${owner_uid} (expected runner uid=${runner_uid})"
+              echo "HOST_UID adoption is NOT working — apache may have stayed at uid=1000"
+              ls -la "${probe_file}"
+              exit 1
+          fi
+          echo "OK: bind-mount file owned by uid=${runner_uid} (apache adopted host uid)"
 
       - name: "openemr-cmd e (auto-detected container): exec sentinel"
         working-directory: openemr/docker/development-easy
@@ -1442,11 +1493,13 @@ jobs:
           [[ ! -f openemr-prek-probe.txt ]] \
               || { echo "FAIL: probe file still on disk after reset"; ls -la; exit 1; }
 
-      - name: worktree remove prek-e2e (auto-chown handles container-owned files)
+      - name: worktree remove prek-e2e (HOST_UID adoption — no shim, no chown dance)
         working-directory: openemr
         run: |
-          # Stack is still up; the auto-chown step from #833 fixes
-          # the bind mount's apache-owned files before remove proceeds.
+          # Stack still up. With HOST_UID adopted by apache, bind-mount
+          # files are host-owned and remove proceeds without the earlier
+          # #833 auto-chown shim (removed once adoption made it a
+          # permanent no-op).
           echo y | openemr-cmd worktree remove prek-e2e
 
       - name: prek-uninstall (cleans the shim hooks from the shared .git/hooks)
