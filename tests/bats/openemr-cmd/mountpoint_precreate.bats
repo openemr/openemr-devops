@@ -261,21 +261,20 @@ oc_remove() {
     assert_output --partial "is not writable by you"
 }
 
-@test "remove probe: fails on unreadable dir (mode 0700) — conservative since emptiness can't be verified" {
+@test "remove probe: fails on opaque dir (mode 0000) — conservative since emptiness can't be verified" {
     oc_add probe-unreadable -b --env easy >/dev/null
     local wt="${TMP_PARENT}/openemr-wt-probe-unreadable"
-    # 0700: no read, no execute for others (including the test user's
-    # primary group if not the owner). Our owner DOES have rwx since
-    # `chmod 0700` keeps owner bits — `[[ -w ]]` returns true for
-    # owner. The probe loosening's emptiness check uses [[ -r && -x ]]
-    # which is fine for owner-0700. So this case isn't actually a
-    # probe-fail scenario when the test user owns the dir.
+    # 0000: strips all perms including owner. Even the test user
+    # (the owner) can't read, write, or enter. [[ -w ]] returns
+    # false; [[ -r ]] returns false. The probe's emptiness-check
+    # branch is skipped (it requires r+x to walk the dir's contents
+    # via find), so the dir is conservatively flagged as blocking.
     #
-    # To genuinely simulate "unreadable from the perspective of the
-    # walker", use 0000 — strips all perms including owner. Even owner
-    # can't read/write/enter. [[ -w ]] returns false; [[ -r ]] returns
-    # false. The probe's emptiness-check branch is skipped (require
-    # r+x) and the dir is conservatively flagged as blocking.
+    # Note: 0700 wouldn't trip the probe here because the test user
+    # owns the dir and chmod 0700 keeps owner rwx — `[[ -w ]]` would
+    # return true for owner, never reaching the probe-fail branch.
+    # 0000 is the minimum mode that strips owner-side r/w/x and
+    # genuinely makes the dir "opaque" to the walker.
     mkdir -p "${wt}/opaque-dir"
     chmod 0000 "${wt}/opaque-dir"
 
