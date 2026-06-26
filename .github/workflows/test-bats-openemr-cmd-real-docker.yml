@@ -6,7 +6,7 @@ name: openemr-cmd e2e (real docker)
 #   - worktree-lifecycle-e2e: full worktree lifecycle on a single
 #     worktree — add → exec → set-env refusal → down/up restart →
 #     list status → regen → set-env env-switch (easy → easy-light) →
-#     auto-chown-driven remove. Covers all the user-facing worktree
+#     remove. Covers all the user-facing worktree
 #     operations against a real running stack.
 #   - worktree-multi-concurrent-e2e: three worktrees on three distinct
 #     envs (easy / easy-light / easy-redis) running side-by-side,
@@ -99,7 +99,7 @@ concurrency:
 
 jobs:
   worktree-lifecycle-e2e:
-    name: e2e — full worktree lifecycle (add → restart → set-env → regen → auto-chown remove)
+    name: e2e — full worktree lifecycle (add → restart → set-env → regen → remove)
     runs-on: ubuntu-22.04
     # 45 min to absorb three healthy-poll windows (initial add --start,
     # post-restart, post-set-env-switch to easy-light) plus the new

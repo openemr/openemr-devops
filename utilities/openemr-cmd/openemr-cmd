@@ -1001,14 +1001,11 @@ cmd_worktree_remove() {
         # releases the lock — no manual release needed.
         wt_die "Cannot remove worktree '${branch}': directory '${unwritable}' is not writable by you.
 This usually means the docker container wrote files into the worktree as a
-different uid (root/apache). Two ways to recover:
-  (1) Start the stack first; the auto-chown step will fix permissions
-      from inside the container, then re-run remove:
-          openemr-cmd worktree up '${branch}'
-          openemr-cmd worktree remove '${branch}'
-  (2) Or restore ownership manually on the host (requires sudo):
-          sudo chown -R \"\$(id -u):\$(id -g)\" '${dir}'
-          openemr-cmd worktree remove '${branch}'"
+different uid (root/apache) — most commonly when the openemr image
+predates HOST_UID/HOST_GID entrypoint support (openemr/openemr#12642+).
+Recover by chowning manually on the host (requires sudo):
+    sudo chown -R \"\$(id -u):\$(id -g)\" '${dir}'
+    openemr-cmd worktree remove '${branch}'"
     fi
 
     wt_info "Stopping Docker stack"
