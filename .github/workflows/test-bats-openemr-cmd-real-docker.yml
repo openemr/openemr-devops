@@ -458,6 +458,34 @@ jobs:
             echo "FAIL: worktree dir still on disk"
             exit 1
           fi
+          # `openemr-cmd worktree list` must not surface the removed
+          # branch row — the user-facing rendering reflects the cleanup.
+          # (The .worktrees.json check above is the source of truth;
+          # this catches a hypothetical regression where the list
+          # subcommand might re-introduce a removed entry from elsewhere.)
+          if openemr-cmd worktree list 2>&1 | grep -qE '^test-e2e[[:space:]]'; then
+            echo "FAIL: 'worktree list' still surfaces 'test-e2e'"
+            openemr-cmd worktree list
+            exit 1
+          fi
+          # git's worktree registration must be gone too — git owns
+          # the linked-worktree gitdir under .git/worktrees/<dir>/
+          # and would otherwise treat us as having a stale worktree
+          # to recover.
+          if git worktree list --porcelain | grep -qE "openemr-wt-test-e2e"; then
+            echo "FAIL: 'git worktree list' still has an entry"
+            git worktree list --porcelain
+            exit 1
+          fi
+          # Compose containers gone (volumes alone don't prove the
+          # whole stack is torn down — `down` without `-v` would leave
+          # containers gone but volumes preserved; we want both).
+          remaining_c=$(docker ps -aq --filter "label=com.docker.compose.project=openemr-test-e2e" | wc -l)
+          if [ "${remaining_c}" -ne 0 ]; then
+            echo "FAIL: ${remaining_c} containers still labeled with project=openemr-test-e2e:"
+            docker ps -a --filter "label=com.docker.compose.project=openemr-test-e2e"
+            exit 1
+          fi
           # Compose project's volumes should be gone (remove without
           # --keep-volumes calls `down --volumes` under the hood).
           remaining=$(docker volume ls -q --filter "name=openemr-test-e2e_" | wc -l)
@@ -466,7 +494,7 @@ jobs:
             docker volume ls --filter "name=openemr-test-e2e_"
             exit 1
           fi
-          echo "state clean"
+          echo "state clean (state + dir + list + git + containers + volumes)"
 
       - name: Diagnostics on failure
         if: failure()
@@ -697,7 +725,35 @@ jobs:
                   exit 1
               fi
           done
+          # `openemr-cmd worktree list` must not surface any of the
+          # three removed branches.
+          list_out=$(openemr-cmd worktree list 2>&1)
+          for branch in multi-easy multi-light multi-redis; do
+              if grep -qE "^${branch}[[:space:]]" <<< "${list_out}"; then
+                  echo "FAIL: 'worktree list' still surfaces '${branch}'"
+                  echo "${list_out}"
+                  exit 1
+              fi
+          done
+          # git worktree registrations also gone.
+          git_out=$(git worktree list --porcelain)
+          for dir in openemr-wt-multi-easy openemr-wt-multi-light openemr-wt-multi-redis; do
+              if grep -qE "${dir}" <<< "${git_out}"; then
+                  echo "FAIL: 'git worktree list' still has '${dir}'"
+                  echo "${git_out}"
+                  exit 1
+              fi
+          done
+          # Containers + volumes gone per project (label-based for
+          # containers; name-prefix for volumes since named volumes
+          # are filterable by name).
           for proj in openemr-multi-easy openemr-multi-light openemr-multi-redis; do
+              rem_c=$(docker ps -aq --filter "label=com.docker.compose.project=${proj}" | wc -l)
+              if [[ "${rem_c}" -ne 0 ]]; then
+                  echo "FAIL: ${rem_c} containers still labeled with project=${proj}:"
+                  docker ps -a --filter "label=com.docker.compose.project=${proj}"
+                  exit 1
+              fi
               rem=$(docker volume ls -q --filter "name=${proj}_" | wc -l)
               if [[ "${rem}" -ne 0 ]]; then
                   echo "FAIL: ${rem} volumes left for ${proj}"
@@ -705,7 +761,7 @@ jobs:
                   exit 1
               fi
           done
-          echo "all three stacks cleaned"
+          echo "all three stacks cleaned (state + dirs + list + git + containers + volumes)"
 
       - name: Diagnostics on failure
         if: failure()
@@ -1424,13 +1480,33 @@ jobs:
               echo "FAIL: worktree dir still on disk"
               exit 1
           fi
+          # User-facing `worktree list` must not surface the removed branch.
+          if openemr-cmd worktree list 2>&1 | grep -qE '^prek-e2e[[:space:]]'; then
+              echo "FAIL: 'worktree list' still surfaces 'prek-e2e'"
+              openemr-cmd worktree list
+              exit 1
+          fi
+          # git worktree registration also gone.
+          if git worktree list --porcelain | grep -qE "openemr-wt-prek-e2e"; then
+              echo "FAIL: 'git worktree list' still has an entry"
+              git worktree list --porcelain
+              exit 1
+          fi
+          # Containers gone (volumes alone don't prove the full stack
+          # is torn down).
+          remaining_c=$(docker ps -aq --filter "label=com.docker.compose.project=openemr-prek-e2e" | wc -l)
+          if [[ "${remaining_c}" -ne 0 ]]; then
+              echo "FAIL: ${remaining_c} containers still labeled with project=openemr-prek-e2e:"
+              docker ps -a --filter "label=com.docker.compose.project=openemr-prek-e2e"
+              exit 1
+          fi
           remaining=$(docker volume ls -q --filter "name=openemr-prek-e2e_" | wc -l)
           if [[ "${remaining}" -ne 0 ]]; then
               echo "FAIL: ${remaining} compose volumes left over"
               docker volume ls --filter "name=openemr-prek-e2e_"
               exit 1
           fi
-          echo "prek-e2e fully cleaned"
+          echo "prek-e2e fully cleaned (state + dir + list + git + containers + volumes)"
 
       - name: Diagnostics on failure
         if: failure()
