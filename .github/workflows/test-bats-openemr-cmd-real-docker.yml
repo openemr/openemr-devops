@@ -1744,50 +1744,29 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Show macOS runner resources (pre-colima)
+      - name: Show macOS runner resources (pre-docker)
         run: |
-          # Helpful when colima start fails: tells us if the runner has
-          # enough free disk / memory to host the VM. macos-14 runners
-          # ship with ~14GB free disk; colima default disk is 60GB
-          # which won't fit, so we explicitly cap it below.
           df -h
           echo "---"
-          # macOS-equivalent of free -h
           vm_stat || true
-          echo "---"
-          sysctl -n hw.memsize 2>/dev/null || true
 
-      - name: Install Docker via colima (macOS GH-hosted runners ship no Docker)
-        run: |
-          # macos-14 has brew preinstalled. colima brings up a Lima VM
-          # running Docker Engine — Apple's license forbids Docker
-          # Desktop on GH-hosted runners but colima is unrestricted.
-          # docker-compose-v2 ships the `docker compose` plugin form
-          # the script uses via run_docker_compose's check.
-          # qemu is required for `--vm-type qemu` below (colima brew
-          # package doesn't pull it in by default; colima errors with
-          # "qemu-img not found" without it).
-          brew install colima docker docker-compose qemu
-          # `--vm-type qemu` (NOT the default `vz` on macOS arm64):
-          # GH-hosted macOS runners don't support nested virtualization,
-          # so Apple's Virtualization framework refuses to start
-          # (VZErrorDomain Code=2 "Virtualization is not available on
-          # this hardware"). QEMU uses software emulation and works
-          # without nested virt — slower but reliable. The runner has
-          # ~39GB free disk so the 12GB cap is comfortable.
-          #
-          # We're already paying for amd64 emulation since openemr
-          # images are amd64 on an arm64 runner; the QEMU-driven VM
-          # adds another layer but is the only path that works.
-          colima start --vm-type qemu --cpu 4 --memory 6 --disk 12 || {
-              echo "===== colima start failed; dumping logs ====="
-              cat ~/.colima/_lima/colima/ha.stderr.log 2>/dev/null || true
-              cat ~/.colima/_lima/colima/serial.log 2>/dev/null | tail -100 || true
-              colima status || true
-              exit 1
-          }
-          docker --version
-          docker compose version
+      # Pivoted from direct `colima` invocation after multiple failures
+      # on GH-hosted macos-14: the default `vz` driver requires nested
+      # virtualization (Apple Virtualization framework, "Virtualization
+      # is not available on this hardware"), and `--vm-type qemu` panics
+      # in lima's host agent with "send on closed channel" (lima 2.1.2
+      # goroutine race in qemu_driver.go:412). crazy-max/ghaction-setup-
+      # docker is a battle-tested action that handles these edge cases
+      # via its own Lima config — used by many projects for macOS Docker
+      # in CI.
+      - name: Install Docker on macOS (via crazy-max/ghaction-setup-docker)
+        uses: crazy-max/ghaction-setup-docker@v4
+        with:
+          version: latest
+          daemon-config: |
+            {
+              "experimental": false
+            }
 
       - name: Pre-flight (versions + disk)
         run: |
