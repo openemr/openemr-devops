@@ -40,6 +40,11 @@ name: openemr-cmd e2e (real docker)
 #     installed hooks — rather than invoking the hook scripts by
 #     hand, so a regression in the shim, hooks-dir resolution, or
 #     cwd-aware container routing surfaces here.
+#   - macos-smoke-e2e: schedule + workflow_dispatch only (skipped on
+#     PR/push so cycle stays fast). One nonworktree-style stack on a
+#     macos-14 runner via colima — proves the openemr-cmd happy
+#     path + HOST_UID adoption work on macOS Docker (not just Linux).
+#     Catches Docker Desktop / colima behavior divergence within 24h.
 #
 # Cost: ~10-20 min per job for the lifecycle / non-worktree / prek
 # jobs; the multi-concurrent job is ~25-35 min (three parallel
@@ -1687,3 +1692,167 @@ jobs:
           cat /tmp/commit-accept.log 2>/dev/null || true
           echo "===== openemr container logs (last 500) ====="
           docker logs openemr-prek-e2e-openemr-1 --tail 500 2>/dev/null || true
+
+  macos-smoke-e2e:
+    # Daily-only smoke test on macOS via colima. Catches Docker Desktop /
+    # colima behavior divergence from Linux Docker Engine within 24h.
+    # Scope is intentionally narrow: one nonworktree-style stack
+    # (`openemr-cmd up` from docker/development-easy/), wait healthy,
+    # HTTP smoke, verify bind-mount ownership (HOST_UID adoption holds
+    # on macOS too — this is the main signal), `openemr-cmd down`.
+    #
+    # NOT a full lifecycle/multi-concurrent/functional/prek run — those
+    # are heavy enough on Linux runners; macOS adds 3-5x wall-clock
+    # overhead per stack startup (VM + qemu translation for amd64
+    # images on Apple Silicon). Sticking to the minimum that proves
+    # the openemr-cmd happy path works on macOS at all.
+    #
+    # Triggers: schedule (daily-cron run) + workflow_dispatch (manual
+    # trigger via GitHub Actions UI). Skips on push/pull_request so
+    # PR cycles stay fast.
+    #
+    # If this job ever proves stable enough to gate PRs, the if-guard
+    # below can drop the schedule-only restriction.
+    name: e2e — macOS smoke (colima, daily-cron only)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: macos-14
+    # macOS colima + image pulls + slow VM disk = ~3-5x Linux. Inner
+    # healthy poll budget is 30 min, outer job 60 min with margin for
+    # colima install + brew + cleanup.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout openemr-devops (for openemr-cmd)
+        uses: actions/checkout@v7
+        with:
+          path: openemr-devops
+          persist-credentials: false
+
+      - name: Install openemr-cmd to /usr/local/bin
+        run: |
+          sudo install -m 0755 openemr-devops/utilities/openemr-cmd/openemr-cmd /usr/local/bin/openemr-cmd
+          openemr-cmd --version || true
+
+      - name: Clone openemr/openemr (shallow)
+        uses: actions/checkout@v7
+        with:
+          repository: openemr/openemr
+          path: openemr
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Docker via colima (macOS GH-hosted runners ship no Docker)
+        run: |
+          # macos-14 has brew preinstalled. colima brings up a Lima VM
+          # running Docker Engine — Apple's license forbids Docker
+          # Desktop on GH-hosted runners but colima is unrestricted.
+          # docker-compose-v2 ships the `docker compose` plugin form
+          # the script uses via run_docker_compose's check.
+          brew install colima docker docker-compose
+          # Default colima: 2 CPU / 2GB RAM / 60GB disk. openemr's
+          # composer/npm install + apache + mysql + selenium needs
+          # more breathing room. Apple Silicon = arm64; openemr images
+          # are amd64, so qemu translation kicks in (slow but works).
+          colima start --cpu 4 --memory 8 --disk 30
+          docker --version
+          docker compose version
+
+      - name: Pre-flight (versions + disk)
+        run: |
+          docker --version
+          docker compose version
+          jq --version || brew install jq
+          df -h / || df -h
+
+      - name: openemr-cmd up (from openemr/docker/development-easy)
+        working-directory: openemr/docker/development-easy
+        run: |
+          # Identical invocation to the Linux nonworktree-lifecycle-e2e
+          # job — if HOST_UID export + entrypoint adoption work on
+          # macOS the same way they do on Linux, this is the entire
+          # validation.
+          openemr-cmd up
+
+      - name: Wait for openemr container to become healthy (macOS, longer budget)
+        run: |
+          cname="development-easy-openemr-1"
+          # macOS VM + amd64 emulation: composer install can run 15-25
+          # min vs Linux baseline of ~3-5 min. 30-min inner timeout
+          # (180 polls × 10s); the 60-min outer job timeout is the
+          # final guard.
+          for i in $(seq 1 180); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' "${cname}" 2>/dev/null || echo "missing")
+            echo "[${i}/180 @ $((i*10))s] status=${status}"
+            if [[ "${status}" = "missing" ]]; then
+                echo "FAIL: container missing — compose failed to create it"
+                docker ps -a
+                exit 1
+            fi
+            case "${status}" in
+              healthy) echo "container reported healthy"; exit 0 ;;
+            esac
+            sleep 10
+          done
+          echo "FAIL: container never became healthy in ~30 min"
+          docker ps -a
+          docker logs "${cname}" --tail 500
+          exit 1
+
+      - name: HTTP smoke (openemr responds on default port 8300)
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+                --connect-timeout 5 --max-time 10 \
+                "http://localhost:8300/" || true)
+            echo "[${i}/12] HTTP ${code}"
+            case "${code}" in
+              200|302|303) exit 0 ;;
+            esac
+            sleep 5
+          done
+          echo "FAIL: openemr did not respond with 2xx/3xx on port 8300"
+          exit 1
+
+      - name: "Verify bind mount is host-owned (HOST_UID adoption on macOS)"
+        run: |
+          # Same probe as the Linux nonworktree-lifecycle-e2e:
+          # sites/default/sqlconf.php is touched by the openemr
+          # install path, so it's a reliable apache-written probe
+          # file. On macOS the runner is typically uid=501 (the
+          # 'runner' user). If HOST_UID adoption works through
+          # colima's VM boundary correctly, the file owner uid
+          # should match.
+          probe_file="${{ github.workspace }}/openemr/sites/default/sqlconf.php"
+          if [[ ! -f "${probe_file}" ]]; then
+              echo "FAIL: probe file (sqlconf.php) missing — install may not have completed"
+              ls -la "${{ github.workspace }}/openemr/sites/default/" || true
+              exit 1
+          fi
+          # macOS stat uses -f, not -c (GNU). Both are POSIX-ish.
+          owner_uid=$(stat -f '%u' "${probe_file}")
+          runner_uid=$(id -u)
+          if [[ "${owner_uid}" != "${runner_uid}" ]]; then
+              echo "FAIL: bind-mount file owned by uid=${owner_uid} (expected runner uid=${runner_uid})"
+              echo "HOST_UID adoption is NOT working on macOS — apache may have stayed at uid=1000"
+              echo "Or colima's uid mapping is rewriting it across the VM boundary."
+              ls -la "${probe_file}"
+              exit 1
+          fi
+          echo "OK: bind-mount file owned by uid=${runner_uid} (apache adopted host uid on macOS)"
+
+      - name: openemr-cmd down -v (cleanup)
+        working-directory: openemr/docker/development-easy
+        run: openemr-cmd down
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "===== docker ps -a ====="
+          docker ps -a || true
+          echo "===== docker volume ls ====="
+          docker volume ls || true
+          echo "===== colima status ====="
+          colima status || true
+          echo "===== openemr container logs (last 500) ====="
+          docker logs development-easy-openemr-1 --tail 500 2>/dev/null || true
+          echo "===== mysql container logs (last 200) ====="
+          docker logs development-easy-mysql-1 --tail 200 2>/dev/null || true
