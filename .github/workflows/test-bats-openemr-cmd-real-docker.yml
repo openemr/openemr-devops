@@ -1765,13 +1765,18 @@ jobs:
           # docker-compose-v2 ships the `docker compose` plugin form
           # the script uses via run_docker_compose's check.
           brew install colima docker docker-compose
-          # Conservative resources for the macos-14 runner (~14GB free
-          # disk after the OS + preinstalled tools; default colima
-          # disk of 60GB won't fit). The openemr image (~3GB) + mysql
-          # + selenium + composer artifacts should fit in 12GB. Apple
-          # Silicon = arm64; openemr images are amd64, so qemu
-          # translation kicks in (slow but works).
-          colima start --cpu 4 --memory 6 --disk 12 || {
+          # `--vm-type qemu` (NOT the default `vz` on macOS arm64):
+          # GH-hosted macOS runners don't support nested virtualization,
+          # so Apple's Virtualization framework refuses to start
+          # (VZErrorDomain Code=2 "Virtualization is not available on
+          # this hardware"). QEMU uses software emulation and works
+          # without nested virt — slower but reliable. The runner has
+          # ~39GB free disk so the 12GB cap is comfortable.
+          #
+          # We're already paying for amd64 emulation since openemr
+          # images are amd64 on an arm64 runner; the QEMU-driven VM
+          # adds another layer but is the only path that works.
+          colima start --vm-type qemu --cpu 4 --memory 6 --disk 12 || {
               echo "===== colima start failed; dumping logs ====="
               cat ~/.colima/_lima/colima/ha.stderr.log 2>/dev/null || true
               cat ~/.colima/_lima/colima/serial.log 2>/dev/null | tail -100 || true
