@@ -239,3 +239,103 @@ oc_remove() {
     assert_output --partial "is not writable by you"
     assert_output --partial "probe-blocker"
 }
+
+@test "remove probe: fails when empty non-writable dir has non-writable parent (rmdir would fail too)" {
+    oc_add probe-empty-parent -b --env easy >/dev/null
+    local wt="${TMP_PARENT}/openemr-wt-probe-empty-parent"
+    # rmdir on an empty child requires write+execute on the PARENT. If
+    # the parent is also non-writable, rm cannot rmdir the child — so
+    # the probe loosening's "empty + parent writable" exemption must
+    # NOT trigger here. Verify by chmod'ing both child and parent 0555.
+    mkdir -p "${wt}/locked-parent/locked-child"
+    chmod 0555 "${wt}/locked-parent/locked-child"
+    chmod 0555 "${wt}/locked-parent"
+
+    run oc_remove probe-empty-parent <<< 'y'
+    # Restore perms before assertion failure (child first, then parent,
+    # since chmod on parent requires no special perms but we need to
+    # walk into it to chmod child).
+    chmod 0755 "${wt}/locked-parent" 2>/dev/null || true
+    chmod 0755 "${wt}/locked-parent/locked-child" 2>/dev/null || true
+    assert_failure
+    assert_output --partial "is not writable by you"
+}
+
+@test "remove probe: fails on unreadable dir (mode 0700) — conservative since emptiness can't be verified" {
+    oc_add probe-unreadable -b --env easy >/dev/null
+    local wt="${TMP_PARENT}/openemr-wt-probe-unreadable"
+    # 0700: no read, no execute for others (including the test user's
+    # primary group if not the owner). Our owner DOES have rwx since
+    # `chmod 0700` keeps owner bits — `[[ -w ]]` returns true for
+    # owner. The probe loosening's emptiness check uses [[ -r && -x ]]
+    # which is fine for owner-0700. So this case isn't actually a
+    # probe-fail scenario when the test user owns the dir.
+    #
+    # To genuinely simulate "unreadable from the perspective of the
+    # walker", use 0000 — strips all perms including owner. Even owner
+    # can't read/write/enter. [[ -w ]] returns false; [[ -r ]] returns
+    # false. The probe's emptiness-check branch is skipped (require
+    # r+x) and the dir is conservatively flagged as blocking.
+    mkdir -p "${wt}/opaque-dir"
+    chmod 0000 "${wt}/opaque-dir"
+
+    run oc_remove probe-unreadable <<< 'y'
+    chmod 0755 "${wt}/opaque-dir" 2>/dev/null || true
+    assert_failure
+    assert_output --partial "is not writable by you"
+    assert_output --partial "opaque-dir"
+}
+
+@test "remove probe: when multiple unwritable dirs exist (one empty-removable, one non-empty), fails on the non-empty one" {
+    # Early-termination correctness: the probe walks find -type d in
+    # an order we don't control. With the loosening, an empty-removable
+    # dir should be skipped silently while the non-empty one still
+    # triggers the fail. Both dirs present in the same worktree ensures
+    # the probe doesn't stop at the first unwritable dir it sees —
+    # it correctly evaluates each one against the empty-removable rule.
+    oc_add probe-mixed -b --env easy >/dev/null
+    local wt="${TMP_PARENT}/openemr-wt-probe-mixed"
+    # Empty 0555 (would pass loosening alone)
+    mkdir -p "${wt}/empty-blocker"
+    chmod 0555 "${wt}/empty-blocker"
+    # Non-empty 0555 (would always fail)
+    mkdir -p "${wt}/full-blocker"
+    touch "${wt}/full-blocker/payload"
+    chmod 0555 "${wt}/full-blocker"
+
+    run oc_remove probe-mixed <<< 'y'
+    chmod 0755 "${wt}/empty-blocker" 2>/dev/null || true
+    chmod 0755 "${wt}/full-blocker" 2>/dev/null || true
+    assert_failure
+    assert_output --partial "is not writable by you"
+    # The non-empty one is what the probe must surface; the empty
+    # one would have been silently OK if it were alone.
+    assert_output --partial "full-blocker"
+    refute_output --partial "empty-blocker"
+}
+
+@test "remove probe: reproducer for the multi-3 CI failure in #836 — empty 0555 at ccdaservice/.../node_modules" {
+    # Pre-merge of #838, this exact scenario (docker daemon creates
+    # ccdaservice/packages/oe-cqm-service/node_modules as root:root
+    # 0755 when first attaching the named volume; after compose down
+    # --volumes the host dir reappears empty + root-owned) caused
+    # `worktree remove` to fail with "is not writable by you" even
+    # though the actual rm could have succeeded (parent is writable,
+    # dir is empty). The probe loosening + pre-create together fix
+    # this; regression test pins both paths:
+    #   - The pre-created dir lives at the right path
+    #   - Even if it weren't pre-created and showed up as root-owned-
+    #     empty (chmod 0555 stand-in), the probe still accepts it
+    oc_add probe-mp-bug -b --env easy >/dev/null
+    local wt="${TMP_PARENT}/openemr-wt-probe-mp-bug"
+    # Confirm pre-create did create the dir at the bug's exact path.
+    [[ -d "${wt}/ccdaservice/packages/oe-cqm-service/node_modules" ]] \
+        || fail "pre-create did not create the bug's volume mount-point dir"
+    # Simulate the post-volume-purge state: empty + non-writable.
+    chmod 0555 "${wt}/ccdaservice/packages/oe-cqm-service/node_modules"
+
+    run oc_remove probe-mp-bug <<< 'y'
+    chmod 0755 "${wt}/ccdaservice/packages/oe-cqm-service/node_modules" 2>/dev/null || true
+    assert_success
+    refute_output --partial "is not writable by you"
+}
