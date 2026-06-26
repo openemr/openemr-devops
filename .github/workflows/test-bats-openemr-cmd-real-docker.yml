@@ -8,11 +8,14 @@ name: openemr-cmd e2e (real docker)
 #     list status → regen → set-env env-switch (easy → easy-light) →
 #     remove. Covers all the user-facing worktree
 #     operations against a real running stack.
-#   - worktree-multi-concurrent-e2e: three worktrees on three distinct
-#     envs (easy / easy-light / easy-redis) running side-by-side,
-#     distinct ports + compose projects, exec routes each to its own
-#     container (no cross-talk). Also gives easy-redis its only e2e
-#     coverage in this workflow.
+#   - worktree-multi-concurrent-e2e: four stacks side-by-side — three
+#     worktrees on three distinct envs (easy / easy-light / easy-redis,
+#     ports 8301/02/03) plus one non-worktree base-repo stack on the
+#     default port 8300. Tests distinct ports + compose projects, no
+#     exec cross-talk, HOST_UID adoption working in both modes
+#     simultaneously, and that the worktree and non-worktree paths
+#     coexist under concurrent load. Also gives easy-redis its only
+#     e2e coverage in this workflow.
 #   - nonworktree-lifecycle-e2e: the plain `openemr-cmd up` / `down`
 #     path against the standard openemr/docker/development-easy stack
 #     (no worktree). Confirms top-level lifecycle, container auto-
@@ -539,26 +542,35 @@ jobs:
           docker logs openemr-test-e2e-mysql-1 --tail 200 2>/dev/null || true
 
   worktree-multi-concurrent-e2e:
-    # Three worktrees on the same primary repo, started one after the other,
-    # left running in parallel — one per supported env (easy / easy-light /
-    # easy-redis). Verifies that:
-    #   - offset allocation picks distinct ports across stacks (8301/02/03)
-    #   - state lock serializes the three adds without dropping any entry
+    # Four stacks side-by-side:
+    #   - Three worktrees (multi-easy / multi-light / multi-redis), one
+    #     per supported env, using offset-derived ports 8301/02/03
+    #   - One non-worktree base-repo stack from openemr/docker/
+    #     development-easy/ on the default port 8300
+    # Verifies that:
+    #   - offset allocation picks distinct ports across worktree stacks
+    #   - state lock serializes the three worktree adds without dropping
+    #     any entry
     #   - distinct compose project names keep the docker stacks isolated
     #     (no container name collisions, no port collisions, no volume
     #     bleed-through across projects)
     #   - every env variant supports the worktree lifecycle (the lifecycle
     #     job above tests easy → easy-light; this job exercises easy-redis
     #     as well, which the lifecycle job never touches)
-    # All three stacks run concurrently to also pressure the docker daemon
-    # / resource allocator under realistic developer-workflow load.
-    name: e2e — three concurrent worktrees (one per env), distinct stacks
+    #   - worktree stacks and the base-repo non-worktree stack coexist
+    #     (no port conflict — 8300 vs 8301/02/03; no compose-project
+    #     name conflict — `development-easy` vs `openemr-multi-*`)
+    #   - HOST_UID adoption works end-to-end in BOTH modes simultaneously
+    #     (separate "Verify bind mount is host-owned" steps for each)
+    # All four stacks run concurrently to pressure the docker daemon
+    # / resource allocator under realistic mixed-workflow load.
+    name: e2e — four concurrent stacks (3 worktrees + 1 non-worktree base)
     runs-on: ubuntu-22.04
-    # Bumped from 30 → 40 to absorb the third stack's parallel start.
+    # Bumped from 40 → 50 to absorb the fourth stack's parallel start.
     # Healthy-poll budget per stack is ~15 min and they boot in parallel,
     # but the docker daemon serializes layer pulls and the runner shares
-    # CPU/disk across all three composer-install passes.
-    timeout-minutes: 40
+    # CPU/disk across all four composer-install passes.
+    timeout-minutes: 50
     steps:
       - name: Checkout openemr-devops (for openemr-cmd)
         uses: actions/checkout@v7
@@ -591,16 +603,28 @@ jobs:
         env:
           WT_CANONICAL_URL: file://${{ github.workspace }}/openemr
         run: |
-          # Three stacks side-by-side, one per supported env. The state lock
-          # forces these to serialize anyway; the concurrency assertion is
-          # that each ends up with its own offset/dir/project entry and
-          # all three stacks come up alongside one another. Covers every
-          # env variant (easy / easy-light / easy-redis) in this one job;
-          # the lifecycle + non-worktree + functional jobs all use easy.
+          # Three worktree stacks side-by-side, one per supported env.
+          # The state lock forces the worktree adds to serialize anyway;
+          # the concurrency assertion is that each ends up with its own
+          # offset/dir/project entry and all three come up alongside one
+          # another. Covers every env variant (easy / easy-light /
+          # easy-redis) in this one job. A fourth non-worktree base-repo
+          # stack is added in the next step.
           openemr-cmd worktree add multi-easy  -b --base master --start --env easy
           openemr-cmd worktree add multi-light -b --base master --start --env easy-light
           openemr-cmd worktree add multi-redis -b --base master --start --env easy-redis
           openemr-cmd worktree list
+
+      - name: openemr-cmd up (non-worktree base-repo stack from docker/development-easy)
+        working-directory: openemr/docker/development-easy
+        run: |
+          # Fourth stack: the plain non-worktree path. Uses the default
+          # port 8300 (no WT_HTTP_PORT offset), compose project name
+          # `development-easy` (derived from cwd basename — distinct
+          # from `openemr-multi-*` so no project collision). Tests that
+          # the non-worktree HOST_UID export from #842 reaches the
+          # container even when 3 worktree stacks are running.
+          openemr-cmd up
 
       - name: State has all three entries with distinct offsets + envs
         working-directory: openemr
@@ -624,46 +648,52 @@ jobs:
           [[ "$(jq -r '."multi-redis".env' .worktrees.json)" = "easy-redis" ]] || { echo "FAIL: multi-redis env"; exit 1; }
           echo "offsets: easy=${oe}, light=${ol}, redis=${or}"
 
-      - name: Wait for ALL THREE openemr containers to become healthy
+      - name: Wait for ALL FOUR openemr containers to become healthy
         run: |
-          # All three stacks' openemr containers share the same healthcheck
-          # contract (start_period: 3m). Poll all three up to ~15 min; bail
-          # as soon as any reports unhealthy.
+          # All four stacks' openemr containers share the same healthcheck
+          # contract (start_period: 3m). Poll all four up to ~15 min; bail
+          # as soon as any reports unhealthy. The non-worktree stack's
+          # container is named `development-easy-openemr-1` (project name
+          # = compose dir basename = development-easy).
           cname_e="openemr-multi-easy-openemr-1"
           cname_l="openemr-multi-light-openemr-1"
           cname_r="openemr-multi-redis-openemr-1"
+          cname_n="development-easy-openemr-1"
           for i in $(seq 1 90); do
             se=$(docker inspect --format='{{.State.Health.Status}}' "${cname_e}" 2>/dev/null || echo missing)
             sl=$(docker inspect --format='{{.State.Health.Status}}' "${cname_l}" 2>/dev/null || echo missing)
             sr=$(docker inspect --format='{{.State.Health.Status}}' "${cname_r}" 2>/dev/null || echo missing)
-            echo "[${i}/90 @ $((i*10))s] easy=${se} light=${sl} redis=${sr}"
-            if [[ "${se}" = "healthy" && "${sl}" = "healthy" && "${sr}" = "healthy" ]]; then
-                echo "all three containers healthy"
+            sn=$(docker inspect --format='{{.State.Health.Status}}' "${cname_n}" 2>/dev/null || echo missing)
+            echo "[${i}/90 @ $((i*10))s] easy=${se} light=${sl} redis=${sr} nonwt=${sn}"
+            if [[ "${se}" = "healthy" && "${sl}" = "healthy" && "${sr}" = "healthy" && "${sn}" = "healthy" ]]; then
+                echo "all four containers healthy"
                 exit 0
             fi
-            if [[ "${se}" = "unhealthy" || "${sl}" = "unhealthy" || "${sr}" = "unhealthy" ]]; then
+            if [[ "${se}" = "unhealthy" || "${sl}" = "unhealthy" || "${sr}" = "unhealthy" || "${sn}" = "unhealthy" ]]; then
                 echo "FAIL: a container reported unhealthy"
                 docker logs "${cname_e}" --tail 200 || true
                 docker logs "${cname_l}" --tail 200 || true
                 docker logs "${cname_r}" --tail 200 || true
+                docker logs "${cname_n}" --tail 200 || true
                 exit 1
             fi
             sleep 10
           done
-          echo "FAIL: all three containers did not reach healthy in ~15 min"
+          echo "FAIL: all four containers did not reach healthy in ~15 min"
           docker ps -a
           exit 1
 
-      - name: HTTP smoke on all three ports (no cross-talk)
+      - name: HTTP smoke on all four ports (no cross-talk)
         working-directory: openemr
         run: |
-          # Offsets 1/2/3 → ports 8301/8302/8303. Whichever offset jq
-          # captured (insertion order is preserved by wt_next_offset
-          # filling gaps), compute the port = 8300 + offset.
+          # Worktree offsets 1/2/3 → ports 8301/8302/8303. Whichever
+          # offset jq captured (insertion order is preserved by
+          # wt_next_offset filling gaps), compute the port = 8300 + offset.
+          # Non-worktree stack uses default port 8300 (no offset).
           oe=$(jq -r '."multi-easy".offset'  .worktrees.json)
           ol=$(jq -r '."multi-light".offset' .worktrees.json)
           or=$(jq -r '."multi-redis".offset' .worktrees.json)
-          for entry in "easy:${oe}" "light:${ol}" "redis:${or}"; do
+          for entry in "easy:${oe}" "light:${ol}" "redis:${or}" "nonwt:0"; do
             label="${entry%%:*}"
             port=$((8300 + ${entry##*:}))
             ok=""
@@ -680,18 +710,19 @@ jobs:
             [[ -n "${ok}" ]] || { echo "FAIL: ${label} (port ${port}) did not respond"; exit 1; }
           done
           # Cross-talk check: each compose project exposes a distinct
-          # openemr container id. Confirms we have three real stacks,
-          # not one serving three ports somehow.
+          # openemr container id. Confirms we have four real stacks,
+          # not one serving four ports somehow.
           id_e=$(docker ps --filter "label=com.docker.compose.project=openemr-multi-easy"  --filter "label=com.docker.compose.service=openemr" --format '{{.ID}}' | head -n1)
           id_l=$(docker ps --filter "label=com.docker.compose.project=openemr-multi-light" --filter "label=com.docker.compose.service=openemr" --format '{{.ID}}' | head -n1)
           id_r=$(docker ps --filter "label=com.docker.compose.project=openemr-multi-redis" --filter "label=com.docker.compose.service=openemr" --format '{{.ID}}' | head -n1)
-          uniq=$(printf '%s\n%s\n%s\n' "${id_e}" "${id_l}" "${id_r}" | sort -u | wc -l)
-          if [[ -z "${id_e}" || -z "${id_l}" || -z "${id_r}" || "${uniq}" -ne 3 ]]; then
-              echo "FAIL: container ids not all distinct (easy='${id_e}' light='${id_l}' redis='${id_r}')"
+          id_n=$(docker ps --filter "label=com.docker.compose.project=development-easy"    --filter "label=com.docker.compose.service=openemr" --format '{{.ID}}' | head -n1)
+          uniq=$(printf '%s\n%s\n%s\n%s\n' "${id_e}" "${id_l}" "${id_r}" "${id_n}" | sort -u | wc -l)
+          if [[ -z "${id_e}" || -z "${id_l}" || -z "${id_r}" || -z "${id_n}" || "${uniq}" -ne 4 ]]; then
+              echo "FAIL: container ids not all distinct (easy='${id_e}' light='${id_l}' redis='${id_r}' nonwt='${id_n}')"
               docker ps -a
               exit 1
           fi
-          echo "three distinct openemr containers: easy=${id_e:0:12} light=${id_l:0:12} redis=${id_r:0:12}"
+          echo "four distinct openemr containers: easy=${id_e:0:12} light=${id_l:0:12} redis=${id_r:0:12} nonwt=${id_n:0:12}"
 
       - name: worktree exec routes each branch to its own container
         working-directory: openemr
@@ -721,6 +752,45 @@ jobs:
                   exit 1
               fi
           done
+
+      - name: "Verify bind mount is host-owned in BOTH modes (HOST_UID adoption working under concurrency)"
+        run: |
+          # Stat a known apache-written file in each stack's bind mount
+          # (sites/default/sqlconf.php is touched by the openemr install
+          # path). All four should be owned by the runner uid — proves
+          # HOST_UID adoption holds for worktree mode AND non-worktree
+          # mode AND under concurrent stack load (this job is the only
+          # place we exercise all of those together).
+          runner_uid=$(id -u)
+          for path in \
+              "openemr-wt-multi-easy/sites/default/sqlconf.php" \
+              "openemr-wt-multi-light/sites/default/sqlconf.php" \
+              "openemr-wt-multi-redis/sites/default/sqlconf.php" \
+              "openemr/sites/default/sqlconf.php"; do
+              probe="${{ github.workspace }}/${path}"
+              if [[ ! -f "${probe}" ]]; then
+                  echo "FAIL: probe file missing: ${probe}"
+                  ls -la "$(dirname "${probe}")" || true
+                  exit 1
+              fi
+              owner_uid=$(stat -c '%u' "${probe}")
+              if [[ "${owner_uid}" != "${runner_uid}" ]]; then
+                  echo "FAIL: ${probe} owned by uid=${owner_uid} (expected ${runner_uid})"
+                  ls -la "${probe}"
+                  exit 1
+              fi
+              echo "OK ${path}: uid=${owner_uid}"
+          done
+          echo "all four stacks: bind mount owned by runner uid ✓"
+
+      - name: openemr-cmd down (non-worktree, with volumes) — before worktree removes
+        working-directory: openemr/docker/development-easy
+        run: |
+          # Tear down the non-worktree stack first so the subsequent
+          # worktree removes don't have to contend with it for daemon
+          # bandwidth / disk during their compose-down. -v purges
+          # the development-easy project's named volumes too.
+          openemr-cmd down
 
       - name: Down + remove all three worktrees (HOST_UID adoption covers everything)
         working-directory: openemr
@@ -771,24 +841,37 @@ jobs:
                   exit 1
               fi
           done
-          # Containers + volumes gone per project (label-based for
-          # containers; name-prefix for volumes since named volumes
-          # are filterable by name).
-          for proj in openemr-multi-easy openemr-multi-light openemr-multi-redis; do
+          # Containers + volumes gone per project — including the
+          # non-worktree `development-easy` project alongside the three
+          # worktree ones. Label-based for containers; name-prefix for
+          # volumes (named volumes are filterable by name).
+          for proj in openemr-multi-easy openemr-multi-light openemr-multi-redis development-easy; do
               rem_c=$(docker ps -aq --filter "label=com.docker.compose.project=${proj}" | wc -l)
               if [[ "${rem_c}" -ne 0 ]]; then
                   echo "FAIL: ${rem_c} containers still labeled with project=${proj}:"
                   docker ps -a --filter "label=com.docker.compose.project=${proj}"
                   exit 1
               fi
-              rem=$(docker volume ls -q --filter "name=${proj}_" | wc -l)
+              # Worktree projects use name-prefix `openemr-multi-*_`;
+              # the non-worktree project uses label-filtered volumes
+              # since its volumes are named without that prefix (the
+              # base compose declares them with default names).
+              if [[ "${proj}" = "development-easy" ]]; then
+                  rem=$(docker volume ls -q --filter "label=com.docker.compose.project=${proj}" | wc -l)
+              else
+                  rem=$(docker volume ls -q --filter "name=${proj}_" | wc -l)
+              fi
               if [[ "${rem}" -ne 0 ]]; then
                   echo "FAIL: ${rem} volumes left for ${proj}"
-                  docker volume ls --filter "name=${proj}_"
+                  if [[ "${proj}" = "development-easy" ]]; then
+                      docker volume ls --filter "label=com.docker.compose.project=${proj}"
+                  else
+                      docker volume ls --filter "name=${proj}_"
+                  fi
                   exit 1
               fi
           done
-          echo "all three stacks cleaned (state + dirs + list + git + containers + volumes)"
+          echo "all four stacks cleaned (state + dirs + list + git + containers + volumes)"
 
       - name: Diagnostics on failure
         if: failure()
@@ -800,7 +883,8 @@ jobs:
           echo "===== docker volume ls ====="
           docker volume ls || true
           for c in openemr-multi-easy-openemr-1 openemr-multi-light-openemr-1 openemr-multi-redis-openemr-1 \
-                   openemr-multi-easy-mysql-1   openemr-multi-light-mysql-1   openemr-multi-redis-mysql-1; do
+                   openemr-multi-easy-mysql-1   openemr-multi-light-mysql-1   openemr-multi-redis-mysql-1 \
+                   development-easy-openemr-1   development-easy-mysql-1; do
               echo "===== ${c} logs (last 200) ====="
               docker logs "${c}" --tail 200 2>/dev/null || true
           done
