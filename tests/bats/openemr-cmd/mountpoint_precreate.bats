@@ -169,6 +169,39 @@ oc_remove() {
     [[ "$(cat "${wt}/vendor/marker.txt")" = "marker" ]] || fail "marker content changed"
 }
 
+@test "precreate: refuses to descend through a symlinked path component (no traversal outside worktree)" {
+    # Simulate a malicious-branch scenario where one of the volume
+    # mount target's path components is committed as a symlink. The
+    # naive `mkdir -p $dir/public/assets` would follow the symlink
+    # and create `assets` at the symlink target — outside the worktree.
+    # Pre-create's component-walk must refuse to descend through the
+    # symlink and abandon that mount target instead.
+    oc_add pc-symlink -b --env easy >/dev/null
+    local wt="${TMP_PARENT}/openemr-wt-pc-symlink"
+    # Stage a sentinel target outside the worktree so we can detect
+    # any traversal.
+    local outside="${TMP_PARENT}/outside-victim"
+    mkdir -p "${outside}"
+
+    # Replace the existing `public` dir (created by precreate) with a
+    # symlink pointing outside the worktree. Then re-run precreate via
+    # regen to trigger the walk against the now-symlinked component.
+    rm -rf "${wt}/public"
+    ln -s "${outside}" "${wt}/public"
+
+    run env PATH="${STUB_DIR}:${PATH}" OPENEMR_ROOT="${TMP_ROOT}" \
+        WORKTREE_PARENT="${TMP_PARENT}" \
+        "${SCRIPT}" worktree regen pc-symlink
+    assert_success
+
+    # Sentinel: pre-create must NOT have created `assets` (or anything
+    # else from the symlinked component) at the symlink target.
+    [[ ! -e "${outside}/assets" ]] \
+        || fail "traversal: precreate created '${outside}/assets' via the symlinked 'public' component"
+    [[ ! -e "${outside}/themes" ]] \
+        || fail "traversal: precreate created '${outside}/themes' via the symlinked 'public' component"
+}
+
 # --- probe loosening -------------------------------------------------------
 
 @test "remove probe: passes when non-writable dir is EMPTY and parent is writable (rmdir-able case)" {

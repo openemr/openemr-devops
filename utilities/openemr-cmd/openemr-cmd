@@ -655,25 +655,46 @@ wt_precreate_volume_mountpoints() {
     compose_file="${dir}/${compose_subdir}/docker-compose.yml"
     [[ -f "${compose_file}" ]] || return 0
 
-    local container_path rel_path host_path
+    local container_path rel_path cur part
+    local -a rel_parts
     while IFS= read -r container_path; do
         rel_path="${container_path#/var/www/localhost/htdocs/openemr/}"
-        # Defense: refuse `..` components in the relative path — a
-        # malicious compose file could try to traverse outside the
-        # worktree via `/var/www/localhost/htdocs/openemr/../../etc`.
-        # The regex below requires `/openemr/` followed by `[^:]+` so
-        # the parser already filters most pathological inputs, but
-        # belt+suspenders here costs nothing.
+        # Refuse `..` components in the relative path — a malicious
+        # compose file could try to traverse outside the worktree via
+        # `/var/www/localhost/htdocs/openemr/../../etc`. The regex
+        # below requires `/openemr/` followed by `[^:]+` so the parser
+        # filters most pathological inputs, but belt+suspenders here.
         if [[ "${rel_path}" == *..* ]] || [[ -z "${rel_path}" ]]; then
             continue
         fi
-        host_path="${dir}/${rel_path}"
-        # `|| true`: pre-create is best-effort. If it fails (e.g.,
-        # dir is a file, or perms issue), the worst case is the
-        # previously-known root-owned-dir problem reappears on the
-        # next remove — no worse than today. Don't abort `worktree
-        # add` for a non-fatal pre-create failure.
-        mkdir -p "${host_path}" 2>/dev/null || true
+        # Walk the rel_path component-by-component instead of `mkdir -p
+        # ${dir}/${rel_path}`. Plain mkdir -p follows existing symlink
+        # components, so a malicious branch that committed e.g.
+        # `public -> /etc` would cause us to create `etc/assets` on
+        # the host. The wt_write_override symlink guards (for docker/
+        # and the compose subdir) don't cover this surface; this
+        # walk extends the same defense to every volume mount target.
+        #
+        # For each component: refuse if it exists as a symlink or as
+        # a non-directory regular file/special; otherwise mkdir (or
+        # accept that it already exists as a real dir). On any
+        # mismatch, abandon this mount target (continue 2 to the next
+        # while-loop iteration) without aborting the whole pre-create.
+        cur="${dir}"
+        rel_parts=()
+        IFS=/ read -r -a rel_parts <<< "${rel_path}"
+        for part in "${rel_parts[@]}"; do
+            [[ -n "${part}" ]] || continue
+            cur="${cur}/${part}"
+            if [[ -L "${cur}" ]] || { [[ -e "${cur}" ]] && [[ ! -d "${cur}" ]]; }; then
+                continue 2
+            fi
+            mkdir "${cur}" 2>/dev/null || {
+                # mkdir failed: tolerate the "already exists as real
+                # dir" case (idempotent); abandon on anything else.
+                [[ -d "${cur}" && ! -L "${cur}" ]] || continue 2
+            }
+        done
     done < <(sed -nE 's#^[[:space:]]+- [^:[:space:]]+:(/var/www/localhost/htdocs/openemr/[^:]+):(rw|ro)[[:space:]]*$#\1#p' "${compose_file}" || true)
 }
 
