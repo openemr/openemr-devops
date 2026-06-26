@@ -339,16 +339,12 @@ jobs:
           grep -E '^test-e2e[[:space:]]+.*[[:space:]]none[[:space:]]' <<< "${out}" \
               || { echo "FAIL: 'test-e2e' not listed with status=none"; exit 1; }
 
-      - name: One-shot chown back to runner (enables host-side regen + set-env)
-        run: |
-          # openemr's container startup chowned the whole bind mount to
-          # apache during install, so host-side host-uid operations
-          # (regen writing .env, set-env creating new env dir files)
-          # would fail with EACCES. Chown back to runner once now (stack
-          # is down, no race). The auto-chown step on the eventual
-          # `worktree remove` (when stack is back up) will handle any
-          # further apache-writes between then and now.
-          sudo chown -R "$(id -u):$(id -g)" "${{ github.workspace }}/openemr-wt-test-e2e"
+      # NOTE: a `sudo chown -R "$(id -u):$(id -g)" .../openemr-wt-test-e2e`
+      # step used to live here to recover from apache (uid=1000) chowning
+      # the bind mount during install. With HOST_UID passthrough now in
+      # wt_write_override, apache adopts the runner's uid at boot and the
+      # bind mount stays runner-owned — host-side regen + set-env writes
+      # work without any chown dance.
 
       - name: "worktree regen: rewrites a stomped .env back to canonical contents"
         working-directory: openemr
@@ -1241,21 +1237,12 @@ jobs:
           docker logs "${cname}" --tail 500
           exit 1
 
-      - name: One-shot chown back to runner (enables host-side writes + git commits)
-        run: |
-          # openemr's container startup chowns the whole webroot bind
-          # mount to apache (uid=1000), but `git commit` runs as the
-          # runner (different uid) and needs to write into the working
-          # tree (probe file) and update .git/worktrees/prek-e2e/index
-          # via `git add`. Chown back now that healthy confirms apache
-          # is done with its setup pass. Apache may log a few EACCES
-          # warnings on subsequent /meta/health/readyz probes, but the
-          # prek tests below don't depend on apache continuing to
-          # serve — only on the container being reachable for
-          # `docker exec` (which runs as root, sidestepping the
-          # bind-mount uid mismatch). The eventual `worktree remove`
-          # auto-chown handles the symmetric case for teardown.
-          sudo chown -R "$(id -u):$(id -g)" "${{ github.workspace }}/openemr-wt-prek-e2e"
+      # NOTE: a `sudo chown -R "$(id -u):$(id -g)" .../openemr-wt-prek-e2e`
+      # step used to live here to recover from apache (uid=1000) chowning
+      # the bind mount during install. With HOST_UID passthrough now in
+      # wt_write_override, apache adopts the runner's uid at boot and the
+      # bind mount stays runner-owned — `git commit` from the worktree
+      # works without any chown dance.
 
       - name: openemr-cmd prek-install (writes shim hooks to shared .git/hooks)
         working-directory: openemr-wt-prek-e2e

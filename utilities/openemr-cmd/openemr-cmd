@@ -567,10 +567,28 @@ OVEOF
     #   2. Library bind-mount absolute paths (relative paths in the base
     #      compose break when the compose file is loaded from a worktree
     #      checkout that does not match the base compose's own directory).
+    #   3. HOST_UID / HOST_GID env vars so the openemr container's
+    #      entrypoint (added in openemr/openemr#12642) adopts the host's
+    #      uid/gid for the apache user. Without this, apache stays at
+    #      uid=1000 (Dockerfile-baked) and any host whose uid != 1000
+    #      (CI runners, multi-user dev boxes, distros that start uids
+    #      at 1001+, macOS via Docker Desktop) gets bind-mount files
+    #      apache writes that they can't modify on the host. Emitted
+    #      unconditionally: on uid=1000 hosts the entrypoint's adoption
+    #      block is a sub-millisecond no-op; on every other host it
+    #      eliminates the uid-mismatch class of bugs (#833 / #836 /
+    #      #838) entirely. Pre-HOST_UID-aware images silently ignore
+    #      these env vars — backwards compatible.
+    local host_uid host_gid
+    host_uid=$(id -u)
+    host_gid=$(id -g)
     cat >> "${override_file}" <<OVEOF
 
 services:
   openemr:
+    environment:
+      HOST_UID: "${host_uid}"
+      HOST_GID: "${host_gid}"
     volumes:
       - "${primary_git_real}:${primary_git_real}:rw"
 OVEOF
@@ -920,6 +938,13 @@ cmd_worktree_remove() {
     # `sudo chown -R` step that users would otherwise hit. The probe below
     # is still the safety net — it catches anything chown missed (container
     # not running, root-owned files outside the openemr workdir, etc.).
+    #
+    # Status note: with HOST_UID/HOST_GID now passed through compose
+    # (wt_write_override, requires openemr image with the entrypoint
+    # change from openemr#12642+), apache adopts the host uid at boot
+    # and this chown is a no-op (chowning host-uid → host-uid). Kept
+    # as a back-compat shim for users still on pre-HOST_UID images
+    # and for any drift cases the entrypoint adoption misses.
     #
     # Runs AFTER the user's y/N confirmation, not before. The chown is
     # observable side effect for hosts where host-uid != container-apache-uid
