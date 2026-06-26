@@ -40,12 +40,14 @@ name: openemr-cmd e2e (real docker)
 #     installed hooks — rather than invoking the hook scripts by
 #     hand, so a regression in the shim, hooks-dir resolution, or
 #     cwd-aware container routing surfaces here.
-#   - arm64-smoke-e2e: schedule + workflow_dispatch only (skipped on
-#     PR/push). One nonworktree-style stack on ubuntu-24.04-arm —
-#     proves the openemr image's arm64 manifest works end-to-end
-#     (Apple Silicon developers pull the arm64 variant via Docker
-#     Desktop's Linux VM; catching arm64-only image regressions
-#     here saves them from finding them first).
+#   - arm64-smoke-e2e: one nonworktree-style stack on
+#     ubuntu-24.04-arm — proves the openemr image's arm64 manifest
+#     works end-to-end. All dev-easy images are multi-arch (amd64 +
+#     arm64), so Apple Silicon Mac devs and Raspberry Pi (4/5)
+#     users get native arm64 execution without qemu translation;
+#     this job catches arm64-only image regressions before those
+#     users hit them in practice. Runs on every PR (same triggers
+#     as the other e2e jobs).
 #
 # Cost: ~10-20 min per job for the lifecycle / non-worktree / prek
 # jobs; the multi-concurrent job is ~25-35 min (three parallel
@@ -1695,13 +1697,16 @@ jobs:
           docker logs openemr-prek-e2e-openemr-1 --tail 500 2>/dev/null || true
 
   arm64-smoke-e2e:
-    # Daily-only smoke test on arm64 Linux. Catches arm64-specific
-    # regressions in the openemr image (which is multi-arch — amd64
-    # + arm64). The arm64 variant is what Apple Silicon developers
-    # actually pull on their Macs (via Docker Desktop's Linux VM,
-    # which auto-selects the arm64 manifest), so catching arm64-only
-    # image bugs here within 24h saves those developers from finding
-    # them first.
+    # arm64 Linux smoke test — runs on every PR + push + schedule
+    # + workflow_dispatch (same triggers as the other e2e jobs).
+    # Cheap enough (~10 min wall, native arm64 containerization) to
+    # gate PRs on. Catches arm64-specific regressions in the openemr
+    # image (which is multi-arch — amd64 + arm64) and all other dev
+    # compose images (mariadb, selenium, phpmyadmin, mailpit, ldap,
+    # couchdb — all multi-arch). The arm64 variants are what Apple
+    # Silicon Mac devs and Raspberry Pi (4/5) users pull, so this
+    # job catches arm64-only image regressions before those users
+    # hit them in practice.
     #
     # Scope is intentionally narrow: same shape as nonworktree-
     # lifecycle-e2e but on a different runner arch. One stack via
@@ -1712,24 +1717,16 @@ jobs:
     # duplication for low marginal value. Heavier arm64 coverage
     # can be filed if this smoke ever catches a real regression.
     #
-    # Why Linux arm64 instead of macOS: free GH-hosted macOS
-    # runners (macos-14 arm64) can't run Linux VMs reliably (VZ
-    # needs nested virt, QEMU panics in Lima). Linux arm64 runners
-    # use native cgroups/namespaces on an arm64 host kernel — zero
+    # Why Linux arm64 instead of macOS: free GH-hosted macOS runners
+    # (macos-14 arm64) can't run Linux VMs reliably (VZ needs nested
+    # virt; QEMU panics in Lima). Linux arm64 runners use native
+    # cgroups/namespaces on an arm64 host kernel — zero
     # virtualization, same fast path as ubuntu-22.04 for amd64.
     # macOS-specific concerns (HFS+/APFS case, BSD coreutils edges,
-    # Docker Desktop bind-mount semantics) are uncovered by this
-    # job; the bats portability memory note covers most of those
-    # at the shell-script level.
-    #
-    # Triggers: schedule + workflow_dispatch only. Skips on
-    # push/pull_request so PR cycles stay fast.
-    name: e2e — arm64 Linux smoke (ubuntu-24.04-arm, daily-cron only)
-    # TEMPORARY: include pull_request so this PR can validate the job
-    # works end-to-end on an arm64 runner before merging. Revert to
-    # schedule-only (drop the pull_request clause) in the final
-    # pre-merge commit on this branch.
-    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' }}
+    # Docker Desktop bind-mount semantics) are uncovered by this job;
+    # the bats portability memory note covers most at the shell-
+    # script level.
+    name: e2e — arm64 Linux smoke (ubuntu-24.04-arm)
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     steps:
@@ -1830,9 +1827,13 @@ jobs:
           fi
           echo "OK: bind-mount file owned by uid=${runner_uid} (apache adopted host uid on arm64)"
 
-      - name: openemr-cmd down -v (cleanup)
+      - name: openemr-cmd down (cleanup — internally -v)
         working-directory: openemr/docker/development-easy
         run: openemr-cmd down
+        # Note: `openemr-cmd down` already runs `docker compose down -v`
+        # under the hood (see cmd_down dispatch in openemr-cmd). The
+        # step name reflects the actual user-facing command; the -v
+        # behavior is implicit.
 
       - name: Diagnostics on failure
         if: failure()
