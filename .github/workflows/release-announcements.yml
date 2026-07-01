@@ -53,7 +53,7 @@ jobs:
           php-version: '8.5'
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@v3
 
       - name: Install release-tools dependencies
         working-directory: tools/release
