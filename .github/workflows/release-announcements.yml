@@ -53,7 +53,9 @@ jobs:
           php-version: '8.5'
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install release-tools dependencies
         working-directory: tools/release

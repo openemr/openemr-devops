@@ -163,9 +163,10 @@ jobs:
         php-version: '8.5'
 
     - name: Install Taskfile
-      uses: arduino/setup-task@v2
+      uses: arduino/setup-task@v3
       with:
         version: 3.x
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Install release tools
       working-directory: devops-tools
