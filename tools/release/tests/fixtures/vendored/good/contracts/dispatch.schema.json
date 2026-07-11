@@ -112,12 +112,13 @@
         },
         "tagData": {
             "type": "object",
-            "required": ["tag", "branch", "version"],
+            "required": ["tag", "branch", "version", "prev_release"],
             "additionalProperties": false,
             "properties": {
                 "tag": { "$ref": "#/definitions/tag" },
                 "branch": { "$ref": "#/definitions/branch" },
-                "version": { "$ref": "#/definitions/version" }
+                "version": { "$ref": "#/definitions/version" },
+                "prev_release": { "$ref": "#/definitions/version" }
             }
         },
         "docsBinariesData": {
