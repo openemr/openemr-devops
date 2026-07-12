@@ -360,17 +360,6 @@ jobs:
           ${{ env.TOOLS_DIR }}/release-output/*.sha512
         retention-days: 7
 
-    - name: Create CHANGELOG PRs
-      if: '!inputs.dry_run'
-      working-directory: devops-tools
-      env:
-        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-      run: >-
-        task release:changelog-pr
-        VERSION='${{ inputs.version }}'
-        BRANCHES='${{ inputs.version_branch }},master'
-        OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
-
     # Feature-flagged steps
 
     - name: Upload to SourceForge
