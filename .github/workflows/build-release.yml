@@ -235,9 +235,14 @@ jobs:
     # PHP-side generators moved to openemr in PR 4.
     - name: Extract CHANGELOG section
       working-directory: devops-tools
+      env:
+        # Route through env so a shell-metachar in inputs.version
+        # cannot break out of the task-argument quoting. Task itself
+        # calls shellQuote on the value again; belt + suspenders.
+        RELEASE_VERSION: ${{ inputs.version }}
       run: >-
         task release:changelog:extract
-        VERSION='${{ inputs.version }}'
+        VERSION="$RELEASE_VERSION"
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
 
     # Build and checksum the package before creating the tag/release. If any
