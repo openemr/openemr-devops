@@ -21,21 +21,18 @@ tasks:
     cmds:
       - vendor/bin/phpunit
 
-  changelog:
-    desc: Generate changelog from commit range
+  changelog:extract:
+    desc: Extract a single version's section from openemr's CHANGELOG.md
     requires:
-      vars: [BASE_REF]
+      vars: [VERSION, OPENEMR_DIR]
     deps: [setup]
     cmds:
       - mkdir -p {{shellQuote .OUTPUT_DIR}}
       - >-
-        php bin/changelog.php
-        --base={{shellQuote .BASE_REF}}
-        {{if .HEAD_REF}}--head={{shellQuote .HEAD_REF}}{{end}}
-        {{if .TITLE}}--title={{shellQuote .TITLE}}{{end}}
-        --repo={{shellQuote .REPO}}
+        php bin/extract-changelog-section.php
+        --release-version={{shellQuote .VERSION}}
+        --changelog={{shellQuote .OPENEMR_DIR}}/CHANGELOG.md
         --output={{shellQuote .OUTPUT_DIR}}/changelog.md
-        {{if eq .NO_GHSA "1"}}--no-ghsa{{end}}
 
   version-bump:
     desc: Bump version numbers in OpenEMR source files
@@ -135,19 +132,6 @@ tasks:
         --release-version={{shellQuote .VERSION}}
         --openemr-dir={{shellQuote .OPENEMR_DIR}}
         --output-dir={{shellQuote .OUTPUT_DIR}}
-
-  compatibility:
-    desc: Inject the minimum-supported-versions section into the release notes
-    requires:
-      vars: [VERSION_BRANCH, OPENEMR_DIR]
-    deps: [setup]
-    cmds:
-      - >-
-        php bin/derive-compatibility.php
-        --version-branch={{shellQuote .VERSION_BRANCH}}
-        --openemr-dir={{shellQuote .OPENEMR_DIR}}
-        --repo={{shellQuote .REPO}}
-        --notes-file={{shellQuote .OUTPUT_DIR}}/changelog.md
 
   release:verify-tag:
     desc: Verify a release tag is annotated and well-formed per #664 spec

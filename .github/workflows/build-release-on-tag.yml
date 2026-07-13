@@ -4,10 +4,9 @@ name: Build Release on Tag
 # openemr/openemr-devops#756. When a release-prep PR merges, the conductor
 # in openemr/openemr mints a tag and fans out `openemr-tag` to owner repos
 # including this one. This workflow derives the build inputs from the
-# dispatch payload, looks up the previous release tag for the changelog
-# base_ref, and calls the reusable `build-release.yml` to produce the
-# distribution packages and GitHub Release that the manual workflow_dispatch
-# path already produces.
+# dispatch payload and calls the reusable `build-release.yml` to produce
+# the distribution packages and GitHub Release that the manual
+# workflow_dispatch path already produces.
 
 on:
   repository_dispatch:
@@ -34,7 +33,6 @@ jobs:
       version: ${{ steps.inputs.outputs.version }}
       version_branch: ${{ steps.inputs.outputs.version_branch }}
       release_tag: ${{ steps.inputs.outputs.release_tag }}
-      base_ref: ${{ steps.base.outputs.base_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -63,18 +61,6 @@ jobs:
               | task release:derive-build-inputs PAYLOAD_FILE='-' \
               >> "${GITHUB_OUTPUT}"
 
-      - name: Derive base_ref from previous release
-        id: base
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # Pass the tag through jq --arg, never interpolated into the
-          # command, so the value cannot break out of the jq filter.
-          RELEASE_TAG: ${{ steps.inputs.outputs.release_tag }}
-        run: |
-          base_ref=$(gh release list --repo openemr/openemr --exclude-drafts --json tagName,createdAt \
-              | jq -r --arg cur "${RELEASE_TAG}" 'map(select(.tagName != $cur)) | sort_by(.createdAt) | last.tagName')
-          printf 'base_ref=%s\n' "${base_ref}" >> "${GITHUB_OUTPUT}"
-
   build:
     name: Build release
     needs: derive
@@ -84,7 +70,6 @@ jobs:
       version: ${{ needs.derive.outputs.version }}
       version_branch: ${{ needs.derive.outputs.version_branch }}
       release_tag: ${{ needs.derive.outputs.release_tag }}
-      base_ref: ${{ needs.derive.outputs.base_ref }}
       dry_run: false
       milestone: ''
       skip_milestone_check: true

@@ -16,10 +16,6 @@ on:
         description: Git tag (e.g., v8_0_0). Required unless dry run.
         required: false
         type: string
-      base_ref:
-        description: Previous release tag for changelog (e.g., v7_3_7)
-        required: true
-        type: string
       milestone:
         description: GitHub milestone name for preflight check (e.g., 8.0.0)
         required: false
@@ -65,10 +61,6 @@ on:
       release_tag:
         description: Git tag (e.g., v8_0_0). Required unless dry run.
         required: false
-        type: string
-      base_ref:
-        description: Previous release tag for changelog (e.g., v7_3_7)
-        required: true
         type: string
       milestone:
         description: GitHub milestone name for preflight check (e.g., 8.0.0)
@@ -231,24 +223,21 @@ jobs:
       working-directory: openemr
       run: git push origin HEAD:'${{ inputs.version_branch }}'
 
-    - name: Generate changelog
-      working-directory: devops-tools
-      env:
-        GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
-      run: >-
-        task release:changelog
-        BASE_REF='${{ inputs.base_ref }}'
-        HEAD_REF='${{ inputs.version_branch }}'
-        TITLE='${{ inputs.version }}'
-
-    # Inject the minimum-supported-versions section into the changelog so it
-    # rides along into the release notes (--notes-file below). Runs after the
-    # changelog exists and before the release is created.
-    - name: Add compatibility section to release notes
+    # Extract the target version's section from openemr's CHANGELOG.md
+    # for the GitHub Release body + release-notes asset. Content is
+    # pre-computed by ChangelogMutator + CompatibilityMutator during the
+    # release-prep + release-finalize partner PRs
+    # (openemr/openemr#12925 + openemr/openemr#12928) -- both the noise-
+    # filtered PR list and the Minimum-supported-versions block are
+    # already in place on the rel branch's CHANGELOG.md by the time this
+    # workflow runs post-tag. Replaces the pre-PR-5 dual-step pipeline
+    # (task release:changelog + task release:compatibility) whose
+    # PHP-side generators moved to openemr in PR 4.
+    - name: Extract CHANGELOG section
       working-directory: devops-tools
       run: >-
-        task release:compatibility
-        VERSION_BRANCH='${{ inputs.version_branch }}'
+        task release:changelog:extract
+        VERSION='${{ inputs.version }}'
         OPENEMR_DIR='${{ env.OPENEMR_DIR }}'
 
     # Build and checksum the package before creating the tag/release. If any
