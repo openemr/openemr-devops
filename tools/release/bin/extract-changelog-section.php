@@ -83,7 +83,8 @@ use Symfony\Component\Console\SingleCommandApplication;
             return 1;
         }
 
-        $output->writeln("Extracted <info>{$version}</info> section (" . strlen($section) . " bytes) to <info>{$outputPath}</info>");
+        $bytes = strlen($section);
+        $output->writeln("Extracted <info>{$version}</info> section ({$bytes} bytes) to <info>{$outputPath}</info>");
         return 0;
     })
     ->run();
