@@ -39,6 +39,13 @@ def setInputs(t, args):
         ]
     ))
 
+    t.add_parameter(Parameter(
+        'UbuntuAMI',
+        Description = "Ubuntu 24.04 LTS AMI, resolved from Canonical's public SSM parameter (change only if you know what you're doing)",
+        Default = '/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id',
+        Type = 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    ))
+
     return t
 
 def setRecoveryInputs(t, args):
@@ -79,6 +86,13 @@ def setRecoveryInputs(t, args):
         Type='String'
     ))
 
+    t.add_parameter(Parameter(
+        'UbuntuAMI',
+        Description = "Ubuntu 24.04 LTS AMI, resolved from Canonical's public SSM parameter (change only if you know what you're doing)",
+        Default = '/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id',
+        Type = 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    ))
+
     return t
 
 def setDeveloperInputs(t, args):
@@ -90,50 +104,7 @@ def setDeveloperInputs(t, args):
     ))
 
 def setMappings(t, args):
-    t.add_mapping('RegionData', {
-        "us-east-1" : {
-            "UbuntuAMI": "ami-04505e74c0741db8d"
-        },
-        "us-east-2" : {
-            "UbuntuAMI": "ami-0fb653ca2d3203ac1"
-        },
-        "us-west-1" : {
-            "UbuntuAMI": "ami-01f87c43e618bf8f0"
-        },
-        "us-west-2" : {
-            "UbuntuAMI": "ami-0892d3c7ee96c0bf7"
-        },
-        "ap-south-1" : {
-            "UbuntuAMI": "ami-0851b76e8b1bce90b"
-        },
-        "ap-northeast-1" : {
-            "UbuntuAMI": "ami-088da9557aae42f39"
-        },
-        "ap-northeast-2" : {
-            "UbuntuAMI": "ami-0454bb2fefc7de534"
-        },
-        "ap-southeast-1" : {
-            "UbuntuAMI": "ami-055d15d9cfddf7bd3"
-        },
-        "ap-southeast-2" : {
-            "UbuntuAMI": "ami-0b7dcd6e6fd797935"
-        },
-        "sa-east-1" : {
-            "UbuntuAMI": "ami-090006f29ecb2d79a"
-        },
-        "ca-central-1" : {
-            "UbuntuAMI": "ami-0aee2d0182c9054ac"
-        },
-        "eu-central-1" : {
-            "UbuntuAMI": "ami-0d527b8c289b4af7f"
-        },
-        "eu-west-1" : {
-            "UbuntuAMI": "ami-08ca3fed11864d6bb"
-        },
-        "eu-west-2" : {
-            "UbuntuAMI": "ami-0015a39e4b7c0966f"
-        }
-    })
+    # AMI selection moved to the UbuntuAMI SSM parameter; no static mappings remain
     return t
 
 def buildInfrastructure(t, args):
@@ -198,7 +169,8 @@ def buildInfrastructure(t, args):
     t.add_resource(
         kms.Key(
             'OpenEMRKey',
-            DeletionPolicy = 'Delete',
+            DeletionPolicy = 'Retain',
+            UpdateReplacePolicy = 'Retain',
             KeyPolicy = {
                 "Version": "2012-10-17",
                 "Id": "key-default-1",
@@ -214,6 +186,16 @@ def buildInfrastructure(t, args):
                     "Resource": "*"
                 }]
             }
+        )
+    )
+
+    t.add_resource(
+        kms.Alias(
+            'OpenEMRKeyAlias',
+            DeletionPolicy = 'Retain',
+            UpdateReplacePolicy = 'Retain',
+            AliasName = Join('', ['alias/', ref_stack_name]),
+            TargetKeyId = Ref('OpenEMRKey')
         )
     )
 
@@ -422,7 +404,7 @@ def buildInstance(t, args):
         "exec > /tmp/part-001.log 2>&1\n",
         "apt-get -y update\n",
         "apt-get -y install python3-pip\n",
-        "pip3 install https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz\n",
+        "pip3 install --break-system-packages https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-py3-latest.tar.gz\n",
         "ln -s /root/aws-cfn-bootstrap-latest/init/ubuntu/cfn-hup /etc/init.d/cfn-hup\n",
         "cfn-init -v ",
         "         --stack ", ref_stack_name,
@@ -439,7 +421,7 @@ def buildInstance(t, args):
         "#!/bin/bash -xe\n",
         "exec > /tmp/cloud-setup.log 2>&1\n",
 
-        "DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\" --force-yes\n",
+        "DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -o Dpkg::Options::=\"--force-confdef\" -o Dpkg::Options::=\"--force-confold\"\n",
 
         "DVOL_SERIAL=`echo ", Ref('DockerVolume'), " | sed s/-//`\n",
         "DVOL_DEVICE=/dev/`lsblk -no +SERIAL | grep $DVOL_SERIAL | awk '{print $1}'`\n",
@@ -447,9 +429,15 @@ def buildInstance(t, args):
         "echo $DVOL_DEVICE /mnt/docker ext4 defaults,nofail 0 0 >> /etc/fstab\n",
         "mkdir /mnt/docker\n",
         "mount /mnt/docker\n",
-        "ln -s /mnt/docker /var/lib/docker\n",
+        "rm -rf /var/lib/docker /var/lib/containerd\n",
+        "mkdir -p /mnt/docker/docker /mnt/docker/containerd\n",
+        "ln -sfn /mnt/docker/docker /var/lib/docker\n",
+        "ln -sfn /mnt/docker/containerd /var/lib/containerd\n",
 
-        "apt-get -y install python3-boto3 awscli\n",
+        "apt-get -y install python3-boto3\n",
+        "snap wait system seed.loaded\n",
+        "snap install aws-cli --classic\n",
+        "ln -sf /snap/bin/aws /usr/local/bin/aws\n",
         "source /root/cloud-variables\n",        
         "touch /root/cloud-backups-enabled\n",
         "echo $S3 > /root/.cloud-s3.txt\n",
@@ -463,25 +451,24 @@ def buildInstance(t, args):
 
     # this goes four ways, no help for it
     if (args.dev):
-        scriptLine = [ "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/", Ref('DeploymentBranch'), "/packages/lightsail/launch.sh > /root/launch.sh\n"]
+        scriptLine = [ "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/", Ref('DeploymentBranch'), "/packages/appliance/launch.sh > /root/launch.sh\n"]
         if (args.recovery):
-            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -e -s 0 -b ", Ref('DeploymentBranch'), "\n"]
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -b ", Ref('DeploymentBranch'), "\n"]
         else:
-            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -s 0 -b ", Ref('DeploymentBranch'), "\n"]
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -b ", Ref('DeploymentBranch'), "\n"]
     else:
-        scriptLine = [ "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/lightsail/launch.sh > /root/launch.sh\n" ]
+        scriptLine = [ "curl -L https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/appliance/launch.sh > /root/launch.sh\n" ]
         if (args.recovery):
-            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -e -s 0\n"]
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh\n"]
         else:
-            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh -s 0\n"]            
+            launchLine = ["chmod +x /root/launch.sh && /root/launch.sh\n"]            
     setupScript.extend( scriptLine )            
     setupScript.extend( launchLine )   
 
     if (args.recovery):
         setupScript.extend([                        
             "touch /root/recovery-restore-required\n",
-            "/root/restore.sh --confirm\n",
-            "rm /root/recovery-restore-required\n",
+            "/root/openemr-devops/packages/appliance/restore.sh --confirm\n",
         ])    
     
     stackPassthroughFile = [
@@ -530,7 +517,7 @@ def buildInstance(t, args):
         ec2.Instance(
             'WebserverInstance',
             Metadata = bootstrapMetadata,
-            ImageId = FindInMap('RegionData', ref_region, 'UbuntuAMI'),
+            ImageId = Ref('UbuntuAMI'),
             InstanceType = Ref('InstanceSize'),
             NetworkInterfaces = [ec2.NetworkInterfaceProperty(
                 AssociatePublicIpAddress = True,
@@ -549,7 +536,7 @@ def buildInstance(t, args):
             UserData = Base64(Join('', bootstrapScript)),
             CreationPolicy = {
               "ResourceSignal" : {
-                "Timeout" : "PT1H" if args.recovery else "PT20M"
+                "Timeout" : "PT1H" if args.recovery else "PT40M"
               }
             }
         )
@@ -574,13 +561,13 @@ args = parser.parse_args()
 
 t = Template()
 
-t.add_version('2010-09-09')
-descString='OpenEMR Express Plus v7.0.3 cloud deployment'
+t.set_version('2010-09-09')
+descString='OpenEMR Express Plus v8.2.0 cloud deployment'
 if (args.dev):
     descString += ' [developer]'
 if (args.recovery):
     descString += ' [recovery]'
-t.add_description(descString)
+t.set_description(descString)
 
 # holdover from parent
 OpenEMRKeyID = Ref('OpenEMRKey')

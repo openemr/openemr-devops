@@ -1,6 +1,6 @@
 # OpenEMR Cloud: Do-It-Yourself Appliance Edition
 
-This process will install a fully-functional, secured, preconfigured OpenEMR 7.0.4 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information.
+This process will install a fully-functional, secured, preconfigured OpenEMR 8.2.0 instance on your Ubuntu server, providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Installation
 

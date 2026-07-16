@@ -47,6 +47,28 @@ allocateSwap() {
   fi
 }
 
+reportRecoveryPoint() {
+  # Summarize the archive chain before restoring so the operator can audit
+  # the recovery point this restore will produce. A backup interrupted
+  # mid-upload has no manifest and is skipped by duplicity as incomplete;
+  # this report makes that fallback visible instead of silent.
+  RP_STATUS=$(duplicity collection-status "$@" 2>&1)
+  echo "restore.sh: archive chain status:"
+  echo "${RP_STATUS}" | grep -E 'Chain (start|end) time|Number of contained backup sets|orphaned|incomplete' | sed 's/^/    /'
+  RP_END=$(echo "${RP_STATUS}" | grep 'Chain end time:' | tail -n 1)
+  if [[ -n "${RP_END}" ]]; then
+    echo "restore.sh: RECOVERY POINT: restoring to state as of [${RP_END#*Chain end time: }]"
+  else
+    echo "restore.sh: WARNING: could not determine recovery point from archive chain"
+  fi
+}
+
+duplicityFailed() {
+  echo "restore.sh: FATAL: duplicity restore did not complete; aborting before database restore"
+  echo "restore.sh: live data has already been deleted -- inspect the archive and retry"
+  exit 1
+}
+
 userWarning "$1"
 
 cd "$(dirname "$0")" || exit 1
@@ -62,16 +84,27 @@ if [[ -f /root/recovery-restore-required ]]; then
   KMS=${RECOVERYKMS}
   PASSPHRASE=$(aws s3 cp s3://"${S3}"/Backup/passphrase.txt - --sse aws:kms --sse-kms-key-id "${KMS}")
   export PASSPHRASE
-  duplicity --force boto3+s3://"${S3}"/Backup /opt/appliance/backups/in
+  reportRecoveryPoint boto3+s3://"${S3}"/Backup
+  duplicity --force boto3+s3://"${S3}"/Backup /opt/appliance/backups/in || duplicityFailed
   rm /root/recovery-restore-required
 elif [[ -f /root/cloud-backups-enabled ]]; then
   S3=$(cat /root/.cloud-s3.txt)
   KMS=$(cat /root/.cloud-kms.txt)
   PASSPHRASE=$(aws s3 cp s3://"${S3}"/Backup/passphrase.txt - --sse aws:kms --sse-kms-key-id "${KMS}")
   export PASSPHRASE
-  duplicity --force boto3+s3://"${S3}"/Backup /opt/appliance/backups/in
+  reportRecoveryPoint boto3+s3://"${S3}"/Backup
+  duplicity --force boto3+s3://"${S3}"/Backup /opt/appliance/backups/in || duplicityFailed
 else
-  duplicity --no-encryption --force file:///opt/appliance/backups/out /opt/appliance/backups/in
+  reportRecoveryPoint --no-encryption file:///opt/appliance/backups/out
+  duplicity --no-encryption --force file:///opt/appliance/backups/out /opt/appliance/backups/in || duplicityFailed
+fi
+
+echo "restore.sh: database backup artifacts staged for replay:"
+MANIFESTS=$(find /opt/appliance/backups/in/mysql -maxdepth 1 -name '*.manifest' 2>/dev/null)
+if [[ -n "${MANIFESTS}" ]]; then
+  echo "    ${MANIFESTS//$'\n'/$'\n'    }"
+else
+  echo "    (none found -- database restore will fail)"
 fi
 
 allocateSwap
