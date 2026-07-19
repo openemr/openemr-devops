@@ -4,7 +4,8 @@ name: Release Permissions Check
 # Mints an App token from the RELEASE_APP_CLIENT_ID org variable +
 # RELEASE_APP_PRIVATE_KEY org secret and exercises what the
 # release-mechanism workflows in tools/release/ need (build-release,
-# release-announcements, ship-release, dispatch fan-out).
+# ship-release, dispatch fan-out). (release-announcements moved to
+# openemr/website-openemr per openemr/openemr#12598.)
 # Run after installing the App and after secrets rotations.
 
 on:
