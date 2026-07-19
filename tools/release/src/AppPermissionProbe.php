@@ -106,9 +106,10 @@ final readonly class AppPermissionProbe
 
         // Committing under .github/workflows/ additionally requires
         // workflows:write. Plain-dotfile probes miss this gap, and several
-        // release-mechanism workflows (build-release, release-announcements,
-        // ship-release) depend on it. The stub is name-only with no `on:`
-        // trigger, so it never runs.
+        // release-mechanism workflows (build-release, ship-release) depend
+        // on it. The stub is name-only with no `on:` trigger, so it never
+        // runs. (release-announcements moved to openemr/website-openemr
+        // per openemr/openemr#12598.)
         try {
             $this->api->putFile(
                 $owner,
