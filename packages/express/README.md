@@ -1,6 +1,6 @@
 # OpenEMR Cloud Express
 
-OpenEMR Cloud Express on the AWS Marketplace provides OpenEMR 7.0.4, an embedded MySQL server, and rotated, automatic backups of all OpenEMR configuration and health information.
+OpenEMR Cloud Express on the AWS Marketplace provides OpenEMR 8.0.2, an embedded MySQL server, and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Compatibility Note
 
@@ -70,6 +70,8 @@ It is recommended, in the strongest possible terms, that you familiarize yoursel
 #### Backup Cross-Compatibility
 
 OpenEMR Cloud Express backup files are cross-compatible with the [Appliance](../appliance) deployment package; you should be able to migrate your practice between any of the three if you move the backups onto the target.
+
+Older versions of the Express tool created XtraBackup-compatible backup files for a MySQL container. The appliance cannot load backups created for the older, "Lightsail"-based installer.
 
 ### Next Steps
 
