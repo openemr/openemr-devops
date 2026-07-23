@@ -1,8 +1,0 @@
-{
-    "event": "release-targets-changed",
-    "repo": "openemr/openemr",
-    "sha": "abcdef0123456789abcdef0123456789abcdef01",
-    "actor": "openemr-release-bot",
-    "dispatched_at": "2026-04-29T12:30:00Z",
-    "data": {}
-}
