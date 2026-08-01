@@ -40,6 +40,13 @@ This repo was installed to the appliance during launch, and you'll find the mast
 * Run a quick backup? `/etc/cron.daily/duplicity-backups` as root.
 * Modified the compose file? Reload it from this directory with `docker compose up -d`.
 
+### User Management
+
+We've installed [oce-cli-manage-users](https://github.com/opencoreemr/oce-cli-manage-users) if you need a quick password reset.
+* `docker compose -p appliance exec openemr su -s /bin/sh apache -c 'oce-manage-users.phar user:reset-password --user=admin'`
+* `docker compose -p appliance exec openemr su -s /bin/sh apache -c 'oce-manage-users.phar user:unlock --user=doctor1'`
+* You can just use `su -s /bin/sh apache -c 'oce-manage-users.phar user:list'` if you're inside the container.
+
 ### Direct MySQL Access
 
 * `docker compose -p appliance exec mysql mariadb -p`, password `root`, will give you client access.

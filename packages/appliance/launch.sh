@@ -100,6 +100,11 @@ main () {
   chmod a+x backup.sh restore.sh
   cp backup.sh /etc/cron.daily/duplicity-backups
 
+  curl -L --fail-with-body -o oce-manage-users.phar https://github.com/opencoreemr/oce-cli-manage-users/releases/latest/download/oce-manage-users.phar || exit 1
+  docker compose -p appliance cp oce-manage-users.phar openemr:/usr/local/bin
+  docker compose -p appliance exec openemr chown root:root /usr/local/bin/oce-manage-users.phar
+  docker compose -p appliance exec openemr chmod +x /usr/local/bin/oce-manage-users.phar
+
   echo "launch.sh: done"
 }
 
