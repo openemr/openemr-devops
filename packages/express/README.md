@@ -1,6 +1,6 @@
 # OpenEMR Cloud Express
 
-OpenEMR Cloud Express on the AWS Marketplace provides OpenEMR 8.0.2, an embedded MySQL server, and rotated, automatic backups of all OpenEMR configuration and health information.
+OpenEMR Cloud Express on the AWS Marketplace provides OpenEMR 8.2.0, an embedded MySQL server, and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Compatibility Note
 
