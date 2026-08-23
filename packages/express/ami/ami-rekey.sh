@@ -50,7 +50,7 @@ until [[ "$(docker container inspect "${CONTAINER}" | jq '.[].State.Health.Statu
 TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
 INSTANCEID=$(curl -H "X-aws-ec2-metadata-token: ${TOKEN}" http://169.254.169.254/latest/meta-data/instance-id)
 docker compose -p appliance exec openemr su -s /bin/sh apache -c 'oce-manage-users.phar user:reset-password --user=admin --password='"${INSTANCEID}"
-docker compose -p appliance exec openemr su -s /bin/sh apache -c 'oce-manage-users.phar user:unlock --useradmin'
+docker compose -p appliance exec openemr su -s /bin/sh apache -c 'oce-manage-users.phar user:activate --user=admin'
 
 # reset SSL
 docker compose -p appliance exec openemr /bin/sh -c 'rm -f /etc/ssl/private/* /etc/ssl/docker-selfsigned-configured'
