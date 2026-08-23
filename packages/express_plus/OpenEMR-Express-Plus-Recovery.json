@@ -1,6 +1,6 @@
 {
  "AWSTemplateFormatVersion": "2010-09-09",
- "Description": "OpenEMR Express Plus v8.2.0 cloud deployment [recovery]",
+ "Description": "OpenEMR Express Plus v8.3.0 cloud deployment [recovery]",
  "Outputs": {
   "OpenEMR": {
    "Description": "OpenEMR Setup",
