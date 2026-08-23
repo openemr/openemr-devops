@@ -1,6 +1,6 @@
 # OpenEMR Cloud Express
 
-OpenEMR Cloud Express on the AWS Marketplace provides OpenEMR 7.0.4, an embedded MySQL server, and rotated, automatic backups of all OpenEMR configuration and health information.
+OpenEMR Cloud Express on the AWS Marketplace provides OpenEMR 8.2.0, an embedded MariaDB server, and rotated, automatic backups of all OpenEMR configuration and health information.
 
 ## Compatibility Note
 
@@ -52,9 +52,9 @@ Although Amazon EC2 is a [HIPAA Eligible Service](https://aws.amazon.com/complia
 
 ### Backups
 
-Duplicity is installed to the host machine to manage and rotate backups. It can be configured to send the backups it creates to off-instance storage, but currently does not attempt to do so. `/etc/cron.daily/duplicity-backups` holds the daily backup process that snapshots both the MySQL database, the OpenEMR configuration, and any patient documents that have been created, storing them in `/opt/appliance/backups/out`.
+Duplicity is installed to the host machine to manage and rotate backups. It can be configured to send the backups it creates to off-instance storage, but currently does not attempt to do so. `/etc/cron.daily/duplicity-backups` holds the daily backup process that snapshots both the MariaDB database, the OpenEMR configuration, and any patient documents that have been created, storing them in `/opt/appliance/backups/out`.
 
-Full backups are made every seven days, with incrementals for the other days. The Duplicity backups encompass the MySQL database backups.
+Full backups are made every seven days, with incrementals for the other days. The Duplicity backups encompass the MariaDB database backups.
 
 #### Recovering from Backup
 
@@ -63,13 +63,15 @@ It is recommended, in the strongest possible terms, that you familiarize yoursel
 1. If necessary, place the compressed backup archive bundle in `/opt/appliance/backups/out`.
 2. As root, launch `/root/openemr-devops/packages/appliance/restore.sh`, and carefully read the warning it supplies you.
 3. Take the actions it suggests &mdash; make an image snapshot if possible &mdash; and then, once ready, edit the script as instructed and run it anew.
-4. Duplicity will unpack the MySQL backups it's holding, the OpenEMR configuration directory, and any patient documents that have been saved.
+4. Duplicity will unpack the MariaDB backups it's holding, the OpenEMR configuration directory, and any patient documents that have been saved.
 5. The MariaDB recovery tool will launch, applying the most recent full backup and all the daily incrementals.
 6. The MariaDB container will be restarted to pick up the newly constructed data directory, and at this point your backups should be completely restored.
 
 #### Backup Cross-Compatibility
 
 OpenEMR Cloud Express backup files are cross-compatible with the [Appliance](../appliance) deployment package; you should be able to migrate your practice between any of the three if you move the backups onto the target.
+
+Older versions of the Express tool created XtraBackup-compatible backup files for a MySQL container. The appliance cannot load backups created for the older, "Lightsail"-based installer.
 
 ### Next Steps
 

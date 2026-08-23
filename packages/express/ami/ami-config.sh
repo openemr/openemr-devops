@@ -4,7 +4,7 @@ set -e
 
 f () {
     # shellcheck disable=SC2312
-    curl -s https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/appliance/launch.sh | bash -s --
+    curl -s https://raw.githubusercontent.com/openemr/openemr-devops/master/packages/appliance/launch.sh | bash
 
     until [[ -n "${CONTAINER}" ]]
     do
