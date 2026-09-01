@@ -363,17 +363,45 @@ wt_validate_dir_safe() {
     fi
 }
 
-# Resolve the openemr container ID for the managed worktree containing the
-# current working directory, or empty if cwd is not in a managed worktree.
-# Lets commands invoked from inside a worktree (e.g. a git hook firing
-# 'openemr-cmd prek run') dispatch to *that* worktree's container instead
-# of falling through to the script's default detection, which can pick the
-# wrong container when multiple worktree stacks are running concurrently.
+# Resolve the managed worktree containing the current working directory
+# and its openemr container ID (if the stack is running). Emits a single
+# line to stdout: "<branch><TAB><container-id>", with either side possibly
+# empty. Callers must parse both fields to distinguish the three states:
+#
+#   - branch empty, container empty : cwd is NOT inside any managed
+#                                     worktree (primary repo or an
+#                                     arbitrary dir). Caller's normal
+#                                     CONTAINER_ID fallback is correct.
+#   - branch set, container empty   : cwd IS a worktree, but that
+#                                     specific worktree's stack is down.
+#                                     Callers must fail loud with a
+#                                     message identifying the branch
+#                                     (falling back to CONTAINER_ID here
+#                                     would silently route into some
+#                                     other worktree's container, which
+#                                     reads a different checkout via its
+#                                     own bind mount — a real hazard for
+#                                     prek: hooks report "no files to
+#                                     check" and the commit ships
+#                                     un-validated).
+#   - branch set, container set     : happy path; dispatch to container.
+#
+# Caller pattern — capture stdout, then split on the tab:
+#
+#   local branch container output
+#   output=$(wt_resolve_container_from_cwd)
+#   IFS=$'\t' read -r branch container <<< "${output}"
+#
+# Reading via `< <(fn)` also works but trips shellcheck SC2312 (masks
+# the function's exit code). Capturing to a var first sidesteps that.
 wt_resolve_container_from_cwd() {
-    local toplevel toplevel_real branch slug d_real
-    toplevel=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
-    toplevel_real=$("${OE_REALPATH_M[@]}" "${toplevel}" 2>/dev/null) || return 0
-    [[ -f "${WT_STATE_FILE}" ]] || return 0
+    local toplevel toplevel_real branch="" container="" slug d_real
+    toplevel=$(git rev-parse --show-toplevel 2>/dev/null) || { printf '\t\n'; return 0; }
+    toplevel_real=$("${OE_REALPATH_M[@]}" "${toplevel}" 2>/dev/null) || { printf '\t\n'; return 0; }
+    if [[ ! -f "${WT_STATE_FILE}" ]]; then
+        printf '\t\n'
+        return 0
+    fi
 
     while IFS=$'\t' read -r b d; do
         [[ -z "${b}" ]] && continue
@@ -384,7 +412,10 @@ wt_resolve_container_from_cwd() {
         fi
     done < <(jq -r 'to_entries[] | [.key, .value.dir] | @tsv' "${WT_STATE_FILE}" 2>/dev/null || true)
 
-    [[ -n "${branch:-}" ]] || return 0
+    if [[ -z "${branch}" ]]; then
+        printf '\t\n'
+        return 0
+    fi
     slug=$(wt_slug "${branch}")
     # 2>/dev/null + '|| true': if the docker daemon is unavailable (laptop
     # asleep, daemon not started) docker ps would error and propagate up
@@ -392,10 +423,11 @@ wt_resolve_container_from_cwd() {
     # report a clear "no running openemr container" message. Suppress the
     # failure here so the caller treats an empty result the same as a clean
     # "no container found" and emits its own user-facing error.
-    docker ps \
+    container=$(docker ps \
         --filter "label=com.docker.compose.project=openemr-${slug}" \
         --filter "label=com.docker.compose.service=openemr" \
-        --format "{{.ID}}" 2>/dev/null | head -n 1 || true
+        --format "{{.ID}}" 2>/dev/null | head -n 1 || true)
+    printf '%s\t%s\n' "${branch}" "${container}"
 }
 
 # ============================================================================
@@ -2522,7 +2554,18 @@ case "${FIRST_ARG}" in
         # dispatch to foo's container, not to whatever worktree container
         # happens to be running (the default fallback). wt_resolve_container_from_cwd
         # checks if cwd matches a managed-worktree entry and returns that
-        # specific container; falls back to CONTAINER_ID otherwise.
+        # specific container; falls back to CONTAINER_ID only when cwd is
+        # NOT inside a managed worktree (primary repo or arbitrary dir).
+        #
+        # If cwd IS a managed worktree but its stack is down (WT_RESOLVED_BRANCH
+        # set + empty container ID), we intentionally do NOT fall back to
+        # CONTAINER_ID — that would silently route the pre-commit run into
+        # some other worktree's container, which reads a different checkout
+        # via its own bind mount and reports "no files to check" for every
+        # hook (its git index doesn't match this worktree's staged files).
+        # The commit then completes without any validation running against
+        # the actual changes. Fail loud instead, naming the specific
+        # worktree to bring up.
         #
         # actionlint-docker workaround: .pre-commit-config.yaml uses the
         # 'actionlint-docker' hook, which spawns docker run rhysd/actionlint
@@ -2532,7 +2575,43 @@ case "${FIRST_ARG}" in
         # binary), and run pre-commit against that copy via --config. Host
         # invocation of pre-commit/prek is unaffected; it reads the unmodified
         # .pre-commit-config.yaml as before.
-        prek_target_id=$(wt_resolve_container_from_cwd)
+        # See wt_resolve_container_from_cwd for the tab-separated
+        # output contract. Capture into a here-string first (rather
+        # than process-substituting the function call directly into
+        # `read`) to satisfy shellcheck SC2312 — reading from
+        # `< <(cmd)` masks cmd's exit code; capturing to a var first
+        # separates the two so the linter can see cmd's return path.
+        wt_branch=""
+        wt_container=""
+        wt_resolve_output=$(wt_resolve_container_from_cwd)
+        IFS=$'\t' read -r wt_branch wt_container <<< "${wt_resolve_output}"
+        if [[ -n "${wt_branch}" && -z "${wt_container}" ]]; then
+            # "docker compose stack" is spelled out here (rather than just
+            # "stack") because this error can surface from a git hook, at
+            # which point the reader may not have openemr-cmd's jargon in
+            # working memory. Mentioning both recovery commands too — the
+            # correct one depends on whether the stack was previously up
+            # (worktree start preserves data + is faster) or was never up
+            # / was down'd (worktree up recreates containers). Detecting
+            # which state we're in would require another docker compose ps
+            # call on the pre-commit hot path; not worth ~200ms per hook
+            # fire for the marginal ergonomic gain.
+            # Shell-escape wt_branch (%q) in the copy/paste-able command
+            # lines so an unusual branch name (spaces, $, quotes, etc.)
+            # can't inject anything when the user pastes into their shell.
+            # No-op for common branch names (letters/digits/dashes/slashes).
+            # The header line just interpolates it inside single quotes for
+            # readability — informational, not a command to run.
+            echo "Error: worktree '${wt_branch}' docker compose stack is not up." >&2
+            echo "       If stack was stopped, start containers (preserves data):" >&2
+            printf '           openemr-cmd worktree start %q\n' "${wt_branch}" >&2
+            echo "       Otherwise (never up'd, or previously down'd), bring the stack up:" >&2
+            printf '           openemr-cmd worktree up %q\n' "${wt_branch}" >&2
+            echo "       (Refusing to fall back to another running container — that would silently" >&2
+            echo "        validate the wrong checkout and let the commit through un-validated.)" >&2
+            exit 1
+        fi
+        prek_target_id="${wt_container}"
         [[ -n "${prek_target_id}" ]] || prek_target_id="${CONTAINER_ID}"
         if [[ -z "${prek_target_id}" ]]; then
             echo "Error: no running openemr container found. Start the stack first ('openemr-cmd up' or 'openemr-cmd worktree up <branch>')." >&2
