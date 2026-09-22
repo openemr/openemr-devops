@@ -19,7 +19,7 @@ spec:
         args:
         - mariadbd
         - --character-set-server=utf8mb4
-        image: mariadb:11.8.9@sha256:8b5f33ebd85d1775657e974ed10434128bb493c80e826ceaa54074fd1a92a112
+        image: mariadb:11.8.9@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68
         env:
         - name: MYSQL_REPL_PASSWORD
           valueFrom:
@@ -82,7 +82,7 @@ spec:
         args:
         - mariadbd
         - --character-set-server=utf8mb4
-        image: mariadb:11.8.9@sha256:8b5f33ebd85d1775657e974ed10434128bb493c80e826ceaa54074fd1a92a112
+        image: mariadb:11.8.9@sha256:79d59758afc91b89b120b0a8904d637f5a3b3e1c4900f29b740d6d46c72fef68
         ports:
         - containerPort: 3306
           name: mysql-port
