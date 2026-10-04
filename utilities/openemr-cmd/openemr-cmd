@@ -1876,7 +1876,20 @@ import-random-patients(){
         echo "openemr-cmd irp: unknown --format '${format}' (expected ccda or fhir)" >&2
         exit 1
     fi
-    local count="${positional[0]:-}"
+    # Reject empty count and extra positionals so typos surface instead of
+    # silently sending an empty count to devtools (which generates 0 patients)
+    # or dropping extra args (which hides the typo).
+    if (( ${#positional[@]} == 0 )); then
+        echo "openemr-cmd irp: missing <count>" >&2
+        echo "Usage: openemr-cmd {irp|irpc|irpf} <count> [<isDev>] [--format=ccda|fhir]" >&2
+        exit 1
+    fi
+    if (( ${#positional[@]} > 2 )); then
+        echo "openemr-cmd irp: too many positional arguments (got ${#positional[@]}, expected at most 2)" >&2
+        echo "Usage: openemr-cmd {irp|irpc|irpf} <count> [<isDev>] [--format=ccda|fhir]" >&2
+        exit 1
+    fi
+    local count="${positional[0]}"
     local isDev="${positional[1]:-true}"
     if [[ "${format}" == "fhir" ]]; then
         ENV_VAR="OPENEMR_ENABLE_FHIR_IMPORT=1"

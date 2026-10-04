@@ -126,6 +126,31 @@ oc_run() {
     fi
 }
 
+@test "irp (no args): rejected with 'missing <count>' before docker exec" {
+    # Previously `irp` with no args sent an empty count to devtools, which
+    # the devtools dispatcher would quietly treat as 0 patients. Now the
+    # arg parser rejects the empty positional set up front.
+    run oc_run irp
+    [[ "${status}" -ne 0 ]] || fail "expected non-zero exit on missing count; got 0"
+    assert_output --partial "missing <count>"
+    if grep -Fq "/root/devtools import-random-patients" "${STUB_DIR}/docker.log"; then
+        cat "${STUB_DIR}/docker.log"
+        fail "missing count should abort before the devtools dispatch"
+    fi
+}
+
+@test "irp with 3+ positionals: rejected with 'too many positional arguments'" {
+    # Previously extra positionals (typos) were silently dropped. Now the
+    # arg parser rejects anything beyond <count> <isDev>.
+    run oc_run irp 3 true extra
+    [[ "${status}" -ne 0 ]] || fail "expected non-zero exit on extra positional; got 0"
+    assert_output --partial "too many positional arguments"
+    if grep -Fq "/root/devtools import-random-patients" "${STUB_DIR}/docker.log"; then
+        cat "${STUB_DIR}/docker.log"
+        fail "extra positional should abort before the devtools dispatch"
+    fi
+}
+
 @test "irpf alias: fhir shortcut, both short and long form" {
     run oc_run irpf 4 true
     assert_success
