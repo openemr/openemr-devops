@@ -18,7 +18,7 @@ set -euo pipefail
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.51"
+VERSION="1.0.52"
 
 # ============================================================================
 # WORKTREE STATE MANAGEMENT
@@ -1852,9 +1852,38 @@ change_db_character_set_and_collation(){
 
 
 import-random-patients(){
-    # Use the devtools function, passing all arguments ($@)
-    ENV_VAR="OPENEMR_ENABLE_CCDA_IMPORT=1"
-    run_devtools_in_docker "${CONTAINER_ID}" import-random-patients "$@"
+    # Supports:
+    #   openemr-cmd irp <count> [<isDev>] [--format=ccda|fhir]
+    #   openemr-cmd irpc <count> [<isDev>]   -> --format=ccda
+    #   openemr-cmd irpf <count> [<isDev>]   -> --format=fhir
+    # The devtools dispatcher takes positional args <count> <isDev> <format>;
+    # ccda is the default both here and there so unflagged calls behave as
+    # they did before the fhir format landed.
+    local format="ccda"
+    local positional=()
+    local arg
+    for arg in "$@"; do
+        case "${arg}" in
+            --format=*)
+                format="${arg#--format=}"
+                ;;
+            *)
+                positional+=("${arg}")
+                ;;
+        esac
+    done
+    if [[ "${format}" != "ccda" && "${format}" != "fhir" ]]; then
+        echo "openemr-cmd irp: unknown --format '${format}' (expected ccda or fhir)" >&2
+        exit 1
+    fi
+    local count="${positional[0]:-}"
+    local isDev="${positional[1]:-true}"
+    if [[ "${format}" == "fhir" ]]; then
+        ENV_VAR="OPENEMR_ENABLE_FHIR_IMPORT=1"
+    else
+        ENV_VAR="OPENEMR_ENABLE_CCDA_IMPORT=1"
+    fi
+    run_devtools_in_docker "${CONTAINER_ID}" import-random-patients "${count}" "${isDev}" "${format}"
 }
 
 register-oauth2-client-demo(){
@@ -2112,7 +2141,9 @@ if [[ $# -eq 0 || "${FIRST_ARG}" = '--help' || "${FIRST_ARG}" = '-h' ]]; then
     echo "  rocd, register-oauth2-client-demo  Register oauth2 client (returns client id/secret) on online demo"
     echo "  swtm, set-swagger-to-multisite     Direct swagger api testing suite to use a multisite <multisite>"
     echo 'computational-health-informatics:'
-    echo "  irp, import-random-patients        Create and import random patients <number patients>"
+    echo "  irp, import-random-patients        Create and import random patients <number patients> [--format=ccda|fhir] (default ccda)"
+    echo "  irpc, import-random-patients-ccda  Shortcut for irp --format=ccda"
+    echo "  irpf, import-random-patients-fhir  Shortcut for irp --format=fhir (see contrib/util/fhir_import/README.md for readiness)"
     echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
     echo 'webroot-management:'
     echo "  cwb, change-webroot-blank          Change webroot to be blank (this is default setting of environment)"
@@ -2300,6 +2331,12 @@ case "${FIRST_ARG}" in
         ;;
     irp|import-random-patients)
         import-random-patients "$@"
+        ;;
+    irpc|import-random-patients-ccda)
+        import-random-patients "$@" --format=ccda
+        ;;
+    irpf|import-random-patients-fhir)
+        import-random-patients "$@" --format=fhir
         ;;
     rocd|register-oauth2-client-demo)
         register-oauth2-client-demo "$@"

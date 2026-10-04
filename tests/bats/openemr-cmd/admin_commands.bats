@@ -67,35 +67,105 @@ oc_run() {
         || { cat "${STUB_DIR}/docker.log"; fail "expected 'ps -a' for single-name check"; }
 }
 
-# --- import-random-patients / irp -----------------------------------------
-# Special-case: this is the one devtools subcommand where the script sets
-# ENV_VAR to a real value (OPENEMR_ENABLE_CCDA_IMPORT=1) before calling
-# run_devtools_in_docker. The -e flag must carry that var into the container.
+# --- import-random-patients / irp / irpc / irpf ---------------------------
+# This is the one devtools subcommand where openemr-cmd sets ENV_VAR to a
+# real value before calling run_devtools_in_docker (so the -e flag carries
+# the OPENEMR_ENABLE_{CCDA,FHIR}_IMPORT gate into the container), AND where
+# openemr-cmd flattens the user-facing surface (`--format=ccda|fhir` plus
+# `irpc` / `irpf` aliases) down to a positional-arg call into
+# `/root/devtools import-random-patients <count> <isDev> <format>` that the
+# devtools dispatcher understands.
 
-@test "irp: docker exec includes -e OPENEMR_ENABLE_CCDA_IMPORT=1" {
-    run oc_run irp
+@test "irp (no format): defaults to ccda — sets OPENEMR_ENABLE_CCDA_IMPORT=1 and 'ccda' as the third positional" {
+    run oc_run irp 3 true
     assert_success
     grep -Fq "exec -e OPENEMR_ENABLE_CCDA_IMPORT=1" "${STUB_DIR}/docker.log" \
         || { cat "${STUB_DIR}/docker.log"; fail "expected '-e OPENEMR_ENABLE_CCDA_IMPORT=1' in invocation"; }
-    # And the dispatch target is /root/devtools import-random-patients.
-    grep -Fq "/root/devtools import-random-patients" "${STUB_DIR}/docker.log" \
-        || fail "expected '/root/devtools import-random-patients' devtool"
+    grep -Fq "/root/devtools import-random-patients 3 true ccda" "${STUB_DIR}/docker.log" \
+        || { cat "${STUB_DIR}/docker.log"; fail "expected '/root/devtools import-random-patients 3 true ccda' invocation"; }
 }
 
 @test "irp: 'import-random-patients' long form is equivalent" {
-    run oc_run import-random-patients
+    run oc_run import-random-patients 2 true
     assert_success
     grep -Fq "exec -e OPENEMR_ENABLE_CCDA_IMPORT=1" "${STUB_DIR}/docker.log" || fail "long form did not set env var"
+    grep -Fq "/root/devtools import-random-patients 2 true ccda" "${STUB_DIR}/docker.log" \
+        || fail "long form did not pass 'ccda' as third positional"
 }
 
-@test "non-irp devtools subcommands do NOT carry OPENEMR_ENABLE_CCDA_IMPORT" {
-    # The env-var set is isolated to irp/import-random-patients; other devtools
-    # (e.g. pst) must NOT inherit it. Pinning that scoping.
+@test "irp --format=fhir: sets OPENEMR_ENABLE_FHIR_IMPORT=1 and 'fhir' as the third positional" {
+    run oc_run irp 2 true --format=fhir
+    assert_success
+    grep -Fq "exec -e OPENEMR_ENABLE_FHIR_IMPORT=1" "${STUB_DIR}/docker.log" \
+        || { cat "${STUB_DIR}/docker.log"; fail "expected '-e OPENEMR_ENABLE_FHIR_IMPORT=1' in invocation"; }
+    grep -Fq "/root/devtools import-random-patients 2 true fhir" "${STUB_DIR}/docker.log" \
+        || { cat "${STUB_DIR}/docker.log"; fail "expected '/root/devtools import-random-patients 2 true fhir' invocation"; }
+    # And ccda env var is NOT also set (the two env vars are mutually exclusive).
+    if grep -Fq "OPENEMR_ENABLE_CCDA_IMPORT" "${STUB_DIR}/docker.log"; then
+        cat "${STUB_DIR}/docker.log"
+        fail "fhir format leaked OPENEMR_ENABLE_CCDA_IMPORT into docker exec"
+    fi
+}
+
+@test "irp --format=ccda: explicit ccda is equivalent to the default" {
+    run oc_run irp 1 false --format=ccda
+    assert_success
+    grep -Fq "exec -e OPENEMR_ENABLE_CCDA_IMPORT=1" "${STUB_DIR}/docker.log" || fail "explicit --format=ccda did not set CCDA env var"
+    grep -Fq "/root/devtools import-random-patients 1 false ccda" "${STUB_DIR}/docker.log" \
+        || fail "explicit --format=ccda did not pass 'ccda' as third positional"
+}
+
+@test "irp --format=bogus: rejected before docker exec with a usage error" {
+    run oc_run irp 1 true --format=bogus
+    [[ "${status}" -ne 0 ]] || fail "expected non-zero exit on bad --format; got 0"
+    assert_output --partial "unknown --format 'bogus'"
+    # Must not have reached run_devtools_in_docker — no docker exec recorded.
+    if grep -Fq "/root/devtools import-random-patients" "${STUB_DIR}/docker.log"; then
+        cat "${STUB_DIR}/docker.log"
+        fail "bad --format should abort before the devtools dispatch"
+    fi
+}
+
+@test "irpf alias: fhir shortcut, both short and long form" {
+    run oc_run irpf 4 true
+    assert_success
+    grep -Fq "exec -e OPENEMR_ENABLE_FHIR_IMPORT=1" "${STUB_DIR}/docker.log" || fail "irpf did not set FHIR env var"
+    grep -Fq "/root/devtools import-random-patients 4 true fhir" "${STUB_DIR}/docker.log" \
+        || fail "irpf did not pass 'fhir' as third positional"
+    : > "${STUB_DIR}/docker.log"
+    run oc_run import-random-patients-fhir 4 true
+    assert_success
+    grep -Fq "exec -e OPENEMR_ENABLE_FHIR_IMPORT=1" "${STUB_DIR}/docker.log" || fail "irpf long form did not set FHIR env var"
+    grep -Fq "/root/devtools import-random-patients 4 true fhir" "${STUB_DIR}/docker.log" \
+        || fail "irpf long form did not pass 'fhir'"
+}
+
+@test "irpc alias: ccda shortcut, both short and long form" {
+    run oc_run irpc 5 false
+    assert_success
+    grep -Fq "exec -e OPENEMR_ENABLE_CCDA_IMPORT=1" "${STUB_DIR}/docker.log" || fail "irpc did not set CCDA env var"
+    grep -Fq "/root/devtools import-random-patients 5 false ccda" "${STUB_DIR}/docker.log" \
+        || fail "irpc did not pass 'ccda' as third positional"
+    : > "${STUB_DIR}/docker.log"
+    run oc_run import-random-patients-ccda 5 false
+    assert_success
+    grep -Fq "exec -e OPENEMR_ENABLE_CCDA_IMPORT=1" "${STUB_DIR}/docker.log" || fail "irpc long form did not set CCDA env var"
+    grep -Fq "/root/devtools import-random-patients 5 false ccda" "${STUB_DIR}/docker.log" \
+        || fail "irpc long form did not pass 'ccda'"
+}
+
+@test "non-irp devtools subcommands do NOT carry OPENEMR_ENABLE_{CCDA,FHIR}_IMPORT" {
+    # The env-var set is isolated to irp/irpc/irpf/import-random-patients*;
+    # other devtools (e.g. pst) must NOT inherit either gate. Pinning the scoping.
     run oc_run pst
     assert_success
     if grep -Fq "OPENEMR_ENABLE_CCDA_IMPORT" "${STUB_DIR}/docker.log"; then
         cat "${STUB_DIR}/docker.log"
         fail "non-irp devtool leaked OPENEMR_ENABLE_CCDA_IMPORT into docker exec"
+    fi
+    if grep -Fq "OPENEMR_ENABLE_FHIR_IMPORT" "${STUB_DIR}/docker.log"; then
+        cat "${STUB_DIR}/docker.log"
+        fail "non-irp devtool leaked OPENEMR_ENABLE_FHIR_IMPORT into docker exec"
     fi
 }
 
