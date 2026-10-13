@@ -26,10 +26,15 @@ load '../test_helper/bats-assert/load'
 load 'helpers'
 
 # Custom fixture: realistic compose files with volume mounts that mirror
-# the actual openemr/openemr docker-compose.yml shape. Required because
-# the default oc_init_repo_with_fixtures writes placeholder compose
-# files with no volume entries — those would make precreate a no-op and
-# leave the tests unable to assert anything.
+# the openemr/openemr docker-compose.yml shape, plus the two ccdaservice
+# named volumes (ccdanodemodules, ccdanodemodules2) that were present
+# pre-openemr/openemr#14524 and that drove the #836 regression the
+# probe-mp-bug test below pins to. Keeping those two in the fixture
+# preserves the historical scenario even though real openemr/openemr
+# compose no longer declares them. Required because the default
+# oc_init_repo_with_fixtures writes placeholder compose files with no
+# volume entries — those would make precreate a no-op and leave the
+# tests unable to assert anything.
 mp_init_repo() {
     local dir=$1
     oc_init_repo "${dir}"
