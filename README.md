@@ -1,35 +1,77 @@
-[![ShellCheck](https://github.com/openemr/openemr-devops/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/shellcheck.yml)
-[![Docker Compose Linting](https://github.com/openemr/openemr-devops/actions/workflows/dclint.yml/badge.svg)](https://github.com/openemr/openemr-devops/actions/workflows/dclint.yml)
+# OpenEMR Cloud Express Plus
 
-# openemr-devops
+This process will install a fully-functional, secured, preconfigured OpenEMR 8.4.1 instance on an AWS Ubuntu server (and several other Amazon services), providing an embedded MySQL server and rotated, automatic backups of all OpenEMR configuration and health information.
 
-OpenEMR administration and deployment tooling
+## Installation
 
-## Resource Index
+### AWS CloudFormation
 
-### Deployment Options
+We offer an AWS CloudFormation template, which slightly increases the billable AWS resources past a single server (expected additional outlay: $2-$5/mo) but offers HIPAA eligibility, backups uploaded daily to S3, CloudTrail auditing, and AWS KMS encryption of all Protected Health Information at all steps of its lifecycle.
 
-* [Ubuntu Installer](packages/appliance): Launch OpenEMR on any Ubuntu 24.04 instance
-* [Kubernetes](kubernetes): OpenEMR Kubernetes orchestration. Working starting point with mTLS, Redis Sentinel failover, multi-node support; also serves as a reference for secure distributed deployments
-* [Raspberry Pi](raspberrypi): Install OpenEMR Docker on Raspberry Pi (supports ARMv8 infrastructure)
+1. Be sure you have a valid [EC2 keypair](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html) for the region you're planning to launch your instance in.
+2. Click [here](https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/new?stackName=OpenEMR&templateURL=https://s3.amazonaws.com/openemr-cfn-useast1/OpenEMR-Express-Plus.json) to launch in `us-east-1` (North Virginia), or submit our template `https://s3.amazonaws.com/openemr-cfn-useast1/OpenEMR-Express-Plus.json` to CloudFormation in the region you'd prefer instead.   
+3. Enter your primary key, your Express instance size, and the amount of storage to reserve for your practice.
+4. Proceed and launch.
+5. Once CloudFormation finishes the stack, you may log in to the IP given in the ``Output`` tab.
+   * User: `admin`
+   * Password: `pass`
+   * Change this password before proceeding.
 
-### Installations for Amazon Web Services
+## Administration
 
-* [OpenEMR Cloud Standard](packages/standard): OpenEMR webserver and separate, managed database instance
-* [OpenEMR Cloud Express](packages/express): AWS Marketplace-supplied preconfigured OpenEMR instance
-* [OpenEMR Cloud Express Plus](packages/express_plus): Self-contained OpenEMR instance with more complex features
-* [OpenEMR on ECS](https://github.com/openemr/openemr-on-ecs): Serverless, scaling OpenEMR, built in CDK and managed by AWS Elastic Container Service
-* [OpenEMR on EKS](https://github.com/openemr/openemr-on-eks): OpenEMR on AWS Elastic Kubernetes Service, delievered through Terraform  
+### General
 
-See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_Packages_Comparison) for more information on the costs and features of each offering.
+* The instance should be answering on port 80 inside of ten minutes. If it's not...
+  * `tail -f /tmp/launch.log` to see if it's still running, or where it got stuck.
+  * Transient build failures are possible if container dependencies are temporarily unavailable, just retry.
+  * You will need network access, don't try to build from a private IP without NAT egress.
+  * Check the process list, make sure `auto_configure.php` isn't running before you attempt to log in.
+  * Some region-specific hardcoding is required, and if AWS has released a new region you might be the first to notice we're not supporting it yet. Reach out on the forums if CloudFormation can't resolve the template for your area.
+* Express Plus is based on our [appliance package](../appliance), whose README contains complete notes on common administration tasks, including container interaction, user management, and direct database access.
 
-### Management Utilities
+### HIPAA Compliance
 
-* [OpenEMR Cmd](utilities/openemr-cmd): OpenEMR-Cmd is similar to devtools, it helps developers to manage and troubleshoot openemr outside the docker
-* [OpenEMR Env Installer](utilities/openemr-env-installer): OpenEMR Env Installer is used to set up the base and necessary services(e.g. git, docker, docker-compose, openemr-cmd, minikube, and kubectl) easily for the development/testing environment
-* [OpenEMR Monitor](utilities/openemr-monitor): OpenEMR Monitor is based on Prometheus, cAdvisor, Grafana, and alertmanger which helps administrator to monitor the status of containers
-* [Portainer](utilities/portainer): Portainer is a lightweight management UI which allows you to easily manage your different Docker environments (Docker hosts)
-* [OpenEMR Environment Migrator](utilities/openemr-env-migrator): OpenEMR Environment Migrator is used to migrate your container environment to the new storage directory or the remote host easily
+a. For AWS customers that are HIPAA covered entities, before deployment of OpenEMR Express Plus, you must navigate to the Services->Artifact->Agreements section of the AWS console, find the AWS Nondisclosure Agreement (AWS Artifact NDA).  Download, read and accept it.  Then find the AWS Business Associate Addendum (AWS BAA).  Download, read and accept it.
 
-## Contact Us
-The OpenEMR [Forum](https://community.open-emr.org/) and Slack are always available if you have any questions.
+b. For AWS customers that are HIPAA covered entities, OpenEMR Express Plus must be deployed in the U.S. East (N. Virginia) Region (preferred) or U.S. West (Oregon) Region.
+
+### Backups
+
+Duplicity is installed to the host machine to manage and rotate backups, sending encrypted backups to a KMS-managed Amazon S3 bucket allocated by CloudFormation. `/etc/cron.daily/duplicity-backups` holds the daily backup process that snapshots both the MySQL database, the OpenEMR configuration, and any patient documents that have been created.
+
+Full backups are made every seven days, with incrementals for the other days. The Duplicity backups encompass the MySQL database backups.
+
+#### Recovering from Backup
+
+It is recommended, in the strongest possible terms, that you familiarize yourself with the recovery process as soon as possible.
+
+1. As root, launch `/root/openemr-devops/packages/appliance/restore.sh`, and carefully read the warning it supplies you.
+2. Take the actions it suggests &mdash; make an image snapshot if possible &mdash; and then, once ready, run the script as instructed.
+3. Duplicity will retrieve and unpack the database backups it's holding, the OpenEMR configuration directory, and any patient documents that have been saved.
+4. The MariaDB recovery agent will apply the most recent full backup and all the daily incrementals.
+5. Your appliance will restart into the restored state.
+
+See [the MariaDB backup manager](/utilities/mariadb-backup-manager) for more information about the database recovery process.
+
+### Legacy installations (deployed before November 2025)
+
+Stacks deployed before November 2025 run MySQL 5.7 inside the retired `openemr/mysql-xtrabackup` container (compose project `lightsail` rather than `appliance`). **The recovery procedure above does not apply to those stacks, and their backups cannot be restored into the current appliance.** Their disaster recovery depends on a Docker image that can no longer be rebuilt, and arm64 deployments of that era were not backing up the database at all.
+
+If this describes your instance, see [MIGRATING-FROM-LEGACY.md](MIGRATING-FROM-LEGACY.md) &mdash; at minimum, take the logical database dump it describes, whether or not you migrate today.
+
+### stack.py
+
+The CloudFormation stack is created from a Python-based stack builder, providing a significantly clearer reading experience.
+
+```
+$ cd packages/express_plus
+$ pip install -r requirements.txt
+$ python stack.py > OpenEMR-Express-Plus.json
+```
+
+#### Windows Interactions
+
+Note that if you run Python from PowerShell your console output will be in UTF-16 encoding, which CloudFormation cannot directly import. Please use the enclosed `stackmaker` batchfile to produce UTF-8.
+## Support
+
+The OpenEMR [forums](https://community.open-emr.org/) and Slack are available if you have any questions. We'll be happy to help!
