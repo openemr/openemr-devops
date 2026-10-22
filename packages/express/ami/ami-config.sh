@@ -22,7 +22,7 @@ f () {
 
     # lockout default admin, set password as instance ID on next boot
     docker compose -p appliance exec --no-tty mysql sh -c 'mariadb --password=${MYSQL_ROOT_PASSWORD} -e "update openemr.users set active=0 where id=1;"'
-    cd openemr-devops/packages/express/ami
+    cd /root/openemr-devops/packages/express/ami
     cp ami-rekey.sh /etc/init.d/ami-rekey
     chmod 755 /etc/init.d/ami-rekey
     update-rc.d ami-rekey defaults
