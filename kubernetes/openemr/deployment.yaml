@@ -90,6 +90,13 @@ spec:
           limits:
             cpu: 1000m
             memory: 1G
+        startupProbe:
+          exec:
+            command:
+            - cat
+            - /root/instance-swarm-ready
+          periodSeconds: 10
+          failureThreshold: 60
         readinessProbe:
           exec:
             command:
@@ -100,7 +107,6 @@ spec:
         livenessProbe:
           tcpSocket:
             port: 443
-          initialDelaySeconds: 60
           periodSeconds: 30
         volumeMounts:
         - mountPath: /root/certs/mysql/server
