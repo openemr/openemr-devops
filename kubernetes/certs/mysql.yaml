@@ -20,8 +20,16 @@ spec:
       - mysql
   commonName: mysql
   dnsNames:
+    # Service name openemr/phpmyadmin connect to. Must be in SANs — modern
+    # PHP/openssl (post-RFC-2818 strict) does SAN-only hostname matching
+    # and does not fall back to commonName.
+    - mysql
+    - mysql.default.svc.cluster.local
+    # Per-pod identities (StatefulSet has replicas: 2).
     - mysql-sts-0
     - mysql-sts-0.mysql.default.svc.cluster.local
+    - mysql-sts-1
+    - mysql-sts-1.mysql.default.svc.cluster.local
   issuerRef:
     name: ca-issuer
     kind: Issuer
