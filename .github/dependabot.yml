@@ -19,6 +19,21 @@ updates:
     - "/kubernetes/nfs"
     schedule:
       interval: "daily"
+    cooldown:
+      # Dependabot's hosted service applies a 3-day default cooldown to every
+      # Docker digest refresh, delaying the digest-bump PR after each image
+      # re-push. For images we build and push ourselves (openemr/openemr) the
+      # 3-day quarantine is pure friction — the "wait for the maintainer to
+      # notice a bad build" window the default is designed to protect against
+      # is a window WE control. The openemr-release pipeline republishes
+      # openemr/openemr:8.5.0 nightly from rel-850, so the default cooldown
+      # effectively ratchets forward every day and the digest bump never
+      # lands. Exclude our own images so CI picks up each rebuild on the
+      # next scheduled scan. Third-party images (mariadb, redis, phpmyadmin,
+      # busybox, registry.k8s.io/*) keep the 3-day cooldown as a buffer
+      # against bad upstream pushes.
+      exclude:
+      - openemr/*
     ignore:
     - dependency-name: openemr/openemr
       update-types: [version-update:semver-major, version-update:semver-minor, version-update:semver-patch]
@@ -51,6 +66,12 @@ updates:
     directory: "/packages/appliance"
     schedule:
       interval: "daily"
+    cooldown:
+      # Same rationale as the kubernetes block above — openemr/openemr is
+      # rebuilt by us nightly, and the hosted dependabot's 3-day default
+      # cooldown would never let a digest bump land here.
+      exclude:
+      - openemr/*
 
   # Docker Compose - utilities/mariadb-backup-manager
   - package-ecosystem: "docker"
