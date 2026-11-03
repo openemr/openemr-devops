@@ -34,6 +34,7 @@ REM bring up the mTLS-wrapped in-cluster NFS stack
 kubectl apply ^
     -f nfs/nfs-server-pvc.yaml ^
     -f nfs/nfs-server-service.yaml ^
+    -f nfs/nfs-server-ganesha-configmap.yaml ^
     -f nfs/nfs-server-stunnel-configmap.yaml ^
     -f nfs/nfs-server-deployment.yaml ^
     -f nfs/stunnel-client-configmap.yaml ^

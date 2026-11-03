@@ -46,6 +46,7 @@ kubectl delete ^
     -f nfs/stunnel-client-configmap.yaml ^
     -f nfs/nfs-server-deployment.yaml ^
     -f nfs/nfs-server-stunnel-configmap.yaml ^
+    -f nfs/nfs-server-ganesha-configmap.yaml ^
     -f nfs/nfs-server-service.yaml ^
     -f nfs/nfs-server-pvc.yaml ^
     -f nfs/storageclass.yaml

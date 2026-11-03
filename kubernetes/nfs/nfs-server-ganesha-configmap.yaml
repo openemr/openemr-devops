@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nfs-server-ganesha-config
+  labels:
+    app: nfs-server
+data:
+  ganesha.conf: |
+    # nfs-ganesha configuration for the in-cluster NFS backing server.
+    #
+    # Design notes:
+    # * Userspace NFS server (nfs-ganesha, Debian package) so the pod can
+    #   drop `privileged: true`. Mount/export syscalls that kernel-NFS
+    #   required are replaced by nfs-ganesha's own protocol handling in
+    #   user space, with VFS as the FSAL writing to the mounted PVC.
+    # * NFSv4-only. v3/portmapper/NLM disabled to minimize attack surface
+    #   and because our csi-driver-nfs StorageClass uses NFSv4.1 (see
+    #   kubernetes/nfs/storageclass.yaml mountOptions).
+    # * No ACL / Clients-filter inside ganesha. Peer authentication is
+    #   done at the stunnel sidecar via mTLS + checkHost = nfs-client,
+    #   and the iptables initContainer + NetworkPolicy drop any direct
+    #   access to 2049 from outside the pod.
+
+    NFS_CORE_PARAM {
+        # Bind to all interfaces inside the pod netns; the stunnel
+        # sidecar reaches 127.0.0.1:2049. External isolation layers
+        # live outside ganesha (see file-level notes above).
+        Bind_Addr = 0.0.0.0;
+        NFS_Port = 2049;
+        # NFSv4 only. Disable UDP, RQUOTA, NLM — all require portmapper
+        # registration which we don't run (rpcbind is NFSv3-era, and
+        # NFSv4 doesn't need it). Leaving them enabled makes ganesha
+        # try to register with portmapper, which fails and takes down
+        # the server.
+        Protocols = 4;
+        Enable_UDP = false;
+        Enable_NLM = false;
+        Enable_RQUOTA = false;
+        # ganesha tries prctl(PR_SET_IO_FLUSHER) at startup, which
+        # requires CAP_SYS_RESOURCE. Our pod runs non-privileged
+        # (no CAP_SYS_RESOURCE), so the call fails with EPERM.
+        # Tolerating the failure is safe for an in-cluster NFS server
+        # that doesn't need I/O-flusher scheduling priority.
+        allow_set_io_flusher_fail = true;
+    }
+
+    NFSv4 {
+        # Skip the grace period. This pod is the sole NFS server
+        # (replicas: 1, strategy: Recreate) so there is no replicated
+        # state that needs to converge after a restart; skipping the
+        # grace shaves ~90 s off pod startup.
+        Graceless = true;
+        Minor_Versions = 1, 2;
+    }
+
+    EXPORT {
+        Export_ID = 1;
+        Path = /nfsshare;
+        # Pseudo = / makes /nfsshare the NFSv4 pseudo root so clients
+        # can mount `server:/<csi-provisioned-subdir>` directly (the
+        # path shape csi-driver-nfs expects given our storageclass
+        # `share: /`). Previously kernel-NFS gave this behavior
+        # implicitly via fsid=0.
+        Pseudo = /;
+        Protocols = 4;
+        Access_Type = RW;
+        # Preserve file ownership written by the openemr pod (which runs
+        # as www-data etc.). Peer authentication is at the stunnel layer,
+        # so No_Root_Squash is safe here.
+        Squash = No_Root_Squash;
+        FSAL {
+            Name = VFS;
+        }
+        Transports = TCP;
+        # Wildcard permitted here because the stunnel sidecar enforces
+        # peer identity via mTLS. Without this field no clients would
+        # be allowed at all.
+        Clients = *;
+    }
+
+    LOG {
+        Default_Log_Level = INFO;
+    }

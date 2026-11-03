@@ -25,7 +25,7 @@ spec:
       # allow-nfs-server-ingress NetworkPolicy below. Both are
       # CNI-enforcement-dependent, and some CNIs don't filter
       # hostNetwork/node-sourced traffic. This init container closes
-      # that gap unconditionally — kernel-NFS on :2049 is only
+      # that gap unconditionally — nfs-ganesha on :2049 is only
       # reachable from the stunnel sidecar in the same pod netns.
       initContainers:
       - name: block-plain-nfs
@@ -36,40 +36,56 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
           - |
-            apk add --no-cache iptables && \
-            iptables -A INPUT ! -s 127.0.0.1/32 -p tcp --dport 2049 -j DROP
+            apk add --no-cache iptables ip6tables && \
+            iptables  -A INPUT ! -s 127.0.0.1/32 -p tcp --dport 2049 -j DROP && \
+            ip6tables -A INPUT ! -s ::1/128      -p tcp --dport 2049 -j DROP
       containers:
       - name: nfs-server
-        # Community-maintained kernel-NFS Alpine image. Users replacing
-        # the in-cluster NFS server with cloud storage (EFS/Filestore/
-        # Azure Files) delete this Deployment entirely — this image
-        # choice does not carry over.
-        image: itsthenetwork/nfs-server-alpine:12@sha256:7fa99ae65c23c5af87dd4300e543a86b119ed15ba61422444207efc7abd0ba20
+        # Userspace NFS server (nfs-ganesha from Debian's package repo)
+        # on debian:trixie-slim. Chosen over kernel-NFS to drop the
+        # `privileged: true` requirement that kernel-NFS's mount/export
+        # syscalls need, and to get multi-arch pulls (amd64 + arm64 etc.)
+        # since the debian:trixie-slim image is a multi-arch OCI index.
+        # Users replacing the in-cluster NFS server with cloud storage
+        # (EFS/Filestore/Azure Files) delete this Deployment entirely —
+        # this image choice does not carry over.
+        image: debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+        command: ["/bin/sh", "-c"]
+        args:
+          # DEBIAN_FRONTEND=noninteractive + Dpkg::Options force-confold:
+          # the nfs-ganesha package ships its own /etc/ganesha/ganesha.conf,
+          # but our ConfigMap mount at that path is already present when
+          # apt-get installs the package. Without these flags dpkg prompts
+          # on conffile conflict and errors on no-tty, leaving the install
+          # unconfigured. force-confold keeps our mounted config in place.
+          - |
+            export DEBIAN_FRONTEND=noninteractive && \
+            apt-get update && \
+            apt-get install -y --no-install-recommends \
+              -o Dpkg::Options::="--force-confold" \
+              nfs-ganesha nfs-ganesha-vfs && \
+            mkdir -p /var/run/ganesha && \
+            exec ganesha.nfsd -F -L STDERR -f /etc/ganesha/ganesha.conf
         ports:
         - name: nfs
           containerPort: 2049
           protocol: TCP
-        env:
-        - name: SHARED_DIRECTORY
-          value: /nfsshare
-        # Note: nfs-server-alpine binds rpc.nfsd to 0.0.0.0:2049 inside
-        # the pod's network namespace, where the stunnel sidecar also
-        # lives (same pod, same netns). External isolation layers,
-        # outermost-first:
+        # nfs-ganesha binds to 0.0.0.0:2049 inside the pod netns, where
+        # the stunnel sidecar also lives (same pod, same netns).
+        # External isolation layers, outermost-first:
         #   1. Service nfs-server only exposes 20490 (the stunnel port).
         #   2. NetworkPolicy allow-nfs-server-ingress only permits 20490.
         #   3. The block-plain-nfs initContainer above drops non-loopback
         #      traffic to :2049 inside the pod netns, so even if 1 and 2
         #      are bypassed by a misconfigured CNI, :2049 is only
         #      reachable from the stunnel sidecar on 127.0.0.1.
-        securityContext:
-          # Kernel-NFS requires privileged for the mount/export syscalls.
-          # The stunnel sidecar below does NOT need privileged — only
-          # this container does.
-          privileged: true
+        # No `privileged: true` here — nfs-ganesha is userspace.
         volumeMounts:
         - name: nfs-storage
           mountPath: /nfsshare
+        - name: ganesha-config
+          mountPath: /etc/ganesha/ganesha.conf
+          subPath: ganesha.conf
       - name: stunnel
         # stunnel built into Alpine's standard package set. Pinned to a
         # specific Alpine digest (dependabot's "infrastructure" group
@@ -98,6 +114,9 @@ spec:
       - name: nfs-storage
         persistentVolumeClaim:
           claimName: nfs-server-data
+      - name: ganesha-config
+        configMap:
+          name: nfs-server-ganesha-config
       - name: stunnel-config
         configMap:
           name: nfs-server-stunnel-config
