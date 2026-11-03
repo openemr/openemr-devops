@@ -19,13 +19,32 @@ spec:
         app: nfs-server
     spec:
       automountServiceAccountToken: false
+      # Belt-and-suspenders over NetworkPolicy: iptables rule in the pod
+      # netns drops all non-loopback traffic to :2049. External isolation
+      # otherwise relies on the Service-only-exposes-20490 + the
+      # allow-nfs-server-ingress NetworkPolicy below. Both are
+      # CNI-enforcement-dependent, and some CNIs don't filter
+      # hostNetwork/node-sourced traffic. This init container closes
+      # that gap unconditionally — kernel-NFS on :2049 is only
+      # reachable from the stunnel sidecar in the same pod netns.
+      initContainers:
+      - name: block-plain-nfs
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            apk add --no-cache iptables && \
+            iptables -A INPUT ! -s 127.0.0.1/32 -p tcp --dport 2049 -j DROP
       containers:
       - name: nfs-server
         # Community-maintained kernel-NFS Alpine image. Users replacing
         # the in-cluster NFS server with cloud storage (EFS/Filestore/
         # Azure Files) delete this Deployment entirely — this image
         # choice does not carry over.
-        image: itsthenetwork/nfs-server-alpine:12
+        image: itsthenetwork/nfs-server-alpine:12@sha256:7fa99ae65c23c5af87dd4300e543a86b119ed15ba61422444207efc7abd0ba20
         ports:
         - name: nfs
           containerPort: 2049
@@ -35,12 +54,14 @@ spec:
           value: /nfsshare
         # Note: nfs-server-alpine binds rpc.nfsd to 0.0.0.0:2049 inside
         # the pod's network namespace, where the stunnel sidecar also
-        # lives (same pod, same netns). External isolation is enforced
-        # by two things, not by socket binding:
+        # lives (same pod, same netns). External isolation layers,
+        # outermost-first:
         #   1. Service nfs-server only exposes 20490 (the stunnel port).
         #   2. NetworkPolicy allow-nfs-server-ingress only permits 20490.
-        # Default-deny on the namespace blocks direct pod-IP:2049 traffic
-        # even though the socket itself is listening cluster-reachably.
+        #   3. The block-plain-nfs initContainer above drops non-loopback
+        #      traffic to :2049 inside the pod netns, so even if 1 and 2
+        #      are bypassed by a misconfigured CNI, :2049 is only
+        #      reachable from the stunnel sidecar on 127.0.0.1.
         securityContext:
           # Kernel-NFS requires privileged for the mount/export syscalls.
           # The stunnel sidecar below does NOT need privileged — only
