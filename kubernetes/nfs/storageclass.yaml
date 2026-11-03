@@ -2,7 +2,20 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: nfs
-provisioner: openemr.org/nfs
+provisioner: nfs.csi.k8s.io
 allowVolumeExpansion: true
+parameters:
+  # Server is the per-node stunnel-client DaemonSet's hostPort listener.
+  # kubelet does the NFS mount from the node's own loopback, which the
+  # DaemonSet (hostNetwork: true) binds. Traffic is then wrapped in
+  # mTLS by stunnel and forwarded to the real nfs-server pod.
+  server: 127.0.0.1
+  share: /
 mountOptions:
-  - vers=4.1
+  - nfsvers=4.1
+  # noac + actimeo=0 disable client-side attribute caching to avoid
+  # the stale-handle-poisoning behavior we hit with the previous
+  # in-cluster nfs-provisioner. Costs some read perf for metadata
+  # ops; acceptable for the openemr workload shape.
+  - noac
+  - actimeo=0

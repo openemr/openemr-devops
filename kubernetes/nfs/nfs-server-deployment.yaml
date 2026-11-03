@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-server
+  labels:
+    app: nfs-server
+spec:
+  replicas: 1
+  strategy:
+    # Recreate rather than RollingUpdate because the backing PVC is
+    # ReadWriteOnce — only one pod can hold it at a time.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nfs-server
+  template:
+    metadata:
+      labels:
+        app: nfs-server
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - name: nfs-server
+        # Community-maintained kernel-NFS Alpine image. Users replacing
+        # the in-cluster NFS server with cloud storage (EFS/Filestore/
+        # Azure Files) delete this Deployment entirely — this image
+        # choice does not carry over.
+        image: itsthenetwork/nfs-server-alpine:12
+        ports:
+        - name: nfs
+          containerPort: 2049
+          protocol: TCP
+        env:
+        - name: SHARED_DIRECTORY
+          value: /nfsshare
+        # Note: nfs-server-alpine binds rpc.nfsd to 0.0.0.0:2049 inside
+        # the pod's network namespace, where the stunnel sidecar also
+        # lives (same pod, same netns). External isolation is enforced
+        # by two things, not by socket binding:
+        #   1. Service nfs-server only exposes 20490 (the stunnel port).
+        #   2. NetworkPolicy allow-nfs-server-ingress only permits 20490.
+        # Default-deny on the namespace blocks direct pod-IP:2049 traffic
+        # even though the socket itself is listening cluster-reachably.
+        securityContext:
+          # Kernel-NFS requires privileged for the mount/export syscalls.
+          # The stunnel sidecar below does NOT need privileged — only
+          # this container does.
+          privileged: true
+        volumeMounts:
+        - name: nfs-storage
+          mountPath: /nfsshare
+      - name: stunnel
+        # stunnel built into Alpine's standard package set. Pinned to
+        # a specific Alpine version so stunnel version is deterministic.
+        # Entrypoint installs stunnel at pod start — cheap (seconds)
+        # and keeps us independent of third-party stunnel-prebaked
+        # images with varying maintenance signals.
+        image: alpine:3.21
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            apk add --no-cache stunnel && \
+            exec stunnel /etc/stunnel/stunnel.conf
+        ports:
+        - name: nfs-tls
+          containerPort: 20490
+          protocol: TCP
+        volumeMounts:
+        - name: stunnel-config
+          mountPath: /etc/stunnel/stunnel.conf
+          subPath: stunnel.conf
+        - name: nfs-server-certs
+          mountPath: /etc/stunnel/certs
+          readOnly: true
+      volumes:
+      - name: nfs-storage
+        persistentVolumeClaim:
+          claimName: nfs-server-data
+      - name: stunnel-config
+        configMap:
+          name: nfs-server-stunnel-config
+      - name: nfs-server-certs
+        secret:
+          secretName: nfs-server-certs
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          - key: ca.crt
+            path: ca.crt

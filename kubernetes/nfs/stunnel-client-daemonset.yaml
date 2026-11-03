@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nfs-stunnel-client
+  labels:
+    app: nfs-stunnel-client
+spec:
+  selector:
+    matchLabels:
+      app: nfs-stunnel-client
+  template:
+    metadata:
+      labels:
+        app: nfs-stunnel-client
+    spec:
+      automountServiceAccountToken: false
+      # hostNetwork so the kubelet-initiated NFS mount can connect to
+      # 127.0.0.1 and reach this pod's stunnel listener. Without this
+      # 127.0.0.1 inside kubelet resolves to the node's loopback, not
+      # the pod's.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: stunnel
+        image: alpine:3.21
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            apk add --no-cache stunnel && \
+            exec stunnel /etc/stunnel/stunnel.conf
+        ports:
+        - name: nfs-local
+          containerPort: 2049
+          hostPort: 2049
+          protocol: TCP
+        volumeMounts:
+        - name: stunnel-config
+          mountPath: /etc/stunnel/stunnel.conf
+          subPath: stunnel.conf
+        - name: nfs-client-certs
+          mountPath: /etc/stunnel/certs
+          readOnly: true
+      volumes:
+      - name: stunnel-config
+        configMap:
+          name: nfs-stunnel-client-config
+      - name: nfs-client-certs
+        secret:
+          secretName: nfs-client-certs
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          - key: ca.crt
+            path: ca.crt

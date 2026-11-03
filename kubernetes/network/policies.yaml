@@ -115,21 +115,22 @@ spec:
   policyTypes:
   - Ingress
 ---
-# NFS provisioner: allow all ingress.
-# NFS mounts originate from kubelet on nodes, not from pods, so
-# pod-selector-based restrictions would block legitimate mounts.
+# NFS server: allow ingress only on the mTLS-wrapped port 20490 from
+# the stunnel-client DaemonSet. The DaemonSet runs hostNetwork and
+# appears as the node IP, which pod-selector rules can't match, so
+# we open the port cluster-wide; cert verification is done by stunnel
+# itself (verifyChain against ca-issuer).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-nfs-ingress
+  name: allow-nfs-server-ingress
 spec:
   podSelector:
     matchLabels:
-      app: nfs-provisioner
+      app: nfs-server
   policyTypes:
   - Ingress
   ingress:
   - ports:
-    - port: 2049
-    - port: 111
-    - port: 20048
+    - port: 20490
+      protocol: TCP
