@@ -65,6 +65,7 @@ spec:
               -o Dpkg::Options::="--force-confold" \
               nfs-ganesha nfs-ganesha-vfs && \
             mkdir -p /var/run/ganesha && \
+            ln -sf /proc/self/mounts /etc/mtab && \
             exec ganesha.nfsd -F -L STDERR -f /etc/ganesha/ganesha.conf
         ports:
         - name: nfs
@@ -79,7 +80,21 @@ spec:
         #      traffic to :2049 inside the pod netns, so even if 1 and 2
         #      are bypassed by a misconfigured CNI, :2049 is only
         #      reachable from the stunnel sidecar on 127.0.0.1.
-        # No `privileged: true` here — nfs-ganesha is userspace.
+        # No `privileged: true` here — nfs-ganesha is userspace. Two
+        # specific capabilities replace the privileged kernel-NFS
+        # pattern, matching kubernetes-sigs/nfs-ganesha-server-and-
+        # external-provisioner's manifest:
+        #   DAC_READ_SEARCH — FSAL_VFS uses open_by_handle_at() for its
+        #     handle-based operations (LOOKUP, GETATTR, etc.). Container
+        #     runtimes drop this capability by default (shocker-exploit
+        #     mitigation); without it open_by_handle_at() returns EPERM
+        #     and the Linux kernel NFSv4 client surfaces that as
+        #     `mount.nfs: Operation not permitted`.
+        #   SYS_RESOURCE — bumps the file-descriptor rlimit ceiling that
+        #     ganesha asks the kernel to set at startup.
+        securityContext:
+          capabilities:
+            add: ["DAC_READ_SEARCH", "SYS_RESOURCE"]
         volumeMounts:
         - name: nfs-storage
           mountPath: /nfsshare

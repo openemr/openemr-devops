@@ -10,7 +10,11 @@ parameters:
   # DaemonSet (hostNetwork: true) binds. Traffic is then wrapped in
   # mTLS by stunnel and forwarded to the real nfs-server pod.
   server: 127.0.0.1
-  share: /
+  # share is /nfsshare because the ganesha EXPORT's Pseudo path is
+  # /nfsshare (ganesha's pseudo-FS root is read-only and can't host
+  # the csi-driver-nfs subdir provisioning, so we need to land on the
+  # actual VFS-FSAL export path).
+  share: /nfsshare
 mountOptions:
   - nfsvers=4.1
   # noac + actimeo=0 disable client-side attribute caching to avoid
