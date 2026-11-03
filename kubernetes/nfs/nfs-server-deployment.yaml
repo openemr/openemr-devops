@@ -50,12 +50,13 @@ spec:
         - name: nfs-storage
           mountPath: /nfsshare
       - name: stunnel
-        # stunnel built into Alpine's standard package set. Pinned to
-        # a specific Alpine version so stunnel version is deterministic.
+        # stunnel built into Alpine's standard package set. Pinned to a
+        # specific Alpine digest (dependabot's "infrastructure" group
+        # refreshes it nightly) so stunnel version is deterministic.
         # Entrypoint installs stunnel at pod start — cheap (seconds)
         # and keeps us independent of third-party stunnel-prebaked
         # images with varying maintenance signals.
-        image: alpine:3.21
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
         command: ["/bin/sh", "-c"]
         args:
           - |

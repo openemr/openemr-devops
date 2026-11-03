@@ -27,3 +27,8 @@ data:
     CAfile = /etc/stunnel/certs/ca.crt
     verifyChain = yes
     requireCert = yes
+    # Restrict the client identity: our ca-issuer signs many certs in this
+    # stack (mysql/redis/phpmyadmin), so verifyChain alone would accept any
+    # of them. checkHost pins the acceptable peer to the nfs-client cert's
+    # CN, which only the stunnel-client DaemonSet pods hold.
+    checkHost = nfs-client

@@ -20,9 +20,20 @@ spec:
       # the pod's.
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+      # Run on every node — including control-plane nodes that carry the
+      # default NoSchedule taint — because kubelet on any node may need
+      # to NFS-mount via the local stunnel listener. Any workload that
+      # tolerates control-plane taints (operators, system components)
+      # could schedule there and require NFS access.
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
       containers:
       - name: stunnel
-        image: alpine:3.21
+        # Same digest-pinned alpine as the nfs-server stunnel sidecar;
+        # dependabot's "infrastructure" group refreshes it nightly.
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
         command: ["/bin/sh", "-c"]
         args:
           - |

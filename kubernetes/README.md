@@ -33,6 +33,11 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
                 ```bash
                 kubectl get pod -o wide
                 ```
+    - **LXC-nested environments only** (such as the [Claude Appliance](https://github.com/openemr/openemr/blob/master/Documentation/contributors/claude-appliance-setup.md), Proxmox/Incus guests, and similar): the kind node's kubelet needs `/dev/kmsg`, which LXC-nested containers don't expose. Right after `kind create cluster` and before `bash kub-up`, symlink it on the kind node:
+        ```bash
+        docker exec kind-control-plane sh -c 'ln -sf /dev/null /dev/kmsg'
+        ```
+        (If running kind on a 4-node config, apply the same symlink to each node container: `kind-worker`, `kind-worker2`, `kind-worker3`.) Skip this step on real hardware; it's a no-op there.
 2. To start OpenEMR orchestration:
     ```bash
     bash kub-up
@@ -89,7 +94,7 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
 
           Note: `csi-driver-nfs` controller + node daemonset pods run in
           the `kube-system` namespace (not shown here). Use
-          `kubectl get pods -n kube-system -l app.kubernetes.io/name=csi-driver-nfs`
+          `kubectl get pods -n kube-system -l 'app in (csi-nfs-controller,csi-nfs-node)'`
           to see them.
 4. Getting the url link to OpenEMR:
     - With the provided Kind config files, OpenEMR is mapped to localhost: `http://localhost:8800` or `https://localhost:9800`
@@ -194,9 +199,11 @@ The OpenEMR pods share three RWX volumes used across pods and nodes: `websitevol
 - **`nfs-stunnel-client` DaemonSet** — one pod per node running `hostNetwork: true`, listening on `127.0.0.1:2049` and forwarding mTLS to `nfs-server:20490`.
 - **StorageClass `nfs`** — provisioner `nfs.csi.k8s.io`, parameters `server: 127.0.0.1, share: /`. kubelet's NFS mount lands on each node's local stunnel-client, so all traffic between the kubelet and the NFS server is wrapped.
 
-Both stunnels present cert-manager-issued certificates (`certs/nfs-server.yaml`, `certs/nfs-client.yaml`) rooted at the same ca-issuer the rest of the stack uses, with mutual verification (`verifyChain = yes` on both sides and `checkHost = nfs-server` on the client). Same three properties as MariaDB and Redis above: encrypted wire, mutual authentication, cert-manager rotation.
+Both stunnels present cert-manager-issued certificates (`certs/nfs-server.yaml`, `certs/nfs-client.yaml`) rooted at the same ca-issuer the rest of the stack uses, with mutual verification on both sides: `verifyChain = yes` enforces chain-of-trust, `checkHost = nfs-client` on the server pins the acceptable peer identity to the stunnel-client's cert CN (so a compromised mysql/redis/phpmyadmin pod with its own ca-issuer-signed cert cannot bypass auth), and `checkHost = nfs-server` on the client pins the server identity symmetrically. Same three properties as MariaDB and Redis above: encrypted wire, mutual authentication, cert-manager rotation.
 
-Trade-off worth naming: NFS protocol traffic flows through two local stunnel hops per read/write op (one on the server pod, one per node), costing a few milliseconds of latency on cold reads. Caching mitigates this for hot paths. On a cloud deployment where users swap the in-cluster NFS server for a cloud-managed NFS endpoint (EFS/Filestore/Azure Files), the stunnel-client DaemonSet can either stay (if the endpoint accepts mTLS from our cert chain) or be removed (if the user prefers the cloud's own encryption-in-transit, e.g. EFS's TLS mode). See **Production Hardening → Swapping to cloud-managed NFS**.
+**Capacity caveat (shared backing PV).** csi-driver-nfs provisions each RWX PVC as a subdirectory of the single `nfs-server-data` backing PV, so the three "1Gi" per-PVC size requests are not enforced as independent quotas — all three share the backing PV's 10Gi (`nfs/nfs-server-pvc.yaml`). If `websitevolume` grows to 9 GiB, the other two have 1 GiB left between them. Monitor the backing PV's usage directly (`kubectl exec deploy/nfs-server -c nfs-server -- df -h /nfsshare`), size the backing PVC with headroom for all three, and bump `storage` on `nfs-server-pvc.yaml` ahead of expected growth. The individual PVC size fields exist only to satisfy the Kubernetes PVC API's required field.
+
+Trade-off worth naming: NFS protocol traffic flows through two local stunnel hops per read/write op (one on the server pod, one per node), costing a few milliseconds of latency on cold reads. Caching mitigates this for hot paths. On a cloud deployment where users swap the in-cluster NFS server for a cloud-managed NFS endpoint, see **Production Hardening → Swapping to cloud-managed NFS** for the carefully-scoped encryption-in-transit discussion.
 
 ## At-rest: storage layer (not configured by default)
 
@@ -258,6 +265,18 @@ Perform all the TLS downgrade steps above, then additionally:
 
 The stack ships with sensible defaults for development on Kind. For production deployments, the following swaps and additions are typical. None of them require changes to OpenEMR application code or to the application-level security model — they are storage and infrastructure adjustments around the existing manifests.
 
+## Upgrading an existing cluster to the CSI-based NFS stack
+
+This stack does not support in-place upgrades for the Kubernetes side — the storage layer and manifest wiring are redone whole-cluster. If you have an existing cluster running the older sig-storage/nfs-provisioner setup (pre-#910), the upgrade path is:
+
+1. **Preserve any patient data on the old NFS backing** by exporting it from the running cluster (e.g. `kubectl cp` from inside an openemr pod, or snapshotting the backing storage).
+2. **`bash kub-down`** on the old manifests — fully tears down the old nfs-provisioner Deployment, Service, and RBAC along with the rest of the stack, so no plaintext NFS provisioner is left behind.
+3. **Pull the updated manifests** (this branch / release).
+4. **`bash kub-up`** on the new manifests. The new `nfs-server` Deployment, csi-driver-nfs, stunnel pods, and mTLS certs come up from scratch.
+5. **Restore patient data** into the new `websitevolume` (via `kubectl cp` back in).
+
+Attempting to apply the new manifests on top of an old cluster without a `kub-down` first will leave the old nfs-provisioner running alongside the new csi-driver-nfs, and the StorageClass `parameters` are immutable so the old `provisioner: cluster.local/nfs-provisioner` will not be replaced by the new `nfs.csi.k8s.io` provisioner — a silent half-upgrade state.
+
 ## Encryption at rest (storage layer)
 
 The simplest path to encryption-at-rest is to back the persistent volumes with an encrypted StorageClass at the cloud or storage-layer. Two PVCs matter:
@@ -308,16 +327,25 @@ Enable TDE at first boot so the system tablespace is born encrypted. Existing ta
 
 ## Swapping to cloud-managed NFS
 
-The in-cluster `nfs-server` Deployment is a reasonable default for Kind and on-prem clusters, but production users on a hyperscaler usually prefer a managed NFS endpoint for durability and backup. Because the StorageClass is standard upstream `nfs.csi.k8s.io`, the swap is a parameter change — no OpenEMR manifest edits needed.
+The in-cluster `nfs-server` Deployment is a reasonable default for Kind and on-prem clusters, but production users on a hyperscaler usually prefer a managed NFS endpoint for durability and backup. Because the StorageClass is standard upstream `nfs.csi.k8s.io`, the swap is primarily a StorageClass parameter change — no OpenEMR manifest edits needed.
 
-| Cloud / Endpoint | How to point csi-driver-nfs at it |
+| Cloud / Endpoint | Minimum changes |
 |---|---|
-| AWS EFS | Set `storageclass.yaml` `parameters.server` to the EFS DNS name (`fs-xxxx.efs.<region>.amazonaws.com`) and `share` to `/`. Remove or disable the in-cluster `nfs-server` Deployment, PVC, service, configmap, and stunnel-client DaemonSet (EFS does its own in-transit TLS; the local tunnel is no longer needed — see below). |
-| GCP Filestore | Set `parameters.server` to the Filestore instance IP and `share` to the Filestore file-share name. Same removals as EFS. |
-| Azure Files (NFS 4.1) | Set `parameters.server` to the storage-account FQDN and `share` to the share path. Same removals as EFS. |
-| On-prem managed NFS | Same pattern: point `parameters.server` at the appliance; keep or remove the stunnel-client DaemonSet depending on whether the appliance negotiates mTLS. |
+| AWS EFS | Set `storageclass.yaml` `parameters.server` to the EFS DNS name (`fs-xxxx.efs.<region>.amazonaws.com`) and `share` to `/`. Delete the in-cluster NFS files (`nfs-server-*.yaml`, `stunnel-client-*.yaml`) and remove their references from `kub-up` / `kub-down`. |
+| GCP Filestore | Set `parameters.server` to the Filestore instance IP, `share` to the Filestore file-share name. Same deletions as EFS. |
+| Azure Files (NFS 4.1) | Set `parameters.server` to the storage-account FQDN, `share` to the share path. Same deletions as EFS. |
+| On-prem managed NFS | Same pattern: point `parameters.server` at the appliance. Keep the stunnel-client DaemonSet only if the appliance itself speaks mTLS to our cert chain (unusual). |
 
-**Encryption-in-transit on the cloud path:** EFS supports TLS-wrapped mounts via `efs-utils` / `tls` mount option, Filestore supports in-transit encryption on tier4 instances, and Azure Files NFS supports in-transit encryption on standard storage accounts. Where the managed endpoint already provides in-transit encryption, remove the stunnel-client DaemonSet and the `-f nfs/stunnel-client-*.yaml` references from `kub-up` / `kub-down`. Where it doesn't, the stunnel-client DaemonSet can stay as-is as long as the managed endpoint accepts a TLS wrapper (unusual — most managed NFS endpoints speak plain NFS and expect the cloud's own encryption at the network layer).
+**Important: StorageClass `parameters` are immutable.** Kubernetes rejects edits to `parameters` on an existing StorageClass, and existing PVs retain whatever `server` they were originally provisioned with. The clean migration path is `kub-down` → wait for cluster-level teardown → edit `storageclass.yaml` → `kub-up`. For a cluster that has live patient data on the in-cluster NFS backing, migrate the data to the new endpoint first (e.g. snapshot the backing PVC, restore into the managed NFS filesystem) *before* running `kub-down`.
+
+**Encryption-in-transit on the cloud path.** The default `nfs` StorageClass uses the kernel NFS client — it does not auto-negotiate TLS to the server. The in-cluster stunnel-client DaemonSet is what wraps our traffic; removing it leaves the kernel NFS client talking plaintext to whatever `parameters.server` points at. Rely on cloud-provider encryption only in paths where the cloud actually encrypts:
+
+- **AWS EFS**: encryption-in-transit requires mounting via `efs-utils` with the `tls` option (which spawns a local `stunnel`-equivalent on each node) OR mounting over a path that goes through AWS Nitro's hypervisor-level NIC encryption (same-VPC Nitro-to-Nitro only). csi-driver-nfs does **not** use `efs-utils`, so you must either keep the stunnel-client DaemonSet (if EFS accepts your cert chain, which is unusual) or ensure every node is a Nitro instance in the same VPC as the EFS mount target.
+- **GCP Filestore**: TLS is available only on specific tiers (Enterprise, Zonal with HSM) and only when mounting with GCP's `fscrypt`/`gcsfuse` wrappers — not via plain `nfs.csi.k8s.io`.
+- **Azure Files NFS**: Private Endpoint traffic bypasses VNet-level encryption; use SMB with Kerberos for in-transit encryption, or stay on the stunnel-client wrapper.
+- **On-prem**: no cloud-level encryption applies — keep the stunnel-client DaemonSet.
+
+Short version: don't delete `stunnel-client-*.yaml` unless you've positively confirmed the mount path on your specific cloud/tier/instance combo is encrypted end-to-end.
 
 **Encryption-at-rest on the cloud path:** all three managed endpoints encrypt at rest by default with cloud-provider keys. For CMEK/CMK, see the respective cloud's documentation.
 
