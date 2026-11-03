@@ -47,6 +47,40 @@ jobs:
           kubectl wait --for=condition=Ready -l name=openemr pod --timeout=900s
           echo "All pods ready"
 
+      # SHORT-TERM WORKAROUND — REMOVE WHEN openemr/openemr LogoService
+      # NFS-safety fix lands and the openemr image pin is bumped to a
+      # release containing it (tracked at openemr/openemr PR TBD).
+      #
+      # LogoService::findLogo() hands Symfony Finder a list of
+      # directory paths including `sites/default/images/logos/{slot}`
+      # subdirs for slots an admin hasn't configured. On the NFS-
+      # backed websitevolume used by this stack, opendir() on those
+      # missing subdirs returns EREMOTEIO, which Finder's
+      # RecursiveDirectoryIterator surfaces as
+      # UnexpectedValueException and PHPUnit's strict output mode
+      # treats as a test error (9 errors on master, 1 on #910's
+      # ganesha backing). Pre-creating the expected logo subdirs on
+      # the shared NFS volume means opendir() finds an empty
+      # directory instead of returning EREMOTEIO, so the test suite
+      # isn't blocked while the core LogoService fix cycles through
+      # a release.
+      - name: Workaround LogoService NFS-safety (REMOVE AFTER openemr core fix)
+        run: |
+          POD=$(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}')
+          kubectl exec "$POD" -- sh -c '
+            cd /var/www/localhost/htdocs/openemr/sites/default/images/logos/ &&
+            mkdir -p \
+              core/favicon \
+              core/login/primary \
+              core/login/secondary \
+              core/login/small_logo_1 \
+              core/login/small_logo_2 \
+              portal/primary \
+              portal/secondary \
+              portal/menu/primary
+          '
+          echo "Pre-created logo subdirs for LogoService NFS workaround"
+
       - name: Verify all pods running
         run: |
           kubectl get pods
