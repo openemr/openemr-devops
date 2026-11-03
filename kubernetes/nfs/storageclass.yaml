@@ -17,6 +17,12 @@ parameters:
   share: /nfsshare
 mountOptions:
   - nfsvers=4.1
+  # Dial the per-node stunnel-client DaemonSet on its non-standard
+  # loopback port (12049). Not using 2049 avoids colliding with any
+  # kernel NFS server a node might already run — a silent collision
+  # would send the kubelet's mount to plain NFS instead of our mTLS
+  # path.
+  - port=12049
   # noac + actimeo=0 disable client-side attribute caching to avoid
   # the stale-handle-poisoning behavior we hit with the previous
   # in-cluster nfs-provisioner. Costs some read perf for metadata

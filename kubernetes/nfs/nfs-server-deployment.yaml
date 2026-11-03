@@ -95,6 +95,10 @@ spec:
         securityContext:
           capabilities:
             add: ["DAC_READ_SEARCH", "SYS_RESOURCE"]
+          # Static-analyzer-friendly explicit false. ganesha never
+          # execs setuid binaries, so denying privilege escalation
+          # costs us nothing and keeps Trivy / Checkov quiet.
+          allowPrivilegeEscalation: false
         volumeMounts:
         - name: nfs-storage
           mountPath: /nfsshare

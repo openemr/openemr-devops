@@ -39,10 +39,16 @@ spec:
           - |
             apk add --no-cache stunnel && \
             exec stunnel /etc/stunnel/stunnel.conf
+        # Loopback port 12049 (not 2049): if a node is already running a
+        # kernel NFS server on the standard port 2049, hostPort: 2049
+        # would collide and silently leave csi-driver-nfs mounts hitting
+        # the host's plain-NFS listener instead of our mTLS path. Using
+        # 12049 with a matching `port=12049` mountOption on the
+        # StorageClass sidesteps that whole class of host-collision bug.
         ports:
         - name: nfs-local
-          containerPort: 2049
-          hostPort: 2049
+          containerPort: 12049
+          hostPort: 12049
           protocol: TCP
         volumeMounts:
         - name: stunnel-config
