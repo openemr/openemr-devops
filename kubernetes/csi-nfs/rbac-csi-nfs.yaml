@@ -1,3 +1,20 @@
+# Vendored from kubernetes-sigs/csi-driver-nfs v4.13.6 with ONE documented
+# divergence from upstream: the cluster-wide "get secrets" rule in the
+# nfs-external-provisioner-role ClusterRole has been removed. Upstream
+# ships that rule to support optional provisioner-secret references in a
+# StorageClass (csi.storage.k8s.io/provisioner-secret-name/namespace).
+# Our kubernetes/nfs/storageclass.yaml does not use those parameters, so
+# the role grant is unused by this stack but gives any principal with
+# code execution inside the csi-nfs-controller pod read access to every
+# Secret in every namespace (MariaDB root password, Redis admin password,
+# cert-manager private keys, OpenEMR OAuth2 keys). Narrowing is a
+# straightforward blast-radius improvement for a HIPAA-adjacent stack
+# that documents itself as a secure-deployment reference.
+#
+# WHEN REFRESHING THIS FILE FROM UPSTREAM: diff against the current
+# upstream rbac manifest; delete the three-line "secrets" rule from
+# nfs-external-provisioner-role before committing. Re-add it only if a
+# future StorageClass intentionally uses provisioner-secret parameters.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -47,9 +64,9 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get"]
+  # NOTE: upstream also grants `secrets: get` cluster-wide here for the
+  # optional provisioner-secret feature. Intentionally omitted — see
+  # file header for rationale and re-vendor instructions.
 ---
 
 kind: ClusterRoleBinding
