@@ -328,16 +328,18 @@ jobs:
           kubectl logs redis-0 --tail=50 2>/dev/null || true
           echo "=== Sentinel Logs ==="
           kubectl logs sentinel-0 --tail=50 2>/dev/null || true
-          echo "=== nfs-server (ganesha) Logs — filtered for leaf-dir ops ==="
-          # With COMPONENT_NFS4 + COMPONENT_FSAL + COMPONENT_MDCACHE at
-          # DEBUG, ganesha logs every op. Filter for status codes and
-          # LOOKUP operations to find what's actually being returned on
-          # the EREMOTEIO path without drowning in RPC dispatch noise.
-          kubectl logs -c nfs-server -l app=nfs-server --tail=400 2>/dev/null \
-            | grep -iE 'NFS4ERR|LOOKUP.*small_logo|LOOKUP.*favicon|LOOKUP.*portal|LOOKUP.*couchdb|LOOKUP.*temp|getattr.*error|FSAL.*error|open_by_handle.*ail' \
-            | tail -80 || true
-          echo "=== nfs-server (stunnel) Logs ==="
-          kubectl logs -c stunnel -l app=nfs-server --tail=20 2>/dev/null || true
+          # kubectl logs -l selector drops the -c container flag silently
+          # — need an explicit pod name. Fetch the nfs-server pod name
+          # first, then both containers in turn.
+          NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
+          echo "=== nfs-server (ganesha) FATAL/CRIT/MAJ/WARN lines ==="
+          kubectl logs "$NFS_POD" -c nfs-server --tail=800 2>/dev/null \
+            | grep -E ':FATAL|:CRIT|:MAJ|:WARN|NFS4ERR|Forbidden' | tail -40 || true
+          echo "=== nfs-server (ganesha) LOOKUP / GETATTR trace (last 40 ops) ==="
+          kubectl logs "$NFS_POD" -c nfs-server --tail=1500 2>/dev/null \
+            | grep -E 'LOOKUP|GETATTR|complete_op' | tail -40 || true
+          echo "=== nfs-server (stunnel) logs ==="
+          kubectl logs "$NFS_POD" -c stunnel --tail=20 2>/dev/null || true
 
       - name: Cleanup
         if: always()
