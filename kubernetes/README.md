@@ -268,11 +268,32 @@ The stack ships with sensible defaults for development on Kind. For production d
 This stack does not support in-place upgrades for the Kubernetes side — the storage layer and manifest wiring are redone whole-cluster. If you have an existing cluster running the older sig-storage/nfs-provisioner setup (pre-#910), the upgrade path is:
 
 1. **Quiesce application writes first.** `kubectl scale deployment/openemr --replicas=0` and `kubectl scale deployment/phpmyadmin --replicas=0` before anything else, and wait for the pods to terminate. Without this, documents written between the export and `kub-down` are absent from the restored volume.
-2. **Preserve all three RWX volumes.** `kub-down` destroys `websitevolume`, `sslvolume`, and `letsencryptvolume` — not just `websitevolume`. Export each one (e.g. `kubectl cp` from inside an openemr pod for `websitevolume` and `sslvolume`, and the letsencrypt pod for `letsencryptvolume`) or snapshot the backing storage.
+2. **Preserve all three RWX volumes via a helper pod.** `kub-down` destroys `websitevolume`, `sslvolume`, and `letsencryptvolume` — not just `websitevolume`. With openemr scaled to zero in step 1, there is no running pod that mounts the claims, so bring up a short-lived helper that does:
+
+   ```yaml
+   apiVersion: v1
+   kind: Pod
+   metadata: { name: backup-helper }
+   spec:
+     containers:
+     - name: backup
+       image: busybox
+       command: ["sleep", "3600"]
+       volumeMounts:
+       - { name: web, mountPath: /backup/websitevolume }
+       - { name: ssl, mountPath: /backup/sslvolume }
+       - { name: le,  mountPath: /backup/letsencryptvolume }
+     volumes:
+     - { name: web, persistentVolumeClaim: { claimName: websitevolume } }
+     - { name: ssl, persistentVolumeClaim: { claimName: sslvolume } }
+     - { name: le,  persistentVolumeClaim: { claimName: letsencryptvolume } }
+   ```
+
+   Then `kubectl cp backup-helper:/backup/websitevolume ./websitevolume-backup` (and likewise for `sslvolume`, `letsencryptvolume`). Delete the helper (`kubectl delete pod backup-helper`) before step 3 so it does not hold the claims open against `kub-down`.
 3. **`bash kub-down`** on the old manifests — fully tears down the old nfs-provisioner Deployment, Service, and RBAC along with the rest of the stack, so no plaintext NFS provisioner is left behind.
 4. **Pull the updated manifests** (this branch / release).
 5. **`bash kub-up`** on the new manifests. The new `nfs-server` Deployment, csi-driver-nfs, stunnel pods, and mTLS certs come up from scratch.
-6. **Restore each volume into its newly-provisioned CSI subdirectory.** csi-driver-nfs auto-names each RWX volume's backing directory as `<pvc-name>-<uid>` under `/nfsshare` on the backing PV (or under the share root for cloud-managed NFS). The simplest restore is `kubectl cp` back into each openemr/phpmyadmin pod at the mount path — the kubelet routes writes into the newly-provisioned CSI directory transparently. (Advanced: pre-create static PVs with `persistentVolume.spec.nfs.path` pointing at the pre-existing backup directories and bind the PVCs to those, which skips the auto-provision step entirely.)
+6. **Restore each volume into its newly-provisioned CSI subdirectory.** csi-driver-nfs auto-names each RWX volume's backing directory as `<pvc-name>-<uid>` under `/nfsshare` on the backing PV (or under the share root for cloud-managed NFS). The simplest restore is `kubectl cp` back into any openemr replica at each mount path (only openemr mounts these claims; phpmyadmin does not, and all openemr replicas share the same claims). The kubelet routes writes into the newly-provisioned CSI directory transparently. (Advanced: pre-create static PVs with `persistentVolume.spec.nfs.path` pointing at the pre-existing backup directories and bind the PVCs to those, which skips the auto-provision step entirely.)
 
 Attempting to apply the new manifests on top of an old cluster without a `kub-down` first will leave the old nfs-provisioner running alongside the new csi-driver-nfs, and the StorageClass `parameters` are immutable so the old `provisioner: cluster.local/nfs-provisioner` will not be replaced by the new `nfs.csi.k8s.io` provisioner — a silent half-upgrade state.
 
