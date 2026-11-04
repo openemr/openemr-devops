@@ -96,17 +96,7 @@ spec:
             - cat
             - /root/instance-swarm-ready
           periodSeconds: 10
-          # 20-minute deadline (120 * 10s). First-boot runs leader
-          # election through the shared NFS sites volume, which on
-          # ganesha's mTLS-wrapped path has slightly higher per-op
-          # latency than kernel-NFS — enough to push a single
-          # leader-election cycle (LEADER_TIMEOUT=300s + first-boot
-          # setup of ~3-5 min) past a 10-min probe deadline when
-          # pods race on startup. 20 min gives one pod reliable
-          # headroom to complete a cycle; followers then see the
-          # shared-volume leader marker and skip straight to their
-          # fast path.
-          failureThreshold: 120
+          failureThreshold: 60
         readinessProbe:
           exec:
             command:

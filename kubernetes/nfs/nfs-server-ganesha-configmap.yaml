@@ -17,11 +17,11 @@ data:
     #   that FSAL_VFS needs for its handle-based operations and ganesha's
     #   fd-rlimit tuning — see nfs-server-deployment.yaml for the
     #   corresponding securityContext.
-    # * NFSv4-only. v3/portmapper/NLM/RQUOTA disabled to minimize attack
-    #   surface and because our csi-driver-nfs StorageClass uses NFSv4.1
-    #   (see kubernetes/nfs/storageclass.yaml mountOptions). Leaving them
-    #   enabled makes ganesha try to register with portmapper, which
-    #   isn't running in this pod.
+    # * NFSv4.0 only. v3/portmapper/NLM/RQUOTA disabled to minimize attack
+    #   surface and because our csi-driver-nfs StorageClass mounts with
+    #   nfsvers=4.0 (see kubernetes/nfs/storageclass.yaml mountOptions
+    #   for the rationale). Leaving v3 and friends enabled makes ganesha
+    #   try to register with portmapper, which isn't running in this pod.
     # * Per-peer ACL is at the stunnel sidecar via mTLS + checkHost =
     #   nfs-client; ganesha accepts any TCP peer because the only path
     #   that reaches it goes through the mTLS layer first.
