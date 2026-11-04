@@ -44,7 +44,11 @@ jobs:
           kubectl rollout status statefulset/redis --timeout=300s
           kubectl rollout status statefulset/sentinel --timeout=300s
           echo "Waiting for OpenEMR (may take several minutes for initial setup)..."
-          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=900s
+          # Match the openemr Deployment's startupProbe budget
+          # (periodSeconds=10 × failureThreshold=120 = 1200s). Observed
+          # boot is ~2-3 min; this is the upper bound k8s would still
+          # let the pod keep trying.
+          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
           echo "All pods ready"
 
       - name: Verify all pods running
