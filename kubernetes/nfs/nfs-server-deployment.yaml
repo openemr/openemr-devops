@@ -99,6 +99,18 @@ spec:
           # execs setuid binaries, so denying privilege escalation
           # costs us nothing and keeps Trivy / Checkov quiet.
           allowPrivilegeEscalation: false
+        # iptables blocks tcpSocket from kubelet, so probe from inside
+        # the pod netns via bash /dev/tcp on loopback. debian:trixie-slim
+        # ships bash by default; no extra package needed.
+        readinessProbe:
+          exec:
+            command:
+              - /usr/bin/bash
+              - -c
+              - 'exec 3<>/dev/tcp/127.0.0.1/2049'
+          periodSeconds: 2
+          timeoutSeconds: 2
+          failureThreshold: 30
         volumeMounts:
         - name: nfs-storage
           mountPath: /nfsshare
