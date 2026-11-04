@@ -96,7 +96,15 @@ spec:
             - cat
             - /root/instance-swarm-ready
           periodSeconds: 10
-          failureThreshold: 60
+          # 20-minute deadline (120 * 10s). openemr's first-boot runs
+          # leader-election through the shared NFS sites volume and
+          # on this stack's mTLS-wrapped ganesha backing the per-op
+          # latency is enough to push one leader-election cycle
+          # (LEADER_TIMEOUT=300s + ~3-5 min of setup) past a 10-min
+          # probe deadline when pods race. 20 min gives one pod
+          # reliable headroom to complete its cycle; followers see
+          # the leader marker and skip straight to their fast path.
+          failureThreshold: 120
         readinessProbe:
           exec:
             command:

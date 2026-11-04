@@ -19,13 +19,16 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
   - **phpMyAdmin** - There is 1 deployment instance of phpMyAdmin. Access is via `kubectl port-forward` only (not exposed externally).
 
 # Use
+
+> **Not supported in LXC system containers** (including the [Claude Appliance](https://github.com/openemr/openemr/blob/master/Documentation/contributors/claude-appliance-setup.md), Proxmox LXC, Incus system containers). LXC's default seccomp profile blocks `open_by_handle_at` as part of its container-escape mitigation, which breaks the in-cluster NFS server (nfs-ganesha's FSAL_VFS uses `open_by_handle_at` for handle-based filesystem access). The LXC config can be edited to lift the block, but doing so weakens LXC's isolation in a way that's load-bearing in the container's threat model. Use a bare host, a VM (Incus VM, cloud VM, etc.), or a laptop for local Kind-based development instead.
+
 1. Install Kind. Other Kubernetes distributions can be substituted by users familiar with their networking and storage models, but the instructions below assume Kind.
     - For Kind, see below for instructions sets with 1 node or 4 nodes.
         - 1 node:
             ```bash
             kind create cluster --config kind-config-1-node.yaml
             ```
-        - 4 nodes (1 control-plane node and 3 worker nodes). Shared volumes use an in-cluster NFS provisioner (deployed by kub-up) so pods on different nodes can share ReadWriteMany volumes:
+        - 4 nodes (1 control-plane node and 3 worker nodes). Shared volumes use an in-cluster NFS server + CSI driver (deployed by kub-up) with mTLS wrapping, so pods on different nodes can share ReadWriteMany volumes:
             ```bash
             kind create cluster --config kind-config-4-nodes.yaml
             ```
@@ -46,7 +49,8 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
           NAME                                   READY   STATUS    RESTARTS   AGE
           pod/mysql-sts-0                        1/1     Running   0          111s
           pod/mysql-sts-1                        1/1     Running   0          91s
-          pod/nfs-provisioner-77f85859c4-xxxxx   1/1     Running   0          3m
+          pod/nfs-server-74f8d9c7b5-xxxxx        2/2     Running   0          3m
+          pod/nfs-stunnel-client-abcde           1/1     Running   0          3m
           pod/openemr-7889cf48d8-9jdfl           1/1     Running   0          111s
           pod/openemr-7889cf48d8-qphrw           1/1     Running   0          111s
           pod/openemr-7889cf48d8-zlx9f           1/1     Running   0          111s
@@ -58,30 +62,38 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
           pod/sentinel-1                         1/1     Running   0          34s
           pod/sentinel-2                         1/1     Running   0          30s
 
-          NAME                      TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                        AGE
-          service/kubernetes        ClusterIP   10.96.0.1      <none>        443/TCP                        3m40s
-          service/mysql             ClusterIP   None           <none>        3306/TCP                       111s
-          service/nfs-provisioner   ClusterIP   10.96.1.73     <none>        2049/TCP,2049/UDP,...           3m
-          service/openemr           NodePort    10.96.6.51     <none>        8080:30080/TCP,8090:30443/TCP   111s
-          service/phpmyadmin        ClusterIP   10.96.64.163   <none>        8081/TCP,8091/TCP              111s
-          service/redis             ClusterIP   None           <none>        6379/TCP                       111s
-          service/sentinel          ClusterIP   None           <none>        26379/TCP                      111s
+          NAME                 TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                        AGE
+          service/kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP                        3m40s
+          service/mysql        ClusterIP   None           <none>        3306/TCP                       111s
+          service/nfs-server   ClusterIP   10.96.1.73     <none>        20490/TCP                      3m
+          service/openemr      NodePort    10.96.6.51     <none>        8080:30080/TCP,8090:30443/TCP   111s
+          service/phpmyadmin   ClusterIP   10.96.64.163   <none>        8081/TCP,8091/TCP              111s
+          service/redis        ClusterIP   None           <none>        6379/TCP                       111s
+          service/sentinel     ClusterIP   None           <none>        26379/TCP                      111s
 
-          NAME                              READY   UP-TO-DATE   AVAILABLE   AGE
-          deployment.apps/nfs-provisioner   1/1     1            1           3m
-          deployment.apps/openemr           3/3     3            3           111s
-          deployment.apps/phpmyadmin        1/1     1            1           111s
+          NAME                         READY   UP-TO-DATE   AVAILABLE   AGE
+          deployment.apps/nfs-server   1/1     1            1           3m
+          deployment.apps/openemr      3/3     3            3           111s
+          deployment.apps/phpmyadmin   1/1     1            1           111s
 
-          NAME                                         DESIRED   CURRENT   READY   AGE
-          replicaset.apps/nfs-provisioner-77f85859c4   1         1         1       3m
-          replicaset.apps/openemr-7889cf48d8           3         3         3       111s
-          replicaset.apps/phpmyadmin-f4d9bfc69         1         1         1       111s
+          NAME                                READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+          daemonset.apps/nfs-stunnel-client   1       1            1           <none>          3m
+
+          NAME                                    DESIRED   CURRENT   READY   AGE
+          replicaset.apps/nfs-server-74f8d9c7b5   1         1         1       3m
+          replicaset.apps/openemr-7889cf48d8      3         3         3       111s
+          replicaset.apps/phpmyadmin-f4d9bfc69    1         1         1       111s
 
           NAME                         READY   AGE
           statefulset.apps/mysql-sts   2/2     111s
           statefulset.apps/redis       3/3     111s
           statefulset.apps/sentinel    3/3     111s
           ```
+
+          Note: `csi-driver-nfs` controller + node daemonset pods run in
+          the `kube-system` namespace (not shown here). Use
+          `kubectl get pods -n kube-system -l 'app in (csi-nfs-controller,csi-nfs-node)'`
+          to see them.
 4. Getting the url link to OpenEMR:
     - With the provided Kind config files, OpenEMR is mapped to localhost: `http://localhost:8800` or `https://localhost:9800`
 5. Accessing phpMyAdmin:
@@ -97,10 +109,10 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
         ```
         - It will look something like this (note OpenEMR has 3 desired and 3 current replicas going):
             ```console
-            NAME                         DESIRED   CURRENT   READY   AGE
-            nfs-provisioner-77f85859c4   1         1         1       11m
-            openemr-7889cf48d8           3         3         3       9m22s
-            phpmyadmin-f4d9bfc69         1         1         1       9m22s
+            NAME                    DESIRED   CURRENT   READY   AGE
+            nfs-server-74f8d9c7b5   1         1         1       11m
+            openemr-7889cf48d8      3         3         3       9m22s
+            phpmyadmin-f4d9bfc69    1         1         1       9m22s
             ```
     - Second, lets increase OpenEMR's replicas from 3 to 10 (ie. pretend in an environment where a huge number of OpenEMR users are using the system at the same time)
         ```bash
@@ -177,21 +189,27 @@ In a single-cluster deployment on AWS Nitro or GCP, the confidentiality property
 
 OpenEMR ↔ Redis and OpenEMR ↔ Sentinel use mTLS via phpredis with Sentinel-based master discovery (`SESSION_STORAGE_MODE=predis-sentinel`). The `tls-auth-clients yes` setting in `redis/configmap-main.yaml` enforces client certificate presentation. Same three properties as MariaDB above.
 
-## In-transit: NFS shared volumes (gap)
+## In-transit: NFS shared volumes
 
-The OpenEMR pods share three RWX volumes via the in-cluster NFS provisioner: `websitevolume` (`/var/www/.../sites`, contains patient documents), `sslvolume` (`/etc/ssl`), and `letsencryptvolume` (`/etc/letsencrypt`). NFS traffic between OpenEMR pods and the NFS provisioner pod is **not** encrypted by default — it uses NFSv4.1 over plain TCP with `sec=sys`.
+The OpenEMR pods share three RWX volumes used across pods and nodes: `websitevolume` (`/var/www/.../sites`, contains patient documents), `sslvolume` (`/etc/ssl`), and `letsencryptvolume` (`/etc/letsencrypt`). The storage layer uses **csi-driver-nfs** (standard upstream, kubernetes-sigs/csi-driver-nfs) with an in-cluster NFS backing server. NFS traffic between csi-driver-nfs on each node and the NFS server pod is wrapped in **mTLS** by two cooperating stunnel instances:
 
-mTLS sidecars and service meshes do not cover this path. NFS mounts are performed by the kubelet on the host network namespace, not by the pod, so application-layer mesh sidecars never see the traffic.
+- **`nfs-server` Deployment** — nfs-ganesha serving on `127.0.0.1:2049`, with a stunnel sidecar on `0.0.0.0:20490` that terminates mTLS and forwards to the local nfs-ganesha. Backed by a `nfs-server-data` PVC (ReadWriteOnce) — all three RWX volumes consumed by openemr/phpmyadmin are subdirs of this one backing PV.
+- **`nfs-stunnel-client` DaemonSet** — one pod per node running `hostNetwork: true`, listening on `127.0.0.1:12049` and forwarding mTLS to `nfs-server:20490`. The non-standard port 12049 (not 2049) avoids collision with any kernel NFS server a node might already run.
+- **StorageClass `nfs`** — provisioner `nfs.csi.k8s.io`, parameters `server: 127.0.0.1, share: /nfsshare`, mountOptions `nfsvers=4.0, port=12049, noac, actimeo=0`. kubelet's NFS mount lands on each node's local stunnel-client, so all traffic between the kubelet and the NFS server is wrapped.
 
-For deployments where this matters, see **Production Hardening → CNI-level pod-to-pod encryption** below for the standard fix.
+Both stunnels present cert-manager-issued certificates (`certs/nfs-server.yaml`, `certs/nfs-client.yaml`) rooted at the same ca-issuer the rest of the stack uses, with mutual verification on both sides: `verifyChain = yes` enforces chain-of-trust, `checkHost = nfs-client` on the server pins the acceptable peer identity to the stunnel-client's cert CN (so a compromised mysql/redis/phpmyadmin pod with its own ca-issuer-signed cert cannot bypass auth), and `checkHost = nfs-server` on the client pins the server identity symmetrically. Same three properties as MariaDB and Redis above: encrypted wire, mutual authentication, cert-manager rotation.
+
+**Capacity caveat (shared backing PV).** csi-driver-nfs provisions each RWX PVC as a subdirectory of the single `nfs-server-data` backing PV, so the three "1Gi" per-PVC size requests are not enforced as independent quotas — all three share the backing PV's 10Gi (`nfs/nfs-server-pvc.yaml`). If `websitevolume` grows to 9 GiB, the other two have 1 GiB left between them. Monitor the backing PV's usage directly (`kubectl exec deploy/nfs-server -c nfs-server -- df -h /nfsshare`), size the backing PVC with headroom for all three, and bump `storage` on `nfs-server-pvc.yaml` ahead of expected growth. The individual PVC size fields exist only to satisfy the Kubernetes PVC API's required field. (On Kind specifically, the default `local-path-provisioner` does not enforce the backing PVC's size request either, so the 10 GiB is a planning budget rather than a hard cap — the whole node filesystem is accessible to the pod. In a cloud with a quota-enforcing StorageClass behind the backing PVC, the request *is* a hard cap and sizing it correctly matters.)
+
+Trade-off worth naming: NFS protocol traffic flows through two local stunnel hops per read/write op (one on the server pod, one per node), costing a few milliseconds of latency on cold reads. Caching mitigates this for hot paths. On a cloud deployment where users swap the in-cluster NFS server for a cloud-managed NFS endpoint, see **Production Hardening → Swapping to cloud-managed NFS** for the carefully-scoped encryption-in-transit discussion.
 
 ## At-rest: storage layer (not configured by default)
 
-The default deployment uses an in-cluster NFS provisioner (`nfs/deployment.yaml`) backed by a `hostPath: /tmp/nfs-provisioner`, and the MariaDB `datadir` uses the cluster's default StorageClass. Neither is encrypted at rest by default.
+The default deployment backs the in-cluster NFS server with a `nfs-server-data` PVC (`nfs/nfs-server-pvc.yaml`) that claims against the cluster's default StorageClass. The MariaDB `datadir` likewise uses the default StorageClass via its `volumeClaimTemplates`. On Kind, the default StorageClass is `local-path-provisioner` — not encrypted at rest.
 
-For dev/Kind use, this is fine — relying on the workstation's full-disk encryption (LUKS / FileVault / BitLocker) is the appropriate dev posture, and Kind has no native encryption knob.
+For dev/Kind use this is fine; relying on the workstation's full-disk encryption (LUKS / FileVault / BitLocker) is the appropriate dev posture, and Kind has no native encryption knob.
 
-For production deployments, see **Production Hardening → Encryption at rest (storage layer)** for storage-layer encryption options per cloud, and **Production Hardening → MariaDB Transparent Data Encryption (TDE)** for application-layer encryption inside the database.
+For production deployments, both PVCs can be redirected to an encrypted StorageClass with no application-code changes — see **Production Hardening → Encryption at rest (storage layer)** for per-cloud options, and **Production Hardening → MariaDB Transparent Data Encryption (TDE)** for application-layer encryption inside the database.
 
 ## Secrets management
 
@@ -245,12 +263,54 @@ Perform all the TLS downgrade steps above, then additionally:
 
 The stack ships with sensible defaults for development on Kind. For production deployments, the following swaps and additions are typical. None of them require changes to OpenEMR application code or to the application-level security model — they are storage and infrastructure adjustments around the existing manifests.
 
+## Upgrading an existing cluster to the CSI-based NFS stack
+
+This stack does not support in-place upgrades for the Kubernetes side — the storage layer and manifest wiring are redone whole-cluster. If you have an existing cluster running the older sig-storage/nfs-provisioner setup (pre-#910), the upgrade path is:
+
+1. **Quiesce application writes first.** `kubectl scale deployment/openemr --replicas=0` and `kubectl scale deployment/phpmyadmin --replicas=0` before anything else, and wait for the pods to terminate. Without this, documents written between the export and `kub-down` are absent from the restored volume.
+2. **Preserve all three RWX volumes via a helper pod.** `kub-down` destroys `websitevolume`, `sslvolume`, and `letsencryptvolume` — not just `websitevolume`. With openemr scaled to zero in step 1, there is no running pod that mounts the claims, so bring up a short-lived helper that does:
+
+   ```yaml
+   apiVersion: v1
+   kind: Pod
+   metadata: { name: backup-helper }
+   spec:
+     containers:
+     - name: backup
+       image: busybox
+       command: ["sleep", "3600"]
+       volumeMounts:
+       - { name: web, mountPath: /backup/websitevolume }
+       - { name: ssl, mountPath: /backup/sslvolume }
+       - { name: le,  mountPath: /backup/letsencryptvolume }
+     volumes:
+     - { name: web, persistentVolumeClaim: { claimName: websitevolume } }
+     - { name: ssl, persistentVolumeClaim: { claimName: sslvolume } }
+     - { name: le,  persistentVolumeClaim: { claimName: letsencryptvolume } }
+   ```
+
+   Then `kubectl cp backup-helper:/backup/websitevolume ./websitevolume-backup` (and likewise for `sslvolume`, `letsencryptvolume`). Delete the helper (`kubectl delete pod backup-helper`) before step 3 so it does not hold the claims open against `kub-down`.
+3. **`bash kub-down`** on the old manifests — fully tears down the old nfs-provisioner Deployment, Service, and RBAC along with the rest of the stack, so no plaintext NFS provisioner is left behind.
+4. **Pull the updated manifests** (this branch / release).
+5. **`bash kub-up`** on the new manifests. The new `nfs-server` Deployment, csi-driver-nfs, stunnel pods, and mTLS certs come up from scratch.
+6. **Restore each volume into its newly-provisioned CSI subdirectory.** csi-driver-nfs auto-names each RWX volume's backing directory as `<pvc-name>-<uid>` under `/nfsshare` on the backing PV (or under the share root for cloud-managed NFS). Restore into any openemr replica — only openemr mounts these claims, and all replicas share them. Stream the backup directory's *contents* (not the directory itself, which `kubectl cp` would nest) with tar:
+
+   ```
+   tar cf - -C websitevolume-backup . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /var/www/localhost/htdocs/openemr/sites
+   tar cf - -C sslvolume-backup       . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /etc/ssl
+   tar cf - -C letsencryptvolume-backup . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /etc/letsencrypt
+   ```
+
+   The kubelet routes writes through the mount transparently into the newly-provisioned CSI directory. (Advanced: pre-create static PVs with `persistentVolume.spec.nfs.path` pointing at the pre-existing backup directories and bind the PVCs to those, which skips the auto-provision step entirely. A static PV does *not* inherit the StorageClass's `mountOptions`, so each one must set `spec.nfs.server: 127.0.0.1` and `spec.mountOptions: [nfsvers=4.0, port=12049, noac, actimeo=0]` explicitly — otherwise the mount fails.)
+
+Attempting to apply the new manifests on top of an old cluster without a `kub-down` first will leave the old nfs-provisioner running alongside the new csi-driver-nfs, and the StorageClass `parameters` are immutable so the old `provisioner: cluster.local/nfs-provisioner` will not be replaced by the new `nfs.csi.k8s.io` provisioner — a silent half-upgrade state.
+
 ## Encryption at rest (storage layer)
 
 The simplest path to encryption-at-rest is to back the persistent volumes with an encrypted StorageClass at the cloud or storage-layer. Two PVCs matter:
 
 - **MariaDB `datadir`** (RWO) — set `storageClassName` on the `volumeClaimTemplates` entry in `mysql/statefulset.yaml` to your encrypted StorageClass.
-- **NFS provisioner backing** — replace the `hostPath: /tmp/nfs-provisioner` in `nfs/deployment.yaml` with a PVC backed by your encrypted StorageClass. The three RWX volumes (`websitevolume`, `sslvolume`, `letsencryptvolume`) inherit encryption from this single backing disk; no changes to OpenEMR manifests are needed.
+- **NFS server backing** (RWO) — set `storageClassName` on `nfs/nfs-server-pvc.yaml` to your encrypted StorageClass. The three RWX volumes (`websitevolume`, `sslvolume`, `letsencryptvolume`) consumed by openemr/phpmyadmin are provisioned as subdirs under this one backing PV by csi-driver-nfs, so they all inherit the backing disk's encryption; no changes to OpenEMR manifests are needed.
 
 | Cloud / Environment | StorageClass | Key management |
 |---|---|---|
@@ -293,9 +353,48 @@ Enable TDE at first boot so the system tablespace is born encrypted. Existing ta
 
 **Backups:** if `mariabackup` is added to the deployment, it must have access to the same keyfile to read encrypted tablespaces.
 
+## Swapping to cloud-managed NFS
+
+The in-cluster `nfs-server` Deployment is a reasonable default for Kind and on-prem clusters, but production users on a hyperscaler usually prefer a managed NFS endpoint for durability and backup. Because the StorageClass is standard upstream `nfs.csi.k8s.io`, the swap is primarily a StorageClass edit — no OpenEMR manifest edits needed.
+
+**What the in-cluster defaults look like today** (`kubernetes/nfs/storageclass.yaml`):
+
+```yaml
+parameters:
+  server: 127.0.0.1
+  share: /nfsshare
+mountOptions:
+  - nfsvers=4.0        # see ganesha config rationale in nfs-server-ganesha-configmap.yaml
+  - port=12049         # loopback port of per-node stunnel-client DaemonSet
+  - noac
+  - actimeo=0
+```
+
+The `server`, `share`, `nfsvers`, and `port` values are all in-cluster-specific. Migration = replace them with the cloud endpoint's equivalents, and remove the in-cluster support pieces (`nfs-server-*.yaml`, `stunnel-client-*.yaml`).
+
+| Cloud / Endpoint | `server` | `share` | `nfsvers` | `port` | Also required |
+|---|---|---|---|---|---|
+| AWS EFS | `fs-xxxx.efs.<region>.amazonaws.com` (EFS DNS name) | `/` | `4.1` (EFS speaks 4.1) | drop `port=12049` (EFS listens on default 2049) | Delete in-cluster NFS files + their references in `kub-up` / `kub-down`. Mounting EFS from csi-driver-nfs is unencrypted on the wire by default — see the encryption-in-transit section below. |
+| GCP Filestore | Filestore instance IP | Filestore file-share name (e.g. `/vol1`) | `4.1` (Filestore Basic is 3, Enterprise/Zonal is 4.1 — pick the tier with 4.1) | drop `port=12049` | Same deletions as EFS. See encryption notes below. |
+| Azure Files (NFS 4.1) | storage-account FQDN (e.g. `myacct.file.core.windows.net`) | share path (e.g. `/myacct/share1`) | `4.1` (Azure Files NFS only speaks 4.1) | drop `port=12049` | Same deletions as EFS. See encryption notes below. |
+| On-prem managed NFS | NFS appliance IP or DNS name | the appliance's export path | match the appliance's supported minor version | drop `port=12049` unless the appliance listens on it | Same deletions as EFS. The stunnel-client DaemonSet becomes dead code once `server` is anything other than `127.0.0.1` — the DaemonSet listens only on the node loopback, and csi-driver-nfs's mount now dials the external appliance directly. Plan a separate encrypted transport (e.g. IPsec tunnel between the Kubernetes nodes and the NFS appliance, or NFSv4-with-Kerberos). |
+
+**Important: StorageClass `parameters` and `mountOptions` are immutable.** Kubernetes rejects edits to either field on an existing StorageClass, and existing PVs retain whatever values they were originally provisioned with. The clean migration path is `kub-down` → wait for cluster-level teardown → edit `storageclass.yaml` → `kub-up`. For a cluster that has live patient data on the in-cluster NFS backing: scale openemr/phpmyadmin to zero first (to quiesce writes), export each of the three RWX volumes (`websitevolume`, `sslvolume`, `letsencryptvolume`), `kub-down`, swap the StorageClass to the cloud endpoint, `kub-up`, then restore each export into the CSI-provisioned subdirectory the new PVC creates under the cloud share. See the upgrade section above for the full sequence.
+
+**Encryption-in-transit on the cloud path.** The default `nfs` StorageClass uses the kernel NFS client — it does not auto-negotiate TLS to the server. The in-cluster stunnel-client DaemonSet only wraps traffic because `parameters.server` points at `127.0.0.1`, which routes through the local DaemonSet pod. Once `parameters.server` is changed to any external endpoint, csi-driver-nfs's kubelet mount dials the external address directly and the DaemonSet becomes unused — the mount is plaintext regardless of whether the DaemonSet exists. The cloud path's encryption therefore depends entirely on the mount endpoint, not on anything we deploy inside the cluster. By cloud:
+
+- **AWS EFS**: the supported encryption-in-transit path is `efs-utils` with the `-o tls` option, which spawns a local stunnel-equivalent on each node and wraps traffic to EFS. csi-driver-nfs does **not** use `efs-utils`, so a direct `nfs.csi.k8s.io` → EFS mount is plaintext on the wire. Options: replace csi-driver-nfs with the `aws-efs-csi-driver` (which does use `efs-utils` under the hood and accepts `encryptInTransit: "true"` as a mount option), or front csi-driver-nfs with your own node-local stunnel layer analogous to the in-cluster pattern this stack uses. (Nitro-based instance-to-instance encryption is sometimes cited as an alternative, but it's limited to specific instance types and placement conditions — not a reliable blanket property. Don't rely on it without reviewing the current AWS docs for your exact instance family.)
+- **GCP Filestore**: supports NFSv4.1 encryption-in-transit via Kerberos (`sec=krb5p`), which requires a Kerberos KDC the nodes can reach and client principal/keytab config on each node — not a `csi-driver-nfs` mountOption. Without Kerberos, the mount is plaintext on the wire. (`fscrypt` is a Linux at-rest FS encryption feature and `gcsfuse` mounts Cloud Storage buckets rather than Filestore, so neither applies here.)
+- **Azure Files NFS**: Private Endpoint traffic bypasses VNet-level encryption; use SMB with Kerberos for in-transit encryption instead of NFS, or plan a separate encrypted transport (IPsec, WireGuard between nodes and endpoint).
+- **On-prem managed NFS**: no cloud-level encryption applies and the stunnel-client DaemonSet does not wrap this path. Plan a separate encrypted transport (IPsec tunnel to the appliance, or NFSv4-with-Kerberos).
+
+Short version: when `parameters.server` is `127.0.0.1` (default), the stunnel-client DaemonSet wraps everything. When it's any external endpoint, cloud-level or appliance-level encryption is the only encryption you have — confirm it covers your specific tier/instance combo end-to-end.
+
+**Encryption-at-rest on the cloud path:** all three managed endpoints encrypt at rest by default with cloud-provider keys. For CMEK/CMK, see the respective cloud's documentation.
+
 ## CNI-level pod-to-pod encryption
 
-For the NFS shared-volume in-transit gap (and for any other pod-to-pod traffic outside the application-mTLS layers), the standard answer is CNI-level transparent encryption. This wraps all node-to-node pod traffic regardless of workload, including NFS, iSCSI, and the kubelet-initiated paths that service meshes can't reach.
+In addition to the application-level and NFS-level mTLS this stack already uses, some deployments want blanket pod-to-pod encryption below the application layer. This wraps all node-to-node pod traffic regardless of workload, which is useful for defense-in-depth and for any supplementary traffic that doesn't go through the stack's mTLS layers.
 
 | Environment | Approach |
 |---|---|
@@ -305,7 +404,7 @@ For the NFS shared-volume in-transit gap (and for any other pod-to-pod traffic o
 | Any cluster (portable) | Cilium with `encryption.enabled=true, encryption.type=wireguard`, or Calico with WireGuard mode. Single config flag, encrypts all pod-to-pod traffic. |
 | On-prem / air-gapped | CNI WireGuard (Cilium or Calico) is the standard. |
 
-Service meshes (Istio, Linkerd) provide mTLS for application traffic but do not cover NFS or storage paths because those mounts happen at the kubelet, not in the pod. For the NFS gap specifically, CNI-level encryption is the right tool.
+Service meshes (Istio, Linkerd) provide mTLS for application traffic but do not cover storage paths because those mounts happen at the kubelet, not in the pod — which is why this stack handles NFS encryption at the stunnel layer rather than relying on a mesh.
 
 ## Production checklist
 
@@ -313,9 +412,9 @@ When adapting this stack for a production deployment, the typical hardening chec
 
 - [ ] Replace default passwords in all `*-credentials` and `*-secret.yaml` files (or wire up External Secrets Operator).
 - [ ] Set `storageClassName` on `mysql/statefulset.yaml` `volumeClaimTemplates` to an encrypted StorageClass.
-- [ ] Replace the NFS provisioner's `hostPath` with a PVC on an encrypted StorageClass.
+- [ ] Set `storageClassName` on `nfs/nfs-server-pvc.yaml` to an encrypted StorageClass — OR swap the in-cluster NFS server for a cloud-managed endpoint (EFS/Filestore/Azure Files) via **Swapping to cloud-managed NFS** above.
 - [ ] Decide on TDE: enable at first boot if defense-in-depth is desired; document the key rotation runbook.
-- [ ] Confirm pod-to-pod encryption: rely on hyperscaler-native (AWS Nitro / GCP) or enable CNI WireGuard.
+- [ ] Confirm pod-to-pod encryption: rely on hyperscaler-native (AWS Nitro / GCP), enable CNI WireGuard, or confirm the application-level + NFS-level mTLS layers already cover your threat model.
 - [ ] Review `network/policies.yaml` for your namespace topology.
 - [ ] Replace the self-signed cert-manager CA with a CA chained to your organization's PKI if cross-cluster trust is required.
 - [ ] Determine ingress: the default NodePort exposure is for development; production typically fronts OpenEMR with an Ingress Controller and an external load balancer with proper TLS termination.

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nfs-stunnel-client-config
+  labels:
+    app: nfs-stunnel-client
+data:
+  stunnel.conf: |
+    # stunnel client-side: accepts plaintext NFS from kubelet (via the
+    # local csi-driver-nfs mount) on 127.0.0.1:12049, wraps it in mTLS,
+    # and forwards to nfs-server:20490 cluster-wide.
+    #
+    # Port 12049 (not 2049): avoids collision with a node-level kernel
+    # NFS server on the standard port. The csi-driver-nfs StorageClass's
+    # mountOptions pass `port=12049` so kubelet dials this port, not the
+    # default. hostNetwork: true on the DaemonSet so each node's
+    # 127.0.0.1 is this pod's loopback.
+
+    foreground = yes
+    pid =
+    output = /dev/stdout
+    debug = notice
+
+    [nfs]
+    client = yes
+    accept = 127.0.0.1:12049
+    connect = nfs-server:20490
+    cert = /etc/stunnel/certs/tls.crt
+    key = /etc/stunnel/certs/tls.key
+    CAfile = /etc/stunnel/certs/ca.crt
+    verifyChain = yes
+    checkHost = nfs-server

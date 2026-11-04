@@ -44,7 +44,11 @@ jobs:
           kubectl rollout status statefulset/redis --timeout=300s
           kubectl rollout status statefulset/sentinel --timeout=300s
           echo "Waiting for OpenEMR (may take several minutes for initial setup)..."
-          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=900s
+          # Match the openemr Deployment's startupProbe budget
+          # (periodSeconds=10 × failureThreshold=120 = 1200s). Observed
+          # boot is ~2-3 min; this is the upper bound k8s would still
+          # let the pod keep trying.
+          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
           echo "All pods ready"
 
       - name: Verify all pods running
@@ -282,6 +286,17 @@ jobs:
           kubectl logs redis-0 --tail=50 2>/dev/null || true
           echo "=== Sentinel Logs ==="
           kubectl logs sentinel-0 --tail=50 2>/dev/null || true
+          # kubectl logs -l selector drops the -c container flag silently
+          # — need an explicit pod name. Fetch the nfs-server pod name
+          # first, then both containers in turn.
+          NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
+          echo "=== nfs-server (ganesha) logs ==="
+          # Dump the whole ganesha log unfiltered — ganesha's Default_Log_Level
+          # is INFO, so CRIT/MAJ/WARN/EVENT lines from any component (not just
+          # the ones we'd think to grep for) can surface the real failure.
+          kubectl logs "$NFS_POD" -c nfs-server 2>/dev/null || true
+          echo "=== nfs-server (stunnel) logs ==="
+          kubectl logs "$NFS_POD" -c stunnel --tail=20 2>/dev/null || true
 
       - name: Cleanup
         if: always()

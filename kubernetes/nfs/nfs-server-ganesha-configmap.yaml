@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nfs-server-ganesha-config
+  labels:
+    app: nfs-server
+data:
+  ganesha.conf: |
+    # nfs-ganesha configuration for the in-cluster NFS backing server.
+    #
+    # Design notes:
+    # * Userspace NFS server (nfs-ganesha, Debian package) so the pod can
+    #   drop `privileged: true`. The mount/export syscalls kernel-NFS
+    #   required are replaced by nfs-ganesha's user-space protocol
+    #   handling, with VFS as the FSAL writing to the mounted PVC. The
+    #   pod spec grants `DAC_READ_SEARCH` and `SYS_RESOURCE` capabilities
+    #   that FSAL_VFS needs for its handle-based operations and ganesha's
+    #   fd-rlimit tuning — see nfs-server-deployment.yaml for the
+    #   corresponding securityContext.
+    # * NFSv4.0 only. v3/portmapper/NLM/RQUOTA disabled to minimize attack
+    #   surface and because our csi-driver-nfs StorageClass mounts with
+    #   nfsvers=4.0 (see kubernetes/nfs/storageclass.yaml mountOptions
+    #   for the rationale). Leaving v3 and friends enabled makes ganesha
+    #   try to register with portmapper, which isn't running in this pod.
+    # * Per-peer ACL is at the stunnel sidecar via mTLS + checkHost =
+    #   nfs-client; ganesha accepts any TCP peer because the only path
+    #   that reaches it goes through the mTLS layer first.
+
+    NFS_CORE_PARAM {
+        Bind_Addr = 0.0.0.0;
+        NFS_Port = 2049;
+        Protocols = 4;
+        Enable_UDP = false;
+        Enable_NLM = false;
+        Enable_RQUOTA = false;
+    }
+
+    NFSv4 {
+        # Skip the grace period. This pod is the sole NFS server
+        # (replicas: 1, strategy: Recreate) so there is no replicated
+        # state that needs to converge after a restart; skipping the
+        # grace shaves ~90s off pod startup.
+        Graceless = true;
+        # NFSv4.0 only. Directory delegations are an NFSv4.1 feature
+        # (OP_GET_DIR_DELEGATION, op 39). Linux client opportunistically
+        # requests them against certain access patterns, ganesha's
+        # FSAL_VFS responds with NFS4ERR_OP_ILLEGAL, and the client
+        # surfaces subsequent stat/opendir as EREMOTEIO. Setting
+        # Delegations = false doesn't stop the client from trying.
+        # Restricting the server to NFSv4.0 removes directory
+        # delegations from the protocol entirely so the client can't
+        # ask for them. Trade-off: no NFSv4.1 session/pNFS features,
+        # fine for this stack's single-server single-client topology.
+        Minor_Versions = 0;
+        # Still disable file delegations (OPEN_DELEGATE) for the same
+        # reason — openemr workload doesn't benefit from them and
+        # ganesha v6 answers them inconsistently.
+        Delegations = false;
+    }
+
+    EXPORT_DEFAULTS {
+        # Disable ganesha's server-side attribute cache (default 60s).
+        # The kubelet mounts with `noac + actimeo=0` to force fresh
+        # GETATTR per lookup, but that only disables CLIENT caching —
+        # the server can still answer those GETATTR calls from its own
+        # cache. For openemr's leader-election heartbeat (mtime check
+        # on a shared marker file), stale server-side attrs make
+        # followers think the leader is dead when it isn't, causing
+        # cascading leader-takeover attempts that overflow the
+        # startupProbe deadline. kernel-NFS has no equivalent server-
+        # side cache, which is why this stack worked before.
+        Attr_Expiration_Time = 0;
+    }
+
+    EXPORT {
+        Export_ID = 1;
+        # Path = Pseudo = /nfsshare. ganesha's VFS FSAL registers
+        # /nfsshare in its filesystem registry via the mtab symlink
+        # in the pod's entrypoint (/etc/mtab -> /proc/self/mounts),
+        # which is enough to point Path directly at the mountpoint.
+        Path = /nfsshare;
+        Pseudo = /nfsshare;
+        Protocols = 4;
+        # AUTH_SYS is the default NFS auth flavor used by csi-driver-nfs
+        # and the Linux kernel NFSv4 client. Without an explicit SecType
+        # the export's auth-flavor field is empty and mount.nfs gets
+        # EPERM.
+        SecType = sys;
+        Access_Type = RW;
+        # Preserve file ownership written by the openemr pod. Peer
+        # authentication is at the stunnel layer, so No_Root_Squash is
+        # safe here.
+        Squash = No_Root_Squash;
+        FSAL {
+            Name = VFS;
+        }
+        Transports = TCP;
+        # ganesha v6 requires at least one CLIENT sub-block for the
+        # export to permit any mounts. Wildcard CIDR is safe because
+        # the stunnel sidecar enforces peer identity via mTLS before
+        # bytes even reach ganesha.
+        CLIENT {
+            Clients = *;
+            Access_Type = RW;
+            Squash = No_Root_Squash;
+        }
+    }
+
+    LOG {
+        Default_Log_Level = INFO;
+    }

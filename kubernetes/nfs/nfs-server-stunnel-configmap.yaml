@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nfs-server-stunnel-config
+  labels:
+    app: nfs-server
+data:
+  stunnel.conf: |
+    # stunnel server-side: terminates mTLS from stunnel-client DaemonSet
+    # pods and forwards plaintext NFS to the local nfs-ganesha/kernel-NFS
+    # on 127.0.0.1:2049.
+    #
+    # Peer verification required (verifyChain = yes) — client cert must
+    # be signed by the ca-issuer that cert-manager roots the whole stack
+    # on. This gives us mutual authentication without any shared secret.
+
+    foreground = yes
+    pid =
+    output = /dev/stdout
+    debug = notice
+
+    [nfs]
+    accept = 0.0.0.0:20490
+    connect = 127.0.0.1:2049
+    cert = /etc/stunnel/certs/tls.crt
+    key = /etc/stunnel/certs/tls.key
+    CAfile = /etc/stunnel/certs/ca.crt
+    verifyChain = yes
+    requireCert = yes
+    # Restrict the client identity: our ca-issuer signs many certs in this
+    # stack (mysql/redis/phpmyadmin), so verifyChain alone would accept any
+    # of them. checkHost pins the acceptable peer to the nfs-client cert's
+    # CN, which only the stunnel-client DaemonSet pods hold.
+    checkHost = nfs-client

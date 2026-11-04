@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nfs-stunnel-client
+  labels:
+    app: nfs-stunnel-client
+spec:
+  selector:
+    matchLabels:
+      app: nfs-stunnel-client
+  template:
+    metadata:
+      labels:
+        app: nfs-stunnel-client
+    spec:
+      automountServiceAccountToken: false
+      # hostNetwork so the kubelet-initiated NFS mount can connect to
+      # 127.0.0.1 and reach this pod's stunnel listener. Without this
+      # 127.0.0.1 inside kubelet resolves to the node's loopback, not
+      # the pod's.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # Run on every node — including control-plane nodes that carry the
+      # default NoSchedule taint — because kubelet on any node may need
+      # to NFS-mount via the local stunnel listener. Any workload that
+      # tolerates control-plane taints (operators, system components)
+      # could schedule there and require NFS access.
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: stunnel
+        # Same digest-pinned alpine as the nfs-server stunnel sidecar;
+        # dependabot's "infrastructure" group refreshes it nightly.
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            apk add --no-cache stunnel && \
+            exec stunnel /etc/stunnel/stunnel.conf
+        # Loopback port 12049 (not 2049): if a node is already running a
+        # kernel NFS server on the standard port 2049, hostPort: 2049
+        # would collide and silently leave csi-driver-nfs mounts hitting
+        # the host's plain-NFS listener instead of our mTLS path. Using
+        # 12049 with a matching `port=12049` mountOption on the
+        # StorageClass sidesteps that whole class of host-collision bug.
+        ports:
+        - name: nfs-local
+          containerPort: 12049
+          hostPort: 12049
+          protocol: TCP
+        # Without a probe, the pod flips Ready as soon as the
+        # container process starts — which is during `apk add
+        # stunnel`, before stunnel is listening. That makes
+        # `kubectl rollout status` effectively a no-op and risks
+        # kubelet NFS mounts hitting a not-yet-listening port
+        # during a rollout. The tcpSocket probe gates Ready on
+        # the actual loopback listener. `host: 127.0.0.1` is
+        # meaningful here because `hostNetwork: true` puts this
+        # pod in the node's own netns, so kubelet's probe reaches
+        # the node loopback where hostPort is bound.
+        readinessProbe:
+          tcpSocket:
+            host: 127.0.0.1
+            port: 12049
+          periodSeconds: 2
+          timeoutSeconds: 2
+          failureThreshold: 30
+        volumeMounts:
+        - name: stunnel-config
+          mountPath: /etc/stunnel/stunnel.conf
+          subPath: stunnel.conf
+        - name: nfs-client-certs
+          mountPath: /etc/stunnel/certs
+          readOnly: true
+      volumes:
+      - name: stunnel-config
+        configMap:
+          name: nfs-stunnel-client-config
+      - name: nfs-client-certs
+        secret:
+          secretName: nfs-client-certs
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          - key: ca.crt
+            path: ca.crt

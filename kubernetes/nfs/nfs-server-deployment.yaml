@@ -1,0 +1,165 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-server
+  labels:
+    app: nfs-server
+spec:
+  replicas: 1
+  strategy:
+    # Recreate rather than RollingUpdate because the backing PVC is
+    # ReadWriteOnce — only one pod can hold it at a time.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: nfs-server
+  template:
+    metadata:
+      labels:
+        app: nfs-server
+    spec:
+      automountServiceAccountToken: false
+      # Belt-and-suspenders over NetworkPolicy: iptables rule in the pod
+      # netns drops all non-loopback traffic to :2049. External isolation
+      # otherwise relies on the Service-only-exposes-20490 + the
+      # allow-nfs-server-ingress NetworkPolicy below. Both are
+      # CNI-enforcement-dependent, and some CNIs don't filter
+      # hostNetwork/node-sourced traffic. This init container closes
+      # that gap unconditionally — nfs-ganesha on :2049 is only
+      # reachable from the stunnel sidecar in the same pod netns.
+      initContainers:
+      - name: block-plain-nfs
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+        securityContext:
+          capabilities:
+            add: ["NET_ADMIN"]
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            apk add --no-cache iptables ip6tables && \
+            iptables  -A INPUT ! -s 127.0.0.1/32 -p tcp --dport 2049 -j DROP && \
+            ip6tables -A INPUT ! -s ::1/128      -p tcp --dport 2049 -j DROP
+      containers:
+      - name: nfs-server
+        # Userspace NFS server (nfs-ganesha from Debian's package repo)
+        # on debian:trixie-slim. Chosen over kernel-NFS to drop the
+        # `privileged: true` requirement that kernel-NFS's mount/export
+        # syscalls need, and to get multi-arch pulls (amd64 + arm64 etc.)
+        # since the debian:trixie-slim image is a multi-arch OCI index.
+        # Users replacing the in-cluster NFS server with cloud storage
+        # (EFS/Filestore/Azure Files) delete this Deployment entirely —
+        # this image choice does not carry over.
+        image: debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4
+        command: ["/bin/sh", "-c"]
+        args:
+          # DEBIAN_FRONTEND=noninteractive + Dpkg::Options force-confold:
+          # the nfs-ganesha package ships its own /etc/ganesha/ganesha.conf,
+          # but our ConfigMap mount at that path is already present when
+          # apt-get installs the package. Without these flags dpkg prompts
+          # on conffile conflict and errors on no-tty, leaving the install
+          # unconfigured. force-confold keeps our mounted config in place.
+          - |
+            export DEBIAN_FRONTEND=noninteractive && \
+            apt-get update && \
+            apt-get install -y --no-install-recommends \
+              -o Dpkg::Options::="--force-confold" \
+              nfs-ganesha nfs-ganesha-vfs && \
+            mkdir -p /var/run/ganesha && \
+            ln -sf /proc/self/mounts /etc/mtab && \
+            exec ganesha.nfsd -F -L STDERR -f /etc/ganesha/ganesha.conf
+        ports:
+        - name: nfs
+          containerPort: 2049
+          protocol: TCP
+        # nfs-ganesha binds to 0.0.0.0:2049 inside the pod netns, where
+        # the stunnel sidecar also lives (same pod, same netns).
+        # External isolation layers, outermost-first:
+        #   1. Service nfs-server only exposes 20490 (the stunnel port).
+        #   2. NetworkPolicy allow-nfs-server-ingress only permits 20490.
+        #   3. The block-plain-nfs initContainer above drops non-loopback
+        #      traffic to :2049 inside the pod netns, so even if 1 and 2
+        #      are bypassed by a misconfigured CNI, :2049 is only
+        #      reachable from the stunnel sidecar on 127.0.0.1.
+        # No `privileged: true` here — nfs-ganesha is userspace. Two
+        # specific capabilities replace the privileged kernel-NFS
+        # pattern, matching kubernetes-sigs/nfs-ganesha-server-and-
+        # external-provisioner's manifest:
+        #   DAC_READ_SEARCH — FSAL_VFS uses open_by_handle_at() for its
+        #     handle-based operations (LOOKUP, GETATTR, etc.). Container
+        #     runtimes drop this capability by default (shocker-exploit
+        #     mitigation); without it open_by_handle_at() returns EPERM
+        #     and the Linux kernel NFSv4 client surfaces that as
+        #     `mount.nfs: Operation not permitted`.
+        #   SYS_RESOURCE — bumps the file-descriptor rlimit ceiling that
+        #     ganesha asks the kernel to set at startup.
+        securityContext:
+          capabilities:
+            add: ["DAC_READ_SEARCH", "SYS_RESOURCE"]
+          # Static-analyzer-friendly explicit false. ganesha never
+          # execs setuid binaries, so denying privilege escalation
+          # costs us nothing and keeps Trivy / Checkov quiet.
+          allowPrivilegeEscalation: false
+        volumeMounts:
+        - name: nfs-storage
+          mountPath: /nfsshare
+        - name: ganesha-config
+          mountPath: /etc/ganesha/ganesha.conf
+          subPath: ganesha.conf
+      - name: stunnel
+        # stunnel built into Alpine's standard package set. Pinned to a
+        # specific Alpine digest (dependabot's "infrastructure" group
+        # refreshes it nightly) so stunnel version is deterministic.
+        # Entrypoint installs stunnel at pod start — cheap (seconds)
+        # and keeps us independent of third-party stunnel-prebaked
+        # images with varying maintenance signals.
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            apk add --no-cache stunnel && \
+            exec stunnel /etc/stunnel/stunnel.conf
+        ports:
+        - name: nfs-tls
+          containerPort: 20490
+          protocol: TCP
+        # Gate pod Ready on the stunnel listener actually being up
+        # (not just the container process having started during
+        # `apk add stunnel`). The ganesha container next to this
+        # one isn't readily probeable from kubelet because the
+        # block-plain-nfs init container drops non-loopback traffic
+        # to :2049; stunnel's :20490 is the only externally-reachable
+        # port on this pod, so probing it is the meaningful signal
+        # that "the nfs-server stack is accepting connections."
+        readinessProbe:
+          tcpSocket:
+            port: 20490
+          periodSeconds: 2
+          timeoutSeconds: 2
+          failureThreshold: 30
+        volumeMounts:
+        - name: stunnel-config
+          mountPath: /etc/stunnel/stunnel.conf
+          subPath: stunnel.conf
+        - name: nfs-server-certs
+          mountPath: /etc/stunnel/certs
+          readOnly: true
+      volumes:
+      - name: nfs-storage
+        persistentVolumeClaim:
+          claimName: nfs-server-data
+      - name: ganesha-config
+        configMap:
+          name: nfs-server-ganesha-config
+      - name: stunnel-config
+        configMap:
+          name: nfs-server-stunnel-config
+      - name: nfs-server-certs
+        secret:
+          secretName: nfs-server-certs
+          items:
+          - key: tls.crt
+            path: tls.crt
+          - key: tls.key
+            path: tls.key
+          - key: ca.crt
+            path: ca.crt

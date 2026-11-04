@@ -54,6 +54,7 @@ updates:
         - phpmyadmin
       infrastructure:
         patterns:
+        - alpine
         - busybox
         - registry.k8s.io/*
     labels:

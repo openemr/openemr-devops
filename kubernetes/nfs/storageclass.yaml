@@ -2,7 +2,37 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: nfs
-provisioner: openemr.org/nfs
+provisioner: nfs.csi.k8s.io
 allowVolumeExpansion: true
+parameters:
+  # Server is the per-node stunnel-client DaemonSet's hostPort listener.
+  # kubelet does the NFS mount from the node's own loopback, which the
+  # DaemonSet (hostNetwork: true) binds. Traffic is then wrapped in
+  # mTLS by stunnel and forwarded to the real nfs-server pod.
+  server: 127.0.0.1
+  # share is /nfsshare because the ganesha EXPORT's Pseudo path is
+  # /nfsshare (ganesha's pseudo-FS root is read-only and can't host
+  # the csi-driver-nfs subdir provisioning, so we need to land on the
+  # actual VFS-FSAL export path).
+  share: /nfsshare
 mountOptions:
-  - vers=4.1
+  # NFSv4.0 (not 4.1) because ganesha's NFSv4.1 directory-delegation
+  # op (OP_GET_DIR_DELEGATION) returns NFS4ERR_OP_ILLEGAL from the
+  # FSAL_VFS path, which the Linux client surfaces as EREMOTEIO on
+  # subsequent stat/opendir of the affected leaf dirs. NFSv4.0
+  # doesn't have that op at all so the client can't ask for it.
+  # See kubernetes/nfs/nfs-server-ganesha-configmap.yaml for the
+  # matching server-side Minor_Versions = 0 setting.
+  - nfsvers=4.0
+  # Dial the per-node stunnel-client DaemonSet on its non-standard
+  # loopback port (12049). Not using 2049 avoids colliding with any
+  # kernel NFS server a node might already run — a silent collision
+  # would send the kubelet's mount to plain NFS instead of our mTLS
+  # path.
+  - port=12049
+  # noac + actimeo=0 disable client-side attribute caching to avoid
+  # the stale-handle-poisoning behavior we hit with the previous
+  # in-cluster nfs-provisioner. Costs some read perf for metadata
+  # ops; acceptable for the openemr workload shape.
+  - noac
+  - actimeo=0

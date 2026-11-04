@@ -1,0 +1,31 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: nfs-client
+spec:
+  secretName: nfs-client-certs
+  duration: 87660h # 10y
+  renewBefore: 360h # 15d
+  isCA: false
+  privateKey:
+    size: 2048
+    algorithm: RSA
+    encoding: PKCS1
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+  subject:
+    organizations:
+      - nfs-client
+  commonName: nfs-client
+  dnsNames:
+    # Identity presented by every stunnel-client DaemonSet pod when
+    # dialing nfs-server. All client pods share one cert — nfs-server
+    # verifies issuance under ca-issuer, not per-pod identity.
+    - nfs-client
+    - nfs-client.default.svc.cluster.local
+  issuerRef:
+    name: ca-issuer
+    kind: Issuer
+    group: cert-manager.io

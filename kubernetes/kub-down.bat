@@ -11,7 +11,9 @@ kubectl delete ^
     -f certs/mysql-phpmyadmin-client.yaml ^
     -f certs/redis.yaml ^
     -f certs/redis-openemr-client.yaml ^
-    -f certs/sentinel.yaml
+    -f certs/sentinel.yaml ^
+    -f certs/nfs-server.yaml ^
+    -f certs/nfs-client.yaml
 
 kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
@@ -40,7 +42,17 @@ kubectl delete ^
     -f network/policies.yaml
 
 kubectl delete ^
-    -f nfs/rbac.yaml ^
-    -f nfs/storageclass.yaml ^
-    -f nfs/service.yaml ^
-    -f nfs/deployment.yaml
+    -f nfs/stunnel-client-daemonset.yaml ^
+    -f nfs/stunnel-client-configmap.yaml ^
+    -f nfs/nfs-server-deployment.yaml ^
+    -f nfs/nfs-server-stunnel-configmap.yaml ^
+    -f nfs/nfs-server-ganesha-configmap.yaml ^
+    -f nfs/nfs-server-service.yaml ^
+    -f nfs/nfs-server-pvc.yaml ^
+    -f nfs/storageclass.yaml
+
+kubectl delete ^
+    -f csi-nfs/csi-nfs-node.yaml ^
+    -f csi-nfs/csi-nfs-controller.yaml ^
+    -f csi-nfs/csi-nfs-driverinfo.yaml ^
+    -f csi-nfs/rbac-csi-nfs.yaml

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-server-data
+  labels:
+    app: nfs-server
+spec:
+  # Default storage class on this cluster backs this PVC. In production
+  # the backing storage class should be one that encrypts at rest
+  # (AWS EBS gp3 default-encrypted, GCE PD with KMS, Azure Managed Disk
+  # with SSE, LUKS-on-local, etc.) — that's where our at-rest encryption
+  # story terminates. On kind the default is local-path-provisioner on
+  # hostpath, which is NOT encrypted; good enough for the demo, not for
+  # production.
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
