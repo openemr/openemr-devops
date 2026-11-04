@@ -29,15 +29,3 @@ mountOptions:
   # ops; acceptable for the openemr workload shape.
   - noac
   - actimeo=0
-  # lookupcache=none disables the NFS client's dentry cache (both
-  # positive and negative). Attribute caching (noac/actimeo=0 above)
-  # and dentry caching are independent on NFS; openemr's first-boot
-  # rsync + chmod cascade can leave specific leaf directories in a
-  # state where the client's cached dentry is stale and stat/
-  # opendir returns EREMOTEIO even though readdir of the parent
-  # shows the entry. Disabling the dentry cache forces a fresh
-  # LOOKUP on every access and avoids that whole class of staleness.
-  # Trade-off: measurable metadata-op latency bump. Acceptable here
-  # because the openemr workload is not metadata-hot in the steady
-  # state.
-  - lookupcache=none
