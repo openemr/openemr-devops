@@ -48,8 +48,8 @@ jobs:
           echo "All pods ready"
 
       # SHORT-TERM WORKAROUND — REMOVE WHEN openemr/openemr LogoService
-      # NFS-safety fix lands and the openemr image pin is bumped to a
-      # release containing it (tracked at openemr/openemr PR TBD).
+      # NFS-safety fix (openemr/openemr#15017) lands and the openemr
+      # image pin here is bumped to a release containing it.
       #
       # LogoService::findLogo() hands Symfony Finder a list of
       # directory paths including `sites/default/images/logos/{slot}`
@@ -58,28 +58,37 @@ jobs:
       # missing subdirs returns EREMOTEIO, which Finder's
       # RecursiveDirectoryIterator surfaces as
       # UnexpectedValueException and PHPUnit's strict output mode
-      # treats as a test error (9 errors on master, 1 on #910's
-      # ganesha backing). Pre-creating the expected logo subdirs on
-      # the shared NFS volume means opendir() finds an empty
-      # directory instead of returning EREMOTEIO, so the test suite
-      # isn't blocked while the core LogoService fix cycles through
-      # a release.
+      # treats as a test error. Pre-creating the expected logo
+      # subdirs sidesteps the issue so CI isn't blocked while the
+      # core fix goes through its release cycle.
+      #
+      # The mkdir runs INSIDE the nfs-server pod, directly against
+      # the ext4-backed /nfsshare, not through the NFS client — a
+      # prior attempt via `kubectl exec openemr-* -- mkdir ...` hit
+      # EREMOTEIO on the mkdir itself (apparently the NFS client
+      # state after openemr first-boot can't reliably create new
+      # subdirs under sites/default/images/logos/). Writing via the
+      # server pod bypasses that layer entirely.
       - name: Workaround LogoService NFS-safety (REMOVE AFTER openemr core fix)
         run: |
-          POD=$(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}')
-          kubectl exec "$POD" -- sh -c '
-            cd /var/www/localhost/htdocs/openemr/sites/default/images/logos/ &&
+          WEBSITE_PV=$(kubectl get pvc websitevolume -o jsonpath='{.spec.volumeName}')
+          NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
+          echo "websitevolume PVC backed by $WEBSITE_PV; creating logo subdirs via nfs-server pod $NFS_POD"
+          kubectl exec -c nfs-server "$NFS_POD" -- sh -c "
+            set -e
+            BASE=/nfsshare/$WEBSITE_PV/default/images/logos
             mkdir -p \
-              core/favicon \
-              core/login/primary \
-              core/login/secondary \
-              core/login/small_logo_1 \
-              core/login/small_logo_2 \
-              portal/primary \
-              portal/secondary \
-              portal/menu/primary
-          '
-          echo "Pre-created logo subdirs for LogoService NFS workaround"
+              \$BASE/core/favicon \
+              \$BASE/core/login/primary \
+              \$BASE/core/login/secondary \
+              \$BASE/core/login/small_logo_1 \
+              \$BASE/core/login/small_logo_2 \
+              \$BASE/portal/primary \
+              \$BASE/portal/secondary \
+              \$BASE/portal/menu/primary
+            echo 'Created logo subdirs:'
+            ls -la \$BASE/core \$BASE/portal
+          "
 
       - name: Verify all pods running
         run: |
