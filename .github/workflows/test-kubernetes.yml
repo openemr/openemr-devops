@@ -81,6 +81,7 @@ jobs:
         continue-on-error: true
         run: |
           POD=$(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}')
+          NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
           echo "=== ls against a known-missing path on the NFS-backed sites volume ==="
           kubectl exec "$POD" -- ls -la /var/www/localhost/htdocs/openemr/sites/default/__definitely_does_not_exist__ 2>&1 || true
           echo
@@ -92,6 +93,26 @@ jobs:
           echo
           echo "=== /proc/mounts entry for the openemr sites mount ==="
           kubectl exec "$POD" -- grep '/openemr/sites' /proc/mounts || true
+          echo
+          # CRITICAL: capture ganesha logs IMMEDIATELY after the EREMOTEIO
+          # trigger. The debug-info step later runs after test failures
+          # that can roll 20K+ log lines through in a minute. The failing
+          # LOOKUPs we actually care about happened in the last few
+          # seconds, so --tail=1500 is enough if we grab right now.
+          echo "=== ganesha logs captured RIGHT AFTER the EREMOTEIO trigger ==="
+          kubectl logs "$NFS_POD" -c nfs-server --tail=2000 2>/dev/null \
+            | grep -E 'NFS4ERR|Forbidden|Status of OP_[A-Z_]+ in position [0-9]+ = NFS4ERR|FSAL :MAJ|FSAL :CRIT|FSAL :WARN|open_by_handle.*ail|fsal_common_is_referral' \
+            | tail -60 || true
+          echo
+          echo "=== ganesha op status histogram (last 2000 lines) ==="
+          kubectl logs "$NFS_POD" -c nfs-server --tail=2000 2>/dev/null \
+            | grep -oE 'Status of OP_[A-Z_]+ in position [0-9]+ = [A-Z_0-9]+' \
+            | sort | uniq -c | sort -rn | head -15 || true
+          echo
+          echo "=== ganesha LOOKUP ops seen in last 2000 lines ==="
+          kubectl logs "$NFS_POD" -c nfs-server --tail=2000 2>/dev/null \
+            | grep -E 'OP_LOOKUP|opcode 15' \
+            | tail -30 || true
 
       - name: Verify all pods running
         run: |
