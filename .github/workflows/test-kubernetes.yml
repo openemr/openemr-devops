@@ -286,10 +286,11 @@ jobs:
           # — need an explicit pod name. Fetch the nfs-server pod name
           # first, then both containers in turn.
           NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
-          echo "=== nfs-server (ganesha) errors ==="
-          kubectl logs "$NFS_POD" -c nfs-server --tail=200 2>/dev/null \
-            | grep -E 'NFS4ERR|FSAL :MAJ|FSAL :CRIT|FSAL :WARN|FATAL' \
-            | tail -30 || true
+          echo "=== nfs-server (ganesha) logs ==="
+          # Dump the whole ganesha log unfiltered — ganesha's Default_Log_Level
+          # is INFO, so CRIT/MAJ/WARN/EVENT lines from any component (not just
+          # the ones we'd think to grep for) can surface the real failure.
+          kubectl logs "$NFS_POD" -c nfs-server 2>/dev/null || true
           echo "=== nfs-server (stunnel) logs ==="
           kubectl logs "$NFS_POD" -c stunnel --tail=20 2>/dev/null || true
 

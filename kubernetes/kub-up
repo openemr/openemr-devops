@@ -56,10 +56,13 @@ kubectl apply \
 
 # ConfigMap updates via `subPath` mount do not propagate to running pods
 # — Kubernetes only re-reads subPath-mounted ConfigMaps when the pod
-# recreates. Trigger a rollout restart so re-running kub-up with
-# ConfigMap edits actually takes effect (no-op on first apply).
-echo "...rolling nfs-server to pick up any ganesha/stunnel config changes..."
+# recreates. Trigger a rollout restart on both the nfs-server Deployment
+# and the nfs-stunnel-client DaemonSet so re-running kub-up with
+# ConfigMap edits actually takes effect. On first apply this restarts
+# the just-created pods (not a no-op, but cheap and idempotent).
+echo "...rolling nfs-server + nfs-stunnel-client to pick up any config changes..."
 kubectl rollout restart deployment/nfs-server
+kubectl rollout restart daemonset/nfs-stunnel-client
 echo "...waiting 30 seconds for NFS server to start..."
 sleep 30
 

@@ -42,9 +42,11 @@ kubectl apply ^
     -f nfs/storageclass.yaml
 
 REM ConfigMap updates via `subPath` mount do not propagate to running pods.
-REM Trigger a rollout restart so re-running kub-up with ConfigMap edits
-REM actually takes effect (no-op on first apply).
+REM Trigger a rollout restart on both the nfs-server Deployment and the
+REM nfs-stunnel-client DaemonSet so re-running kub-up with ConfigMap edits
+REM actually takes effect.
 kubectl rollout restart deployment/nfs-server
+kubectl rollout restart daemonset/nfs-stunnel-client
 timeout 30
 
 kubectl apply ^
