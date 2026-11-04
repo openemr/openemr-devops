@@ -78,6 +78,31 @@ jobs:
       # state after openemr first-boot can't reliably create new
       # subdirs under sites/default/images/logos/). Writing via the
       # server pod bypasses that layer entirely.
+      # Diagnostic probe — figure out whether our NFS server returns
+      # the right errno on LOOKUP of missing names. On a well-behaved
+      # NFS server a missing name gives `No such file or directory`
+      # (NFS4ERR_NOENT → ENOENT). If instead we see
+      # `Remote I/O error` (EREMOTEIO ← NFS4ERR_SERVERFAULT or
+      # similar), the server is misbehaving and `RecursiveDirectory
+      # Iterator`, `mkdir -p`, document/site setup, and various other
+      # paths will trip on it (as observed on both the kernel-NFS
+      # backing and this PR's ganesha backing).
+      - name: Diagnose NFS error-code behavior on missing names
+        continue-on-error: true
+        run: |
+          POD=$(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}')
+          echo "=== ls against a known-missing path on the NFS-backed sites volume ==="
+          kubectl exec "$POD" -- ls -la /var/www/localhost/htdocs/openemr/sites/default/__definitely_does_not_exist__ 2>&1 || true
+          echo
+          echo "=== actual contents of sites/default/images/logos (should exist after first-boot) ==="
+          kubectl exec "$POD" -- ls -laR /var/www/localhost/htdocs/openemr/sites/default/images/logos 2>&1 | head -40 || true
+          echo
+          echo "=== actual contents of sites/default/documents (test writes here) ==="
+          kubectl exec "$POD" -- ls -laR /var/www/localhost/htdocs/openemr/sites/default/documents 2>&1 | head -20 || true
+          echo
+          echo "=== /proc/mounts entry for the openemr sites mount ==="
+          kubectl exec "$POD" -- grep '/openemr/sites' /proc/mounts || true
+
       - name: Workaround LogoService NFS-safety (REMOVE AFTER openemr core fix)
         run: |
           WEBSITE_PV=$(kubectl get pvc websitevolume -o jsonpath='{.spec.volumeName}')
