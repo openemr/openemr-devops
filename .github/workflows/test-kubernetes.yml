@@ -332,23 +332,26 @@ jobs:
           # — need an explicit pod name. Fetch the nfs-server pod name
           # first, then both containers in turn.
           NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
-          # The EREMOTEIO window is during diagnostic probe + services
-          # tests, which run 15-25 min BEFORE this debug step. Use
-          # --since to grab the whole pod-lifetime of logs and grep
-          # out the error signatures.
+          # Use large --tail (no --since; that combo returned empty).
+          # Ganesha debug logging is verbose — ~1000 ops per minute —
+          # so 20000 lines covers the ~15-25 min since EREMOTEIO
+          # window even though tests happen that long before this step.
+          echo "=== raw ganesha log line count (last 20000) ==="
+          kubectl logs "$NFS_POD" -c nfs-server --tail=20000 2>/dev/null | wc -l
+          echo
           echo "=== nfs-server (ganesha) NFS4ERR / FSAL errors / status != NFS4_OK ==="
-          kubectl logs "$NFS_POD" -c nfs-server --since=30m 2>/dev/null \
+          kubectl logs "$NFS_POD" -c nfs-server --tail=20000 2>/dev/null \
             | grep -E 'NFS4ERR|Forbidden action|FSAL :MAJ|FSAL :CRIT|FSAL :WARN|Status of OP_LOOKUP.*= NFS4ERR|Status of OP_GETATTR.*= NFS4ERR|open_by_handle.*ail' \
             | head -60 || true
           echo
-          echo "=== nfs-server (ganesha) non-OK statuses in whole-pod log ==="
-          kubectl logs "$NFS_POD" -c nfs-server --since=30m 2>/dev/null \
-            | grep -E 'complete_op.*= NFS4ERR|complete_op.*Status of OP_[A-Z]+ .*= [^N]' \
-            | sort -u | head -40 || true
+          echo "=== nfs-server (ganesha) non-OK statuses ==="
+          kubectl logs "$NFS_POD" -c nfs-server --tail=20000 2>/dev/null \
+            | grep -oE 'Status of OP_[A-Z_]+ in position [0-9]+ = [A-Z_0-9]+' \
+            | sort | uniq -c | sort -rn | head -20 || true
           echo
           echo "=== nfs-server (stunnel) logs ==="
-          kubectl logs "$NFS_POD" -c stunnel --since=30m 2>/dev/null \
-            | grep -E 'rejected|error|accepted' | tail -10 || true
+          kubectl logs "$NFS_POD" -c stunnel --tail=50 2>/dev/null \
+            | grep -E 'rejected|error|accepted|cert' | tail -10 || true
 
       - name: Cleanup
         if: always()
