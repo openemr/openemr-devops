@@ -42,6 +42,24 @@ data:
         # grace shaves ~90s off pod startup.
         Graceless = true;
         Minor_Versions = 1, 2;
+        # Disable both file and directory delegations.
+        #
+        # Root-cause finding on 2026-11-04: Linux NFSv4.1 client
+        # opportunistically requests OP_GET_DIR_DELEGATION on certain
+        # access patterns (notably openemr's first-boot leaf dirs like
+        # sites/default/images/logos/core/favicon). ganesha's FSAL_VFS
+        # path responds with NFS4ERR_OP_ILLEGAL rather than the spec-
+        # correct NFS4ERR_NOTSUPP, which the client surfaces as
+        # EREMOTEIO on subsequent stat/opendir instead of silently
+        # degrading to non-delegated access. Observed symptom: readdir
+        # of the parent works, stat/opendir on specific leaves fails
+        # with "Remote I/O error" after any client that negotiated a
+        # delegation session touches them.
+        #
+        # Explicitly disabling delegations server-side makes ganesha
+        # advertise them as unavailable during session negotiation, so
+        # the client never attempts OP_GET_DIR_DELEGATION.
+        Delegations = false;
     }
 
     EXPORT_DEFAULTS {
