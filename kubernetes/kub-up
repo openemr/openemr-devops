@@ -63,8 +63,13 @@ kubectl apply \
 echo "...rolling nfs-server + nfs-stunnel-client to pick up any config changes..."
 kubectl rollout restart deployment/nfs-server
 kubectl rollout restart daemonset/nfs-stunnel-client
-echo "...waiting 30 seconds for NFS server to start..."
-sleep 30
+# With readinessProbes on both (stunnel sidecar :20490 on the
+# nfs-server pod, stunnel on loopback :12049 on the DaemonSet),
+# `kubectl rollout status` is a meaningful wait rather than a
+# pod-count check — it blocks until the probes succeed.
+echo "...waiting for nfs-server + nfs-stunnel-client to be listening..."
+kubectl rollout status deployment/nfs-server --timeout=180s
+kubectl rollout status daemonset/nfs-stunnel-client --timeout=180s
 
 kubectl apply \
     -f mysql/configmap.yaml \

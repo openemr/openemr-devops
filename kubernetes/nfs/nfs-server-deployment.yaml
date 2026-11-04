@@ -122,6 +122,20 @@ spec:
         - name: nfs-tls
           containerPort: 20490
           protocol: TCP
+        # Gate pod Ready on the stunnel listener actually being up
+        # (not just the container process having started during
+        # `apk add stunnel`). The ganesha container next to this
+        # one isn't readily probeable from kubelet because the
+        # block-plain-nfs init container drops non-loopback traffic
+        # to :2049; stunnel's :20490 is the only externally-reachable
+        # port on this pod, so probing it is the meaningful signal
+        # that "the nfs-server stack is accepting connections."
+        readinessProbe:
+          tcpSocket:
+            port: 20490
+          periodSeconds: 2
+          timeoutSeconds: 2
+          failureThreshold: 30
         volumeMounts:
         - name: stunnel-config
           mountPath: /etc/stunnel/stunnel.conf

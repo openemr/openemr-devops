@@ -50,6 +50,23 @@ spec:
           containerPort: 12049
           hostPort: 12049
           protocol: TCP
+        # Without a probe, the pod flips Ready as soon as the
+        # container process starts — which is during `apk add
+        # stunnel`, before stunnel is listening. That makes
+        # `kubectl rollout status` effectively a no-op and risks
+        # kubelet NFS mounts hitting a not-yet-listening port
+        # during a rollout. The tcpSocket probe gates Ready on
+        # the actual loopback listener. `host: 127.0.0.1` is
+        # meaningful here because `hostNetwork: true` puts this
+        # pod in the node's own netns, so kubelet's probe reaches
+        # the node loopback where hostPort is bound.
+        readinessProbe:
+          tcpSocket:
+            host: 127.0.0.1
+            port: 12049
+          periodSeconds: 2
+          timeoutSeconds: 2
+          failureThreshold: 30
         volumeMounts:
         - name: stunnel-config
           mountPath: /etc/stunnel/stunnel.conf

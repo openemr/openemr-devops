@@ -47,7 +47,10 @@ REM nfs-stunnel-client DaemonSet so re-running kub-up with ConfigMap edits
 REM actually takes effect.
 kubectl rollout restart deployment/nfs-server
 kubectl rollout restart daemonset/nfs-stunnel-client
-timeout 30
+REM Both have readinessProbes, so `rollout status` blocks on the
+REM probes actually succeeding — real wait, not a pod-count check.
+kubectl rollout status deployment/nfs-server --timeout=180s
+kubectl rollout status daemonset/nfs-stunnel-client --timeout=180s
 
 kubectl apply ^
     -f mysql/configmap.yaml ^
