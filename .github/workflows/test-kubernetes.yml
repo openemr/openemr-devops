@@ -56,64 +56,6 @@ jobs:
           kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1800s
           echo "All pods ready"
 
-      # Diagnostic probe — figure out whether our NFS server returns
-      # the right errno on LOOKUP of missing names. On a well-behaved
-      # NFS server a missing name gives `No such file or directory`
-      # (NFS4ERR_NOENT → ENOENT). If instead we see
-      # `Remote I/O error` (EREMOTEIO ← NFS4ERR_SERVERFAULT or
-      # similar), the server is misbehaving and `RecursiveDirectory
-      # Iterator`, `mkdir -p`, document/site setup, and various other
-      # paths will trip on it (as observed on both the kernel-NFS
-      # backing and this PR's ganesha backing).
-      #
-      # Current finding from this probe (keep until root cause ships
-      # on openemr core):
-      # * Truly-missing paths correctly return ENOENT — so the server
-      #   is well-behaved for genuine lookups.
-      # * openemr's first-boot creates entries under
-      #   sites/default/{documents,images/logos}/* that readdir sees
-      #   but stat/opendir fails on with EREMOTEIO — suspected to be
-      #   symlinks to pod-local paths that don't resolve across the
-      #   NFS mount. Not a ganesha bug; same failure pattern on
-      #   kernel-NFS master CI (9 errors) and this PR's ganesha (now
-      #   also failing Services tests on the same code path).
-      - name: Diagnose NFS error-code behavior on missing names
-        continue-on-error: true
-        run: |
-          POD=$(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}')
-          NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
-          echo "=== ls against a known-missing path on the NFS-backed sites volume ==="
-          kubectl exec "$POD" -- ls -la /var/www/localhost/htdocs/openemr/sites/default/__definitely_does_not_exist__ 2>&1 || true
-          echo
-          echo "=== actual contents of sites/default/images/logos (should exist after first-boot) ==="
-          kubectl exec "$POD" -- ls -laR /var/www/localhost/htdocs/openemr/sites/default/images/logos 2>&1 | head -40 || true
-          echo
-          echo "=== actual contents of sites/default/documents (test writes here) ==="
-          kubectl exec "$POD" -- ls -laR /var/www/localhost/htdocs/openemr/sites/default/documents 2>&1 | head -20 || true
-          echo
-          echo "=== /proc/mounts entry for the openemr sites mount ==="
-          kubectl exec "$POD" -- grep '/openemr/sites' /proc/mounts || true
-          echo
-          # CRITICAL: capture ganesha logs IMMEDIATELY after the EREMOTEIO
-          # trigger. The debug-info step later runs after test failures
-          # that can roll 20K+ log lines through in a minute. The failing
-          # LOOKUPs we actually care about happened in the last few
-          # seconds, so --tail=1500 is enough if we grab right now.
-          echo "=== ganesha logs captured RIGHT AFTER the EREMOTEIO trigger ==="
-          kubectl logs "$NFS_POD" -c nfs-server --tail=2000 2>/dev/null \
-            | grep -E 'NFS4ERR|Forbidden|Status of OP_[A-Z_]+ in position [0-9]+ = NFS4ERR|FSAL :MAJ|FSAL :CRIT|FSAL :WARN|open_by_handle.*ail|fsal_common_is_referral' \
-            | tail -60 || true
-          echo
-          echo "=== ganesha op status histogram (last 2000 lines) ==="
-          kubectl logs "$NFS_POD" -c nfs-server --tail=2000 2>/dev/null \
-            | grep -oE 'Status of OP_[A-Z_]+ in position [0-9]+ = [A-Z_0-9]+' \
-            | sort | uniq -c | sort -rn | head -15 || true
-          echo
-          echo "=== ganesha LOOKUP ops seen in last 2000 lines ==="
-          kubectl logs "$NFS_POD" -c nfs-server --tail=2000 2>/dev/null \
-            | grep -E 'OP_LOOKUP|opcode 15' \
-            | tail -30 || true
-
       - name: Verify all pods running
         run: |
           kubectl get pods
@@ -353,26 +295,12 @@ jobs:
           # — need an explicit pod name. Fetch the nfs-server pod name
           # first, then both containers in turn.
           NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
-          # Use large --tail (no --since; that combo returned empty).
-          # Ganesha debug logging is verbose — ~1000 ops per minute —
-          # so 20000 lines covers the ~15-25 min since EREMOTEIO
-          # window even though tests happen that long before this step.
-          echo "=== raw ganesha log line count (last 20000) ==="
-          kubectl logs "$NFS_POD" -c nfs-server --tail=20000 2>/dev/null | wc -l
-          echo
-          echo "=== nfs-server (ganesha) NFS4ERR / FSAL errors / status != NFS4_OK ==="
-          kubectl logs "$NFS_POD" -c nfs-server --tail=20000 2>/dev/null \
-            | grep -E 'NFS4ERR|Forbidden action|FSAL :MAJ|FSAL :CRIT|FSAL :WARN|Status of OP_LOOKUP.*= NFS4ERR|Status of OP_GETATTR.*= NFS4ERR|open_by_handle.*ail' \
-            | head -60 || true
-          echo
-          echo "=== nfs-server (ganesha) non-OK statuses ==="
-          kubectl logs "$NFS_POD" -c nfs-server --tail=20000 2>/dev/null \
-            | grep -oE 'Status of OP_[A-Z_]+ in position [0-9]+ = [A-Z_0-9]+' \
-            | sort | uniq -c | sort -rn | head -20 || true
-          echo
+          echo "=== nfs-server (ganesha) errors ==="
+          kubectl logs "$NFS_POD" -c nfs-server --tail=200 2>/dev/null \
+            | grep -E 'NFS4ERR|FSAL :MAJ|FSAL :CRIT|FSAL :WARN|FATAL' \
+            | tail -30 || true
           echo "=== nfs-server (stunnel) logs ==="
-          kubectl logs "$NFS_POD" -c stunnel --tail=50 2>/dev/null \
-            | grep -E 'rejected|error|accepted|cert' | tail -10 || true
+          kubectl logs "$NFS_POD" -c stunnel --tail=20 2>/dev/null || true
 
       - name: Cleanup
         if: always()
