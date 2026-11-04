@@ -332,14 +332,23 @@ jobs:
           # — need an explicit pod name. Fetch the nfs-server pod name
           # first, then both containers in turn.
           NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
-          echo "=== nfs-server (ganesha) FATAL/CRIT/MAJ/WARN lines ==="
-          kubectl logs "$NFS_POD" -c nfs-server --tail=800 2>/dev/null \
-            | grep -E ':FATAL|:CRIT|:MAJ|:WARN|NFS4ERR|Forbidden' | tail -40 || true
-          echo "=== nfs-server (ganesha) LOOKUP / GETATTR trace (last 40 ops) ==="
-          kubectl logs "$NFS_POD" -c nfs-server --tail=1500 2>/dev/null \
-            | grep -E 'LOOKUP|GETATTR|complete_op' | tail -40 || true
+          # The EREMOTEIO window is during diagnostic probe + services
+          # tests, which run 15-25 min BEFORE this debug step. Use
+          # --since to grab the whole pod-lifetime of logs and grep
+          # out the error signatures.
+          echo "=== nfs-server (ganesha) NFS4ERR / FSAL errors / status != NFS4_OK ==="
+          kubectl logs "$NFS_POD" -c nfs-server --since=30m 2>/dev/null \
+            | grep -E 'NFS4ERR|Forbidden action|FSAL :MAJ|FSAL :CRIT|FSAL :WARN|Status of OP_LOOKUP.*= NFS4ERR|Status of OP_GETATTR.*= NFS4ERR|open_by_handle.*ail' \
+            | head -60 || true
+          echo
+          echo "=== nfs-server (ganesha) non-OK statuses in whole-pod log ==="
+          kubectl logs "$NFS_POD" -c nfs-server --since=30m 2>/dev/null \
+            | grep -E 'complete_op.*= NFS4ERR|complete_op.*Status of OP_[A-Z]+ .*= [^N]' \
+            | sort -u | head -40 || true
+          echo
           echo "=== nfs-server (stunnel) logs ==="
-          kubectl logs "$NFS_POD" -c stunnel --tail=20 2>/dev/null || true
+          kubectl logs "$NFS_POD" -c stunnel --since=30m 2>/dev/null \
+            | grep -E 'rejected|error|accepted' | tail -10 || true
 
       - name: Cleanup
         if: always()
