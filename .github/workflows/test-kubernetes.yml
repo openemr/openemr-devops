@@ -43,8 +43,17 @@ jobs:
           kubectl rollout status statefulset/mysql-sts --timeout=300s
           kubectl rollout status statefulset/redis --timeout=300s
           kubectl rollout status statefulset/sentinel --timeout=300s
-          echo "Waiting for OpenEMR (may take several minutes for initial setup)..."
-          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=900s
+          # 30-minute timeout for openemr pods. Pods race on
+          # leader-election through the shared NFS sites volume;
+          # the "winning" pod completes first-boot in ~6 min, after
+          # which followers see the leader marker and finish within
+          # another 1-2 min. On ganesha's mTLS-wrapped NFS this
+          # staggered pattern can take up to ~20-25 min end-to-end.
+          # Must exceed the openemr startupProbe deadline
+          # (120 * 10s = 20 min) or the wait gives up before the
+          # probe does.
+          echo "Waiting for OpenEMR (may take ~10-25 minutes for initial setup)..."
+          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1800s
           echo "All pods ready"
 
       # SHORT-TERM WORKAROUND — REMOVE WHEN openemr/openemr LogoService
