@@ -19,6 +19,9 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
   - **phpMyAdmin** - There is 1 deployment instance of phpMyAdmin. Access is via `kubectl port-forward` only (not exposed externally).
 
 # Use
+
+> **Not supported in LXC system containers** (including the [Claude Appliance](https://github.com/openemr/openemr/blob/master/Documentation/contributors/claude-appliance-setup.md), Proxmox LXC, Incus system containers). LXC's default seccomp profile blocks `open_by_handle_at` as part of its container-escape mitigation, which breaks the in-cluster NFS server (nfs-ganesha's FSAL_VFS uses `open_by_handle_at` for handle-based filesystem access). The LXC config can be edited to lift the block, but doing so weakens LXC's isolation in a way that's load-bearing in the container's threat model. Use a bare host, a VM (Incus VM, cloud VM, etc.), or a laptop for local Kind-based development instead.
+
 1. Install Kind. Other Kubernetes distributions can be substituted by users familiar with their networking and storage models, but the instructions below assume Kind.
     - For Kind, see below for instructions sets with 1 node or 4 nodes.
         - 1 node:
@@ -33,11 +36,6 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
                 ```bash
                 kubectl get pod -o wide
                 ```
-    - **LXC-nested environments only** (such as the [Claude Appliance](https://github.com/openemr/openemr/blob/master/Documentation/contributors/claude-appliance-setup.md), Proxmox/Incus guests, and similar): the kind node's kubelet needs `/dev/kmsg`, which LXC-nested containers don't expose. Right after `kind create cluster` and before `bash kub-up`, symlink it on the kind node:
-        ```bash
-        docker exec kind-control-plane sh -c 'ln -sf /dev/null /dev/kmsg'
-        ```
-        (If running kind on a 4-node config, apply the same symlink to each node container: `kind-worker`, `kind-worker2`, `kind-worker3`.) Skip this step on real hardware; it's a no-op there.
 2. To start OpenEMR orchestration:
     ```bash
     bash kub-up
