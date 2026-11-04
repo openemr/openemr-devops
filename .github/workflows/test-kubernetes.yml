@@ -56,28 +56,6 @@ jobs:
           kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1800s
           echo "All pods ready"
 
-      # SHORT-TERM WORKAROUND — REMOVE WHEN openemr/openemr LogoService
-      # NFS-safety fix (openemr/openemr#15017) lands and the openemr
-      # image pin here is bumped to a release containing it.
-      #
-      # LogoService::findLogo() hands Symfony Finder a list of
-      # directory paths including `sites/default/images/logos/{slot}`
-      # subdirs for slots an admin hasn't configured. On the NFS-
-      # backed websitevolume used by this stack, opendir() on those
-      # missing subdirs returns EREMOTEIO, which Finder's
-      # RecursiveDirectoryIterator surfaces as
-      # UnexpectedValueException and PHPUnit's strict output mode
-      # treats as a test error. Pre-creating the expected logo
-      # subdirs sidesteps the issue so CI isn't blocked while the
-      # core fix goes through its release cycle.
-      #
-      # The mkdir runs INSIDE the nfs-server pod, directly against
-      # the ext4-backed /nfsshare, not through the NFS client — a
-      # prior attempt via `kubectl exec openemr-* -- mkdir ...` hit
-      # EREMOTEIO on the mkdir itself (apparently the NFS client
-      # state after openemr first-boot can't reliably create new
-      # subdirs under sites/default/images/logos/). Writing via the
-      # server pod bypasses that layer entirely.
       # Diagnostic probe — figure out whether our NFS server returns
       # the right errno on LOOKUP of missing names. On a well-behaved
       # NFS server a missing name gives `No such file or directory`
@@ -87,6 +65,18 @@ jobs:
       # Iterator`, `mkdir -p`, document/site setup, and various other
       # paths will trip on it (as observed on both the kernel-NFS
       # backing and this PR's ganesha backing).
+      #
+      # Current finding from this probe (keep until root cause ships
+      # on openemr core):
+      # * Truly-missing paths correctly return ENOENT — so the server
+      #   is well-behaved for genuine lookups.
+      # * openemr's first-boot creates entries under
+      #   sites/default/{documents,images/logos}/* that readdir sees
+      #   but stat/opendir fails on with EREMOTEIO — suspected to be
+      #   symlinks to pod-local paths that don't resolve across the
+      #   NFS mount. Not a ganesha bug; same failure pattern on
+      #   kernel-NFS master CI (9 errors) and this PR's ganesha (now
+      #   also failing Services tests on the same code path).
       - name: Diagnose NFS error-code behavior on missing names
         continue-on-error: true
         run: |
@@ -102,27 +92,6 @@ jobs:
           echo
           echo "=== /proc/mounts entry for the openemr sites mount ==="
           kubectl exec "$POD" -- grep '/openemr/sites' /proc/mounts || true
-
-      - name: Workaround LogoService NFS-safety (REMOVE AFTER openemr core fix)
-        run: |
-          WEBSITE_PV=$(kubectl get pvc websitevolume -o jsonpath='{.spec.volumeName}')
-          NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}')
-          echo "websitevolume PVC backed by $WEBSITE_PV; creating logo subdirs via nfs-server pod $NFS_POD"
-          kubectl exec -c nfs-server "$NFS_POD" -- sh -c "
-            set -e
-            BASE=/nfsshare/$WEBSITE_PV/default/images/logos
-            mkdir -p \
-              \$BASE/core/favicon \
-              \$BASE/core/login/primary \
-              \$BASE/core/login/secondary \
-              \$BASE/core/login/small_logo_1 \
-              \$BASE/core/login/small_logo_2 \
-              \$BASE/portal/primary \
-              \$BASE/portal/secondary \
-              \$BASE/portal/menu/primary
-            echo 'Created logo subdirs:'
-            ls -la \$BASE/core \$BASE/portal
-          "
 
       - name: Verify all pods running
         run: |
