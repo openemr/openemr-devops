@@ -16,7 +16,14 @@ parameters:
   # actual VFS-FSAL export path).
   share: /nfsshare
 mountOptions:
-  - nfsvers=4.1
+  # NFSv4.0 (not 4.1) because ganesha's NFSv4.1 directory-delegation
+  # op (OP_GET_DIR_DELEGATION) returns NFS4ERR_OP_ILLEGAL from the
+  # FSAL_VFS path, which the Linux client surfaces as EREMOTEIO on
+  # subsequent stat/opendir of the affected leaf dirs. NFSv4.0
+  # doesn't have that op at all so the client can't ask for it.
+  # See kubernetes/nfs/nfs-server-ganesha-configmap.yaml for the
+  # matching server-side Minor_Versions = 0 setting.
+  - nfsvers=4.0
   # Dial the per-node stunnel-client DaemonSet on its non-standard
   # loopback port (12049). Not using 2049 avoids colliding with any
   # kernel NFS server a node might already run — a silent collision
