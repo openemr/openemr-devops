@@ -325,16 +325,31 @@ Enable TDE at first boot so the system tablespace is born encrypted. Existing ta
 
 ## Swapping to cloud-managed NFS
 
-The in-cluster `nfs-server` Deployment is a reasonable default for Kind and on-prem clusters, but production users on a hyperscaler usually prefer a managed NFS endpoint for durability and backup. Because the StorageClass is standard upstream `nfs.csi.k8s.io`, the swap is primarily a StorageClass parameter change — no OpenEMR manifest edits needed.
+The in-cluster `nfs-server` Deployment is a reasonable default for Kind and on-prem clusters, but production users on a hyperscaler usually prefer a managed NFS endpoint for durability and backup. Because the StorageClass is standard upstream `nfs.csi.k8s.io`, the swap is primarily a StorageClass edit — no OpenEMR manifest edits needed.
 
-| Cloud / Endpoint | Minimum changes |
-|---|---|
-| AWS EFS | Set `storageclass.yaml` `parameters.server` to the EFS DNS name (`fs-xxxx.efs.<region>.amazonaws.com`) and `share` to `/`. Delete the in-cluster NFS files (`nfs-server-*.yaml`, `stunnel-client-*.yaml`) and remove their references from `kub-up` / `kub-down`. |
-| GCP Filestore | Set `parameters.server` to the Filestore instance IP, `share` to the Filestore file-share name. Same deletions as EFS. |
-| Azure Files (NFS 4.1) | Set `parameters.server` to the storage-account FQDN, `share` to the share path. Same deletions as EFS. |
-| On-prem managed NFS | Same pattern: point `parameters.server` at the appliance. The stunnel-client DaemonSet becomes dead code once `parameters.server` is anything other than `127.0.0.1` — the DaemonSet only listens on the node loopback, and csi-driver-nfs's mount now bypasses it to dial the external appliance directly. Plan a separate encrypted transport (e.g. an IPsec tunnel between the Kubernetes nodes and the NFS appliance, or an NFSv4-with-Kerberos deployment). |
+**What the in-cluster defaults look like today** (`kubernetes/nfs/storageclass.yaml`):
 
-**Important: StorageClass `parameters` are immutable.** Kubernetes rejects edits to `parameters` on an existing StorageClass, and existing PVs retain whatever `server` they were originally provisioned with. The clean migration path is `kub-down` → wait for cluster-level teardown → edit `storageclass.yaml` → `kub-up`. For a cluster that has live patient data on the in-cluster NFS backing, migrate the data to the new endpoint first (e.g. snapshot the backing PVC, restore into the managed NFS filesystem) *before* running `kub-down`.
+```yaml
+parameters:
+  server: 127.0.0.1
+  share: /nfsshare
+mountOptions:
+  - nfsvers=4.0        # see ganesha config rationale in nfs-server-ganesha-configmap.yaml
+  - port=12049         # loopback port of per-node stunnel-client DaemonSet
+  - noac
+  - actimeo=0
+```
+
+The `server`, `share`, `nfsvers`, and `port` values are all in-cluster-specific. Migration = replace them with the cloud endpoint's equivalents, and remove the in-cluster support pieces (`nfs-server-*.yaml`, `stunnel-client-*.yaml`).
+
+| Cloud / Endpoint | `server` | `share` | `nfsvers` | `port` | Also required |
+|---|---|---|---|---|---|
+| AWS EFS | `fs-xxxx.efs.<region>.amazonaws.com` (EFS DNS name) | `/` | `4.1` (EFS speaks 4.1) | drop `port=12049` (EFS listens on default 2049) | Delete in-cluster NFS files + their references in `kub-up` / `kub-down`. If every node is an AWS Nitro instance in the same VPC as the EFS mount target, hyperscaler encryption-in-transit applies; otherwise see the encryption section below. |
+| GCP Filestore | Filestore instance IP | Filestore file-share name (e.g. `/vol1`) | `4.1` (Filestore Basic is 3, Enterprise/Zonal is 4.1 — pick the tier with 4.1) | drop `port=12049` | Same deletions as EFS. See encryption notes below. |
+| Azure Files (NFS 4.1) | storage-account FQDN (e.g. `myacct.file.core.windows.net`) | share path (e.g. `/myacct/share1`) | `4.1` (Azure Files NFS only speaks 4.1) | drop `port=12049` | Same deletions as EFS. See encryption notes below. |
+| On-prem managed NFS | NFS appliance IP or DNS name | the appliance's export path | match the appliance's supported minor version | drop `port=12049` unless the appliance listens on it | Same deletions as EFS. The stunnel-client DaemonSet becomes dead code once `server` is anything other than `127.0.0.1` — the DaemonSet listens only on the node loopback, and csi-driver-nfs's mount now dials the external appliance directly. Plan a separate encrypted transport (e.g. IPsec tunnel between the Kubernetes nodes and the NFS appliance, or NFSv4-with-Kerberos). |
+
+**Important: StorageClass `parameters` and `mountOptions` are immutable.** Kubernetes rejects edits to either field on an existing StorageClass, and existing PVs retain whatever values they were originally provisioned with. The clean migration path is `kub-down` → wait for cluster-level teardown → edit `storageclass.yaml` → `kub-up`. For a cluster that has live patient data on the in-cluster NFS backing, migrate the data to the new endpoint first (e.g. snapshot the backing PVC, restore into the managed NFS filesystem) *before* running `kub-down`.
 
 **Encryption-in-transit on the cloud path.** The default `nfs` StorageClass uses the kernel NFS client — it does not auto-negotiate TLS to the server. The in-cluster stunnel-client DaemonSet only wraps traffic because `parameters.server` points at `127.0.0.1`, which routes through the local DaemonSet pod. Once `parameters.server` is changed to any external endpoint, csi-driver-nfs's kubelet mount dials the external address directly and the DaemonSet becomes unused — the mount is plaintext regardless of whether the DaemonSet exists. The cloud path's encryption therefore depends entirely on the mount endpoint, not on anything we deploy inside the cluster. By cloud:
 
