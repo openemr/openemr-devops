@@ -328,6 +328,16 @@ jobs:
           kubectl logs redis-0 --tail=50 2>/dev/null || true
           echo "=== Sentinel Logs ==="
           kubectl logs sentinel-0 --tail=50 2>/dev/null || true
+          echo "=== nfs-server (ganesha) Logs — filtered for leaf-dir ops ==="
+          # With COMPONENT_NFS4 + COMPONENT_FSAL + COMPONENT_MDCACHE at
+          # DEBUG, ganesha logs every op. Filter for status codes and
+          # LOOKUP operations to find what's actually being returned on
+          # the EREMOTEIO path without drowning in RPC dispatch noise.
+          kubectl logs -c nfs-server -l app=nfs-server --tail=400 2>/dev/null \
+            | grep -iE 'NFS4ERR|LOOKUP.*small_logo|LOOKUP.*favicon|LOOKUP.*portal|LOOKUP.*couchdb|LOOKUP.*temp|getattr.*error|FSAL.*error|open_by_handle.*ail' \
+            | tail -80 || true
+          echo "=== nfs-server (stunnel) Logs ==="
+          kubectl logs -c stunnel -l app=nfs-server --tail=20 2>/dev/null || true
 
       - name: Cleanup
         if: always()

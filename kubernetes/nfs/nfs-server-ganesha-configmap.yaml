@@ -58,6 +58,22 @@ data:
         Attr_Expiration_Time = 0;
     }
 
+    MDCACHE {
+        # Trigger directory-cache invalidation whenever ganesha serves
+        # a GETATTR on a directory. Observed symptom (openemr PHPUnit
+        # Services tests): specific leaf directories created during
+        # openemr's first-boot rsync + chmod cascade have readdir
+        # entries visible but return EREMOTEIO on stat/opendir, and
+        # the condition persists until ganesha's internal cache for
+        # those entries ages out. Default is FALSE which caches
+        # aggressively; TRUE makes GETATTR a cache-coherence point.
+        Use_Getattr_Directory_Invalidation = TRUE;
+        # Low interval for upcall polling (default 60s). Shorter
+        # interval = more frequent cache-invalidation checks, so a
+        # stale leaf entry heals faster.
+        UP_Interval = 5;
+    }
+
     EXPORT {
         Export_ID = 1;
         # Path = Pseudo = /nfsshare. ganesha's VFS FSAL registers
@@ -94,4 +110,14 @@ data:
 
     LOG {
         Default_Log_Level = INFO;
+        # TEMPORARY DEBUG — remove once EREMOTEIO investigation closes.
+        # NFS4 at FULL_DEBUG logs every op and its NFS4ERR status.
+        # FSAL at DEBUG logs the underlying syscall/errno. Combined,
+        # we can see what status ganesha is returning on LOOKUP of
+        # the specific leaf dirs that EREMOTEIO on the client.
+        Components {
+            NFS4 = FULL_DEBUG;
+            FSAL = DEBUG;
+            MDCACHE = DEBUG;
+        }
     }
