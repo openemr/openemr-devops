@@ -322,6 +322,12 @@ The simplest path to encryption-at-rest is to back the persistent volumes with a
 
 Storage-layer encryption protects against stolen disks, decommissioned media, snapshot exfiltration, and backup-tape theft. It does not protect against attackers who have access to the running cluster (pods see plaintext through the mounted filesystem).
 
+### Option 2 — in-pod LUKS over NFS (`examples/encryption-at-rest-luks/`)
+
+For threat models where that plaintext exposure matters — a compromised NFS server pod is in-scope, the backing-storage operator is not trusted to never read on-disk blocks, or regulatory posture requires application-layer encryption with keys the storage operator cannot access — the `kubernetes/examples/encryption-at-rest-luks/` directory ships a working example of in-pod LUKS encryption layered over the NFS-backed `websitevolume`. Keys never reach the NFS server pod; the NFS backing disk and the `nfs-server` container both only see the opaque LUKS container file.
+
+Trade-offs: adoption requires scaling the openemr Deployment from 3 replicas to 1 (LUKS is single-writer), and the LUKS-opening sidecar must run `privileged: true`. The example's README documents the full trade-off matrix against Option 1, a step-by-step adoption and rollback procedure, and a research treatment of what multi-replica encryption-at-rest would require (short version: either a clustered filesystem inside LUKS with STONITH fencing, or a FUSE-based approach like `gocryptfs` in shared-storage mode as a sibling example, or application-layer encryption in OpenEMR core). Options 1 and 2 are not mutually exclusive — running both as defense-in-depth is valid.
+
 ## MariaDB Transparent Data Encryption (TDE)
 
 For defense-in-depth beyond storage-layer encryption, MariaDB's built-in `file_key_management` plugin encrypts InnoDB tablespaces, redo logs, binary logs, and temp files at the application layer. The plugin ships in the stock `mariadb:11.8.6` image used by this stack — no custom image is required.

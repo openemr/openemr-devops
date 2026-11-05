@@ -7,6 +7,11 @@ This directory is an **example**, not a default. It demonstrates Option 2 of the
 
 **Do not adopt this example unless you have a specific threat model that requires it.** Option 1 covers the overwhelming majority of HIPAA at-rest requirements with far less operational complexity. This example exists for users whose threat model treats the NFS server pod (or the storage layer under it) as untrusted.
 
+> [!IMPORTANT]
+> **This example downgrades openemr from 3 replicas to 1.**
+>
+> The default stack runs the openemr Deployment with `replicas: 3`. Adopting this example requires scaling that to `replicas: 1` for the duration — LUKS wraps a single ext4 filesystem that cannot be mounted read-write by two pods at once without corrupting it. If your availability model depends on multi-replica openemr, Option 1 (encrypted StorageClass) is the only in-tree answer today. See § **Multi-replica encryption-at-rest: what it would take** below for a fuller research treatment of why and what the alternatives look like.
+
 ## When to use this
 
 Pick Option 2 (this example) when **any** of the following apply:
@@ -58,6 +63,33 @@ Three possible resolutions, and why this example picks one of them:
 3. **Hybrid: encrypt only a non-shared subpath** (not chosen). Encrypt a leaf directory that genuinely doesn't need cross-pod sharing, leave the rest plaintext on NFS. OpenEMR's `sites/default/documents/` subtree is the obvious candidate — it holds PHI but is never written by multiple replicas simultaneously in normal operation. Rejected for the example because: (a) OpenEMR's upload code assumes POSIX semantics across the whole sites tree, so partitioning encrypted vs plaintext subpaths risks subtle write-visibility bugs; (b) "normal operation" is doing a lot of work — any admin batch job that walks `sites/` could race; (c) explaining which subpath is safe to encrypt vs not is more subtle than the manifests warrant for an example.
 
 **If your threat model requires both encryption-at-rest AND multi-replica openemr, use Option 1 (encrypted StorageClass).** Option 2 as presented here is single-replica. A per-pod LUKS pattern or a clustered-filesystem-inside-LUKS pattern is possible but out of scope for this example.
+
+## Multi-replica encryption-at-rest: what it would take
+
+The single-replica constraint is a real downgrade from the default 3-replica openemr Deployment. We considered four approaches to lifting it; they all involve meaningfully more infrastructure or OpenEMR-side code than this example. Summary for operators deciding between "adopt this with single-replica" vs "wait for a multi-replica path":
+
+| Approach | Multi-replica? | Infra addition | OpenEMR-side change | Status |
+|---|---|---|---|---|
+| **This example (LUKS + ext4)** | No | None beyond the sidecar | None | **Shipped** here |
+| **Clustered FS inside LUKS** (GFS2 or OCFS2) | Yes | DLM, STONITH fencing, cluster membership manager | None | Out of scope |
+| **FUSE transparent encryption** (`gocryptfs` shared-storage mode) | Yes | FUSE in-pod sidecar per replica | None | Candidate for a sibling example |
+| **Application-layer encryption** (OpenEMR encrypts PHI at write) | Yes | KMS integration (Vault / cloud KMS) | **Significant** OpenEMR code change | Belongs in an OpenEMR RFC, not devops |
+
+### Approach details
+
+**Clustered FS inside LUKS.** The theoretical "just make ext4 multi-writer" answer: open the same LUKS mapper on every node, then layer GFS2 or OCFS2 on top of the decrypted device. Both filesystems are POSIX-cluster-aware and can safely coordinate writes across nodes — but only against a cluster manager that provides DLM (distributed lock manager) and STONITH-style fencing so a partitioned node can be reliably ejected before the surviving nodes keep writing. In practice: GFS2 comes from the RHEL/Fedora `dlm` + Pacemaker stack; OCFS2 ships with its own `o2cb` cluster. Either requires several operator components, node-level packages, a quorum model, and a fencing device that can actually power-off or network-isolate a sick node. Operationally this is a significant commitment (and most managed-Kubernetes distributions do not expose the node-level fencing primitives needed). We would be building and maintaining this just to encrypt PHI at rest, which Option 1 already achieves against the hyperscaler threat model. Not worth it for openemr-devops.
+
+**FUSE transparent encryption.** `gocryptfs` is the realistic multi-replica alternative to LUKS. It stores each plaintext file as an individually-encrypted file in the backing directory (name-encrypted too), rather than encrypting an ext4 blob. In `-sharedstorage` mode, multiple clients can concurrently mount the same backing directory and see consistent decrypted views — concurrent writers are safe as long as they don't update the same file (which openemr replicas generally don't, by workload). The per-pod setup is comparable to this LUKS example: a privileged FUSE sidecar runs `gocryptfs` against the NFS-mounted directory and exposes the decrypted view via mount propagation. **Trade-offs** vs LUKS: per-file encryption (not full-filesystem), slightly slower cold reads, FUSE requires `/dev/fuse` + `SYS_ADMIN` in the sidecar, metadata operations are slower than kernel ext4. **This is the path we would recommend** for an openemr-devops operator who needs both encryption-at-rest and multi-replica openemr without touching OpenEMR code. It is *not* shipped as an example here because the design and validation are a separate piece of work — track it as a follow-up issue. If you need it today, use Option 1.
+
+**Application-layer encryption.** The architecturally cleanest answer: OpenEMR itself encrypts PHI (documents, lab results, scanned forms) with keys from a KMS before writing to disk, and decrypts on read. Multi-replica becomes trivial because the on-disk format is ciphertext regardless of which pod wrote it, and the disk/NFS layer never sees plaintext. But this is an OpenEMR-core change — new `EncryptionService`, document-write/read interception points, key-rotation story, key-wrap for back-compat with existing unencrypted data — and lives in `openemr/openemr`, not `openemr/openemr-devops`. If this is your target, file it as an OpenEMR RFC; the infrastructure to support it (Vault secret, ESO wiring) is a few lines of YAML once the application side exists.
+
+**Per-pod LUKS + central encrypted-document gateway** (rejected hybrid). A variant we considered: each openemr pod has its own ephemeral LUKS for `sites/` *scratch* state (session files, Smarty cache, temp uploads), and documents go through an in-cluster gateway that encrypts on write and stores in NFS. This combines the operational cost of LUKS with the design cost of a gateway service for no net simplification over the application-layer approach. Rejected.
+
+### Recommendation
+
+- **Need multi-replica + encryption-at-rest today**: use Option 1 (encrypted StorageClass). Covers HIPAA, zero extra ops.
+- **Need application-layer encryption + multi-replica**: realistic path is a `gocryptfs` sibling example. File a follow-up issue in `openemr/openemr-devops` to design it; it borrows most of this example's shape (one-shot format step, privileged sidecar, mount propagation) and swaps the storage mechanism.
+- **Need "PHI is ciphertext end-to-end including inside openemr's process memory"**: that requires application-layer encryption and lives in `openemr/openemr`, not in a devops example.
 
 ## Privilege / capability requirements
 
