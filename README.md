@@ -26,6 +26,7 @@ See our [product comparison](https://www.open-emr.org/wiki/index.php/AWS_Cloud_P
 ### Management Utilities
 
 * [OpenEMR Cmd](utilities/openemr-cmd): OpenEMR-Cmd is similar to devtools, it helps developers to manage and troubleshoot openemr outside the docker
+* [OpenEMR Doctor](utilities/openemr-doctor): OpenEMR Doctor names why an install shows a blank page, an error 500 or a broken login, and what to do about it; it only reads, and runs on a Docker install with one `curl ... | bash` line
 * [OpenEMR Env Installer](utilities/openemr-env-installer): OpenEMR Env Installer is used to set up the base and necessary services(e.g. git, docker, docker-compose, openemr-cmd, minikube, and kubectl) easily for the development/testing environment
 * [OpenEMR Monitor](utilities/openemr-monitor): OpenEMR Monitor is based on Prometheus, cAdvisor, Grafana, and alertmanger which helps administrator to monitor the status of containers
 * [Portainer](utilities/portainer): Portainer is a lightweight management UI which allows you to easily manage your different Docker environments (Docker hosts)
