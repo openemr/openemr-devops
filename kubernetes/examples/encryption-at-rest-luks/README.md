@@ -69,7 +69,7 @@ Three possible resolutions, and why this example picks one of them:
 
 - Nodes must have the `dm_crypt` kernel module available (standard on all modern Linux distros; present on Kind's default `kindest/node` image).
 - The kubelet must allow privileged containers. This is the default; some hardened clusters disable it via PodSecurity admission — the LUKS example will not deploy there without an exception.
-- PodSecurity admission: the namespace running this example cannot be `restricted`. It must allow `privileged` at least for the pods matching the sidecar's label. Running in the default `baseline` or `privileged` profile is fine.
+- PodSecurity admission: the namespace running this example needs to permit privileged containers (the `luks-opener` sidecar and the one-shot format Job both set `privileged: true`). Under PodSecurity Standards, only the `privileged` level allows that — `baseline` and `restricted` both reject privileged pods when **enforced**. Options: run the example in a namespace labeled `pod-security.kubernetes.io/enforce=privileged`; apply the same label only to the pods matching this example via a per-pod exemption; or leave enforcement off (warn/audit only) for the namespace and accept the warnings.
 
 ## Key management
 
@@ -82,7 +82,29 @@ For production, treat the LUKS passphrase as a top-tier secret (loss = permanent
 - **GCP Secret Manager:** `ExternalSecret` with Workload Identity to the secret resource.
 - **Azure Key Vault:** `ExternalSecret` with Managed Identity to the secret.
 
-In all four cases, the downstream manifests (`openemr-deployment-luks.yaml`, `luks-format-job.yaml`) consume the resulting Kubernetes Secret unchanged — ESO handles rotation and lifecycle.
+In all four cases, the downstream manifests (`openemr-deployment-luks.yaml`, `luks-format-job.yaml`) consume the resulting Kubernetes Secret unchanged.
+
+**Rotation is NOT as simple as rotating the Kubernetes Secret.** LUKS stores keys in the header's key slots on the container file itself — the sidecar reads the Secret only at pod start, and `cryptsetup luksOpen` consults the header's slots, not the Secret, to unlock. Updating the Secret alone leaves the old passphrase as the only working key.
+
+The correct rotation sequence is:
+
+1. Add the NEW passphrase to a free LUKS key slot against the existing LUKS file. Run this from a short-lived privileged helper pod that mounts `websitevolume`:
+
+   ```bash
+   cryptsetup luksAddKey /mnt/websitevolume/.openemr-sites.luks
+   # interactively enter an EXISTING passphrase, then the NEW one
+   ```
+
+2. Update the Kubernetes Secret (`luks-passphrase`) to the NEW passphrase. If you are using ESO, rotate the upstream secret and let ESO materialize.
+
+3. Restart the openemr pod. The sidecar re-reads the Secret on start and `luksOpen`s with the NEW passphrase (which the header now accepts).
+
+4. Once the new pod is healthy, retire the OLD passphrase from the LUKS header, again from a privileged helper pod:
+
+   ```bash
+   cryptsetup luksRemoveKey /mnt/websitevolume/.openemr-sites.luks
+   # interactively enter the OLD passphrase
+   ```
 
 **Hardware KMS integration** (CloudHSM, AWS KMS envelope encryption of the LUKS passphrase itself) is the next tier up — supported by cryptsetup via `--header` separation and tokens but out of scope for this example.
 
@@ -117,6 +139,35 @@ kubectl apply -f luks-passphrase-secret.yaml
 kubectl apply -f luks-format-job.yaml
 kubectl wait --for=condition=complete job/luks-format-websitevolume --timeout=600s
 kubectl logs job/luks-format-websitevolume
+
+# 3b. MIGRATE existing plaintext sites contents INTO the LUKS filesystem.
+#     The format Job only creates and formats the LUKS container file;
+#     anything already on websitevolume (uploaded documents, site config,
+#     cert material inside sites/default) is still plaintext beside the
+#     LUKS file. After the Deployment swap (step 4), the main container
+#     no longer mounts websitevolume directly — so without this step the
+#     prior contents become stranded.
+#
+#     Run a short-lived privileged helper pod that mounts websitevolume,
+#     luksOpens the fresh LUKS file, mounts the decrypted filesystem,
+#     rsyncs the plaintext sites contents into the decrypted filesystem,
+#     unmounts and luksCloses, then exits. Tailor this to your environment:
+#     the shape is:
+#
+#       mount websitevolume at /ws
+#       cryptsetup luksOpen --key-file /etc/luks/passphrase \
+#         /ws/.openemr-sites.luks openemr-sites-migrate
+#       mkdir -p /dec && mount /dev/mapper/openemr-sites-migrate /dec
+#       rsync -aHAX --exclude=.openemr-sites.luks /ws/ /dec/
+#       # (verify counts / spot-check files before proceeding)
+#       umount /dec
+#       cryptsetup luksClose openemr-sites-migrate
+#
+#     Only after verifying the copy, optionally delete the now-redundant
+#     plaintext originals from /ws (everything except .openemr-sites.luks).
+#     Leaving them in place is also valid — the main container will no
+#     longer see them because it mounts the decrypted view, not
+#     websitevolume — but the plaintext is still on NFS until removed.
 
 # 4. Replace the default openemr Deployment with the LUKS-enabled one.
 #    This REMOVES the existing openemr Deployment and creates the new
@@ -153,6 +204,22 @@ kubectl apply -f ../../openemr/deployment.yaml
 ```
 
 The reverse (plaintext NFS → LUKS) is the step-by-step adoption sequence above, except that step 3's format Job needs to run against a `websitevolume` that is NOT empty. Pre-copy the existing plaintext sites contents into a scratch location, format into the LUKS file, mount, copy back.
+
+## Operational hardening (production prerequisite)
+
+The manifests ship with `apk add --no-cache cryptsetup e2fsprogs util-linux` at container start in both the `luks-opener` sidecar (`openemr-deployment-luks.yaml`) and the one-shot format Job (`luks-format-job.yaml`). This is deliberate for an example — the manifests are self-contained and copy-pasteable against a stock `alpine:3.20` image — but it has two production-visible costs:
+
+1. **Startup latency and Alpine-repository dependency on every pod start.** Each new sidecar start re-downloads the three packages from Alpine's repositories. A cluster that cannot reach `dl-cdn.alpinelinux.org` (air-gapped, egress-firewalled) cannot start the LUKS sidecar, so the openemr pod never becomes ready.
+2. **Unpinned package versions.** `apk add` resolves whatever the Alpine repo currently serves, which drifts over time and can be yanked. A repro-build guarantee requires pinning the tools.
+
+**Before adopting this example in production**, bake a pinned image that already contains `cryptsetup`, `e2fsprogs`, and `util-linux`:
+
+```dockerfile
+FROM alpine:3.20
+RUN apk add --no-cache cryptsetup e2fsprogs util-linux
+```
+
+Push it to your own registry, pin by digest, and point BOTH the `luks-opener` sidecar's `image:` field AND the format Job's `image:` field at that pinned digest. Then strip the `apk add` line from both container command scripts. Using the same image for both keeps the tool versions in lockstep between format time and open time.
 
 ## Operational notes and known limitations
 
