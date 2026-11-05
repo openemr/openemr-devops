@@ -58,6 +58,7 @@ spec:
 
           LUKS_FILE=/mnt/websitevolume/.openemr-sites.luks
           CONTAINER_SIZE=${CONTAINER_SIZE:-8G}
+          MAPPER_NAME=openemr-sites-format
 
           if [ -f "$LUKS_FILE" ]; then
             echo "ERROR: $LUKS_FILE already exists. Refusing to overwrite."
@@ -65,6 +66,33 @@ spec:
             echo "  kubectl exec -it <any-pod-mounting-websitevolume> -- rm $LUKS_FILE"
             exit 1
           fi
+
+          # Refuse to proceed if the Secret still contains the published
+          # placeholder passphrase (literally checked into this repo). This
+          # prevents an operator from accidentally formatting a LUKS header
+          # whose only key is the public example value.
+          PLACEHOLDER='example-development-passphrase-REPLACE-ME'
+          if [ "$(cat /etc/luks/passphrase)" = "$PLACEHOLDER" ]; then
+            echo "ERROR: luks-passphrase Secret still contains the published"
+            echo "placeholder passphrase. Replace it with a real high-entropy"
+            echo "value (ideally via External Secrets Operator — see README)"
+            echo "before running this Job."
+            exit 1
+          fi
+
+          # Cleanup trap: on any failure after this point, remove the
+          # partially-formatted LUKS file we created and close any dangling
+          # mapper so a rerun can start from a clean state. The trap is
+          # cleared explicitly after the final chmod succeeds. The -f guard
+          # above ensures we only ever clean a file this Job itself created.
+          cleanup_on_error() {
+            rc=$?
+            echo "Format Job failed (exit $rc) — cleaning up partial artifacts"
+            cryptsetup luksClose "$MAPPER_NAME" 2>/dev/null || true
+            rm -f "$LUKS_FILE" || true
+            exit "$rc"
+          }
+          trap cleanup_on_error EXIT
 
           echo "Pre-allocating LUKS container file: $LUKS_FILE ($CONTAINER_SIZE)"
           # fallocate is a hole-punching sparse allocation — on NFS it
@@ -89,16 +117,20 @@ spec:
           cryptsetup luksOpen \
             --key-file /etc/luks/passphrase \
             "$LUKS_FILE" \
-            openemr-sites-format
+            "$MAPPER_NAME"
 
-          echo "Creating ext4 filesystem on /dev/mapper/openemr-sites-format"
-          mkfs.ext4 -q -L openemr-sites /dev/mapper/openemr-sites-format
+          echo "Creating ext4 filesystem on /dev/mapper/$MAPPER_NAME"
+          mkfs.ext4 -q -L openemr-sites "/dev/mapper/$MAPPER_NAME"
 
           echo "Closing the format-time mapping"
-          cryptsetup luksClose openemr-sites-format
+          cryptsetup luksClose "$MAPPER_NAME"
 
           echo "Setting restrictive permissions on the LUKS container file"
           chmod 0600 "$LUKS_FILE"
+
+          # Final success — clear the cleanup trap so a later non-zero exit
+          # (e.g. ls below) cannot wipe the valid LUKS file we just created.
+          trap - EXIT
 
           echo "LUKS container file created successfully: $LUKS_FILE"
           ls -la "$LUKS_FILE"
