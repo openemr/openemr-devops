@@ -77,6 +77,15 @@ trap 'rm -f "${RAW_CHECK_OUT}"' EXIT
 # Launch a helper that mounts websitevolume (which contains the LUKS
 # container FILE, not the decrypted filesystem) and greps the raw bytes.
 # If LUKS is working, the marker must NOT appear.
+# shellcheck disable=SC2016
+# The '"${MARKER}"' construct inside the kubectl --overrides JSON is a
+# host-bash quote-dance: close the outer single quote, open a double
+# quote so bash expands ${MARKER}, close the double quote, reopen the
+# single quote. The ${MARKER} IS intentionally expanded by the host
+# shell to inline the marker literal into the JSON string sent to
+# kubectl. ShellCheck can't distinguish this from a misplaced
+# single-quoted expansion attempt, so suppress the info-level finding
+# here.
 kubectl run luks-raw-check --rm -i --restart=Never \
   --image=alpine:3.20 \
   --overrides='
@@ -87,7 +96,7 @@ kubectl run luks-raw-check --rm -i --restart=Never \
       "image": "alpine:3.20",
       "stdin": true,
       "tty": false,
-      "command": ["sh", "-c", "grep -a -c '"${MARKER}"' /mnt/websitevolume/.openemr-sites.luks || echo 0"],
+      "command": ["sh", "-c", "grep -a -c '"${MARKER}"' /mnt/websitevolume/.openemr-sites.luks; rc=$?; if [ \"$rc\" = \"2\" ]; then echo GREP_READ_ERROR; exit 2; fi"],
       "volumeMounts": [{"name": "websitevolume", "mountPath": "/mnt/websitevolume"}]
     }],
     "volumes": [{
@@ -100,6 +109,17 @@ kubectl run luks-raw-check --rm -i --restart=Never \
 # kubectl may emit a trailing "pod "luks-raw-check" deleted" cleanup line
 # after the grep count, so parse out the LAST line that is purely digits
 # rather than blindly taking tail -1.
+# The inner helper emits GREP_READ_ERROR on grep exit code 2
+# (ciphertext file unreadable — missing, permissions, or similar).
+# Distinguishing that from a genuine zero-match is important: a read
+# failure must FAIL validation, not be reported as PASS.
+if grep -q '^GREP_READ_ERROR' "${RAW_CHECK_OUT}"; then
+  echo "ERROR: helper pod could not read the LUKS ciphertext file."
+  echo "This usually means .openemr-sites.luks is missing or unreadable."
+  echo "Helper pod output:"
+  cat "${RAW_CHECK_OUT}"
+  exit 1
+fi
 HITS=$(grep -E '^[[:space:]]*[0-9]+[[:space:]]*$' "${RAW_CHECK_OUT}" \
   | tail -1 \
   | tr -d '[:space:]')
