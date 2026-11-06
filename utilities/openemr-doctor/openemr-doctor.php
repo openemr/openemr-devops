@@ -33,7 +33,7 @@ $phpDisplayErrors = (string)ini_get('display_errors');
 $phpErrorReporting = error_reporting();
 error_reporting(E_ALL);
 // This copy: its version and the day it was released (gen/check.py: the same version as the scripts').
-define('DOCTOR_VERSION', '0.5.3');
+define('DOCTOR_VERSION', '0.5.4');
 define('DOCTOR_DATE', '2026-11-06');
 // The doctor's home: where openemr-doctor-docker.sh downloads the newest doctor from, and where this
 // copy looks for a newer one of itself. OPENEMR_DOCTOR_HOME overrides it.
@@ -51,19 +51,32 @@ foreach (array(dirname(__FILE__) . '/openemr-doctor-facts', dirname(__FILE__) . 
 define('DOCTOR_FACTS_DEFAULT', $factsDefault);
 
 $web = PHP_SAPI !== 'cli';
+// The example names the instructions show (the docblock above and the README; openemr-devops' README
+// shows the same one). Anyone can read them, so they are refused like the plain name. The one list:
+// gen/check.py fails when the docblock or the README shows a name that isn't in it.
+$doctorExampleNames = array('openemr-doctor-7f3a9c2e41b8d605.php');
 if ($web) {
     // Only the server itself, not through a proxy that says it forwards, and only under a name of
     // your own: a proxy on this server that adds no forwarding header (nginx's proxy_pass doesn't by
     // default) makes every visitor look local, so the random part of the file's name is the key.
     $addr = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
     $proxied = isset($_SERVER['HTTP_X_FORWARDED_FOR']) || isset($_SERVER['HTTP_FORWARDED']) || isset($_SERVER['HTTP_X_REAL_IP']);
-    $keyed = (bool)preg_match('/^openemr-doctor-[A-Za-z0-9]{12,}\.php$/', basename(__FILE__));
+    $keyed = preg_match('/^openemr-doctor-[A-Za-z0-9]{12,}\.php$/', basename(__FILE__)) && !in_array(strtolower(basename(__FILE__)), $doctorExampleNames, true);
     if (!in_array($addr, array('127.0.0.1', '::1', '::ffff:127.0.0.1'), true) || $proxied || !$keyed) {
         header('HTTP/1.1 403 Forbidden');
         header('Content-Type: text/plain; charset=utf-8');
         echo "The OpenEMR install doctor only answers a browser on this server (http://localhost/...), under a name of your own.\n";
         if (!$keyed) {
-            echo 'Rename this file with a random part of 12 or more letters and digits, such as openemr-doctor-' . substr(sha1(uniqid((string)mt_rand(), true)), 0, 16) . ".php, and open that name.\n";
+            // A fresh name each time, from PHP's secure generator (7.0 and later); PHP 5 has none built in.
+            $random = substr(sha1(uniqid((string)mt_rand(), true)), 0, 16);
+            if (function_exists('random_bytes')) {
+                try {
+                    $random = bin2hex(random_bytes(8));
+                } catch (Exception $e) {
+                    // no source of randomness: keep the fallback
+                }
+            }
+            echo "Rename this file with a random part of 12 or more letters and digits of your own (not an example's), such as openemr-doctor-$random.php, and open that name.\n";
         }
         echo "Delete this file when you are done with it.\n";
         exit;
