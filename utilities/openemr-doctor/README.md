@@ -25,7 +25,7 @@ Without Docker, on the server, with the PHP the web server uses:
 php openemr-doctor.php --openemr=/var/www/html/openemr [--site=default]
 ```
 
-The web server can run a different PHP from the command line's. To check that one, copy `openemr-doctor.php` into the OpenEMR folder under a name with a random part of your own, such as `openemr-doctor-7f3a9c2e41b8d605.php`, and open `http://localhost/<folder>/<that name>` in a browser on the server. It answers only requests from the server itself, not through a proxy, and asks to be deleted afterwards. Under its plain name, or that example's, it only asks to be renamed, suggesting a fresh random name: a proxy on the server that adds no forwarding header makes every visitor look local, so the name is the key.
+The web server can run a different PHP from the command line's. To check that one, copy `openemr-doctor.php`, with `scan.php` beside it, into the OpenEMR folder under a name with a random part of your own, such as `openemr-doctor-7f3a9c2e41b8d605.php`, and open `http://localhost/<folder>/<that name>` in a browser on the server. It answers only requests from the server itself, not through a proxy, and asks to be deleted afterwards. Under its plain name, or that example's, it only asks to be renamed, suggesting a fresh random name: a proxy on the server that adds no forwarding header makes every visitor look local, so the name is the key.
 
 ## Options
 

@@ -33,7 +33,7 @@ $phpDisplayErrors = (string)ini_get('display_errors');
 $phpErrorReporting = error_reporting();
 error_reporting(E_ALL);
 // This copy: its version and the day it was released (gen/check.py: the same version as the scripts').
-define('DOCTOR_VERSION', '0.5.4');
+define('DOCTOR_VERSION', '0.5.5');
 define('DOCTOR_DATE', '2026-11-06');
 // The doctor's home: where openemr-doctor-docker.sh downloads the newest doctor from, and where this
 // copy looks for a newer one of itself. OPENEMR_DOCTOR_HOME overrides it.
@@ -67,16 +67,18 @@ if ($web) {
         header('Content-Type: text/plain; charset=utf-8');
         echo "The OpenEMR install doctor only answers a browser on this server (http://localhost/...), under a name of your own.\n";
         if (!$keyed) {
-            // A fresh name each time, from PHP's secure generator (7.0 and later); PHP 5 has none built in.
-            $random = substr(sha1(uniqid((string)mt_rand(), true)), 0, 16);
+            // A fresh name each time, only from PHP's secure generator (7.0 and later): without it
+            // (PHP 5, or no source of randomness) no name is suggested, since a weak one is a weak key.
+            $random = '';
             if (function_exists('random_bytes')) {
                 try {
                     $random = bin2hex(random_bytes(8));
                 } catch (Exception $e) {
-                    // no source of randomness: keep the fallback
+                    $random = '';
                 }
             }
-            echo "Rename this file with a random part of 12 or more letters and digits of your own (not an example's), such as openemr-doctor-$random.php, and open that name.\n";
+            echo 'Rename this file with a random part of 12 or more letters and digits of your own (not an example\'s)'
+                . ($random !== '' ? ", such as openemr-doctor-$random.php" : ', chosen at random') . ", and open that name.\n";
         }
         echo "Delete this file when you are done with it.\n";
         exit;

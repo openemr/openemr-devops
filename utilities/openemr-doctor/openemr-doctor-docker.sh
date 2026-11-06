@@ -27,7 +27,7 @@
 set -euo pipefail
 
 main() {
-    VERSION=0.5.4
+    VERSION=0.5.5
     DATE=2026-11-06
     # The doctor's home: where this script downloads the doctor from, and where it looks for a
     # newer copy of itself.
