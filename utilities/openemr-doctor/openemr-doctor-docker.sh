@@ -1,9 +1,10 @@
 #!/bin/bash
 # Run the OpenEMR install doctor against the compose project in this directory.
-# With sites/ on a volume (as in OpenEMR's compose files) it runs from a throwaway container
-# of the same image, sharing the OpenEMR container's volumes and network, so it works even
-# when that container won't stay up. Otherwise it runs inside the running container.
-# The idea came from Asher Densmore-Lynn (jesdynf), forum t/27118/8.
+# It runs inside the OpenEMR container when that is running, so it checks what actually runs
+# (an in-place PHP update, a file edited in the container). When the container won't stay up and
+# sites/ is on a volume (as in OpenEMR's compose files), it runs from a throwaway container of the
+# same image, sharing its volumes and networks. The idea came from Asher Densmore-Lynn (jesdynf),
+# forum t/27118/8.
 #
 # Safe to pipe from curl: everything is inside main(), which runs only on the last line, so a
 # download cut short stops bash with a syntax error instead of running part of the script.
@@ -18,6 +19,7 @@
 #   --skip=NAME,... (or SKIP=...): leave the doctor's checks of those names out (php openemr-doctor.php --list-checks).
 #   CONTAINER=name-or-id: the OpenEMR container to check, when the project has more than one.
 #   OE=/path: OpenEMR's folder in the container, when the doctor can't find it (it looks for version.php).
+#   WEB_USER=name: the web server's user in the container, which the doctor runs as (default apache, as in OpenEMR's image).
 #   OPENEMR_DOCTOR_HOME=URL: another home; OPENEMR_DOCTOR_NO_UPDATE_CHECK=1: don't look for a newer copy.
 #   curl ... | bash -s -- --debug
 #
@@ -25,8 +27,8 @@
 set -euo pipefail
 
 main() {
-    VERSION=0.5.2
-    DATE=2026-11-05
+    VERSION=0.5.3
+    DATE=2026-11-06
     # The doctor's home: where this script downloads the doctor from, and where it looks for a
     # newer copy of itself.
     DOCTOR_HOME=${OPENEMR_DOCTOR_HOME:-https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-doctor}
@@ -34,6 +36,7 @@ main() {
     DEBUG=${DEBUG:-0}
     SKIP=${SKIP:-}
     OE=${OE:-}
+    WEB_USER=${WEB_USER:-apache}
     local arg
     for arg in "$@"; do
         case "${arg}" in
@@ -130,7 +133,8 @@ main() {
     fi
 
     WORK=$(mktemp -d)
-    trap 'rm -rf "${WORK}"' EXIT
+    CID=""   # a throwaway container not yet started, removed if this script stops first
+    trap 'rm -rf "${WORK}"; [[ -z "${CID}" ]] || docker rm -f "${CID}" >/dev/null 2>&1 || true' EXIT
     local want got
     sha() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
     if [[ -n "${DOCTOR:-}" ]] || [[ -f openemr-doctor.php ]]; then
@@ -142,8 +146,9 @@ main() {
         DOCTOR=${ddir}/${DOCTOR##*/}
         say "doctor: ${DOCTOR}, a copy of your own (not checked against SHA256SUMS)"
     else
-        curl -fsSL -o "${WORK}/openemr-doctor.php" "${DOCTOR_HOME}/openemr-doctor.php" || { say "couldn't download openemr-doctor.php from ${DOCTOR_HOME}"; exit 2; }
-        curl -fsSL -o "${WORK}/SHA256SUMS" "${DOCTOR_HOME}/SHA256SUMS" || { say "couldn't download SHA256SUMS from ${DOCTOR_HOME}"; exit 2; }
+        # Time limits, so a connection that stalls stops with the exit 2 below instead of waiting forever.
+        curl -fsSL --connect-timeout 15 --max-time 120 -o "${WORK}/openemr-doctor.php" "${DOCTOR_HOME}/openemr-doctor.php" || { say "couldn't download openemr-doctor.php from ${DOCTOR_HOME}"; exit 2; }
+        curl -fsSL --connect-timeout 15 --max-time 120 -o "${WORK}/SHA256SUMS" "${DOCTOR_HOME}/SHA256SUMS" || { say "couldn't download SHA256SUMS from ${DOCTOR_HOME}"; exit 2; }
         want=$(awk '$2 == "openemr-doctor.php" || $2 == "*openemr-doctor.php" {print $1}' "${WORK}/SHA256SUMS")
         got=$(sha "${WORK}/openemr-doctor.php")
         if [[ -z "${want}" ]] || [[ "${want}" != "${got}" ]]; then
@@ -162,7 +167,7 @@ main() {
     if [[ -f "${dir}/scan.php" ]]; then
         SCAN=${dir}/scan.php
         [[ "${DOCTOR}" = "${WORK}/openemr-doctor.php" ]] || say "scan.php: ${SCAN}, beside your doctor (not checked against SHA256SUMS)"
-    elif [[ "${DOCTOR}" = "${WORK}/openemr-doctor.php" ]] && curl -fsSL -o "${WORK}/scan.php" "${DOCTOR_HOME}/scan.php"; then
+    elif [[ "${DOCTOR}" = "${WORK}/openemr-doctor.php" ]] && curl -fsSL --connect-timeout 15 --max-time 120 -o "${WORK}/scan.php" "${DOCTOR_HOME}/scan.php"; then
         want=$(awk '$2 == "scan.php" || $2 == "*scan.php" {print $1}' "${WORK}/SHA256SUMS")
         got=$(sha "${WORK}/scan.php")
         if [[ -n "${want}" ]] && [[ "${want}" = "${got}" ]]; then
@@ -190,37 +195,53 @@ main() {
     [[ "${OPENEMR_DOCTOR_HOME:-}" != http* ]] || ENVS+=(-e "OPENEMR_DOCTOR_HOME=${OPENEMR_DOCTOR_HOME}")
     [[ -z "${OPENEMR_DOCTOR_NO_UPDATE_CHECK:-}" ]] || ENVS+=(-e OPENEMR_DOCTOR_NO_UPDATE_CHECK=1)
 
+    # The doctor, scan.php and the facts, in one folder the web server's user can read (a copy of
+    # your own may be 0600), copied into the container rather than mounted from this host, so a
+    # Docker daemon on another host gets them too. The facts sit beside the doctor, where it looks.
+    local stage=${WORK}/stage
+    mkdir -p "${stage}"
+    cp "${DOCTOR}" "${stage}/openemr-doctor.php"
+    [[ -z "${SCAN}" ]] || cp "${SCAN}" "${stage}/scan.php"
+    [[ -z "${FACTS}" ]] || cp -R "${FACTS}" "${stage}/openemr-doctor-facts"
+    chmod -R a+rX "${stage}"
+
     # sites/ on a volume: a volume at OE/sites, at OE, or at a folder above it.
-    local mounts mount on_volume=0 rc=0 running
+    local mounts mount on_volume=0 rc=0
     mounts=$(docker inspect --format '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "${CONTAINER}")
     while IFS= read -r mount; do
         [[ -n "${mount}" ]] || continue
         if [[ "${OE}/sites" = "${mount}" || "${OE}/sites" = "${mount%/}/"* ]]; then on_volume=1; fi
     done <<<"${mounts}"
-    if [[ "${on_volume}" = 1 ]]; then
-        local networks network nnet
-        networks=$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "${CONTAINER}")
-        network=$(awk '{print $1}' <<<"${networks}")
-        nnet=$(wc -w <<<"${networks}")
-        [[ "${nnet}" -le 1 ]] || say "the container is on several networks (${networks}); using ${network}"
-        say "sites/ is on a volume: running the doctor in a throwaway container of the same image, with its volumes, on network ${network}"
-        local extra=()
-        [[ -z "${SCAN}" ]] || extra+=(-v "${SCAN}:/tools/scan.php:ro")
-        [[ -z "${FACTS}" ]] || extra+=(-v "${FACTS}:/tools/openemr-doctor-facts:ro")
+    if [[ "${state}" = running ]]; then
+        # Inside the running container, in a folder of this run's own, removed afterwards.
+        say "the container is running: running the doctor in it"
+        local tdir
+        tdir=$(docker exec "${CONTAINER}" mktemp -d /tmp/openemr-doctor.XXXXXX)
+        docker cp "${stage}/." "${CONTAINER}:${tdir}" >/dev/null
+        docker exec "${CONTAINER}" chmod -R a+rX "${tdir}"
+        docker exec -u "${WEB_USER}" "${ENVS[@]}" "${CONTAINER}" php "${tdir}/openemr-doctor.php" "${ARGS[@]}" || rc=$?
+        # Best effort: a container that stopped meanwhile doesn't change the doctor's exit code.
+        docker exec "${CONTAINER}" rm -rf "${tdir}" >/dev/null 2>&1 || true
+    elif [[ "${on_volume}" = 1 ]]; then
+        # A throwaway container of the same image with the container's volumes, on every network
+        # it is on (the database may be on any of them). It sees the image and the volumes, not
+        # what was changed inside the container itself.
+        local nets=() netflag=() network said
+        read -r -a nets <<<"$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "${CONTAINER}")" || true
+        [[ "${#nets[@]}" -eq 0 ]] || netflag=(--network "${nets[0]}")
+        said="${nets[*]:-none}"
+        said="network${nets[1]:+s} ${said// /, }"
+        say "the container isn't running (${state}) and sites/ is on a volume: running the doctor in a throwaway container of the same image, with its volumes, on ${said}"
+        say "it sees the image and the volumes, so changes made inside the container itself (a PHP updated in place, an edited file) aren't checked"
         # Capped, so a doctor gone wrong can't take the host's memory.
-        docker run --rm --memory 1g --memory-swap 1g --volumes-from "${CONTAINER}" --network "${network}" --user apache --entrypoint php \
-          "${ENVS[@]}" -v "${DOCTOR}:/tools/openemr-doctor.php:ro" ${extra[@]+"${extra[@]}"} "${image}" /tools/openemr-doctor.php "${ARGS[@]}" || rc=$?
-    elif running=$(docker inspect --format '{{.State.Running}}' "${CONTAINER}") && [[ "${running}" = true ]]; then
-        # sites/ lives inside the container, so a throwaway container would see the image's empty one.
-        say "sites/ is inside the container: running the doctor in it"
-        docker cp "${DOCTOR}" "${CONTAINER}:/tmp/openemr-doctor.php" >/dev/null
-        [[ -z "${SCAN}" ]] || docker cp "${SCAN}" "${CONTAINER}:/tmp/scan.php" >/dev/null
-        if [[ -n "${FACTS}" ]]; then
-            docker cp "${FACTS}" "${CONTAINER}:/tmp/openemr-doctor-facts" >/dev/null
-            docker exec "${CONTAINER}" chmod -R a+rX /tmp/openemr-doctor-facts
+        CID=$(docker create --rm --memory 1g --memory-swap 1g --volumes-from "${CONTAINER}" ${netflag[@]+"${netflag[@]}"} --user "${WEB_USER}" --entrypoint php \
+          "${ENVS[@]}" "${image}" /tools/openemr-doctor.php "${ARGS[@]}")
+        docker cp "${stage}/." "${CID}:/tools" >/dev/null
+        if [[ "${#nets[@]}" -gt 1 ]]; then
+            for network in "${nets[@]:1}"; do docker network connect "${network}" "${CID}"; done
         fi
-        docker exec -u apache "${ENVS[@]}" "${CONTAINER}" php /tmp/openemr-doctor.php "${ARGS[@]}" || rc=$?
-        docker exec "${CONTAINER}" rm -rf /tmp/openemr-doctor.php /tmp/scan.php /tmp/openemr-doctor-facts
+        docker start -a "${CID}" || rc=$?
+        CID=""   # started with --rm: Docker removes it
     else
         say "sites/ isn't on a volume and the container isn't running; start it (docker compose up -d), then run this again"
         exit 2

@@ -12,8 +12,10 @@ curl -fsSL https://raw.githubusercontent.com/openemr/openemr-devops/master/utili
 
 `openemr-doctor-docker.sh` finds the OpenEMR container by the image it was started from, downloads the newest doctor from this folder (checked against `SHA256SUMS`), and runs it with that container's own PHP:
 
-- with `sites/` on a volume, as in OpenEMR's compose files, from a throwaway container sharing the container's volumes and network, so it works even when that container won't stay up;
-- otherwise inside the running container.
+- inside the container when it is running, so it checks what actually runs, a PHP updated in place or a file edited in the container included;
+- when the container won't stay up and `sites/` is on a volume, as in OpenEMR's compose files, from a throwaway container of the same image sharing its volumes and all its networks. That one sees the image and the volumes, not changes made inside the container itself, and says so.
+
+The doctor and its files are copied into the container, not mounted, so a Docker daemon on another host works too.
 
 The report is on stdout; which container it checked, and how, is on stderr. The exit code is 1 when a check fails, 0 when none does, and 2 or more when it couldn't run the doctor. The script runs only from its last line, so a download cut short does nothing.
 
@@ -23,21 +25,21 @@ Without Docker, on the server, with the PHP the web server uses:
 php openemr-doctor.php --openemr=/var/www/html/openemr [--site=default]
 ```
 
-The web server can run a different PHP from the command line's. To check that one, copy `openemr-doctor.php` into the OpenEMR folder and open `http://localhost/<folder>/openemr-doctor.php` in a browser on the server. It answers only requests from the server itself, and asks to be deleted afterwards.
+The web server can run a different PHP from the command line's. To check that one, copy `openemr-doctor.php` into the OpenEMR folder under a name with a random part of your own, such as `openemr-doctor-7f3a9c2e41b8d605.php`, and open `http://localhost/<folder>/<that name>` in a browser on the server. It answers only requests from the server itself, not through a proxy, and asks to be deleted afterwards. Under its plain name it only asks to be renamed: a proxy on the server that adds no forwarding header makes every visitor look local, so the name is the key.
 
 ## Options
 
-- `--skip=NAME,...` leaves checks out by name (with the Docker script: `curl … | bash -s -- --skip=documents`). Each one left out prints a `SKIP` line, and the summary names it, so it never reads as a pass.
+- `--skip=NAME,...` leaves checks out by name (with the Docker script: `curl … | bash -s -- --skip=documents`). Each one left out prints a `SKIP` line, even when the doctor stops before reaching it, and the summary names it, so it never reads as a pass.
 - `--list-checks` prints the names: `php`, `php-security`, `php-extensions`, `php-ini`, `php-libraries`, `page-assets`, `files`, `local-changes`, `local-changes-php`, `documents-folder`, `database-server`, `database-version`, `theme`, `error-display`, `modules`, `encryption-keys`, `documents`, `api-keys`. The install's version, the site, setup and the database connection can't be left out: every other check needs them.
 - `--debug` adds where each fact came from, the counts behind each check, and timings (and traces the Docker script).
-- For the Docker script: `CONTAINER=name` picks the OpenEMR container when there are several, or one of your own image; `OE=/path` names OpenEMR's folder in it (it otherwise finds it by its `version.php`).
+- For the Docker script: `CONTAINER=name` picks the OpenEMR container when there are several, or one of your own image; `OE=/path` names OpenEMR's folder in it (it otherwise finds it by its `version.php`); `WEB_USER=name` is the web server's user the doctor runs as (`apache`, as in OpenEMR's images, unless given).
 - `OPENEMR_DOCTOR_NO_UPDATE_CHECK=1` stops the doctor and the Docker script looking for a newer copy of themselves.
 
 ## What it checks
 
-- **PHP**: its version against the release's floor and the versions OpenEMR's CI tested; PHP's security advisories (such as php2shell, 2026-10-21); the extensions the release's `composer.json` requires; `php.ini` limits and error display.
+- **PHP**: its version against the release's floor, the install's own `composer.json` (upper bounds included) and the versions OpenEMR's CI tested; PHP's security advisories (such as php2shell, 2026-10-21); the extensions the release's `composer.json` requires; `php.ini` limits and error display.
 - **Files**: `vendor/` and every Composer package; the built page assets; every file the release or patch package ships; OpenEMR's own files edited on this server, and whether those still parse and run on this PHP (`scan.php`).
-- **The site**: `sqlconf.php` and setup; who can write `documents/`; the database connection, with what an error number means, and SSL (`mysql-ca`, the server's certificate and its names); the database's version against the code's; the theme; OpenEMR's own error-display setting; switched-on modules without files; the encryption keys against the database's; each stored document's file; the API's key pair.
+- **The site**: `sqlconf.php` and setup; who can write `documents/`; the database connection, with what an error number means, and SSL (`mysql-ca`, the server's certificate and its names); the database's version and patch against the code's (a patch whose `sql/patch.sql` changes nothing in the database leaves only the patch number behind, which is a note); the theme; OpenEMR's own error-display setting; switched-on modules without files; the encryption keys against the database's; each stored document's file; the API's key pair.
 
 Each check comes from failures reported on the forum and from what OpenEMR's own code needs to start.
 
@@ -62,7 +64,7 @@ They are generated from OpenEMR's source at each release tag by [openemr-referen
 
 ## Changing it
 
-The workflow `test-openemr-doctor.yml` runs the doctor through `openemr-doctor-docker.sh` against `openemr/openemr:latest` and `openemr/openemr:dev`, with a database, on each pull request that touches this folder and every day. After editing a file here:
+The workflow `test-openemr-doctor.yml` runs the doctor through `openemr-doctor-docker.sh` against `openemr/openemr:latest` and `openemr/openemr:dev`, with a database, on each pull request that touches this folder and every day: inside the running container, from a throwaway container once it is stopped, with the database behind the code, with a doctor that doesn't match `SHA256SUMS`, and on a stopped container without a `sites/` volume. After editing a file here:
 
 - set the same version and date in `openemr-doctor.php` (`DOCTOR_VERSION`, `DOCTOR_DATE`) and `openemr-doctor-docker.sh` (`VERSION`, `DATE`);
 - refresh `SHA256SUMS` (`sha256sum openemr-doctor-docker.sh openemr-doctor.php scan.php > SHA256SUMS`), which the Docker script checks what it downloads against.

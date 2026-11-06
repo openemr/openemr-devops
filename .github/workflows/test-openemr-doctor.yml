@@ -2,10 +2,13 @@ name: OpenEMR Doctor
 
 # Runs utilities/openemr-doctor the way a site runs it: openemr-doctor-docker.sh in the folder of a
 # compose project (tests/openemr-doctor), against OpenEMR's published image with a database and
-# sites/ on a volume. A healthy install must pass with exit code 0, and a broken one (its database
-# behind its code) must fail with exit code 1. It runs on each pull request that touches the doctor
-# and every day, so an image change that breaks the doctor, or that the doctor fails, shows the
-# same day. The doctor reads its release facts from the address in DOCTOR_FACTS.
+# sites/ on a volume. A healthy install must pass with exit code 0, checked inside the running
+# container and, once it is stopped, from a throwaway container of the image; a broken one (its
+# database behind its code) must fail with exit code 1; a doctor that doesn't match SHA256SUMS, and
+# a stopped container without a sites/ volume, must stop it with exit code 2. It runs on each pull
+# request that touches the doctor and every day, so an image change that breaks the doctor, or that
+# the doctor fails, shows the same day. The doctor reads its release facts from the address in
+# DOCTOR_FACTS.
 
 on:
   push:
@@ -80,7 +83,7 @@ jobs:
           [[ "${rc}" -eq 0 ]] || { echo "::error::exit code ${rc}, not 0"; exit 1; }
           for line in \
               'doctor: downloaded from file://.*, matches its SHA256SUMS' \
-              'sites/ is on a volume: running the doctor in a throwaway container'; do
+              'the container is running: running the doctor in it'; do
             grep -q -- "${line}" how.txt || { echo "::error::no line matching: ${line}"; exit 1; }
           done
           # Lines that show the checks ran, not only that none failed. dev is compared with the newest
@@ -90,6 +93,36 @@ jobs:
           for line in "${lines[@]}"; do
             grep -q -- "${line}" report.txt || { echo "::error::no line matching: ${line}"; exit 1; }
           done
+
+      - name: A doctor that doesn't match SHA256SUMS is refused
+        run: |
+          changed="$(mktemp -d)"
+          cp "${DOCTOR_DIR}/openemr-doctor.php" "${DOCTOR_DIR}/SHA256SUMS" "${changed}/"
+          echo '// changed' >> "${changed}/openemr-doctor.php"
+          set +e
+          OPENEMR_DOCTOR_HOME="file://${changed}" bash "${DOCTOR_DIR}/openemr-doctor-docker.sh" > report.txt 2> how.txt
+          rc=$?
+          set -e
+          cat how.txt report.txt
+          [[ "${rc}" -eq 2 ]] || { echo "::error::exit code ${rc}, not 2"; exit 1; }
+          grep -q "doesn't match file://${changed}/SHA256SUMS" how.txt || { echo "::error::no line saying the doctor doesn't match"; exit 1; }
+          [[ ! -s report.txt ]] || { echo "::error::the changed doctor ran"; exit 1; }
+
+      - name: A stopped container is checked from a throwaway container
+        run: |
+          # As when OpenEMR won't stay up: the doctor runs from the image, with the container's volumes and networks.
+          docker compose stop openemr
+          set +e
+          DOCTOR="${DOCTOR_DIR}/openemr-doctor.php" bash "${DOCTOR_DIR}/openemr-doctor-docker.sh" > report.txt 2> how.txt
+          rc=$?
+          set -e
+          cat how.txt report.txt
+          [[ "${rc}" -eq 0 ]] || { echo "::error::exit code ${rc}, not 0"; exit 1; }
+          grep -q 'running the doctor in a throwaway container of the same image, with its volumes' how.txt || { echo "::error::not run from a throwaway container"; exit 1; }
+          for line in '^PASS  Database: connected' '^PASS  Database version: ' '^No blocking problems found\.'; do
+            grep -q -- "${line}" report.txt || { echo "::error::no line matching: ${line}"; exit 1; }
+          done
+          if docker ps -a --no-trunc --format '{{.Command}}' | grep -q /tools/openemr-doctor.php; then echo "::error::a throwaway container was left"; exit 1; fi
 
       - name: A broken install fails
         run: |
@@ -103,6 +136,19 @@ jobs:
           [[ "${rc}" -eq 1 ]] || { echo "::error::exit code ${rc}, not 1"; exit 1; }
           grep -q '^FAIL  Database version: ' report.txt || { echo "::error::no FAIL line for the database version"; exit 1; }
 
+      - name: A stopped container without a sites/ volume stops it
+        run: |
+          # Without the volume the throwaway container would see the image's empty sites/, so the doctor doesn't run.
+          docker create --name openemr-doctor-novolume --memory 1g "openemr/openemr:${OPENEMR_TAG}" > /dev/null
+          set +e
+          CONTAINER=openemr-doctor-novolume DOCTOR="${DOCTOR_DIR}/openemr-doctor.php" bash "${DOCTOR_DIR}/openemr-doctor-docker.sh" > report.txt 2> how.txt
+          rc=$?
+          set -e
+          docker rm -f openemr-doctor-novolume > /dev/null
+          cat how.txt report.txt
+          [[ "${rc}" -eq 2 ]] || { echo "::error::exit code ${rc}, not 2"; exit 1; }
+          grep -q "sites/ isn't on a volume and the container isn't running" how.txt || { echo "::error::no line saying why it didn't run"; exit 1; }
+
       - name: Logs
         if: failure()
         run: |
@@ -111,4 +157,6 @@ jobs:
 
       - name: Clean up
         if: always()
-        run: docker compose down -v
+        run: |
+          docker rm -f openemr-doctor-novolume > /dev/null 2>&1 || true
+          docker compose down -v

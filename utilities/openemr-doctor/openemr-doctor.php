@@ -9,7 +9,8 @@
  *     php openemr-doctor.php --openemr=/var/www/html/openemr [--site=default] [--facts=DIR_OR_URL] [--skip=NAME,...] [--debug]
  *
  * Or, to check the web server's own PHP (it can differ from the command line's), copy this
- * file into the OpenEMR folder and open http://localhost/openemr/openemr-doctor.php in a
+ * file into the OpenEMR folder under a name with a random part of your own, such as
+ * openemr-doctor-7f3a9c2e41b8d605.php, and open http://localhost/openemr/<that name> in a
  * browser on the server itself. It answers no one else. Delete it when you are done.
  *
  * It compares the install with the facts for its release (generated from OpenEMR's source and
@@ -26,10 +27,14 @@
  * @license GPL-3.0-or-later
  */
 
+// The error display this PHP is set up with, read before the doctor sets its own below: the php.ini
+// check reports these, not the doctor's.
+$phpDisplayErrors = (string)ini_get('display_errors');
+$phpErrorReporting = error_reporting();
 error_reporting(E_ALL);
 // This copy: its version and the day it was released (gen/check.py: the same version as the scripts').
-define('DOCTOR_VERSION', '0.5.2');
-define('DOCTOR_DATE', '2026-11-05');
+define('DOCTOR_VERSION', '0.5.3');
+define('DOCTOR_DATE', '2026-11-06');
 // The doctor's home: where openemr-doctor-docker.sh downloads the newest doctor from, and where this
 // copy looks for a newer one of itself. OPENEMR_DOCTOR_HOME overrides it.
 define('DOCTOR_HOME', 'https://raw.githubusercontent.com/openemr/openemr-devops/master/utilities/openemr-doctor');
@@ -47,13 +52,20 @@ define('DOCTOR_FACTS_DEFAULT', $factsDefault);
 
 $web = PHP_SAPI !== 'cli';
 if ($web) {
-    // Only the server itself, and not through a proxy that would make every visitor local.
+    // Only the server itself, not through a proxy that says it forwards, and only under a name of
+    // your own: a proxy on this server that adds no forwarding header (nginx's proxy_pass doesn't by
+    // default) makes every visitor look local, so the random part of the file's name is the key.
     $addr = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
     $proxied = isset($_SERVER['HTTP_X_FORWARDED_FOR']) || isset($_SERVER['HTTP_FORWARDED']) || isset($_SERVER['HTTP_X_REAL_IP']);
-    if (!in_array($addr, array('127.0.0.1', '::1', '::ffff:127.0.0.1'), true) || $proxied) {
+    $keyed = (bool)preg_match('/^openemr-doctor-[A-Za-z0-9]{12,}\.php$/', basename(__FILE__));
+    if (!in_array($addr, array('127.0.0.1', '::1', '::ffff:127.0.0.1'), true) || $proxied || !$keyed) {
         header('HTTP/1.1 403 Forbidden');
         header('Content-Type: text/plain; charset=utf-8');
-        echo "The OpenEMR install doctor only answers a browser on this server (http://localhost/...).\nDelete this file when you are done with it.\n";
+        echo "The OpenEMR install doctor only answers a browser on this server (http://localhost/...), under a name of your own.\n";
+        if (!$keyed) {
+            echo 'Rename this file with a random part of 12 or more letters and digits, such as openemr-doctor-' . substr(sha1(uniqid((string)mt_rand(), true)), 0, 16) . ".php, and open that name.\n";
+        }
+        echo "Delete this file when you are done with it.\n";
         exit;
     }
     header('Content-Type: text/plain; charset=utf-8');
@@ -243,6 +255,46 @@ function phpFloor($constraint)
     return $floor;
 }
 
+/**
+ * Whether a Composer constraint allows a PHP version, upper bounds included: '>=7.2 <8.0' and
+ * '^7.3 || ^8.0' (which stops before 9.0) allow 7.4.33 but not 9.0.0; '~8.1.0' stops before 8.2.
+ * Null when it can't tell (a form it doesn't read, or an exact version).
+ */
+function phpAllows($constraint, $version)
+{
+    $constraint = preg_replace('/(>=|<=|!=|==|>|<|=|\^|~)\s+/', '$1', trim((string)$constraint));
+    foreach (preg_split('/\s*\|\|?\s*/', $constraint) as $alternative) {
+        $allows = true;
+        foreach (preg_split('/\s*,\s*|\s+/', trim($alternative)) as $term) {
+            if (!preg_match('/^(>=|<=|!=|==?|>|<|\^|~)?v?([0-9]+)(?:\.([0-9]+))?(?:\.([0-9]+))?(\.\*)?$/', $term, $m)) {
+                return null;
+            }
+            $op = $m[1];
+            $given = isset($m[4]) && $m[4] !== '' ? 3 : (isset($m[3]) && $m[3] !== '' ? 2 : 1);
+            $x = (int)$m[2];
+            $y = $given > 1 ? (int)$m[3] : 0;
+            $low = "$x.$y." . ($given > 2 ? (int)$m[4] : 0);
+            $wild = isset($m[5]) && $m[5] !== '';
+            $cmp = cmpVersion($version, $low);
+            if ($wild || $op === '^' || $op === '~') {
+                // A range from $low up to (not including) the next major, or the next minor for
+                // ~X.Y.Z and X.Y.*.
+                $high = ($wild && $given === 2) || ($op === '~' && $given === 3) ? $x . '.' . ($y + 1) . '.0' : ($x + 1) . '.0.0';
+                $ok = $cmp >= 0 && cmpVersion($version, $high) < 0;
+            } elseif ($op === '>=' || $op === '>' || $op === '<=' || $op === '<' || $op === '!=') {
+                $ok = ($op === '>=' && $cmp >= 0) || ($op === '>' && $cmp > 0) || ($op === '<=' && $cmp <= 0) || ($op === '<' && $cmp < 0) || ($op === '!=' && $cmp !== 0);
+            } else {
+                return null; // an exact version: Composer reads '8.2' as 8.2.0.0 alone
+            }
+            $allows = $allows && $ok;
+        }
+        if ($allows) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /** What the install's own composer.json requires: array('php' => constraint, 'floor' => X.Y.Z or null, 'extensions' => names), or null without one. */
 function ownComposer($root)
 {
@@ -260,6 +312,16 @@ function ownComposer($root)
     sort($extensions);
     $php = isset($json['require']['php']) ? (string)$json['require']['php'] : '';
     return array('php' => $php, 'floor' => $php !== '' ? phpFloor($php) : null, 'extensions' => $extensions);
+}
+
+/**
+ * Whether this install's sql/patch.sql changes anything in the database: a line that isn't a
+ * comment (--), a #If/#EndIf directive or blank. Null when it can't be read.
+ */
+function patchSqlHasStatements($root)
+{
+    $sql = is_readable("$root/sql/patch.sql") ? @file_get_contents("$root/sql/patch.sql") : false;
+    return $sql === false ? null : (bool)preg_match('/^(?![ \t]*(?:--|#))[ \t]*\S/m', $sql);
 }
 
 /** A php.ini size in bytes; -1 for unlimited. */
@@ -292,7 +354,7 @@ function codeUsesIntl($root)
         function ($file, $key, $iterator) use ($skip) {
             return !($iterator->hasChildren() && in_array($file->getFilename(), $skip, true));
         }
-    ));
+    ), RecursiveIteratorIterator::LEAVES_ONLY, RecursiveIteratorIterator::CATCH_GET_CHILD); // past a folder it can't open
     foreach ($dirs as $file) {
         if (substr($file->getFilename(), -4) !== '.php' || !$file->isReadable()) {
             continue;
@@ -373,17 +435,21 @@ function sslDiagnosis($host, $port, $ca)
         return $generic . " (The doctor couldn't read the server's certificate: $cert.)";
     }
     $info = openssl_x509_parse($cert);
+    // The names PHP checks the host against: the certificate's DNS and IP names, and its Common Name
+    // only when it has no DNS name (PHP 8.2 and 8.4 refuse a Common Name match beside a DNS name).
     $names = array();
-    if (isset($info['subject']['CN'])) {
-        $names[] = (string)$info['subject']['CN'];
-    }
+    $hasDns = false;
     if (isset($info['extensions']['subjectAltName'])) {
         foreach (explode(',', $info['extensions']['subjectAltName']) as $alt) {
             $alt = trim($alt);
             if (preg_match('/^(DNS|IP Address):(.+)$/', $alt, $m)) {
                 $names[] = trim($m[2]);
+                $hasDns = $hasDns || $m[1] === 'DNS';
             }
         }
+    }
+    if (!$hasDns && isset($info['subject']['CN'])) {
+        $names[] = (string)$info['subject']['CN'];
     }
     $names = array_values(array_unique($names));
     $issuer = isset($info['issuer']['CN']) ? (string)$info['issuer']['CN'] : 'an unnamed issuer';
@@ -405,9 +471,10 @@ function listSome($items, $n = 5)
     return implode(', ', array_slice($items, 0, $n)) . (count($items) > $n ? ' and ' . (count($items) - $n) . ' more' : '');
 }
 
-function iniOn($name)
+/** Whether a php.ini switch is on: its value now, or the value given (one read before the doctor changed it). */
+function iniOn($name, $value = null)
 {
-    return in_array(strtolower((string)ini_get($name)), array('1', 'on', 'yes', 'true', 'stdout', 'stderr'), true);
+    return in_array(strtolower($value === null ? (string)ini_get($name) : (string)$value), array('1', 'on', 'yes', 'true', 'stdout', 'stderr'), true);
 }
 
 // ------------------------------------------------------------ the install
@@ -421,7 +488,17 @@ if (!is_file("$root/version.php")) {
     fwrite(STDERR, $msg . "\n");
     exit(2);
 }
-$code = is_readable("$root/version.php") ? readConfig("$root/version.php", array('v_major', 'v_minor', 'v_patch', 'v_realpatch', 'v_database', 'v_tag')) : array();
+// A version.php that doesn't parse stops PHP 7 and later with a ParseError, said below as the
+// Version check's failure (PHP 5 stops at the include, with PHP's own message).
+$code = array();
+$codeError = '';
+if (is_readable("$root/version.php")) {
+    try {
+        $code = readConfig("$root/version.php", array('v_major', 'v_minor', 'v_patch', 'v_realpatch', 'v_database', 'v_tag'));
+    } catch (ParseError $e) {
+        $codeError = 'line ' . $e->getLine() . ': ' . $e->getMessage();
+    }
+}
 // Everything below depends on the version: say so plainly when it can't be read, instead of
 // comparing an empty one with the facts.
 $versionKnown = isset($code['v_major'], $code['v_minor'], $code['v_patch']) && is_numeric($code['v_major']) && is_numeric($code['v_minor']) && is_numeric($code['v_patch']);
@@ -458,7 +535,7 @@ if (!$versionKnown) {
     $who = function_exists('posix_geteuid') && function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid()) : null;
     $who = is_array($who) ? $who['name'] : "this PHP's user";
     report('FAIL', 'Version', is_file("$root/version.php")
-        ? (is_readable("$root/version.php") ? "version.php doesn't set the version (v_major, v_minor, v_patch)" : "$who can't read version.php (" . substr(sprintf('%o', fileperms("$root/version.php")), -4) . ')')
+        ? ($codeError !== '' ? "version.php doesn't parse ($codeError)" : (is_readable("$root/version.php") ? "version.php doesn't set the version (v_major, v_minor, v_patch)" : "$who can't read version.php (" . substr(sprintf('%o', fileperms("$root/version.php")), -4) . ')'))
         : 'version.php is missing',
         'OpenEMR reads its version from it on every page. Make the web server\'s user able to read OpenEMR\'s files, or copy version.php again from the package. The checks that depend on the release are skipped.');
 }
@@ -539,10 +616,15 @@ if (skipped('php')) {
             "It was changed here, or comes from another release than version.php's. The doctor checks against $need.");
     }
     $tested = $f !== null && isset($f['ci_php']) ? $f['ci_php'] : array();
+    // The floor above, and also any upper bound composer.json sets ('>=7.2 <8.0', '^7.3 || ^8.0').
+    $allowed = $own !== null && $own['php'] !== '' ? phpAllows($own['php'], PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION . '.' . PHP_RELEASE_VERSION) : null;
     if (cmpVersion(PHP_VERSION, $need) < 0) {
         report('FAIL', 'PHP', PHP_VERSION . " is too old: $needBy $need or later",
             $web ? 'This is the PHP the web server runs. Install a newer PHP and point the web server at it.'
                  : 'Install a newer PHP. If `php -v` shows a newer one than the web page does, the web server is using a different PHP: open this doctor from a browser on the server to check that one.');
+    } elseif ($allowed === false) {
+        report('WARN', 'PHP', PHP_VERSION . " is outside what this install's composer.json allows (php '" . $own['php'] . "')",
+            'Its code was written for the versions it names, and can break on this one. Use a PHP it allows, or upgrade OpenEMR.');
     } elseif ($tested !== array() && cmpVersion($phpShort, end($tested)) > 0) {
         report('WARN', 'PHP', PHP_VERSION . " is newer than any PHP OpenEMR $base was tested with (" . implode(', ', $tested) . ')',
             'Newer PHP versions remove things older code relies on. Use a tested version, or upgrade OpenEMR.');
@@ -673,7 +755,7 @@ if (!skipped('php-security')) {
 }
 if (!$web) {
     report('NOTE', 'Which PHP', 'this is the command-line PHP (' . PHP_BINARY . ', settings from ' . (php_ini_loaded_file() ?: 'no php.ini') . ')',
-        'The web server can run a different PHP with different settings. To check that one, copy this file into the OpenEMR folder and open it as http://localhost/<openemr folder>/openemr-doctor.php on the server, then delete it.');
+        'The web server can run a different PHP with different settings. To check that one, copy this file into the OpenEMR folder as openemr-doctor-<12 or more random letters and digits>.php, open it as http://localhost/<openemr folder>/<that name> on the server, then delete it.');
 }
 
 // Extensions: the release's composer.json requirements, or OpenEMR setup's own four plus
@@ -697,7 +779,7 @@ $intlWhy = '';
 if (cmpVersion($current, '7.0.0') >= 0) {
     $baseline[] = 'intl';
     $intlWhy = ' and intl';
-} elseif (codeUsesIntl($root)) {
+} elseif (!isset($skip['php-extensions']) && codeUsesIntl($root)) { // only that check uses it
     $baseline[] = 'intl';
     $intlWhy = ' and intl, which this install\'s code uses';
 }
@@ -744,7 +826,7 @@ if (skipped('php-extensions')) {
 if (!skipped('php-ini')) {
     $where = $web ? '' : ' (command-line settings; the web server has its own, so check from the browser)';
     $iniLevel = $web ? 'WARN' : 'NOTE';
-    if (iniOn('display_errors') && (error_reporting() & E_DEPRECATED)) {
+    if (iniOn('display_errors', $phpDisplayErrors) && ($phpErrorReporting & E_DEPRECATED)) {
         report($iniLevel, 'Error display', 'PHP prints warnings and deprecation notices into pages' . $where,
             'A notice printed into a page can blank it or break the screens that load data in the background. Set display_errors = Off in php.ini (errors still go to the log).');
     }
@@ -853,7 +935,7 @@ if (!skipped('files') && $manifest !== null) {
         foreach ($names as $name) {
             $path = $dir === '' ? $name : "$dir/$name";
             $total++;
-            if (file_exists("$root/$path")) {
+            if (is_file("$root/$path")) { // a folder where a file should be is as good as missing
                 continue;
             }
             if ($dir === '' && in_array($name, $setupScripts, true)) {
@@ -915,11 +997,16 @@ if ($hashes !== null && isset($hashes['dirs'])) {
     $edited = array();
     $unparsable = array();
     $unparsablePaths = array();
+    $unreadable = array();
     foreach ($hashes['dirs'] as $dir => $names) {
         foreach ($names as $name => $sha) {
             $path = $dir === '' ? $name : "$dir/$name";
             $file = "$root/$path";
             if (strpos($path, 'sites/') === 0 || !is_file($file) || is_link($file)) {
+                continue;
+            }
+            if (!is_readable($file)) {
+                $unreadable[] = $path; // not compared, and not scanned as an empty file
                 continue;
             }
             $compared++;
@@ -930,7 +1017,7 @@ if ($hashes !== null && isset($hashes['dirs'])) {
             $edited[] = $path;
             // PHP 7.0+ only, behind defined('TOKEN_PARSE'); PHP 5 never reaches it.
             // phpcs:disable PHPCompatibility.FunctionUse.NewFunctionParameters, PHPCompatibility.Constants.NewConstants, PHPCompatibility.Classes.NewClasses
-            if (substr($path, -4) === '.php' && defined('TOKEN_PARSE')) {
+            if (preg_match('/\.(php|inc|phtml)$/i', $path) && defined('TOKEN_PARSE')) {
                 try {
                     token_get_all($content, TOKEN_PARSE);
                 } catch (ParseError $e) {
@@ -1002,6 +1089,12 @@ if ($hashes !== null && isset($hashes['dirs'])) {
             report('NOTE', 'Local changes on this PHP', 'the PHP changes known cover PHP up to ' . $scanResult['facts_cover'] . ', so what PHP ' . $scanPhp . ' itself changes isn\'t checked yet');
         }
     }
+    if ($unreadable !== array()) {
+        $who = function_exists('posix_geteuid') && function_exists('posix_getpwuid') ? posix_getpwuid(posix_geteuid()) : null;
+        $who = is_array($who) ? $who['name'] : "this PHP's user";
+        report('WARN', 'Local changes', count($unreadable) . " of OpenEMR's own files can't be read by $who, so they weren't compared: " . listSome($unreadable, 5),
+            'If the web server runs as this user, every page that loads one fails. Make OpenEMR\'s files readable by the web server\'s user.');
+    }
     // version.php is one of them, and the doctor stops earlier without it, so $compared > 0.
     if ($edited === array()) {
         report('PASS', 'Local changes', "all $compared files of the $label package that are here are as released");
@@ -1022,7 +1115,14 @@ if (!is_file("$root/sites/$site/sqlconf.php")) {
         $sites ? 'Run the doctor with --site=' . $sites[0] . ' (or ?site=' . $sites[0] . ' in the browser).' : 'The sites folder is missing or incomplete. Copy it from the package (new install) or the old server (move).');
     summary($results);
 }
-$db = readConfig("$root/sites/$site/sqlconf.php", array('host', 'port', 'login', 'pass', 'dbase', 'config'));
+try {
+    $db = readConfig("$root/sites/$site/sqlconf.php", array('host', 'port', 'login', 'pass', 'dbase', 'config'));
+} catch (ParseError $e) {
+    // The line only: PHP's message quotes the code there, which can be part of the password.
+    report('FAIL', 'Setup', "sites/$site/sqlconf.php doesn't parse (a syntax error on line " . $e->getLine() . ')',
+        'OpenEMR reads it on every page, so every page is blank or an error 500. Fix that line, or put back the file from a backup.');
+    summary($results);
+}
 if (!isset($db['config']) || (int)$db['config'] !== 1) {
     if (!is_file("$root/setup.php")) {
         report('FAIL', 'Setup', "sites/$site/sqlconf.php says setup hasn't finished, and setup.php is missing", 'Copy setup.php from the package, then open it in the browser.');
@@ -1172,20 +1272,28 @@ if ($ssl) {
     report('PASS', 'Database', "connected to $host:$port");
 }
 
-$q = function ($sql) use ($mysqli) {
+// A query a check needs: its rows, or, when the database refuses it, that check's FAIL with the
+// database's own error and null. mysqli_report is off, so a refusal would otherwise read as an
+// empty table and pass.
+$q = function ($sql, $check, $fix = '') use ($mysqli) {
     $res = $mysqli->query($sql);
+    if (!($res instanceof mysqli_result)) {
+        report('FAIL', $check, 'the database refused the query this check needs (error ' . $mysqli->errno . ': ' . $mysqli->error . ')',
+            $fix !== '' ? $fix : 'A table is missing or damaged, or the user in sqlconf.php lacks rights on it.');
+        return null;
+    }
     $rows = array();
-    while ($res && ($row = $res->fetch_assoc())) {
+    while (($row = $res->fetch_assoc())) {
         $rows[] = $row;
     }
     return $rows;
 };
-$rows = $q('SELECT VERSION() AS v');
-$server = (string)$rows[0]['v'];
+$rows = $q('SELECT VERSION() AS v', 'Database server');
+$server = $rows ? (string)$rows[0]['v'] : '';
 $flavor = stripos($server, 'mariadb') !== false ? 'mariadb' : 'mysql';
 $label = $flavor === 'mariadb' ? 'MariaDB' : 'MySQL';
 $short = preg_match('/^(\d+)\.(\d+)/', $server, $m) ? "$m[1].$m[2]" : $server;
-if (!skipped('database-server') && $f !== null) {
+if (!skipped('database-server') && $f !== null && $server !== '') {
     $tested = array();
     foreach ($f['ci_databases'] as $pair) {
         if ($pair[0] === $flavor) {
@@ -1204,11 +1312,11 @@ if (!skipped('database-server') && $f !== null) {
 
 // Code and database versions. Forum: a patch's files copied without sql_patch.php, or an
 // upgrade's without sql_upgrade.php (t/26790, t/26133, t/24492).
-$ver = skipped('database-version') ? null : $q('SELECT * FROM version LIMIT 1');
+$ver = skipped('database-version') ? null : $q('SELECT * FROM version LIMIT 1', 'Database version', 'Setup didn\'t finish, or this database isn\'t OpenEMR\'s.');
 if ($ver === null) {
-    // left out
+    // left out, or refused (said by $q)
 } elseif ($ver === array()) {
-    report('FAIL', 'Database version', 'the version table is empty or missing', 'Setup didn\'t finish, or this database isn\'t OpenEMR\'s.');
+    report('FAIL', 'Database version', 'the version table is empty', 'Setup didn\'t finish, or this database isn\'t OpenEMR\'s.');
 } else {
     $v = $ver[0];
     $dbPatch = isset($v['v_realpatch']) ? (int)$v['v_realpatch'] : 0;
@@ -1219,15 +1327,31 @@ if ($ver === null) {
             'Open sql_upgrade.php in the browser and upgrade from the version the database is at' . (is_file("$root/sql_upgrade.php") ? '.' : ' (copy it from the package first; it was removed).'));
     } elseif ((int)$v['v_database'] > (int)$code['v_database']) {
         report('FAIL', 'Database version', "the database (version {$v['v_database']}) is newer than the code ({$code['v_database']})", 'The code was rolled back without the database. Put matching code and database back.');
+    } elseif ($patch > $dbPatch && patchSqlHasStatements($root) === false) {
+        // The same database version, and the code at a later patch. A patch's database changes are
+        // in sql/patch.sql, which sql_patch.php applies. Each patch's patch.sql holds every patch of
+        // its release so far (a release's own is comments only), so one with nothing but comments
+        // means no patch up to this one changed the database (7.0.3 patches 1 to 3, 8.0.0 patches
+        // 1 to 3): only the patch number is behind. That is what the doctor relies on, not the
+        // database version: patches don't always raise it (7.0.1 patch 1 and 7.0.2 patches 1 to 3
+        // added columns and tables at the same v_database). With statements in patch.sql they may
+        // not have run (each is conditional, and that can't be read from here), so that is a FAIL.
+        report('NOTE', 'Database version', "patch $patch's files are in place and the database says patch $dbPatch, but sql/patch.sql changes nothing in the database, so only the patch number is behind",
+            'Nothing is missing from the tables. sql_patch.php, if it is still here, would record the patch number and add defaults for any settings the patch added.');
     } elseif ($patch > $dbPatch) {
         report('FAIL', 'Database version', "patch $patch's files are in place but the database is at patch $dbPatch", 'Open sql_patch.php in the browser to finish the patch' . (is_file("$root/sql_patch.php") ? '.' : ' (copy it from the patch first; it was removed).'));
+    } elseif ($patch < $dbPatch) {
+        // sql_patch.php records the patch number version.php says, so a database ahead of the code
+        // had the later patch applied, and the code went back to an earlier one since.
+        report('WARN', 'Database version', "the database is at patch $dbPatch but the code is at patch $patch (both at database version {$v['v_database']})",
+            "The code was put back to an earlier patch, or restored from an older copy, while the database kept the later one. Unpack patch $dbPatch into this folder again; its fixes are missing until then.");
     } else {
         report('PASS', 'Database version', "the database matches the code (database version {$v['v_database']}" . ($patch ? ", patch $patch" : '') . ')');
     }
 }
 
 $globals = array();
-foreach ($q("SELECT gl_name, gl_value FROM globals WHERE gl_index = 0 AND gl_name IN ('css_header', 'user_debug', 'user_php_debug', 'rest_api', 'rest_fhir_api', 'rest_portal_api')") as $g) {
+foreach ($q("SELECT gl_name, gl_value FROM globals WHERE gl_index = 0 AND gl_name IN ('css_header', 'user_debug', 'user_php_debug', 'rest_api', 'rest_fhir_api', 'rest_portal_api')", 'Settings') ?: array() as $g) {
     $globals[$g['gl_name']] = (string)$g['gl_value'];
 }
 // The theme stylesheet the login page and every screen load (public/themes, built by npm).
@@ -1253,7 +1377,7 @@ if ($phpDebugOn && !skipped('error-display')) {
 // Modules. An active module whose files are missing can stop OpenEMR starting; from 7.0.4
 // OpenEMR switches such a module off (src/Core/ModulesApplication.php). Forum: t/25702.
 $lost = array();
-foreach (skipped('modules') ? array() : $q('SELECT mod_directory, type FROM modules WHERE mod_active = 1') as $mod) {
+foreach (skipped('modules') ? array() : ($q('SELECT mod_directory, type FROM modules WHERE mod_active = 1', 'Modules') ?: array()) as $mod) {
     $dir = (int)$mod['type'] === 1 ? "$root/interface/modules/zend_modules/module/" . $mod['mod_directory']
         : "$root/interface/modules/custom_modules/" . $mod['mod_directory'] . '/openemr.bootstrap.php';
     if (!file_exists($dir)) {
@@ -1271,10 +1395,10 @@ if ($lost !== array()) {
 // silently replaced by a new one, after which existing encrypted data can't be read
 // (src/Common/Crypto/CryptoGen.php collectDriveKey). Forum: "Decryption failed HMAC"
 // (t/25795), keys after an upgrade or move (t/27005).
-if (!skipped('encryption-keys')) {
+if (!skipped('encryption-keys') && ($keyRows = $q('SELECT name, value FROM `keys`', 'Encryption keys')) !== null) {
     $versions = array('one', 'two', 'three', 'four', 'five', 'six', 'seven');
     $dbKeys = array();
-    foreach ($q('SELECT name, value FROM `keys`') as $k) {
+    foreach ($keyRows as $k) {
         if (preg_match('/^(' . implode('|', $versions) . ')[ab]$/', $k['name'])) {
             $dbKeys[$k['name']] = base64_decode((string)$k['value']);
         }
@@ -1308,13 +1432,15 @@ if (!skipped('encryption-keys')) {
             if (!preg_match('/^\d{3}$/', $prefix) || (int)$prefix <= 4) {
                 continue; // versions 1-4 store the key on its own, with nothing to match
             }
-            $hmacKey = (int)$prefix <= count($versions) ? $versions[(int)$prefix - 1] . 'b' : '';
-            if ($hmacKey === '' || !isset($dbKeys[$hmacKey])) {
+            // OpenEMR decrypts it with the database's two keys of that version: a, the key, and b,
+            // its HMAC key (CryptoGen coreDecrypt). b is checked against the file; a must be there.
+            $keyVersion = (int)$prefix <= count($versions) ? $versions[(int)$prefix - 1] : '';
+            if ($keyVersion === '' || !isset($dbKeys[$keyVersion . 'a'], $dbKeys[$keyVersion . 'b'])) {
                 $unpaired[] = $name;
                 continue;
             }
             $raw = base64_decode(substr($content, 3), true);
-            $ok = $raw !== false && strlen($raw) > 64 && hash_hmac('sha384', substr($raw, 48), $dbKeys[$hmacKey], true) === substr($raw, 0, 48);
+            $ok = $raw !== false && strlen($raw) > 64 && hash_hmac('sha384', substr($raw, 48), $dbKeys[$keyVersion . 'b'], true) === substr($raw, 0, 48);
             if (!$ok) {
                 $bad[] = $name;
             }
@@ -1334,11 +1460,10 @@ if (!skipped('encryption-keys')) {
 // Documents whose files aren't where OpenEMR looks: under this site's documents folder,
 // by the last path_depth parts of the stored URL (library/classes/Document.class.php
 // get_filesystem_filepath). Forum: documents listed but not opening after a move (t/26815).
-if (!skipped('documents')) {
-    $onDisk = "FROM documents WHERE storagemethod = 0 AND type = 'file_url' AND deleted = 0";
-    $count = $q("SELECT COUNT(*) AS n $onDisk");
+$onDisk = "FROM documents WHERE storagemethod = 0 AND type = 'file_url' AND deleted = 0";
+if (!skipped('documents') && ($count = $q("SELECT COUNT(*) AS n $onDisk", 'Documents')) !== null) {
     $total = (int)$count[0]['n'];
-    $couch = $q('SELECT COUNT(*) AS n FROM documents WHERE storagemethod = 1 AND deleted = 0');
+    $couch = $q('SELECT COUNT(*) AS n FROM documents WHERE storagemethod = 1 AND deleted = 0', 'Documents');
     $absent = array();
     $checked = 0;
     $deadline = microtime(true) + 20;
@@ -1358,15 +1483,20 @@ if (!skipped('documents')) {
     if ($res) {
         $res->free();
     }
-    if ($total === 0) {
+    if ($total > 0 && !$res) {
+        report('FAIL', 'Documents', 'the database refused the query this check needs (error ' . $mysqli->errno . ': ' . $mysqli->error . ')',
+            'A table is missing or damaged, or the user in sqlconf.php lacks rights on it.');
+    } elseif ($total === 0) {
         report('PASS', 'Documents', 'no documents stored on disk yet');
     } elseif ($absent !== array()) {
         report('WARN', 'Documents', count($absent) . " of $checked documents checked have no file in sites/$site/documents (document ids " . listSome($absent, 5) . ')',
             'After a move, copy sites/' . $site . '/documents from the old server. The list shows them, but they open blank.');
+    } elseif ($checked < $total) {
+        report('NOTE', 'Documents', "the first $checked of $total documents have their file; it stopped after 20 seconds, so the other " . ($total - $checked) . ' weren\'t checked');
     } else {
-        report('PASS', 'Documents', "all $checked documents checked have their file" . ($checked < $total ? " (stopped after 20 seconds; $total in all)" : ''));
+        report('PASS', 'Documents', "all $checked documents checked have their file");
     }
-    if ((int)$couch[0]['n'] > 0) {
+    if ($couch !== null && (int)$couch[0]['n'] > 0) {
         report('NOTE', 'Documents', $couch[0]['n'] . ' documents are stored in CouchDB; not checked');
     }
 }
@@ -1393,10 +1523,17 @@ summary($results);
 
 function summary($results)
 {
+    global $skip, $skipped;
+    // A check left out that the doctor didn't reach (it stopped early, or the check runs only when
+    // there is something to check) says so too, so every name given to --skip is in the report.
+    foreach (array_keys($skip) as $name) {
+        if (!in_array($name, $skipped, true)) {
+            skipped($name);
+        }
+    }
     $fails = count(array_keys($results, 'FAIL', true));
     $warns = count(array_keys($results, 'WARN', true));
     debug(count($results) . ' results: ' . count(array_keys($results, 'PASS', true)) . ' pass, ' . count(array_keys($results, 'NOTE', true)) . " note, $warns warn, $fails fail");
-    global $skipped;
     echo "\n" . ($fails ? "Fix the $fails failed check(s) first." : 'No blocking problems found.') . ($warns ? " $warns warning(s) to read." : '')
         . ($skipped ? ' ' . count($skipped) . ' check(s) left out with --skip, so not checked: ' . implode(', ', $skipped) . '.' : '') . "\n";
     $log = (string)ini_get('error_log');
@@ -1404,7 +1541,7 @@ function summary($results)
         . ($log !== '' ? " (this PHP writes to $log)" : ' (often the web server\'s error log: /var/log/apache2/error.log, /var/log/httpd/error_log, C:\\xampp\\apache\\logs\\error.log)')
         . ". Reload the broken page, then read the newest lines.\n";
     if (PHP_SAPI !== 'cli') {
-        echo "\nDelete openemr-doctor.php from the OpenEMR folder now.\n";
+        echo "\nDelete " . basename(__FILE__) . " from the OpenEMR folder now.\n";
         exit;
     }
     exit($fails ? 1 : 0);
