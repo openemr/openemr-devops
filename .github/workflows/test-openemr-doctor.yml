@@ -1,0 +1,162 @@
+name: OpenEMR Doctor
+
+# Runs utilities/openemr-doctor the way a site runs it: openemr-doctor-docker.sh in the folder of a
+# compose project (tests/openemr-doctor), against OpenEMR's published image with a database and
+# sites/ on a volume. A healthy install must pass with exit code 0, checked inside the running
+# container and, once it is stopped, from a throwaway container of the image; a broken one (its
+# database behind its code) must fail with exit code 1; a doctor that doesn't match SHA256SUMS, and
+# a stopped container without a sites/ volume, must stop it with exit code 2. It runs on each pull
+# request that touches the doctor and every day, so an image change that breaks the doctor, or that
+# the doctor fails, shows the same day. The doctor reads its release facts from the address in
+# DOCTOR_FACTS.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/test-openemr-doctor.yml'
+      - 'utilities/openemr-doctor/**'
+      - 'tests/openemr-doctor/**'
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/test-openemr-doctor.yml'
+      - 'utilities/openemr-doctor/**'
+      - 'tests/openemr-doctor/**'
+  schedule:
+    - cron: '41 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  doctor:
+    name: openemr-doctor on openemr/openemr:${{ matrix.tag }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # latest: the newest release, rebuilt nightly. dev: master.
+        tag: [latest, dev]
+    env:
+      OPENEMR_TAG: ${{ matrix.tag }}
+      DOCTOR_DIR: ${{ github.workspace }}/utilities/openemr-doctor
+    defaults:
+      run:
+        working-directory: tests/openemr-doctor
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: SHA256SUMS matches the doctor's files
+        working-directory: utilities/openemr-doctor
+        run: |
+          sha256sum -c SHA256SUMS || {
+            echo "::error::SHA256SUMS is out of date. In utilities/openemr-doctor: sha256sum openemr-doctor-docker.sh openemr-doctor.php scan.php > SHA256SUMS"
+            exit 1
+          }
+
+      - name: Start OpenEMR and its database
+        run: |
+          docker compose up -d --wait --wait-timeout 900
+          # OpenEMR answers before its startup has finished settling its files; wait until they stop changing.
+          oe=/var/www/localhost/htdocs/openemr
+          a=$(docker compose exec -T openemr sh -c "find ${oe} -xdev | wc -l")
+          while sleep 10; b=$(docker compose exec -T openemr sh -c "find ${oe} -xdev | wc -l"); [[ "${a}" != "${b}" ]]; do a=${b}; done
+          echo "ready: ${b} files in ${oe}, unchanged for 10 seconds"
+
+      - name: A healthy install passes
+        run: |
+          set +e
+          # The download from the doctor's home and its SHA256SUMS check, with this checkout as the home.
+          OPENEMR_DOCTOR_HOME="file://${DOCTOR_DIR}" bash "${DOCTOR_DIR}/openemr-doctor-docker.sh" > report.txt 2> how.txt
+          rc=$?
+          set -e
+          cat how.txt report.txt
+          [[ "${rc}" -eq 0 ]] || { echo "::error::exit code ${rc}, not 0"; exit 1; }
+          for line in \
+              'doctor: downloaded from file://.*, matches its SHA256SUMS' \
+              'the container is running: running the doctor in it'; do
+            grep -q -- "${line}" how.txt || { echo "::error::no line matching: ${line}"; exit 1; }
+          done
+          # Lines that show the checks ran, not only that none failed. dev is compared with the newest
+          # release's facts, so its missing files and packages are notes: those lines are for latest.
+          lines=('^PASS  PHP extensions: ' '^PASS  Database: connected' '^PASS  Database version: ' '^PASS  Encryption keys: ' '^No blocking problems found\.')
+          [[ "${OPENEMR_TAG}" != latest ]] || lines+=('^PASS  PHP libraries: all ' '^PASS  Page assets: ' '^PASS  Files: all ')
+          for line in "${lines[@]}"; do
+            grep -q -- "${line}" report.txt || { echo "::error::no line matching: ${line}"; exit 1; }
+          done
+
+      - name: A doctor that doesn't match SHA256SUMS is refused
+        run: |
+          changed="$(mktemp -d)"
+          cp "${DOCTOR_DIR}/openemr-doctor.php" "${DOCTOR_DIR}/SHA256SUMS" "${changed}/"
+          echo '// changed' >> "${changed}/openemr-doctor.php"
+          set +e
+          OPENEMR_DOCTOR_HOME="file://${changed}" bash "${DOCTOR_DIR}/openemr-doctor-docker.sh" > report.txt 2> how.txt
+          rc=$?
+          set -e
+          cat how.txt report.txt
+          [[ "${rc}" -eq 2 ]] || { echo "::error::exit code ${rc}, not 2"; exit 1; }
+          grep -q "doesn't match file://${changed}/SHA256SUMS" how.txt || { echo "::error::no line saying the doctor doesn't match"; exit 1; }
+          [[ ! -s report.txt ]] || { echo "::error::the changed doctor ran"; exit 1; }
+
+      - name: A stopped container is checked from a throwaway container
+        run: |
+          # As when OpenEMR won't stay up: the doctor runs from the image, with the container's volumes and networks.
+          docker compose stop openemr
+          set +e
+          DOCTOR="${DOCTOR_DIR}/openemr-doctor.php" bash "${DOCTOR_DIR}/openemr-doctor-docker.sh" > report.txt 2> how.txt
+          rc=$?
+          set -e
+          cat how.txt report.txt
+          [[ "${rc}" -eq 0 ]] || { echo "::error::exit code ${rc}, not 0"; exit 1; }
+          grep -q 'running the doctor in a throwaway container of the same image, with its volumes' how.txt || { echo "::error::not run from a throwaway container"; exit 1; }
+          for line in '^PASS  Database: connected' '^PASS  Database version: ' '^No blocking problems found\.'; do
+            grep -q -- "${line}" report.txt || { echo "::error::no line matching: ${line}"; exit 1; }
+          done
+          if docker ps -a --no-trunc --format '{{.Command}}' | grep -q /tools/openemr-doctor.php; then echo "::error::a throwaway container was left"; exit 1; fi
+
+      - name: A broken install fails
+        run: |
+          # The database one version behind the code, as after an upgrade that didn't finish.
+          docker compose exec -T mysql mariadb -uroot -proot openemr -e 'UPDATE version SET v_database = v_database - 1'
+          set +e
+          DOCTOR="${DOCTOR_DIR}/openemr-doctor.php" bash "${DOCTOR_DIR}/openemr-doctor-docker.sh" > report.txt
+          rc=$?
+          set -e
+          cat report.txt
+          [[ "${rc}" -eq 1 ]] || { echo "::error::exit code ${rc}, not 1"; exit 1; }
+          grep -q '^FAIL  Database version: ' report.txt || { echo "::error::no FAIL line for the database version"; exit 1; }
+
+      - name: A stopped container without a sites/ volume stops it
+        run: |
+          # Without the volume the throwaway container would see the image's empty sites/, so the doctor doesn't run.
+          docker create --name openemr-doctor-novolume --memory 1g "openemr/openemr:${OPENEMR_TAG}" > /dev/null
+          set +e
+          CONTAINER=openemr-doctor-novolume DOCTOR="${DOCTOR_DIR}/openemr-doctor.php" bash "${DOCTOR_DIR}/openemr-doctor-docker.sh" > report.txt 2> how.txt
+          rc=$?
+          set -e
+          docker rm -f openemr-doctor-novolume > /dev/null
+          cat how.txt report.txt
+          [[ "${rc}" -eq 2 ]] || { echo "::error::exit code ${rc}, not 2"; exit 1; }
+          grep -q "sites/ isn't on a volume and the container isn't running" how.txt || { echo "::error::no line saying why it didn't run"; exit 1; }
+
+      - name: Logs
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 200
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker rm -f openemr-doctor-novolume > /dev/null 2>&1 || true
+          docker compose down -v
