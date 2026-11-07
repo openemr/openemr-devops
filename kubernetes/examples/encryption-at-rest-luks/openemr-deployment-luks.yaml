@@ -1,0 +1,384 @@
+# OpenEMR Deployment with in-pod LUKS encryption-at-rest over NFS.
+#
+# This is a MODIFIED copy of kubernetes/openemr/deployment.yaml, with the
+# following changes:
+#
+#   1. replicas: 3 → 1
+#      LUKS is single-writer. Two pods opening the same LUKS container file
+#      read-write would corrupt the ext4 filesystem inside it. See README.md
+#      § "Single-writer constraint".
+#
+#   2. New native sidecar `luks-opener` (restartPolicy: Always on an
+#      initContainer, K8s 1.29+ GA). This container is PRIVILEGED. It:
+#        - Opens the LUKS container file on the NFS-backed websitevolume.
+#        - Mounts the decrypted filesystem onto a shared emptyDir with
+#          Bidirectional mount propagation so the main openemr container
+#          can see it.
+#        - Stays alive for the pod's lifetime, holding the mapping open.
+#        - On SIGTERM, cleanly unmounts and closes the LUKS mapping.
+#
+#   3. The main `openemr` container is UNCHANGED in privilege (not privileged).
+#      It mounts the shared emptyDir with HostToContainer propagation at
+#      /var/www/localhost/htdocs/openemr/sites, so it transparently sees the
+#      ext4-inside-LUKS-inside-NFS filesystem the sidecar established.
+#
+#   4. websitevolume is now mounted on the SIDECAR (to reach the LUKS file),
+#      NOT on the main container. The main container only sees the DECRYPTED
+#      view via the emptyDir.
+#
+#   5. sslvolume and letsencryptvolume are UNCHANGED (plaintext on NFS).
+#      Rationale: those hold TLS cert material, not PHI. Encrypting them
+#      adds operational cost without improving the PHI trust boundary — an
+#      attacker who can read the NFS backing already has cluster-adjacent
+#      access and TLS cert exfiltration is a separate concern addressed by
+#      the stack's mTLS layers and cert-manager rotation.
+#
+# Prerequisites:
+#   - The #910 default stack is applied (kub-up).
+#   - `luks-passphrase-secret.yaml` has been applied.
+#   - The one-shot `luks-format-job.yaml` has completed successfully.
+#   - openemr Deployment has been scaled to 0 and replaced with this one.
+#
+# See README.md for step-by-step adoption.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    name: openemr
+  name: openemr
+spec:
+  # SINGLE REPLICA — see header comment and README.md. Do not scale up.
+  replicas: 1
+  selector:
+    matchLabels:
+      name: openemr
+  strategy:
+    # Recreate (not RollingUpdate) is the right default: on a normal-path
+    # rollout it tears the old pod down fully before the new one starts, so
+    # the common case does not produce two pods trying to luksOpen the same
+    # container file at the same time.
+    #
+    # Recreate is NOT fencing. It does not guarantee the old writer has
+    # stopped — a force-deleted pod (`kubectl delete pod --force
+    # --grace-period=0`) or a partitioned node whose kubelet lost its lease
+    # can leave the old pod still holding the LUKS mapping and writing to
+    # the ext4 journal, while the controller already schedules a
+    # replacement. ext4 inside LUKS does not cross-coordinate, so a true
+    # two-writer window corrupts the filesystem.
+    #
+    # A fully-safe multi-writer story requires storage- or node-level
+    # fencing (fencing the stale node, a storage lease the old pod loses
+    # before the new pod can acquire, or a clustered filesystem inside
+    # LUKS). Those are out of scope for this example. The single-replica
+    # constraint plus Recreate is the compromise this example picks; see
+    # README.md § "Single-writer constraint".
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        name: openemr
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - name: init-mysql-wait
+        image: busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
+        command: ['sh', '-c', "until nc -z mysql 3306; do echo waiting for mysql; sleep 2; done"]
+      - name: init-redis-wait
+        image: busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
+        command: ['sh', '-c', "until nc -z redis 6379; do echo waiting for redis; sleep 2; done"]
+      # Native sidecar (K8s 1.29+ GA): restartPolicy: Always on an initContainer
+      # means this container starts before the main container, runs for the
+      # pod's lifetime, and is terminated AFTER the main container on shutdown.
+      # That termination order is exactly what we need — the main container
+      # must stop writing to /sites before we unmount and luksClose.
+      - name: luks-opener
+        image: alpine:3.20
+        restartPolicy: Always
+        # startupProbe gates the rest of the pod on the LUKS mount being
+        # live. Native-sidecar ordering says subsequent init containers
+        # and the main containers only start after each sidecar's
+        # startupProbe succeeds. Without this, the main openemr
+        # container could race the sidecar's `mount` call and come up
+        # pointing at an empty emptyDir.
+        #
+        # The probe checks for a readiness-marker FILE written onto the
+        # decrypted filesystem immediately after mount succeeds, rather
+        # than running `mountpoint`. Two reasons:
+        #   1. `mountpoint` lives in util-linux and is not in the base
+        #      alpine image, so until `apk add util-linux` finishes
+        #      inside the setup script the probe would error out — a
+        #      race window where kubelet could see the probe fail even
+        #      though the sidecar is making progress. `test -f` is a
+        #      shell builtin and always available.
+        #   2. The marker is written INSIDE the decrypted filesystem, so
+        #      it is torn down with the mapping on luksClose rather than
+        #      lingering on the emptyDir after an abnormal shutdown.
+        startupProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "test -f /mnt/decrypted/.luks-ready"
+          periodSeconds: 2
+          failureThreshold: 60
+        securityContext:
+          # cryptsetup luksOpen needs CAP_SYS_ADMIN (create loop device,
+          # create dm-crypt mapping) and access to /dev. On most clusters
+          # this means privileged: true. Scoped to this sidecar only; the
+          # main openemr container remains unprivileged.
+          privileged: true
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+
+          apk add --no-cache cryptsetup e2fsprogs util-linux
+
+          LUKS_FILE=/mnt/websitevolume/.openemr-sites.luks
+          MAPPER_NAME=openemr-sites
+          MAPPER_DEV=/dev/mapper/$MAPPER_NAME
+          DECRYPTED_MNT=/mnt/decrypted
+
+          if [ ! -f "$LUKS_FILE" ]; then
+            echo "FATAL: $LUKS_FILE does not exist."
+            echo "Run luks-format-job.yaml first."
+            exit 1
+          fi
+
+          # Clean shutdown handler. On SIGTERM (pod termination) we
+          # unmount the decrypted filesystem and close the LUKS mapping
+          # so the next pod can open it cleanly. The main container has
+          # already been terminated by the kubelet at this point (native
+          # sidecar termination order).
+          cleanup() {
+            echo "Received shutdown signal; cleaning up LUKS mapping"
+            sync || true
+            umount "$DECRYPTED_MNT" || true
+            cryptsetup luksClose "$MAPPER_NAME" || true
+            exit 0
+          }
+          trap cleanup TERM INT
+
+          mkdir -p "$DECRYPTED_MNT"
+
+          # Sidecar restart recovery. Native sidecars can be restarted in
+          # place by the kubelet without the pod being deleted, so the
+          # mapper and mount from the previous run may still be fully
+          # live. Three cases to distinguish:
+          #
+          #   1. Mapper exists AND something is mounted at $DECRYPTED_MNT
+          #      resolving to $MAPPER_DEV — the mapping is live, reuse it
+          #      and skip both luksOpen and mount. Doing luksClose here
+          #      would yank a healthy mapping out from under a running
+          #      main container.
+          #   2. Mapper exists but $DECRYPTED_MNT is NOT mounted onto it
+          #      (or is mounted onto something else) — the mapping is
+          #      stale. Close it and fall through to a fresh open.
+          #   3. Mapper does not exist — fresh open.
+          reused=0
+          if [ -e "$MAPPER_DEV" ]; then
+            mount_src=$(awk -v mnt="$DECRYPTED_MNT" '$2 == mnt { print $1 }' /proc/mounts | tail -1)
+            if [ -n "$mount_src" ] && [ "$(readlink -f "$mount_src" 2>/dev/null || echo "$mount_src")" = "$(readlink -f "$MAPPER_DEV")" ]; then
+              echo "Existing LUKS mapping already mounted at $DECRYPTED_MNT; reusing"
+              reused=1
+            else
+              echo "Stale mapper device detected; closing before reopen"
+              cryptsetup luksClose "$MAPPER_NAME" || true
+            fi
+          fi
+
+          if [ "$reused" = "0" ]; then
+            echo "Opening LUKS container: $LUKS_FILE"
+            cryptsetup luksOpen \
+              --key-file /etc/luks/passphrase \
+              "$LUKS_FILE" \
+              "$MAPPER_NAME"
+
+            echo "Mounting $MAPPER_DEV onto $DECRYPTED_MNT"
+            # The mount must happen in the propagated path so the main
+            # container sees it via HostToContainer propagation on its
+            # own mount of the same emptyDir.
+            mount "$MAPPER_DEV" "$DECRYPTED_MNT"
+          fi
+
+          # Readiness marker INSIDE the decrypted filesystem. Written
+          # after the mount is established so the main container's
+          # startupProbe (which checks for this file) only succeeds once
+          # /mnt/decrypted is really the LUKS mapping. The marker lives
+          # on the encrypted fs, so it is torn down with the mapping on
+          # luksClose — it cannot linger on the emptyDir after an
+          # abnormal shutdown.
+          : > "$DECRYPTED_MNT/.luks-ready"
+
+          echo "LUKS-decrypted filesystem is live at $DECRYPTED_MNT"
+          echo "Sidecar entering idle wait (will clean up on SIGTERM)"
+
+          # Idle loop. Using `sleep infinity &` + `wait` so the shell can
+          # process SIGTERM and run the trap (busybox sleep doesn't
+          # handle signals during a blocking sleep otherwise).
+          sleep infinity &
+          wait $!
+        volumeMounts:
+        - name: websitevolume
+          mountPath: /mnt/websitevolume
+        - name: decrypted-sites
+          mountPath: /mnt/decrypted
+          # Bidirectional: this container's mount of the LUKS filesystem
+          # at /mnt/decrypted propagates OUT to the host mount namespace,
+          # from which it propagates IN to the main container that mounts
+          # the same emptyDir with HostToContainer propagation.
+          mountPropagation: Bidirectional
+        - name: luks-passphrase
+          mountPath: /etc/luks
+          readOnly: true
+      containers:
+      - env:
+        - name: MYSQL_HOST
+          value: "mysql"
+        - name: MYSQL_PASS
+          valueFrom:
+            secretKeyRef:
+              name: openemr-credentials
+              key: mysql-pass
+        - name: MYSQL_ROOT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
+        - name: MYSQL_USER
+          value: "openemr"
+        - name: OE_PASS
+          valueFrom:
+            secretKeyRef:
+              name: openemr-credentials
+              key: admin-pass
+        - name: OE_USER
+          value: "admin"
+        - name: SESSION_STORAGE_MODE
+          value: "predis-sentinel"
+        - name: REDIS_SENTINELS
+          value: "sentinel-0.sentinel|||sentinel-1.sentinel|||sentinel-2.sentinel"
+        - name: REDIS_MASTER
+          value: "mymaster"
+        - name: REDIS_SENTINELS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: default-password
+        - name: REDIS_MASTER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: default-password
+        - name: REDIS_TLS
+          value: "yes"
+        - name: REDIS_X509
+          value: "yes"
+        - name: REDIS_TLS_CERT_KEY_PATH
+          value: "/redis-certs"
+        - name: SWARM_MODE
+          value: "yes"
+        - name: FORCE_DATABASE_X509_CONNECT
+          value: "1"
+        image: openemr/openemr:8.5.0@sha256:b192d34baf624f4935cab3ad82acc7306722f7410e77ac7299473c2dd5909312
+        name: openemr
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1G
+        startupProbe:
+          exec:
+            command:
+            - cat
+            - /root/instance-swarm-ready
+          periodSeconds: 10
+          # Single-replica deployment, so no leader-election race. 10 min
+          # is more than enough for first-boot. (Default stack uses 20
+          # min to accommodate 3-way leader election.)
+          failureThreshold: 60
+        readinessProbe:
+          exec:
+            command:
+            - cat
+            - /root/instance-swarm-ready
+          initialDelaySeconds: 5
+          periodSeconds: 30
+        livenessProbe:
+          tcpSocket:
+            port: 443
+          periodSeconds: 30
+        volumeMounts:
+        - mountPath: /root/certs/mysql/server
+          name: mysql-openemr-client-certs
+        - mountPath: /redis-certs
+          name: redis-openemr-client-certs
+        - mountPath: /var/www/localhost/htdocs/openemr/sites
+          name: decrypted-sites
+          # HostToContainer: see IN the mount the sidecar established in
+          # the host mount namespace via its Bidirectional mount.
+          mountPropagation: HostToContainer
+        - mountPath: /etc/ssl
+          name: sslvolume
+        - mountPath: /etc/letsencrypt
+          name: letsencryptvolume
+      restartPolicy: Always
+      volumes:
+      - name: mysql-openemr-client-certs
+        secret:
+          secretName: mysql-openemr-client-certs
+          items:
+          - key: ca.crt
+            path: mysql-ca
+          - key: tls.crt
+            path: mysql-cert
+          - key: tls.key
+            path: mysql-key
+      - name: redis-openemr-client-certs
+        secret:
+          secretName: redis-openemr-client-certs
+          items:
+          - key: ca.crt
+            path: redis-master-ca
+          - key: tls.crt
+            path: redis-master-cert
+          - key: tls.key
+            path: redis-master-key
+          - key: ca.crt
+            path: redis-sentinel-ca
+          - key: tls.crt
+            path: redis-sentinel-cert
+          - key: tls.key
+            path: redis-sentinel-key
+      # NFS-backed websitevolume. Mounted on the sidecar only. Contains
+      # the LUKS container file (.openemr-sites.luks). The main container
+      # does NOT mount this directly.
+      - name: websitevolume
+        persistentVolumeClaim:
+          claimName: websitevolume
+      # emptyDir shared between the sidecar (writer, Bidirectional) and the
+      # main openemr container (reader, HostToContainer). The sidecar mounts
+      # the decrypted ext4 filesystem HERE; the main container sees that
+      # mount transparently.
+      #
+      # emptyDir is per-pod, cleared on pod delete. That is CORRECT here:
+      # the DECRYPTED view is pod-local and ephemeral; the ENCRYPTED LUKS
+      # file on NFS is the durable artifact.
+      - name: decrypted-sites
+        emptyDir: {}
+      - name: sslvolume
+        persistentVolumeClaim:
+          claimName: sslvolume
+      - name: letsencryptvolume
+        persistentVolumeClaim:
+          claimName: letsencryptvolume
+      - name: luks-passphrase
+        secret:
+          secretName: luks-passphrase
+          defaultMode: 0400
+          items:
+          - key: passphrase
+            path: passphrase

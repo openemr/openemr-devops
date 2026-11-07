@@ -1,0 +1,62 @@
+name: Kubernetes stack up
+description: >
+  Installs kind, creates a kind cluster, deploys the default OpenEMR
+  Kubernetes stack via `kub-up`, scales the openemr Deployment down to a
+  CI-friendly replica count, and waits for all core pods to become Ready.
+  Stops at "default stack is up and Ready" — callers add their own
+  example-specific or smoke-test steps on top. Used by the default-stack
+  integration workflow and by each per-example workflow under
+  kubernetes/examples/ (e.g. the LUKS encryption-at-rest example).
+inputs:
+  kind-config:
+    description: Path to the kind cluster config file (repo-relative).
+    required: false
+    default: kubernetes/kind-config-1-node.yaml
+  openemr-replicas:
+    description: >
+      Replica count to scale the openemr Deployment to after kub-up.
+      Default is 2 (CI resource-constrained — matches the long-running
+      default-stack integration workflow). Callers that will immediately
+      scale openemr to 0 (e.g. the LUKS example workflow swapping the
+      Deployment) can leave this at the default.
+    required: false
+    default: '2'
+  openemr-wait-timeout:
+    description: >
+      Timeout passed to `kubectl wait --for=condition=Ready pod` for
+      openemr. Default matches the startupProbe budget on the openemr
+      Deployment (periodSeconds=10 × failureThreshold=120 = 1200s) so
+      a worst-case first boot still succeeds.
+    required: false
+    default: 1200s
+runs:
+  using: composite
+  steps:
+    - name: Install Kind
+      shell: bash
+      run: |
+        curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+        chmod +x ./kind
+        sudo mv ./kind /usr/local/bin/kind
+
+    - name: Create Kind cluster
+      shell: bash
+      run: kind create cluster --config ${{ inputs.kind-config }}
+
+    - name: Deploy OpenEMR default stack
+      shell: bash
+      working-directory: kubernetes
+      run: |
+        bash kub-up
+        kubectl scale deployment openemr --replicas=${{ inputs.openemr-replicas }}
+
+    - name: Wait for all core pods to be Ready
+      shell: bash
+      run: |
+        echo "Waiting for StatefulSets to create all pods..."
+        kubectl rollout status statefulset/mysql-sts --timeout=300s
+        kubectl rollout status statefulset/redis --timeout=300s
+        kubectl rollout status statefulset/sentinel --timeout=300s
+        echo "Waiting for OpenEMR to reach Ready (first-boot can take several minutes)..."
+        kubectl wait --for=condition=Ready -l name=openemr pod --timeout=${{ inputs.openemr-wait-timeout }}
+        echo "All core pods ready."

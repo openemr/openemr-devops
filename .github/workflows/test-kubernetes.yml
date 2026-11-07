@@ -5,11 +5,13 @@ on:
     branches: [master]
     paths:
       - '.github/workflows/test-kubernetes.yml'
+      - '.github/actions/kubernetes-stack-up/**'
       - 'kubernetes/**'
   pull_request:
     branches: [master]
     paths:
       - '.github/workflows/test-kubernetes.yml'
+      - '.github/actions/kubernetes-stack-up/**'
       - 'kubernetes/**'
   workflow_dispatch:
 
@@ -21,35 +23,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-
-      - name: Create Kind cluster
-        run: kind create cluster --config kubernetes/kind-config-1-node.yaml
-
-      - name: Deploy OpenEMR stack
-        working-directory: kubernetes
-        run: |
-          bash kub-up
-          # Scale down OpenEMR replicas for CI resource constraints
-          kubectl scale deployment openemr --replicas=2
-
-      - name: Wait for all pods to be ready
-        run: |
-          echo "Waiting for StatefulSets to create all pods..."
-          kubectl rollout status statefulset/mysql-sts --timeout=300s
-          kubectl rollout status statefulset/redis --timeout=300s
-          kubectl rollout status statefulset/sentinel --timeout=300s
-          echo "Waiting for OpenEMR (may take several minutes for initial setup)..."
-          # Match the openemr Deployment's startupProbe budget
-          # (periodSeconds=10 × failureThreshold=120 = 1200s). Observed
-          # boot is ~2-3 min; this is the upper bound k8s would still
-          # let the pod keep trying.
-          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
-          echo "All pods ready"
+      - name: Bring up OpenEMR default stack
+        uses: ./.github/actions/kubernetes-stack-up
 
       - name: Verify all pods running
         run: |
