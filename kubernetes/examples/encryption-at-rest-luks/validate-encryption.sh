@@ -143,9 +143,17 @@ if [[ "${GREP_RC}" = "2" ]]; then
   echo "FAIL: could not read the LUKS ciphertext file."
   exit 1
 fi
-HITS=$(tr -d '[:space:]' < "${RAW_CHECK_OUT}" | head -c 10 || true)
-if [[ -z "${HITS}" ]] || ! [[ "${HITS}" =~ ^[0-9]+$ ]]; then
-  echo "FAIL: could not parse hit count from grep output (expected a digit)."
+# grep -c always prints the count to stdout (even "0" on no-match
+# exit=1); kubectl exec then emits "command terminated with exit code 1"
+# to stderr when grep exits non-zero. Both land in RAW_CHECK_OUT via
+# 2>&1, so extract the LAST line that is purely digits.
+HIT_LINES=$(mktemp -t luks-hit-lines.XXXXXX)
+trap 'rm -f "${RAW_CHECK_OUT}" "${HIT_LINES}"' EXIT
+grep -E '^[[:space:]]*[0-9]+[[:space:]]*$' "${RAW_CHECK_OUT}" > "${HIT_LINES}" || true
+HITS=$(tail -1 "${HIT_LINES}" | tr -d '[:space:]')
+if [[ -z "${HITS}" ]]; then
+  echo "FAIL: could not parse hit count from grep output."
+  echo "No digit-only line in the raw output above."
   exit 1
 fi
 
@@ -169,9 +177,19 @@ if [[ "${VALIDATE_FULL}" = "1" ]]; then
   FULL_RC=$?
   set -e
   echo "grep exit code: ${FULL_RC}"
-  FULL_HITS=$(tr -d '[:space:]' < "${RAW_CHECK_OUT}" | head -c 10 || true)
   if [[ "${FULL_RC}" = "2" ]]; then
     echo "FAIL: could not read the full LUKS file."
+    exit 1
+  fi
+  # Same digit-line extraction as Step 4 to tolerate kubectl exec's
+  # "command terminated with exit code 1" trailer line that appears
+  # alongside grep's "0" count when grep exits non-zero on no-match.
+  FULL_HIT_LINES=$(mktemp -t luks-full-hit-lines.XXXXXX)
+  trap 'rm -f "${RAW_CHECK_OUT}" "${HIT_LINES}" "${FULL_HIT_LINES}"' EXIT
+  grep -E '^[[:space:]]*[0-9]+[[:space:]]*$' "${RAW_CHECK_OUT}" > "${FULL_HIT_LINES}" || true
+  FULL_HITS=$(tail -1 "${FULL_HIT_LINES}" | tr -d '[:space:]')
+  if [[ -z "${FULL_HITS}" ]]; then
+    echo "FAIL: could not parse hit count from full-scan grep output."
     exit 1
   fi
   if [[ "${FULL_HITS}" != "0" ]]; then
