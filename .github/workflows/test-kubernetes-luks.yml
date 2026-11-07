@@ -169,11 +169,16 @@ jobs:
 
           # Poll until the port-forward tunnel is live rather than relying
           # on a fixed sleep. 30 × 1s = 30s cap covers startup jitter;
-          # typical delay is <3s.
+          # typical delay is <3s. Use curl's exit code (not its printed
+          # body) as the "tunnel live" signal — curl writes "000" to
+          # stdout on connection failure, so `curl ... || echo "000"`
+          # would append "000" to that "000" and produce the bogus
+          # HTTP_CODE "000000" on the first attempt, which is != "000"
+          # and would break out of the loop prematurely.
           HTTP_CODE="000"
           for _ in $(seq 1 30); do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 2>/dev/null || echo "000")
-            if [ "$HTTP_CODE" != "000" ]; then
+            if CURL_OUT=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 2>/dev/null); then
+              HTTP_CODE="$CURL_OUT"
               break
             fi
             sleep 1
