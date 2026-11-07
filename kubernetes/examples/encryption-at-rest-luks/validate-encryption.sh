@@ -119,19 +119,28 @@ echo "=== Step 4: Negative proof (sampled) — no plaintext marker in first 100 
 # Set VALIDATE_FULL=1 to additionally scan the full blob (slow); see
 # Step 4b below.
 #
-# `head | grep` disables `set -o pipefail` locally because head closes
-# the pipe (SIGPIPE'ing grep) when grep returns early on the no-match
-# path — that's expected, not a script failure.
+# `head | grep` pipeline inside the sidecar: if head fails to read the
+# file (missing, permission error, etc.) and we rely on the pipeline's
+# final exit code, grep sees EOF on stdin, reports "0" matches, and
+# exits 1 — indistinguishable from the normal "no plaintext leakage"
+# PASS case. To separate the two, split the work in the sidecar:
+# write head's output to a tempfile and exit 2 on head failure
+# (matching grep's own "unreadable file" exit code, which our outer
+# parser already treats as a hard FAIL), then grep the tempfile.
 RAW_CHECK_OUT=$(mktemp -t luks-raw-check-output.XXXXXX)
 trap 'rm -f "${RAW_CHECK_OUT}"' EXIT
-set +o pipefail
 set +e
-kubectl exec "${OPENEMR_POD}" -c luks-opener -- sh -c \
-  "head -c 104857600 /mnt/websitevolume/.openemr-sites.luks | grep -a -c '${MARKER}'" \
-  > "${RAW_CHECK_OUT}" 2>&1
+kubectl exec "${OPENEMR_POD}" -c luks-opener -- sh -c '
+  set -e
+  head -c 104857600 /mnt/websitevolume/.openemr-sites.luks > /tmp/luks-sample 2>&1 || exit 2
+  set +e
+  grep -a -c "$1" /tmp/luks-sample
+  grep_rc=$?
+  rm -f /tmp/luks-sample
+  exit $grep_rc
+' _ "${MARKER}" > "${RAW_CHECK_OUT}" 2>&1
 GREP_RC=$?
 set -e
-set -o pipefail
 
 echo "grep exit code: ${GREP_RC}"
 echo "---BEGIN RAW OUTPUT---"

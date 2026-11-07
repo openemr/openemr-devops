@@ -222,6 +222,20 @@ kubectl get pods -l name=openemr -w
 VALIDATE_FULL=1 ./validate-encryption.sh
 ```
 
+> [!NOTE]
+> The `validate-encryption.sh` scan (both the default sampled form and
+> `VALIDATE_FULL=1`) only searches for the **test marker it just
+> wrote**. A PASS proves that *this specific just-written write*
+> ended up as ciphertext on NFS — which is the semantics we want to
+> verify for the LUKS setup. It does **not** scan for arbitrary
+> plaintext anywhere in the container, and in particular it does
+> **not** detect plaintext originals left behind on `websitevolume`
+> outside the LUKS file by an incomplete migration step. If you are
+> concerned about stray plaintext from a prior setup, inspect
+> `/mnt/websitevolume/` from inside the `luks-opener` sidecar after
+> migration and confirm that only `.openemr-sites.luks` remains at
+> the top level.
+
 ## What about rolling back?
 
 Downgrading from this example back to the default stack means moving data out of the LUKS container file onto the plaintext NFS filesystem.
