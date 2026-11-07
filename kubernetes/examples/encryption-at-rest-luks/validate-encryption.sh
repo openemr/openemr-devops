@@ -106,26 +106,37 @@ kubectl run luks-raw-check --rm -i --restart=Never \
   }
 }' > "${RAW_CHECK_OUT}" 2>&1 || true
 
-# kubectl may emit a trailing "pod "luks-raw-check" deleted" cleanup line
-# after the grep count, so parse out the LAST line that is purely digits
-# rather than blindly taking tail -1.
-# The inner helper emits GREP_READ_ERROR on grep exit code 2
-# (ciphertext file unreadable — missing, permissions, or similar).
-# Distinguishing that from a genuine zero-match is important: a read
-# failure must FAIL validation, not be reported as PASS.
+echo "Helper pod finished. Raw output follows:"
+echo "---BEGIN RAW OUTPUT---"
+cat "${RAW_CHECK_OUT}"
+echo "---END RAW OUTPUT---"
+echo
+
+# The inner helper emits GREP_READ_ERROR on grep exit code 2 (ciphertext
+# file unreadable — missing, permissions, or similar). Distinguishing
+# that from a genuine zero-match is important: a read failure must FAIL
+# validation, not be reported as PASS.
 if grep -q '^GREP_READ_ERROR' "${RAW_CHECK_OUT}"; then
   echo "ERROR: helper pod could not read the LUKS ciphertext file."
   echo "This usually means .openemr-sites.luks is missing or unreadable."
-  echo "Helper pod output:"
-  cat "${RAW_CHECK_OUT}"
   exit 1
 fi
-HITS=$(grep -E '^[[:space:]]*[0-9]+[[:space:]]*$' "${RAW_CHECK_OUT}" \
-  | tail -1 \
-  | tr -d '[:space:]')
+
+# kubectl may emit a trailing "pod "luks-raw-check" deleted" cleanup
+# line after the grep count, so parse out the LAST line that is purely
+# digits rather than blindly taking tail -1.
+#
+# Done as two steps (not a pipeline inside $(...)) because `set -o
+# pipefail` combined with grep's exit-1-on-no-match can cause the whole
+# pipeline to count as a failure. Capture grep output to a file with an
+# explicit `|| true`, then post-process without pipefail-sensitivity.
+HIT_LINES=$(mktemp -t luks-hit-lines.XXXXXX)
+trap 'rm -f "${RAW_CHECK_OUT}" "${HIT_LINES}"' EXIT
+grep -E '^[[:space:]]*[0-9]+[[:space:]]*$' "${RAW_CHECK_OUT}" > "${HIT_LINES}" || true
+HITS=$(tail -1 "${HIT_LINES}" | tr -d '[:space:]')
 if [[ -z "${HITS}" ]]; then
-  echo "ERROR: could not parse hit count from helper pod output:"
-  cat "${RAW_CHECK_OUT}"
+  echo "ERROR: could not parse hit count from helper pod output."
+  echo "No digit-only lines were found — see raw output above."
   exit 1
 fi
 echo "Raw-byte matches of marker in LUKS container file: ${HITS}"
