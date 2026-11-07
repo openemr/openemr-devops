@@ -3,24 +3,34 @@
 # Validation recipe: prove that data written through the openemr pod's
 # decrypted mount is actually encrypted on the NFS backing.
 #
-# This is a RECIPE, not a CI test. It assumes a running cluster that has
-# applied the LUKS example manifests per README.md. Run interactively and
-# read the output.
+# This script runs in CI (post-adoption check in the LUKS workflow) and
+# is also useful to run interactively against a live cluster after
+# applying the LUKS example manifests per README.md.
 #
 # What it demonstrates:
 #   1. Write a known plaintext string to a file inside the openemr pod's
 #      /var/www/localhost/htdocs/openemr/sites directory (which is the
 #      decrypted view of the LUKS filesystem).
-#   2. Read the raw bytes of the LUKS container file from a privileged
-#      helper pod that mounts websitevolume directly (without opening LUKS).
-#   3. Grep for the plaintext string in the raw LUKS blob — it MUST NOT
-#      be found. If it is, LUKS is misconfigured.
+#   2. Read it back via the luks-opener sidecar's /mnt/decrypted view —
+#      proves the sidecar's mount is live and openemr's /sites is
+#      actually the LUKS-mapped filesystem.
+#   3. Positive header check: `cryptsetup isLuks` + `luksDump` prove the
+#      file on NFS is a LUKS2 container and the cipher is AES-XTS.
+#   4. Sampled leakage check: grep the first 100 MiB of the raw file
+#      for the marker — fast (~seconds) and catches the
+#      overwhelming-majority case where a broken LUKS would leak
+#      plaintext into early ext4 metadata / block group 0.
+#   5. OPTIONAL full-file leakage scan: if VALIDATE_FULL=1 is set in
+#      the environment, scan the entire LUKS blob (8 GiB+) for the
+#      marker. This takes several minutes on NFS so it's off by
+#      default; use it for paranoia-level local verification.
 #
-# Expected outcome: step 3 prints "PASS: plaintext not found in LUKS blob".
+# Expected outcome: PASS at every step.
 
 set -euo pipefail
 
 MARKER="LUKS-ENCRYPTION-TEST-MARKER-$(date +%s)"
+VALIDATE_FULL="${VALIDATE_FULL:-0}"
 
 echo "=== Step 1: Writing marker string through the decrypted mount ==="
 OPENEMR_POD=$(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}')
@@ -66,36 +76,62 @@ fi
 echo "Marker visible on /mnt/decrypted via luks-opener: mapping is live."
 echo
 
-echo "=== Step 3: Grep the raw LUKS blob on NFS for the marker ==="
-echo "Running grep inside the existing luks-opener sidecar (which already has"
-echo "websitevolume mounted) — no new helper pod to attach + pull."
+echo "=== Step 3: Positive proof — file on NFS is a LUKS2 container ==="
+# cryptsetup isLuks is near-instant: reads only the LUKS header at the
+# start of the file. Exits 0 iff the file begins with a valid LUKS
+# magic/header. This alone proves the file on NFS is a LUKS container
+# (not a plaintext ext4 image).
+if ! kubectl exec "${OPENEMR_POD}" -c luks-opener -- \
+    cryptsetup isLuks /mnt/websitevolume/.openemr-sites.luks; then
+  echo "FAIL: .openemr-sites.luks is not a LUKS container."
+  echo "The sidecar may have skipped luksFormat or the file was replaced."
+  exit 1
+fi
+echo "PASS: .openemr-sites.luks has a valid LUKS header."
+echo
 
-# Use mktemp so a predictable path cannot be used to follow a symlink and
-# truncate an unintended file on a shared host. Clean up on exit.
+echo "=== Step 3b: Cipher check — mapper is using AES-XTS ==="
+# luksDump prints the LUKS2 header's cipher/key-slot details. We grep
+# for an AES-XTS mode to confirm the encryption algorithm — proves
+# "LUKS is doing real crypto" rather than, say, a cipher=null trick.
+DUMP_OUT=$(kubectl exec "${OPENEMR_POD}" -c luks-opener -- \
+  cryptsetup luksDump /mnt/websitevolume/.openemr-sites.luks)
+echo "${DUMP_OUT}" | grep -E -i 'cipher|key' | head -10
+if ! echo "${DUMP_OUT}" | grep -q -i 'aes-xts'; then
+  echo "FAIL: LUKS header exists but cipher is not AES-XTS."
+  echo "Full luksDump output:"
+  echo "${DUMP_OUT}"
+  exit 1
+fi
+echo "PASS: LUKS2 cipher is AES-XTS."
+echo
+
+echo "=== Step 4: Negative proof (sampled) — no plaintext marker in first 100 MiB ==="
+# A fast-and-strong sanity check: read the first 100 MiB of the raw
+# file (not the decrypted view) and grep for the plaintext marker.
+# Why 100 MiB:
+#   - The LUKS2 header + ciphertext of the first ~128 MiB covers ext4
+#     block group 0 (where the inode table and small file data most
+#     commonly land). A broken LUKS layer that left data plaintext
+#     would leak the marker here with very high probability.
+#   - 100 MiB at NFS loopback speed is ~1–5 seconds; the full 8 GiB
+#     scan is several minutes.
+# Set VALIDATE_FULL=1 to additionally scan the full blob (slow); see
+# Step 4b below.
+#
+# `head | grep` disables `set -o pipefail` locally because head closes
+# the pipe (SIGPIPE'ing grep) when grep returns early on the no-match
+# path — that's expected, not a script failure.
 RAW_CHECK_OUT=$(mktemp -t luks-raw-check-output.XXXXXX)
 trap 'rm -f "${RAW_CHECK_OUT}"' EXIT
-
-# Why kubectl exec into the sidecar, not a new kubectl-run helper pod:
-# the sidecar already has `websitevolume` bind-mounted at
-# /mnt/websitevolume (it's where it reads .openemr-sites.luks to open
-# the mapper). Running grep there is a per-process operation inside an
-# already-running container — no extra pod to schedule, no second
-# ReadWriteMany attach, no alpine image pull, no `kubectl run -i`
-# 60-second wait-for-Ready timeout window. The ciphertext view at
-# /mnt/websitevolume/.openemr-sites.luks is what we want to scan: it's
-# the raw LUKS blob on NFS (not the decrypted view the sidecar also
-# mounts at /mnt/decrypted).
-#
-# Exit codes of `grep -c`: 0 if N matches (N printed to stdout),
-#                          1 if no match ("0" printed to stdout),
-#                          2 if the file is unreadable.
-# We treat 0 and 1 as "parse the printed count"; 2 as a hard FAIL.
+set +o pipefail
 set +e
-kubectl exec "${OPENEMR_POD}" -c luks-opener -- \
-  grep -a -c "${MARKER}" /mnt/websitevolume/.openemr-sites.luks \
+kubectl exec "${OPENEMR_POD}" -c luks-opener -- sh -c \
+  "head -c 104857600 /mnt/websitevolume/.openemr-sites.luks | grep -a -c '${MARKER}'" \
   > "${RAW_CHECK_OUT}" 2>&1
 GREP_RC=$?
 set -e
+set -o pipefail
 
 echo "grep exit code: ${GREP_RC}"
 echo "---BEGIN RAW OUTPUT---"
@@ -104,42 +140,50 @@ echo "---END RAW OUTPUT---"
 echo
 
 if [[ "${GREP_RC}" = "2" ]]; then
-  echo "ERROR: grep could not read the LUKS ciphertext file."
-  echo "This usually means .openemr-sites.luks is missing or unreadable"
-  echo "from the luks-opener sidecar's view of websitevolume."
+  echo "FAIL: could not read the LUKS ciphertext file."
   exit 1
 fi
-if [[ "${GREP_RC}" != "0" && "${GREP_RC}" != "1" ]]; then
-  echo "ERROR: unexpected grep exit code ${GREP_RC} (kubectl exec or"
-  echo "the sidecar container itself may have failed)."
+HITS=$(tr -d '[:space:]' < "${RAW_CHECK_OUT}" | head -c 10 || true)
+if [[ -z "${HITS}" ]] || ! [[ "${HITS}" =~ ^[0-9]+$ ]]; then
+  echo "FAIL: could not parse hit count from grep output (expected a digit)."
   exit 1
 fi
 
-# Parse the digit-only line grep -c emits. Done as two steps (not a
-# pipeline inside $(...)) because `set -o pipefail` combined with
-# grep's exit-1-on-no-match can cause the whole pipeline to count as a
-# script failure.
-HIT_LINES=$(mktemp -t luks-hit-lines.XXXXXX)
-trap 'rm -f "${RAW_CHECK_OUT}" "${HIT_LINES}"' EXIT
-grep -E '^[[:space:]]*[0-9]+[[:space:]]*$' "${RAW_CHECK_OUT}" > "${HIT_LINES}" || true
-HITS=$(tail -1 "${HIT_LINES}" | tr -d '[:space:]')
-if [[ -z "${HITS}" ]]; then
-  echo "ERROR: could not parse hit count from grep output."
-  echo "No digit-only lines were found — see raw output above."
-  exit 1
-fi
-echo "Raw-byte matches of marker in LUKS container file: ${HITS}"
-echo
-
-if [[ "${HITS}" = "0" ]]; then
-  echo "PASS: plaintext not found in LUKS blob — encryption is effective."
-  # Clean up the test file
-  kubectl exec "${OPENEMR_POD}" -c openemr -- rm \
-    /var/www/localhost/htdocs/openemr/sites/encryption-test.txt
-  exit 0
-else
-  echo "FAIL: plaintext WAS found in the LUKS blob (${HITS} matches)."
-  echo "LUKS encryption is NOT active. Investigate the sidecar logs:"
+if [[ "${HITS}" != "0" ]]; then
+  echo "FAIL: plaintext marker found ${HITS} time(s) in the first 100 MiB."
+  echo "LUKS encryption appears NOT to be active. Investigate the sidecar:"
   echo "  kubectl logs ${OPENEMR_POD} -c luks-opener"
   exit 1
 fi
+echo "PASS: plaintext marker NOT found in first 100 MiB of the LUKS blob."
+echo
+
+if [[ "${VALIDATE_FULL}" = "1" ]]; then
+  echo "=== Step 4b: Full-blob leakage scan (VALIDATE_FULL=1) ==="
+  echo "Scanning the entire LUKS container file for the marker."
+  echo "This reads the whole file over NFS — expect several minutes."
+  set +e
+  kubectl exec "${OPENEMR_POD}" -c luks-opener -- \
+    grep -a -c "${MARKER}" /mnt/websitevolume/.openemr-sites.luks \
+    > "${RAW_CHECK_OUT}" 2>&1
+  FULL_RC=$?
+  set -e
+  echo "grep exit code: ${FULL_RC}"
+  FULL_HITS=$(tr -d '[:space:]' < "${RAW_CHECK_OUT}" | head -c 10 || true)
+  if [[ "${FULL_RC}" = "2" ]]; then
+    echo "FAIL: could not read the full LUKS file."
+    exit 1
+  fi
+  if [[ "${FULL_HITS}" != "0" ]]; then
+    echo "FAIL: plaintext marker found ${FULL_HITS} time(s) in the full LUKS blob."
+    exit 1
+  fi
+  echo "PASS: plaintext marker NOT found anywhere in the full 8 GiB LUKS blob."
+  echo
+fi
+
+echo "ALL CHECKS PASSED: LUKS encryption is effective."
+# Clean up the test file.
+kubectl exec "${OPENEMR_POD}" -c openemr -- rm \
+  /var/www/localhost/htdocs/openemr/sites/encryption-test.txt
+exit 0

@@ -212,7 +212,14 @@ kubectl apply -f openemr-deployment-luks.yaml
 kubectl get pods -l name=openemr -w
 
 # 6. (Optional) Validate that the encryption is actually effective.
+#    Default run: LUKS header + AES-XTS cipher check + sampled (100 MiB)
+#    plaintext-leakage scan. Fast.
 ./validate-encryption.sh
+
+#    For paranoia-level coverage, set VALIDATE_FULL=1 to additionally
+#    scan the *entire* LUKS container file (8 GiB+) for plaintext
+#    leakage. Takes several minutes over NFS.
+VALIDATE_FULL=1 ./validate-encryption.sh
 ```
 
 ## What about rolling back?
@@ -270,4 +277,4 @@ Push it to your own registry, pin by digest, and point BOTH the `luks-opener` si
 | `luks-passphrase-secret.yaml` | Example Secret with a placeholder passphrase. Replace before use. |
 | `luks-format-job.yaml` | One-shot Job that creates and formats the LUKS container file. Run once. |
 | `openemr-deployment-luks.yaml` | Modified openemr Deployment with privileged `luks-opener` sidecar and single replica. |
-| `validate-encryption.sh` | Interactive recipe that proves plaintext written through the openemr pod is ciphertext on the NFS backing. |
+| `validate-encryption.sh` | End-to-end validation script. Writes a plaintext marker through openemr's `/sites`, verifies the LUKS header + AES-XTS cipher via `cryptsetup`, and scans the first 100 MiB of the raw file for leakage. Set `VALIDATE_FULL=1` to additionally scan the entire multi-GiB blob. |
