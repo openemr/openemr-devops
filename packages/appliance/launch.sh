@@ -35,7 +35,7 @@ allocateSwap() {
 
 exec > /var/log/appliance-launch.log 2>&1
 
-while getopts "hs:b:o:x" opt; do
+while getopts "hs:b:o:f" opt; do
   case ${opt} in
     s)
       SWAPAMT=${OPTARG}
