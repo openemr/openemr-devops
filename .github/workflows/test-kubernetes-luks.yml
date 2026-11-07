@@ -1,0 +1,241 @@
+name: Kubernetes LUKS example
+
+# Exercises the kubernetes/examples/encryption-at-rest-luks/ adoption flow:
+#   1. Bring up the default stack via the shared composite action.
+#   2. Follow the example's README step-by-step (scale down → format LUKS →
+#      migrate plaintext sites/ into the encrypted FS → swap the openemr
+#      Deployment for the LUKS variant → wait Ready).
+#   3. Prove openemr functions atop the encrypted mount (HTTP response +
+#      unit tests).
+#   4. Prove encryption is actually effective (validate-encryption.sh).
+#
+# Trigger paths cover the example itself plus files it depends on: the
+# default openemr Deployment (the LUKS variant is a modified copy), the
+# NFS stack it layers over, the kub-up script that the composite action
+# runs, and the composite action itself.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'kubernetes/examples/encryption-at-rest-luks/**'
+      - 'kubernetes/openemr/deployment.yaml'
+      - 'kubernetes/nfs/**'
+      - 'kubernetes/kub-up'
+      - '.github/actions/kubernetes-stack-up/**'
+      - '.github/workflows/test-kubernetes-luks.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'kubernetes/examples/encryption-at-rest-luks/**'
+      - 'kubernetes/openemr/deployment.yaml'
+      - 'kubernetes/nfs/**'
+      - 'kubernetes/kub-up'
+      - '.github/actions/kubernetes-stack-up/**'
+      - '.github/workflows/test-kubernetes-luks.yml'
+  workflow_dispatch:
+
+jobs:
+  luks-example-test:
+    name: LUKS example adoption + validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Bring up OpenEMR default stack
+        uses: ./.github/actions/kubernetes-stack-up
+
+      - name: Scale openemr + phpmyadmin to 0 (quiesce writes before format)
+        run: |
+          kubectl scale deployment openemr phpmyadmin --replicas=0
+          kubectl wait --for=delete pod -l name=openemr --timeout=120s
+          kubectl wait --for=delete pod -l name=phpmyadmin --timeout=120s
+
+      - name: Create real LUKS passphrase Secret (bypass placeholder gate)
+        run: |
+          # openssl rand -base64 48 → 64 chars of base64, well above any
+          # sensible entropy minimum. Does not match the committed
+          # placeholder, so the format Job's placeholder-check lets this
+          # through.
+          kubectl create secret generic luks-passphrase \
+            --from-literal=passphrase="$(openssl rand -base64 48)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Run LUKS format Job
+        run: |
+          kubectl apply -f kubernetes/examples/encryption-at-rest-luks/luks-format-job.yaml
+          kubectl wait --for=condition=complete job/luks-format-websitevolume --timeout=600s
+          echo "--- format Job logs ---"
+          kubectl logs job/luks-format-websitevolume
+
+      - name: Run plaintext → encrypted migration helper
+        run: |
+          # Exercises the migration step the example README documents
+          # (step 3b): rsync the plaintext sites/ contents already on
+          # websitevolume into the newly-formatted LUKS filesystem, so
+          # the LUKS-variant openemr pod sees existing config
+          # (sqlconf.php, demo seed, etc.) instead of boot-strapping
+          # from scratch.
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: luks-migrate-helper
+          spec:
+            restartPolicy: Never
+            automountServiceAccountToken: false
+            containers:
+            - name: migrate
+              image: alpine:3.20
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  apk add --no-cache cryptsetup e2fsprogs util-linux rsync
+                  cryptsetup luksOpen --key-file /etc/luks/passphrase \
+                    /mnt/websitevolume/.openemr-sites.luks openemr-sites-migrate
+                  mkdir -p /dec
+                  mount /dev/mapper/openemr-sites-migrate /dec
+                  rsync -aHAX --exclude=.openemr-sites.luks \
+                    /mnt/websitevolume/ /dec/
+                  sync
+                  umount /dec
+                  cryptsetup luksClose openemr-sites-migrate
+                  echo "MIGRATION_OK"
+              securityContext:
+                privileged: true
+              volumeMounts:
+                - name: websitevolume
+                  mountPath: /mnt/websitevolume
+                - name: luks-passphrase
+                  mountPath: /etc/luks
+                  readOnly: true
+            volumes:
+              - name: websitevolume
+                persistentVolumeClaim:
+                  claimName: websitevolume
+              - name: luks-passphrase
+                secret:
+                  secretName: luks-passphrase
+                  defaultMode: 0400
+                  items:
+                    - key: passphrase
+                      path: passphrase
+          EOF
+          # Poll until the helper's phase is terminal (Succeeded or Failed).
+          for _ in $(seq 1 60); do
+            PHASE=$(kubectl get pod luks-migrate-helper -o jsonpath='{.status.phase}' 2>/dev/null || echo Unknown)
+            case "$PHASE" in
+              Succeeded|Failed) break ;;
+            esac
+            sleep 5
+          done
+          echo "--- migration helper logs ---"
+          kubectl logs luks-migrate-helper
+          PHASE=$(kubectl get pod luks-migrate-helper -o jsonpath='{.status.phase}')
+          kubectl delete pod luks-migrate-helper --wait=false
+          if [ "$PHASE" != "Succeeded" ]; then
+            echo "ERROR: migration helper exited with phase $PHASE"
+            exit 1
+          fi
+
+      - name: Swap openemr Deployment for the LUKS variant
+        run: |
+          # kubectl replace (not apply) because the Deployment name is
+          # the same but the spec differs significantly (replicas, strategy,
+          # sidecar, mount topology). Replace tears down the old one
+          # first — safe here because we scaled to 0 above.
+          kubectl replace -f kubernetes/examples/encryption-at-rest-luks/openemr-deployment-luks.yaml
+          echo "Waiting for LUKS-variant openemr pod to reach Ready..."
+          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
+
+      - name: Verify all pods running
+        run: |
+          kubectl get pods
+          NOT_RUNNING=$(kubectl get pods --no-headers | grep -v Running | grep -v Completed || true)
+          if [ -n "$NOT_RUNNING" ]; then
+            echo "ERROR: Some pods are not running:"
+            echo "$NOT_RUNNING"
+            exit 1
+          fi
+          echo "PASS: All pods running"
+
+      - name: Test OpenEMR HTTP response (atop LUKS)
+        run: |
+          kubectl port-forward service/openemr 8080:8080 &
+          PF_PID=$!
+          sleep 3
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 || echo "000")
+          kill $PF_PID 2>/dev/null || true
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 400 ]; then
+            echo "ERROR: OpenEMR returned HTTP $HTTP_CODE atop LUKS"
+            exit 1
+          fi
+          echo "PASS: OpenEMR HTTP responding atop LUKS (status $HTTP_CODE)"
+
+      - name: Get openemr pod name
+        id: openemr-pod
+        run: |
+          POD=$(kubectl get pods -l name=openemr -o jsonpath='{.items[0].metadata.name}')
+          echo "pod=$POD" >> "$GITHUB_OUTPUT"
+          echo "Using OpenEMR pod: $POD"
+
+      - name: Initialize OpenEMR database
+        timeout-minutes: 2
+        run: |
+          kubectl exec mysql-sts-0 -- mariadb -u root -proot -e '
+              INSERT INTO product_registration (opt_out) VALUES (1);
+              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_api";
+              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_fhir_api";
+              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_portal_api";
+              UPDATE globals SET gl_value = 3 WHERE gl_name = "oauth_password_grant";
+              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_system_scopes_api";
+            ' openemr
+
+      - name: Install dev dependencies (atop LUKS)
+        timeout-minutes: 5
+        run: |
+          kubectl exec ${{ steps.openemr-pod.outputs.pod }} -- \
+            sh -c 'cd /var/www/localhost/htdocs/openemr && composer install --dev --no-interaction --optimize-autoloader --ignore-platform-reqs'
+
+      - name: Unit tests (atop LUKS)
+        timeout-minutes: 5
+        run: |
+          kubectl get pod ${{ steps.openemr-pod.outputs.pod }} -o jsonpath='{.status.phase}' && echo ""
+          kubectl exec ${{ steps.openemr-pod.outputs.pod }} -- \
+            sh -c 'cd /var/www/localhost/htdocs/openemr && php -d memory_limit=8G ./vendor/bin/phpunit --colors=always --testdox --stop-on-failure --testsuite unit'
+
+      - name: Validate LUKS encryption effectiveness
+        run: bash kubernetes/examples/encryption-at-rest-luks/validate-encryption.sh
+
+      - name: Collect debug info on failure
+        if: failure()
+        run: |
+          echo "=== Pod Status ==="
+          kubectl get pods -o wide
+          echo "=== Events ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -40
+          echo "=== OpenEMR (main container) Logs ==="
+          kubectl logs -l name=openemr -c openemr --tail=100 2>/dev/null || true
+          OPENEMR_POD=$(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$OPENEMR_POD" ]; then
+            echo "=== luks-opener sidecar logs ==="
+            kubectl logs "$OPENEMR_POD" -c luks-opener --tail=100 2>/dev/null || true
+          fi
+          echo "=== nfs-server (ganesha) logs ==="
+          NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$NFS_POD" ]; then
+            kubectl logs "$NFS_POD" -c nfs-server 2>/dev/null || true
+          fi
+          echo "=== luks-format Job logs ==="
+          kubectl logs job/luks-format-websitevolume 2>/dev/null || true
+          echo "=== luks-migrate-helper logs (if still present) ==="
+          kubectl logs luks-migrate-helper 2>/dev/null || true
+
+      - name: Cleanup
+        if: always()
+        working-directory: kubernetes
+        run: |
+          bash kub-down 2>/dev/null || true
+          kind delete cluster 2>/dev/null || true
