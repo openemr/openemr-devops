@@ -1,13 +1,20 @@
 #!/bin/bash
 # shellcheck disable=SC2312
 
+SWAPAMT=0
+REPOOWNER=openemr
+REPOBRANCH=master
+SKIPOSCHECK=0
+TARGETOS="Ubuntu"
+TARGETVERSION="24"
 displayHelp () {
 cat <<EOF
 OpenEMR appliance launcher
-usage: launch.sh -sobh
-      -s: amount of swap to allocate, in gigabytes
-      -o: specify owner of devops repo [openemr]
-      -b: devops repo branch to load [master]
+usage: launch.sh -sobfh
+      -s: amount of swap to allocate, in gigabytes [${SWAPAMT}]
+      -o: specify owner of devops repo [${REPOOWNER}]
+      -b: devops repo branch to load [${REPOBRANCH}]
+      -f: force install even if OS match fails [${TARGETOS} ${TARGETVERSION}]
       -h: display this help
 EOF
 }
@@ -28,11 +35,7 @@ allocateSwap() {
 
 exec > /var/log/appliance-launch.log 2>&1
 
-SWAPAMT=0
-REPOOWNER=openemr
-REPOBRANCH=master
-
-while getopts "hs:b:o:" opt; do
+while getopts "hs:b:o:f" opt; do
   case ${opt} in
     s)
       SWAPAMT=${OPTARG}
@@ -42,6 +45,9 @@ while getopts "hs:b:o:" opt; do
       ;;
     b)
       REPOBRANCH=${OPTARG}
+      ;;
+    f)
+      SKIPOSCHECK=1
       ;;
     h)
       displayHelp
@@ -58,7 +64,18 @@ while getopts "hs:b:o:" opt; do
   esac
 done
 
+
+
 main () {
+
+  [[ "${EUID}" -eq 0 ]] || { echo "launch.sh: root required" 1>&2 ; exit 1; }
+
+  if [[ "${SKIPOSCHECK}" -eq 0 ]]; then
+    [[ -f /etc/os-release ]] || { echo "launch.sh: can't perform OS check" 1>&2 ; exit 1; }
+    [[ $(grep -ioP '^NAME=\K.+' /etc/os-release) == \"${TARGETOS}\" ]] || { echo "OS match failed against ${TARGETOS}" 1>&2 ; exit 1; }
+    [[ $(grep -ioP '^VERSION_ID=\K.+' /etc/os-release) == \"${TARGETVERSION}* ]] || { echo "OS match failed against ${TARGETVERSION}" 1>&2 ; exit 1; }
+  fi
+
   cd /root || exit 1
 
   allocateSwap
