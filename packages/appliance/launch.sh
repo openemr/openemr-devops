@@ -10,7 +10,7 @@ TARGETVERSION="24"
 displayHelp () {
 cat <<EOF
 OpenEMR appliance launcher
-usage: launch.sh -sobxh
+usage: launch.sh -sobfh
       -s: amount of swap to allocate, in gigabytes [${SWAPAMT}]
       -o: specify owner of devops repo [${REPOOWNER}]
       -b: devops repo branch to load [${REPOBRANCH}]
@@ -46,7 +46,7 @@ while getopts "hs:b:o:x" opt; do
     b)
       REPOBRANCH=${OPTARG}
       ;;
-    x)
+    f)
       SKIPOSCHECK=1
       ;;
     h)
@@ -68,10 +68,10 @@ done
 
 main () {
 
-  [[ $EUID -eq 0 ]] || { echo "launch.sh: root required" 1>&2 ; exit 1; }
+  [[ "${EUID}" -eq 0 ]] || { echo "launch.sh: root required" 1>&2 ; exit 1; }
 
-  if [ $SKIPOSCHECK -eq 0 ]; then
-    [ -f /etc/os-release ] || { echo "launch.sh: can't perform OS check" 1>&2 ; exit 1; }
+  if [[ "${SKIPOSCHECK}" -eq 0 ]]; then
+    [[ -f /etc/os-release ]] || { echo "launch.sh: can't perform OS check" 1>&2 ; exit 1; }
     [[ $(grep -ioP '^NAME=\K.+' /etc/os-release) == \"${TARGETOS}\" ]] || { echo "OS match failed against ${TARGETOS}" 1>&2 ; exit 1; }
     [[ $(grep -ioP '^VERSION_ID=\K.+' /etc/os-release) == \"${TARGETVERSION}* ]] || { echo "OS match failed against ${TARGETVERSION}" 1>&2 ; exit 1; }
   fi
