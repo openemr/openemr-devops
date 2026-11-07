@@ -130,6 +130,13 @@ echo "=== Step 4: Negative proof (sampled) — no plaintext marker in first 100 
 RAW_CHECK_OUT=$(mktemp -t luks-raw-check-output.XXXXXX)
 trap 'rm -f "${RAW_CHECK_OUT}"' EXIT
 set +e
+# shellcheck disable=SC2016
+# The `$1`, `$?`, and `$grep_rc` expansions inside the sh -c body are
+# INTENTIONALLY expanded by the INNER sh (which receives MARKER as
+# positional $1 from `_ "${MARKER}"` after the script body), not by
+# the outer bash. ShellCheck can't model two-layer shell invocations,
+# so it flags the single-quoted body as if the outer bash were
+# supposed to expand them. Suppress the info-level finding.
 kubectl exec "${OPENEMR_POD}" -c luks-opener -- sh -c '
   set -e
   head -c 104857600 /mnt/websitevolume/.openemr-sites.luks > /tmp/luks-sample 2>&1 || exit 2
