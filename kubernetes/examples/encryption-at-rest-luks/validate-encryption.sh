@@ -67,75 +67,64 @@ echo "Marker visible on /mnt/decrypted via luks-opener: mapping is live."
 echo
 
 echo "=== Step 3: Grep the raw LUKS blob on NFS for the marker ==="
-echo "Launching a short-lived helper pod that mounts websitevolume raw"
+echo "Running grep inside the existing luks-opener sidecar (which already has"
+echo "websitevolume mounted) — no new helper pod to attach + pull."
 
 # Use mktemp so a predictable path cannot be used to follow a symlink and
 # truncate an unintended file on a shared host. Clean up on exit.
 RAW_CHECK_OUT=$(mktemp -t luks-raw-check-output.XXXXXX)
 trap 'rm -f "${RAW_CHECK_OUT}"' EXIT
 
-# Launch a helper that mounts websitevolume (which contains the LUKS
-# container FILE, not the decrypted filesystem) and greps the raw bytes.
-# If LUKS is working, the marker must NOT appear.
-# shellcheck disable=SC2016
-# The '"${MARKER}"' construct inside the kubectl --overrides JSON is a
-# host-bash quote-dance: close the outer single quote, open a double
-# quote so bash expands ${MARKER}, close the double quote, reopen the
-# single quote. The ${MARKER} IS intentionally expanded by the host
-# shell to inline the marker literal into the JSON string sent to
-# kubectl. ShellCheck can't distinguish this from a misplaced
-# single-quoted expansion attempt, so suppress the info-level finding
-# here.
-kubectl run luks-raw-check --rm -i --restart=Never \
-  --image=alpine:3.20 \
-  --overrides='
-{
-  "spec": {
-    "containers": [{
-      "name": "luks-raw-check",
-      "image": "alpine:3.20",
-      "stdin": true,
-      "tty": false,
-      "command": ["sh", "-c", "grep -a -c '"${MARKER}"' /mnt/websitevolume/.openemr-sites.luks; rc=$?; if [ \"$rc\" = \"2\" ]; then echo GREP_READ_ERROR; exit 2; fi"],
-      "volumeMounts": [{"name": "websitevolume", "mountPath": "/mnt/websitevolume"}]
-    }],
-    "volumes": [{
-      "name": "websitevolume",
-      "persistentVolumeClaim": {"claimName": "websitevolume"}
-    }]
-  }
-}' > "${RAW_CHECK_OUT}" 2>&1 || true
+# Why kubectl exec into the sidecar, not a new kubectl-run helper pod:
+# the sidecar already has `websitevolume` bind-mounted at
+# /mnt/websitevolume (it's where it reads .openemr-sites.luks to open
+# the mapper). Running grep there is a per-process operation inside an
+# already-running container — no extra pod to schedule, no second
+# ReadWriteMany attach, no alpine image pull, no `kubectl run -i`
+# 60-second wait-for-Ready timeout window. The ciphertext view at
+# /mnt/websitevolume/.openemr-sites.luks is what we want to scan: it's
+# the raw LUKS blob on NFS (not the decrypted view the sidecar also
+# mounts at /mnt/decrypted).
+#
+# Exit codes of `grep -c`: 0 if N matches (N printed to stdout),
+#                          1 if no match ("0" printed to stdout),
+#                          2 if the file is unreadable.
+# We treat 0 and 1 as "parse the printed count"; 2 as a hard FAIL.
+set +e
+kubectl exec "${OPENEMR_POD}" -c luks-opener -- \
+  grep -a -c "${MARKER}" /mnt/websitevolume/.openemr-sites.luks \
+  > "${RAW_CHECK_OUT}" 2>&1
+GREP_RC=$?
+set -e
 
-echo "Helper pod finished. Raw output follows:"
+echo "grep exit code: ${GREP_RC}"
 echo "---BEGIN RAW OUTPUT---"
 cat "${RAW_CHECK_OUT}"
 echo "---END RAW OUTPUT---"
 echo
 
-# The inner helper emits GREP_READ_ERROR on grep exit code 2 (ciphertext
-# file unreadable — missing, permissions, or similar). Distinguishing
-# that from a genuine zero-match is important: a read failure must FAIL
-# validation, not be reported as PASS.
-if grep -q '^GREP_READ_ERROR' "${RAW_CHECK_OUT}"; then
-  echo "ERROR: helper pod could not read the LUKS ciphertext file."
-  echo "This usually means .openemr-sites.luks is missing or unreadable."
+if [[ "${GREP_RC}" = "2" ]]; then
+  echo "ERROR: grep could not read the LUKS ciphertext file."
+  echo "This usually means .openemr-sites.luks is missing or unreadable"
+  echo "from the luks-opener sidecar's view of websitevolume."
+  exit 1
+fi
+if [[ "${GREP_RC}" != "0" && "${GREP_RC}" != "1" ]]; then
+  echo "ERROR: unexpected grep exit code ${GREP_RC} (kubectl exec or"
+  echo "the sidecar container itself may have failed)."
   exit 1
 fi
 
-# kubectl may emit a trailing "pod "luks-raw-check" deleted" cleanup
-# line after the grep count, so parse out the LAST line that is purely
-# digits rather than blindly taking tail -1.
-#
-# Done as two steps (not a pipeline inside $(...)) because `set -o
-# pipefail` combined with grep's exit-1-on-no-match can cause the whole
-# pipeline to count as a failure. Capture grep output to a file with an
-# explicit `|| true`, then post-process without pipefail-sensitivity.
+# Parse the digit-only line grep -c emits. Done as two steps (not a
+# pipeline inside $(...)) because `set -o pipefail` combined with
+# grep's exit-1-on-no-match can cause the whole pipeline to count as a
+# script failure.
 HIT_LINES=$(mktemp -t luks-hit-lines.XXXXXX)
 trap 'rm -f "${RAW_CHECK_OUT}" "${HIT_LINES}"' EXIT
 grep -E '^[[:space:]]*[0-9]+[[:space:]]*$' "${RAW_CHECK_OUT}" > "${HIT_LINES}" || true
 HITS=$(tail -1 "${HIT_LINES}" | tr -d '[:space:]')
 if [[ -z "${HITS}" ]]; then
-  echo "ERROR: could not parse hit count from helper pod output."
+  echo "ERROR: could not parse hit count from grep output."
   echo "No digit-only lines were found — see raw output above."
   exit 1
 fi
