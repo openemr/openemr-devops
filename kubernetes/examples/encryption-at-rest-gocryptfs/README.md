@@ -140,6 +140,13 @@ Unlike LUKS, there is no concept of "key slots" in gocryptfs.conf — it stores 
 
 ## Step-by-step adoption
 
+Two paths are supported:
+
+- **Migration from a running default-stack deployment** — openemr has already run first-boot on plaintext NFS; migrate the existing site contents into a newly-initialized gocryptfs backing. Simplest flow; the one the CI workflow exercises. **Caveat:** first-boot wrote `sqlconf.php` (containing the DB password) and the initial GACL rows to plaintext NFS. For deployments where even a historical plaintext snapshot of those credentials is disqualifying, use the greenfield path below.
+- **Greenfield adoption (no plaintext first-boot)** — the encrypted backing is initialized BEFORE openemr first-boot runs, so `sqlconf.php` and the demo seed land inside the gocryptfs mount from the beginning. More operationally tight (relies on racing kubelet to delete the default openemr Deployment before its pods boot) and gated by a defensive check that falls back to the migration path if that race is lost.
+
+### Migration from a running default-stack deployment
+
 Starting from a running #910 default stack:
 
 ```bash
@@ -147,17 +154,44 @@ Starting from a running #910 default stack:
 #    first-boot. Verify:
 kubectl get deployment openemr
 kubectl get pvc websitevolume sslvolume letsencryptvolume
-# Wait for openemr pods to reach Ready. openemr's first-boot writes
+# Wait for openemr pods to reach Ready AND verify that the leader
+# completed its first-boot seed. openemr's first-boot writes
 # sqlconf.php and seeds the admin user + Gacl rows; scaling to 0
 # before that completes would carry partial state through the
 # migration and the next boot inside gocryptfs would skip first-boot
 # while the DB is still incomplete (the AclMain::testAclCheckCore
-# flake). Applies to greenfield adoptions too — the first-boot seed
-# IS the data you want to migrate.
-kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
-
-# 1. Scale openemr to 0 so no pod is holding websitevolume open.
-kubectl scale deployment openemr --replicas=0
+# flake).
+#
+# Pod Ready alone is not quite enough on its own, even though the
+# default Deployment's readinessProbe is `cat /root/instance-swarm-
+# ready` which is only written after leader-election + setup
+# completes. The reason: `kubectl wait --for=condition=Ready` with a
+# label selector operates on the resources that match at invocation
+# time, and in the "pods scheduled but not yet Ready" window a
+# follower that has decided "leader marker exists → skip to fast
+# path" can satisfy Ready before the leader has finished writing
+# `$config = 1` to sqlconf.php (openemr's leader-election commits
+# the full seed, THEN flips the $config flag — the two-phase pattern
+# openemr/openemr#15084 formalized). Explicitly check sqlconf.php on
+# websitevolume shows `$config = 1`; that is the true "seed
+# complete" signal.
+#
+# The `&&` chain is load-bearing: if the wait times out (first-boot
+# wedged on some other issue — ganesha misbehaving, MySQL not
+# reachable, etc.) the scale command must NOT run. Scaling partial
+# first-boot preserves a half-configured sqlconf.php that the next
+# boot inside gocryptfs would then accept as "already configured"
+# and skip setup, leaving the DB without the initial admin user.
+kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s \
+  && \
+  # Verify the leader has committed the two-phase seed. $config = 1
+  # is written AFTER all seeding steps commit, so this flag's
+  # presence proves the admin user and GACL rows are in place.
+  kubectl exec deploy/openemr -c openemr -- \
+    sh -c 'grep -q "^\$config *= *1" /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php' \
+  && \
+  # 1. Scale openemr to 0 so no pod is holding websitevolume open.
+  kubectl scale deployment openemr --replicas=0
 kubectl wait --for=delete pod -l name=openemr --timeout=120s
 
 # 2. Create the gocryptfs passphrase Secret. In production, replace this
@@ -253,6 +287,101 @@ VALIDATE_FULL=1 ./validate-encryption.sh
 > inspect `/mnt/websitevolume/` from inside the `gocryptfs-mounter`
 > sidecar after migration and confirm that only `gocryptfs-backing/`
 > remains at the top level.
+
+### Greenfield adoption (no plaintext first-boot)
+
+Use this path when you need `sqlconf.php` (which carries the DB password) and the initial GACL seed to ONLY ever exist inside the gocryptfs mount — never as a plaintext file on `websitevolume`. The migration path above lets openemr first-boot land on plaintext NFS and then moves it under encryption afterwards; this path initializes the gocryptfs backing BEFORE openemr first-boot ever runs.
+
+The sequence relies on racing kubelet: `kub-up` creates the default openemr Deployment, and a pod is scheduled immediately. You must delete the Deployment (and let the pod terminate) before its startup script writes `sqlconf.php`. In practice first-boot takes minutes to complete (leader-election + schema install + demo seed), so there is comfortable headroom, but you still need to act promptly and check that no pod has advanced past the swarm-ready marker.
+
+```bash
+# 0. Bring up the default stack. This creates the mysql, redis,
+#    ganesha-nfs, phpmyadmin, and openemr Deployments. openemr pods
+#    begin first-boot immediately.
+./kubernetes/kub-up
+
+# 1. IMMEDIATELY delete the openemr Deployment before its pods
+#    advance through first-boot. The `--ignore-not-found` allows
+#    this to be idempotent if it ran during a kubelet gap.
+kubectl delete deployment openemr --ignore-not-found
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+
+# 2. Defensive check: confirm no openemr pod ever reached
+#    swarm-ready (i.e. no first-boot completed). If first-boot did
+#    land, sqlconf.php is already on plaintext NFS and the greenfield
+#    guarantee is lost — fall back to the migration path.
+#
+#    The simplest signal is the sqlconf.php file itself on
+#    websitevolume. If it does NOT exist, no pod wrote it. We check
+#    from a short-lived pod that mounts websitevolume read-only.
+cat <<'EOF' | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: greenfield-precheck
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  containers:
+  - name: check
+    image: alpine:3.24
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        if [ -e /mnt/websitevolume/default/sqlconf.php ]; then
+          echo "PLAINTEXT_SQLCONF_PRESENT: first-boot already landed on plaintext NFS"
+          echo "Greenfield guarantee is lost. Use the migration path instead,"
+          echo "or wipe websitevolume and start over."
+          exit 1
+        fi
+        echo "PRECHECK_OK: no plaintext sqlconf.php found; greenfield path is viable"
+    volumeMounts:
+      - name: websitevolume
+        mountPath: /mnt/websitevolume
+        readOnly: true
+  volumes:
+    - name: websitevolume
+      persistentVolumeClaim:
+        claimName: websitevolume
+EOF
+kubectl wait --for=condition=Ready pod/greenfield-precheck --timeout=60s \
+  || { kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; exit 1; }
+# The pod exits 0 on PRECHECK_OK, 1 otherwise. A "Succeeded" phase
+# means PRECHECK_OK; anything else means the check failed.
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/greenfield-precheck --timeout=60s \
+  || { echo "Greenfield precheck FAILED — see pod logs above"; kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; exit 1; }
+kubectl delete pod greenfield-precheck
+
+# 3. Create the gocryptfs passphrase Secret.
+kubectl apply -f gocryptfs-passphrase-secret.yaml
+
+# 4. Run the one-shot init Job against the (empty) websitevolume.
+#    This creates gocryptfs.conf + gocryptfs-backing/ WITHOUT any
+#    plaintext content ever landing at the top level.
+kubectl apply -f gocryptfs-init-job.yaml
+kubectl wait --for=condition=complete job/gocryptfs-init-websitevolume --timeout=120s
+kubectl logs job/gocryptfs-init-websitevolume
+
+# 5. Apply the gocryptfs-enabled openemr Deployment. The first boot
+#    of the first replica performs leader-election and writes
+#    sqlconf.php, the admin user, and GACL rows INSIDE the
+#    gocryptfs-decrypted view. Nothing ever lands on the backing NFS
+#    as plaintext.
+kubectl apply -f openemr-deployment-gocryptfs.yaml
+
+# 6. Wait for first-boot to complete inside the encrypted mount.
+#    Same two-phase readiness pattern as the migration path — Pod
+#    Ready alone can fire on a follower; verify $config = 1 is
+#    committed before considering the deployment seeded.
+kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
+kubectl exec deploy/openemr -c openemr -- \
+  sh -c 'grep -q "^\$config *= *1" /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'
+
+# 7. (Optional) validate.
+./validate-encryption.sh
+```
+
+**Known limitation.** This path is racy against very fast kubelet scheduling. If your cluster brings up openemr pods in milliseconds AND first-boot happens to not block on ganesha or mysql wait, step 1's `kubectl delete deployment` could arrive after the pod has already written sqlconf.php. The step 2 defensive check catches that case and tells you to switch to the migration path. In practice on the #910 stack, the mysql/redis init-container waits (plus ganesha mTLS handshake) give you minutes of headroom, so the race is comfortable — but DO rely on the precheck rather than assuming.
 
 ## What about rolling back?
 
