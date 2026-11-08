@@ -153,9 +153,18 @@ The correct rotation sequence is:
 Starting from a running #910 default stack:
 
 ```bash
-# 0. Prerequisites: #910 default stack is up. Verify:
+# 0. Prerequisites: #910 default stack is up AND openemr has completed
+#    first-boot. Verify:
 kubectl get deployment openemr
 kubectl get pvc websitevolume sslvolume letsencryptvolume
+# Wait for openemr pods to reach Ready. openemr's first-boot writes
+# sqlconf.php and seeds the admin user + Gacl rows; scaling to 0
+# before that completes would carry partial state through the
+# migration and the next boot inside LUKS would skip first-boot
+# while the DB is still incomplete (the AclMain::testAclCheckCore
+# flake). Applies to greenfield adoptions too — the first-boot seed
+# IS the data you want to migrate.
+kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
 
 # 1. Scale openemr to 0 so no pod is holding websitevolume open.
 kubectl scale deployment openemr --replicas=0
