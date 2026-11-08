@@ -295,7 +295,15 @@ The sequence relies on racing kubelet: `kub-up` creates the default openemr Depl
 #    advance through first-boot. The `--ignore-not-found` allows
 #    this to be idempotent if it ran during a kubelet gap.
 kubectl delete deployment openemr --ignore-not-found
-kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+# Fail the setup if any old openemr writer pod survives the delete
+# wait — proceeding past that point could race a still-finishing
+# first-boot and land plaintext on NFS between the precheck and the
+# LUKS format step. If the first command here raced the Deployment
+# delete and found no pods (exit 1 from kubectl wait on an empty
+# set), we accept that and move on.
+kubectl wait --for=delete pod -l name=openemr --timeout=120s \
+  || [ -z "$(kubectl get pods -l name=openemr -o name 2>/dev/null)" ] \
+  || { echo "ERROR: openemr pods remained after delete wait — aborting."; exit 1; }
 
 # 2. Defensive check: confirm no openemr pod ever reached
 #    swarm-ready (i.e. no first-boot completed). If first-boot did
@@ -335,15 +343,22 @@ spec:
       persistentVolumeClaim:
         claimName: websitevolume
 EOF
-kubectl wait --for=condition=Ready pod/greenfield-precheck --timeout=60s \
-  || { kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; exit 1; }
-# The pod exits 0 on PRECHECK_OK, 1 otherwise. A "Succeeded" phase
-# means PRECHECK_OK; anything else means the check failed.
+# The pod exits 0 on PRECHECK_OK, 1 otherwise. The Succeeded-phase
+# wait is the correct completion signal — a fast-completing pod can
+# go Pending → Running → Succeeded faster than a `--for=condition=Ready`
+# wait can observe, so don't layer that in front.
 kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/greenfield-precheck --timeout=60s \
-  || { echo "Greenfield precheck FAILED — see pod logs above"; kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; exit 1; }
+  || { echo "Greenfield precheck FAILED — see pod logs"; kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; exit 1; }
 kubectl delete pod greenfield-precheck
 
 # 3. Create the LUKS passphrase Secret.
+#    EDIT the passphrase in luks-passphrase-secret.yaml FIRST before
+#    applying. The committed value is a public placeholder and the
+#    format Job below WILL REFUSE to run against it — leaving the
+#    placeholder in the Secret is not a safety net, it's a dead end.
+#    In production, provision this Secret via External Secrets
+#    Operator (ESO) instead of applying the placeholder manifest at
+#    all; see § Key management above.
 kubectl apply -f luks-passphrase-secret.yaml
 
 # 4. Run the one-shot format Job against the (empty) websitevolume.
