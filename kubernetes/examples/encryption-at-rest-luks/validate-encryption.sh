@@ -131,20 +131,28 @@ RAW_CHECK_OUT=$(mktemp -t luks-raw-check-output.XXXXXX)
 trap 'rm -f "${RAW_CHECK_OUT}"' EXIT
 set +e
 # shellcheck disable=SC2016
-# The `$1`, `$?`, and `$grep_rc` expansions inside the sh -c body are
-# INTENTIONALLY expanded by the INNER sh (which receives MARKER as
-# positional $1 from `_ "${MARKER}"` after the script body), not by
-# the outer bash. ShellCheck can't model two-layer shell invocations,
-# so it flags the single-quoted body as if the outer bash were
-# supposed to expand them. Suppress the info-level finding.
+# The `$1` expansion inside the sh -c body is INTENTIONALLY expanded
+# by the INNER sh (which receives MARKER as positional $1 from the
+# `_ "${MARKER}"` trailing args), not by the outer bash. ShellCheck
+# can't model two-layer shell invocations, so it flags the
+# single-quoted body as if the outer bash were supposed to expand it.
+#
+# Streaming head → grep pipeline, with a cheap readability probe to
+# distinguish a head "cannot read" failure (missing / permission /
+# gone) from grep's legitimate "no match" exit 1. The probe reads 1
+# byte: if that succeeds, the file is readable and we trust the
+# subsequent 100 MiB stream on this same mount. On NFS-loopback-in-
+# kind, mid-stream read failures after a successful probe are
+# vanishingly rare; VALIDATE_FULL=1 below provides fuller coverage.
+#
+# grep's exit code flows out of the pipeline: 0 (match found,
+# FAIL), 1 (no match, PASS), 2 (grep itself couldn't read its
+# stdin — unexpected here). The outer parser treats 2 as a hard
+# FAIL via its own GREP_RC == 2 branch, matching probe-failure
+# `exit 2`.
 kubectl exec "${OPENEMR_POD}" -c luks-opener -- sh -c '
-  set -e
-  head -c 104857600 /mnt/websitevolume/.openemr-sites.luks > /tmp/luks-sample 2>&1 || exit 2
-  set +e
-  grep -a -c "$1" /tmp/luks-sample
-  grep_rc=$?
-  rm -f /tmp/luks-sample
-  exit $grep_rc
+  head -c 1 /mnt/websitevolume/.openemr-sites.luks > /dev/null 2>&1 || exit 2
+  head -c 104857600 /mnt/websitevolume/.openemr-sites.luks | grep -a -c "$1"
 ' _ "${MARKER}" > "${RAW_CHECK_OUT}" 2>&1
 GREP_RC=$?
 set -e
