@@ -17,6 +17,7 @@ updates:
     - "/kubernetes/redis"
     - "/kubernetes/phpmyadmin"
     - "/kubernetes/nfs"
+    - "/kubernetes/examples/encryption-at-rest-luks"
     schedule:
       interval: "daily"
     cooldown:

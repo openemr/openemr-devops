@@ -1,0 +1,165 @@
+# One-shot Job that creates the LUKS container file on the NFS-backed PVC
+# and formats it with ext4.
+#
+# Run this ONCE per deployment lifetime, BEFORE applying
+# openemr-deployment-luks.yaml. Running it twice (or on a non-empty LUKS file)
+# will refuse — `cryptsetup luksFormat` refuses to overwrite an existing header
+# by default, which is the correct behavior and what keeps you from wiping
+# patient data by mistake. Delete the file explicitly if you truly intend to
+# reformat.
+#
+# Sizing: the file is pre-allocated to CONTAINER_SIZE (default 8G) and lives
+# inside websitevolume. Pick a size that fits inside the backing NFS PV
+# (see nfs/nfs-server-pvc.yaml — default 10Gi, shared across all three RWX
+# subdirs) with headroom for sslvolume/letsencryptvolume. The LUKS container
+# file does NOT auto-grow; resizing later is a manual operation (grow the
+# backing file with `fallocate`, then `cryptsetup resize` + `resize2fs`).
+#
+# Privilege: this Job requires privileged: true on the busybox-cryptsetup
+# container because `cryptsetup luksFormat` reads from /dev/loop* (loop
+# device creation requires CAP_SYS_ADMIN and a usable /dev).
+#
+# Prerequisites:
+#   1. websitevolume PVC must exist (apply the default #910 stack first).
+#   2. The openemr Deployment should be scaled to 0 replicas before running
+#      this Job, so no pod has websitevolume mounted and open file handles
+#      cannot race with the format.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: luks-format-websitevolume
+spec:
+  # ttlSecondsAfterFinished auto-cleans completed Jobs so a repeated
+  # `kubectl apply` of this file is a no-op after success.
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        name: luks-format-websitevolume
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+      - name: luks-format
+        # Alpine with cryptsetup installed at container start.
+        # The image needs: cryptsetup, e2fsprogs (mkfs.ext4), util-linux
+        # (losetup), coreutils (fallocate/dd).
+        # Pinned to the same alpine digest as the nfs-server deployment's
+        # stunnel containers (kubernetes/nfs/) so dependabot's
+        # "infrastructure" group bumps them all together.
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -euo pipefail
+
+          # Install tools. In production, bake these into a pinned image
+          # rather than installing at pod start.
+          apk add --no-cache cryptsetup e2fsprogs util-linux
+
+          LUKS_FILE=/mnt/websitevolume/.openemr-sites.luks
+          CONTAINER_SIZE=${CONTAINER_SIZE:-8G}
+          MAPPER_NAME=openemr-sites-format
+
+          if [ -f "$LUKS_FILE" ]; then
+            echo "ERROR: $LUKS_FILE already exists. Refusing to overwrite."
+            echo "If you intend to wipe and reformat, delete the file first:"
+            echo "  kubectl exec -it <any-pod-mounting-websitevolume> -- rm $LUKS_FILE"
+            exit 1
+          fi
+
+          # Refuse to proceed if the Secret still contains the published
+          # placeholder passphrase (literally checked into this repo). This
+          # prevents an operator from accidentally formatting a LUKS header
+          # whose only key is the public example value.
+          PLACEHOLDER='example-development-passphrase-REPLACE-ME'
+          if [ "$(cat /etc/luks/passphrase)" = "$PLACEHOLDER" ]; then
+            echo "ERROR: luks-passphrase Secret still contains the published"
+            echo "placeholder passphrase. Replace it with a real high-entropy"
+            echo "value (ideally via External Secrets Operator — see README)"
+            echo "before running this Job."
+            exit 1
+          fi
+
+          # Cleanup trap: on any failure after this point, remove the
+          # partially-formatted LUKS file we created and close any dangling
+          # mapper so a rerun can start from a clean state. The trap is
+          # cleared explicitly after the final chmod succeeds. The -f guard
+          # above ensures we only ever clean a file this Job itself created.
+          cleanup_on_error() {
+            rc=$?
+            echo "Format Job failed (exit $rc) — cleaning up partial artifacts"
+            cryptsetup luksClose "$MAPPER_NAME" 2>/dev/null || true
+            rm -f "$LUKS_FILE" || true
+            exit "$rc"
+          }
+          trap cleanup_on_error EXIT
+
+          echo "Pre-allocating LUKS container file: $LUKS_FILE ($CONTAINER_SIZE)"
+          # fallocate is a hole-punching sparse allocation — on NFS it
+          # degrades to a real write of zeros on servers that don't
+          # support FALLOC_FL_KEEP_SIZE. That's fine; the point is to
+          # reserve the space up front and avoid fragmentation.
+          fallocate -l "$CONTAINER_SIZE" "$LUKS_FILE" || \
+            dd if=/dev/zero of="$LUKS_FILE" bs=1M count=$(echo "$CONTAINER_SIZE" | sed 's/G/*1024/' | bc)
+
+          echo "Formatting with LUKS2 (Argon2id KDF)"
+          # LUKS2 is the modern format. --batch-mode suppresses the
+          # interactive "THIS WILL OVERWRITE" prompt (we gated on
+          # file-exists above). --type luks2 is default on modern
+          # cryptsetup but pin it explicitly for clarity.
+          cryptsetup luksFormat \
+            --type luks2 \
+            --batch-mode \
+            --key-file /etc/luks/passphrase \
+            "$LUKS_FILE"
+
+          echo "Opening the newly-formatted container to create the filesystem"
+          cryptsetup luksOpen \
+            --key-file /etc/luks/passphrase \
+            "$LUKS_FILE" \
+            "$MAPPER_NAME"
+
+          echo "Creating ext4 filesystem on /dev/mapper/$MAPPER_NAME"
+          mkfs.ext4 -q -L openemr-sites "/dev/mapper/$MAPPER_NAME"
+
+          echo "Closing the format-time mapping"
+          cryptsetup luksClose "$MAPPER_NAME"
+
+          echo "Setting restrictive permissions on the LUKS container file"
+          chmod 0600 "$LUKS_FILE"
+
+          # Final success — clear the cleanup trap so a later non-zero exit
+          # (e.g. ls below) cannot wipe the valid LUKS file we just created.
+          trap - EXIT
+
+          echo "LUKS container file created successfully: $LUKS_FILE"
+          ls -la "$LUKS_FILE"
+        env:
+        - name: CONTAINER_SIZE
+          value: "8G"
+        securityContext:
+          # cryptsetup + losetup need CAP_SYS_ADMIN and access to /dev,
+          # which in practice means privileged: true on most clusters.
+          # This is explicitly scoped to this one-shot Job — the long-lived
+          # openemr pod does not need its MAIN container privileged.
+          privileged: true
+        volumeMounts:
+        - name: websitevolume
+          mountPath: /mnt/websitevolume
+        - name: luks-passphrase
+          mountPath: /etc/luks
+          readOnly: true
+      volumes:
+      - name: websitevolume
+        persistentVolumeClaim:
+          claimName: websitevolume
+      - name: luks-passphrase
+        secret:
+          secretName: luks-passphrase
+          defaultMode: 0400
+          items:
+          - key: passphrase
+            path: passphrase
