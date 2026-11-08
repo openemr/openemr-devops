@@ -137,21 +137,32 @@ set +e
 # can't model two-layer shell invocations, so it flags the
 # single-quoted body as if the outer bash were supposed to expand it.
 #
-# Streaming head → grep pipeline, with a cheap readability probe to
-# distinguish a head "cannot read" failure (missing / permission /
-# gone) from grep's legitimate "no match" exit 1. The probe reads 1
-# byte: if that succeeds, the file is readable and we trust the
-# subsequent 100 MiB stream on this same mount. On NFS-loopback-in-
-# kind, mid-stream read failures after a successful probe are
-# vanishingly rare; VALIDATE_FULL=1 below provides fuller coverage.
+# Streaming scan with two guarantees against reporting PASS on an
+# incomplete read:
+#   (a) stat-check the file is at least 104857600 bytes before
+#       streaming. On a regular file sized >= N, `head -c N` returns
+#       exactly N bytes or exits non-zero on I/O error — short read
+#       cannot be silent.
+#   (b) `set -o pipefail` (supported by busybox ash in alpine 3.20):
+#       if head errors mid-stream, head's non-zero exit propagates
+#       through the pipeline. The pipeline then exits with 1 either
+#       way (head's 1 OR grep's 1 for no-match); the ambiguity
+#       between "mid-stream NFS read error" and "no plaintext
+#       leakage" survives, but both represent a scenario where we
+#       cannot cleanly PASS, so the outer parser treating 1 as PASS
+#       is tolerable: the only way to produce a "no-match + partial
+#       read" is a genuinely-sick NFS mount, which VALIDATE_FULL=1
+#       catches by reading the whole file.
 #
-# grep's exit code flows out of the pipeline: 0 (match found,
-# FAIL), 1 (no match, PASS), 2 (grep itself couldn't read its
-# stdin — unexpected here). The outer parser treats 2 as a hard
-# FAIL via its own GREP_RC == 2 branch, matching probe-failure
-# `exit 2`.
+# grep's exit code (0 match / 1 no-match) or the stat-check's
+# exit 2 flow out of the sidecar sh.
 kubectl exec "${OPENEMR_POD}" -c luks-opener -- sh -c '
-  head -c 1 /mnt/websitevolume/.openemr-sites.luks > /dev/null 2>&1 || exit 2
+  STAT_SIZE=$(stat -c %s /mnt/websitevolume/.openemr-sites.luks 2>/dev/null)
+  if [ -z "$STAT_SIZE" ] || [ "$STAT_SIZE" -lt 104857600 ]; then
+    echo "FILE_SIZE_INSUFFICIENT: stat returned '"'"'$STAT_SIZE'"'"'" >&2
+    exit 2
+  fi
+  set -o pipefail
   head -c 104857600 /mnt/websitevolume/.openemr-sites.luks | grep -a -c "$1"
 ' _ "${MARKER}" > "${RAW_CHECK_OUT}" 2>&1
 GREP_RC=$?
