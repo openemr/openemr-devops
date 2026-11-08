@@ -286,9 +286,15 @@ Use this path when you need `sqlconf.php` (which carries the DB password) and th
 The sequence relies on racing kubelet: `kub-up` creates the default openemr Deployment, and a pod is scheduled immediately. You must delete the Deployment (and let the pod terminate) before its startup script writes `sqlconf.php`. In practice first-boot takes minutes to complete (leader-election + schema install + demo seed), so there is comfortable headroom, but you still need to act promptly and check that no pod has advanced past the swarm-ready marker.
 
 ```bash
+# All commands run from the repository root unless noted otherwise.
+# The one exception is step 3 onwards (manifests local to this
+# example), which assume you have `cd`'d into the example directory
+# first — that transition is marked inline below.
+cd /path/to/openemr-devops   # replace with the clone's actual path
+
 # 0. Bring up the default stack. This creates the mysql, redis,
 #    ganesha-nfs, phpmyadmin, and openemr Deployments. openemr pods
-#    begin first-boot immediately.
+#    begin first-boot immediately. Run from the repo root.
 ./kubernetes/kub-up
 
 # 1. IMMEDIATELY delete the openemr Deployment before its pods
@@ -298,12 +304,23 @@ kubectl delete deployment openemr --ignore-not-found
 # Fail the setup if any old openemr writer pod survives the delete
 # wait — proceeding past that point could race a still-finishing
 # first-boot and land plaintext on NFS between the precheck and the
-# LUKS format step. If the first command here raced the Deployment
-# delete and found no pods (exit 1 from kubectl wait on an empty
-# set), we accept that and move on.
-kubectl wait --for=delete pod -l name=openemr --timeout=120s \
-  || [ -z "$(kubectl get pods -l name=openemr -o name 2>/dev/null)" ] \
-  || { echo "ERROR: openemr pods remained after delete wait — aborting."; exit 1; }
+# LUKS format step.
+#
+# Fail closed if the `kubectl get pods` probe itself errors. A
+# command-not-found, auth failure, or apiserver outage returns a
+# non-zero exit AND an empty stdout — `[ -z "" ]` would then pass
+# vacuously and let the pipeline proceed with no idea whether pods
+# remain. Capture the two signals (stdout + exit) separately.
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+if ! probe=$(kubectl get pods -l name=openemr -o name 2>&1); then
+  echo "ERROR: could not list openemr pods to verify delete: $probe"
+  exit 1
+fi
+if [ -n "$probe" ]; then
+  echo "ERROR: openemr pods remained after delete wait — aborting:"
+  echo "$probe"
+  exit 1
+fi
 
 # 2. Defensive check: confirm no openemr pod ever reached
 #    swarm-ready (i.e. no first-boot completed). If first-boot did
@@ -327,6 +344,26 @@ spec:
     command: ["/bin/sh", "-c"]
     args:
       - |
+        # Three distinct outcomes:
+        #  - file exists: greenfield guarantee is lost, exit 1
+        #  - file does NOT exist AND the mount is reachable: greenfield
+        #    path is viable, exit 0
+        #  - cannot determine (mountpoint missing, permissions error,
+        #    stat system call failed for any other reason): fail closed
+        #    with exit 2 so the operator does not mistake a broken
+        #    check for a successful precheck.
+        if [ ! -d /mnt/websitevolume ]; then
+          echo "PRECHECK_UNKNOWN: /mnt/websitevolume is not accessible as a directory"
+          exit 2
+        fi
+        # Probe the directory itself before trusting the file-existence
+        # test. `ls` failing on the mountpoint indicates a permissions
+        # or NFS-visibility problem distinct from "sqlconf.php does not
+        # exist"; we must not treat that as PRECHECK_OK.
+        if ! ls /mnt/websitevolume >/dev/null 2>&1; then
+          echo "PRECHECK_UNKNOWN: cannot list /mnt/websitevolume"
+          exit 2
+        fi
         if [ -e /mnt/websitevolume/default/sqlconf.php ]; then
           echo "PLAINTEXT_SQLCONF_PRESENT: first-boot already landed on plaintext NFS"
           echo "Greenfield guarantee is lost. Use the migration path instead,"
@@ -348,8 +385,13 @@ EOF
 # go Pending → Running → Succeeded faster than a `--for=condition=Ready`
 # wait can observe, so don't layer that in front.
 kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/greenfield-precheck --timeout=60s \
-  || { echo "Greenfield precheck FAILED — see pod logs"; kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; exit 1; }
+  || { echo "Greenfield precheck FAILED — see pod logs"; kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; echo ""; echo "Next steps: switch to the Migration path (§ 'Migration from a running default-stack deployment' above)."; echo "BEFORE doing so, clean up any partial greenfield artifacts from the current attempt:"; echo "  - delete the greenfield-precheck pod (already attempted above)"; echo "  - delete any passphrase Secret created in step 3: kubectl delete secret luks-passphrase --ignore-not-found"; echo "  - delete any orphaned format Job if step 4 was reached: kubectl delete job luks-format-websitevolume --ignore-not-found"; echo "  - the plaintext sqlconf.php on websitevolume is the signal that migration is now the correct path — do NOT wipe websitevolume"; exit 1; }
 kubectl delete pod greenfield-precheck
+
+# Switch into the example directory for the manifests that follow.
+# The remaining `kubectl apply -f <local-file>` references are
+# resolved relative to THIS directory, not the repo root.
+cd kubernetes/examples/encryption-at-rest-luks
 
 # 3. Create the LUKS passphrase Secret.
 #    EDIT the passphrase in luks-passphrase-secret.yaml FIRST before
@@ -379,6 +421,16 @@ kubectl apply -f openemr-deployment-luks.yaml
 #    Ready alone can fire while setup is still underway; verify
 #    $config = 1 is committed before considering the deployment
 #    seeded.
+#
+#    First wait for the Deployment's rollout to progress to the point
+#    where its pods exist. `kubectl wait -l name=openemr pod` with
+#    `--for=condition=Ready` snapshots the Pod set at invocation time
+#    and returns immediately with "no matching resources found" if the
+#    Deployment has not yet created a pod (the kube-controller-manager
+#    may lag the `kubectl apply` by a second or two on a loaded
+#    cluster). `rollout status` blocks on the Deployment's own status,
+#    so it does not race pod creation.
+kubectl rollout status deployment/openemr --timeout=1200s
 kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
 kubectl exec deploy/openemr -c openemr -- \
   sh -c 'grep -q "^\$config *= *1" /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'
