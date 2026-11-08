@@ -61,7 +61,10 @@ The `-sharedstorage` mount option disables gocryptfs's own metadata caching so t
 **What is NOT safe without application-level coordination:**
 
 - Concurrent writes to the **same** file from multiple replicas. gocryptfs does not provide cross-pod file locking. If two replicas truly need to coordinate same-file writes, OpenEMR (or the operator) must provide that coordination — same as on any POSIX-RWX shared filesystem. In practice, OpenEMR does not have this pattern at the `sites/` layer: session state lives in Redis, per-request temp files use unique names, and document uploads use unique paths. The one caveat worth calling out is first-boot leader election via the shared sites volume (see `startupProbe` comment in the default `deployment.yaml`): this is the only place OpenEMR writes a specific well-known marker path from multiple replicas on startup. The existing election logic already handles the "another leader got there first" race by checking before writing and is tested on multi-replica NFS; it works the same way on gocryptfs-over-NFS.
-- A replica reading a file that another replica is **actively overwriting**. gocryptfs rewrites a file as a sequence of fixed-size encrypted blocks on the backing store; a reader whose read lands between the writer's block-level flushes can see one block from the OLD ciphertext followed by one block from the NEW ciphertext, which authenticates as valid blocks individually but is nonsense as a sequence. The gocryptfs kernel path then returns an I/O error to the reader rather than silently returning partial-mixed data. This is a correctness-by-design behavior (an authenticated-encryption filesystem cannot fabricate a consistent view across a concurrent overwrite), but it does mean that any OpenEMR code path that reads a file another replica is simultaneously rewriting may see `EIO`. If reads must succeed in that scenario, the application must coordinate the writer and readers (e.g. write to a temp file and `rename()` into place — which OpenEMR's upload path already does; the caveat applies only to custom code or modules that rewrite files in place).
+- A replica reading a file that another replica is **actively overwriting**. gocryptfs rewrites a file as a sequence of fixed-size encrypted blocks on the backing store. A reader whose read lands between the writer's block-level flushes can land in either of two bad outcomes:
+  1. **Mixed-but-valid blocks (no error).** The read returns one block of the OLD ciphertext followed by one block of the NEW ciphertext. Each block authenticates as valid on its own — gocryptfs's per-block AEAD tag covers only that block's plaintext + block-index + file-id, not cross-block ordering — so the reader sees a seamless response code-path-wise but the byte sequence is nonsensical as application data. The read call does NOT return an error.
+  2. **Torn block (`EIO`).** The read lands in the middle of a specific block the writer is partway through flushing. The partial ciphertext fails per-block authentication and gocryptfs surfaces that as an I/O error to the reader.
+  Which outcome you get depends on alignment between the writer's flush boundaries and the reader's request offsets, and is not predictable. This is correctness-by-design behavior (an authenticated-encryption filesystem cannot fabricate a consistent view across a concurrent overwrite), but the first outcome is the dangerous one: callers that assume "read succeeded → bytes are coherent" see garbage without any error signal. **If a consistent view matters, coordinate readers and writers at the application layer.** The standard pattern — write to a temp file and `rename()` into place — moves the concurrency boundary to the directory level where it is atomic, and is what OpenEMR's upload path already does. The caveat applies to any custom code or module that rewrites files in place without a rename-based swap.
 
 If your OpenEMR deployment adds a feature that concurrent-writes a shared `sites/` path from multiple replicas without coordination, that feature is already broken on the default NFS stack, not just this example — the fix belongs in OpenEMR core, not here.
 
@@ -284,19 +287,49 @@ kubectl wait --for=delete pod -l name=openemr --timeout=120s
 #      # expects. Reconcile any leftover siblings of gocryptfs-backing/
 #      # at /ws (there should be none after the adoption-step 3b
 #      # cleanup, but defensively handle any that exist).
-#      for entry in /ws/.rollback-staging/*; do
+#      #
+#      # Include hidden entries (shopt -s dotglob under bash, or the
+#      # `.* *` pair pattern under /bin/sh). The sidecar's startup
+#      # writes a `.gocryptfs-ready` marker INSIDE the decrypted view
+#      # as the readiness signal, so the staged rsync tree WILL contain
+#      # at least one dotfile. A plain `*` glob skips it, which means
+#      # the subsequent `rmdir /ws/.rollback-staging` fails on a
+#      # non-empty directory AND any genuine user dotfiles (e.g.
+#      # `.htaccess`) get stranded in staging.
+#      #
+#      # Abort on the FIRST promotion failure. `rm -rf /ws/gocryptfs-
+#      # backing` below is irreversible; if a promotion fails partway
+#      # through (destination collision, mv I/O error, etc.) we must
+#      # NOT delete the backing dir — it is still the only intact copy
+#      # of the data. Set -e ensures each mv failure propagates; the
+#      # `|| exit 1` on rmdir catches the "non-empty staging"
+#      # post-condition explicitly.
+#      set -e
+#      shopt -s dotglob 2>/dev/null || true
+#      for entry in /ws/.rollback-staging/* /ws/.rollback-staging/.*; do
 #        base=$(basename "$entry")
-#        [ "$base" = "gocryptfs-backing" ] && continue
+#        # Skip the glob-no-match literals and the self/parent refs.
+#        case "$base" in
+#          '*'|'.*'|.|..) continue ;;
+#          gocryptfs-backing) continue ;;
+#        esac
 #        if [ -e "/ws/$base" ]; then
 #          echo "WARN: /ws/$base already exists — reconcile manually"
 #          exit 1
 #        fi
 #        mv "$entry" "/ws/$base"
 #      done
-#      rmdir /ws/.rollback-staging
-#      # Only NOW remove the gocryptfs backing dir. If anything above
-#      # failed, the backing dir is still intact and recovery is
-#      # possible.
+#      # rmdir is the fail-closed gate: if any promotion failed to move
+#      # a file out of staging, this exits non-zero and the backing
+#      # dir is preserved.
+#      rmdir /ws/.rollback-staging || {
+#        echo "ERROR: /ws/.rollback-staging not empty after promotion loop"
+#        ls -la /ws/.rollback-staging
+#        exit 1
+#      }
+#      # Only NOW remove the gocryptfs backing dir. Every promoted
+#      # entry (including dotfiles) has landed at /ws/, and the
+#      # staging dir has been successfully rmdir'd.
 #      rm -rf /ws/gocryptfs-backing
 
 # 3. Re-apply the default kubernetes/openemr/deployment.yaml. The
