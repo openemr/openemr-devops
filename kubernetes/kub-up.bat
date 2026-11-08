@@ -3,7 +3,30 @@
 kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
 REM bring in cert-manager (the NFS mTLS layer below requires it)
+REM
+REM github.com's release-download endpoint occasionally returns 504
+REM Gateway Timeout under load (observed persistently in CI on
+REM 2026-11-08). kubectl apply is idempotent on this manifest so
+REM retrying is safe. 3 attempts; linear backoff via timeout(1).
+set CERT_MANAGER_ATTEMPTS=0
+:cert_manager_retry
+set /a CERT_MANAGER_ATTEMPTS+=1
 kubectl apply --validate=false -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
+if %errorlevel%==0 goto cert_manager_applied
+if %CERT_MANAGER_ATTEMPTS% geq 3 (
+    echo ERROR: cert-manager apply failed after 3 attempts.
+    echo Check https://www.githubstatus.com and retry.
+    exit /b 1
+)
+echo ...cert-manager apply attempt %CERT_MANAGER_ATTEMPTS% failed; retrying...
+REM Use `ping` as a portable 20-second delay. `timeout` requires a TTY
+REM and fails silently when the script's stdin is redirected (e.g.
+REM `kub-up.bat < some-input` or CI non-interactive runs).
+REM `ping -n 21 127.0.0.1 >nul` waits ~20s (first ping is immediate,
+REM subsequent 20 are 1s apart).
+ping -n 21 127.0.0.1 >nul
+goto cert_manager_retry
+:cert_manager_applied
 kubectl wait --for=condition=Available --timeout=120s -n cert-manager deployment/cert-manager-webhook
 timeout 15
 
