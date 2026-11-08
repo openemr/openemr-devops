@@ -1,0 +1,168 @@
+# One-shot Job that initializes a gocryptfs encrypted directory on the
+# NFS-backed PVC.
+#
+# Run this ONCE per deployment lifetime, BEFORE applying
+# openemr-deployment-gocryptfs.yaml. Running it twice (against an already-
+# initialized backing dir) will refuse — `gocryptfs -init` refuses to
+# overwrite an existing `gocryptfs.conf` by default, which is the correct
+# behavior and what keeps you from re-keying patient data by mistake. Delete
+# `gocryptfs.conf` explicitly if you truly intend to re-init (and be aware
+# that doing so strands all existing ciphertext under a key you no longer
+# have).
+#
+# Sizing: gocryptfs does NOT pre-allocate storage. It writes each plaintext
+# file as an individually-encrypted file into the backing directory on
+# demand. The two artifacts `-init` creates — `gocryptfs.conf` (~KB, the
+# master-key wrap record) and `gocryptfs.diriv` (16 bytes, the per-directory
+# IV for filename encryption) — are tiny. Total on-disk footprint grows with
+# actual data, same as the plaintext would.
+#
+# Privilege: this Job does NOT require privileged: true. `gocryptfs -init`
+# only writes two regular files into the backing directory; no FUSE mount,
+# no loop device, no kernel-level work happens here. That's a meaningful
+# operational difference from the LUKS example's format Job, which DID need
+# privileged for loop/dm-crypt setup.
+#
+# Prerequisites:
+#   1. websitevolume PVC must exist (apply the default #910 stack first).
+#   2. The openemr Deployment should be scaled to 0 replicas before running
+#      this Job, so no pod has websitevolume mounted and no concurrent
+#      gocryptfs mounts can race with the init.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gocryptfs-init-websitevolume
+spec:
+  # ttlSecondsAfterFinished auto-cleans completed Jobs so a repeated
+  # `kubectl apply` of this file is a no-op after success.
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        name: gocryptfs-init-websitevolume
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+      - name: gocryptfs-init
+        # Alpine with gocryptfs installed at container start.
+        # The image needs: gocryptfs (which depends on FUSE libs; the
+        # package pulls them in). fuse3 is not strictly required at
+        # init time (no mount happens), but we install it so the same
+        # image can be used for manual verification.
+        # Pinned to the same alpine digest as the nfs-server deployment's
+        # stunnel containers (kubernetes/nfs/) so dependabot's
+        # "infrastructure" group bumps them all together.
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -euo pipefail
+
+          # Install tools. In production, bake these into a pinned image
+          # rather than installing at pod start.
+          apk add --no-cache gocryptfs fuse3
+
+          BACKING_DIR=/mnt/websitevolume/gocryptfs-backing
+          CONF_FILE=$BACKING_DIR/gocryptfs.conf
+
+          if [ -f "$CONF_FILE" ]; then
+            echo "ERROR: $CONF_FILE already exists. Refusing to re-init."
+            echo "If you truly intend to re-init (destroying access to"
+            echo "all existing ciphertext under the old key), delete the"
+            echo "entire backing directory first:"
+            echo "  kubectl exec -it <any-pod-mounting-websitevolume> -- rm -rf $BACKING_DIR"
+            exit 1
+          fi
+
+          # Refuse to proceed if the Secret still contains the published
+          # placeholder passphrase (literally checked into this repo). This
+          # prevents an operator from accidentally initializing a gocryptfs
+          # directory whose only key is the public example value.
+          PLACEHOLDER='example-development-passphrase-REPLACE-ME'
+          if [ "$(cat /etc/gocryptfs/passphrase)" = "$PLACEHOLDER" ]; then
+            echo "ERROR: gocryptfs-passphrase Secret still contains the published"
+            echo "placeholder passphrase. Replace it with a real high-entropy"
+            echo "value (ideally via External Secrets Operator — see README)"
+            echo "before running this Job."
+            exit 1
+          fi
+
+          # Cleanup trap: on any failure after this point, remove the
+          # partially-initialized backing directory we created so a rerun
+          # can start from a clean state. The trap is cleared explicitly
+          # after the init succeeds. The pre-flight check above ensures
+          # we only ever clean a directory this Job itself created in
+          # this run.
+          cleanup_on_error() {
+            rc=$?
+            echo "Init Job failed (exit $rc) — cleaning up partial artifacts"
+            rm -rf "$BACKING_DIR" || true
+            exit "$rc"
+          }
+          trap cleanup_on_error EXIT
+
+          echo "Creating backing directory: $BACKING_DIR"
+          mkdir -p "$BACKING_DIR"
+          chmod 0700 "$BACKING_DIR"
+
+          echo "Initializing gocryptfs (scrypt KDF, AES-GCM / AES-GCM-SIV content, EME filenames)"
+          # -init          : create gocryptfs.conf + gocryptfs.diriv
+          # -q             : quiet (no tty prompts; -passfile supplies the key)
+          # -passfile FILE : read passphrase from file (not stdin, not env)
+          #
+          # The specific content cipher depends on gocryptfs version:
+          #   - v2.0+ defaults to AES-GCM (hardware-accelerated on modern CPUs).
+          #   - Older versions default to AES-GCM-SIV.
+          # Both are AEAD with 128-bit auth tag; validate-encryption.sh
+          # accepts either.
+          gocryptfs -init -q \
+            -passfile /etc/gocryptfs/passphrase \
+            "$BACKING_DIR"
+
+          echo "Setting restrictive permissions on gocryptfs.conf"
+          chmod 0600 "$CONF_FILE"
+
+          # Final success — clear the cleanup trap so a later non-zero exit
+          # (e.g. ls below) cannot wipe the valid backing dir we just created.
+          trap - EXIT
+
+          echo "gocryptfs backing directory initialized: $BACKING_DIR"
+          ls -la "$BACKING_DIR"
+          echo
+          echo "gocryptfs.conf summary:"
+          # gocryptfs.conf is JSON with the master-key wrap params and
+          # feature flags. Show its Version/Creator/FeatureFlags to prove
+          # it parsed correctly. We avoid printing the EncryptedKey/
+          # ScryptObject fields — they are the wrapped key material, not
+          # secret per se (the passphrase protects them) but there is no
+          # reason to spill them into Job logs.
+          grep -E '"(Version|Creator|FeatureFlags)"' "$CONF_FILE" || true
+        securityContext:
+          # `gocryptfs -init` writes two regular files into a regular
+          # directory. No FUSE mount here, no loop device, no kernel-
+          # level work. This Job runs unprivileged — materially simpler
+          # than the LUKS format Job.
+          allowPrivilegeEscalation: false
+          runAsNonRoot: false
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: websitevolume
+          mountPath: /mnt/websitevolume
+        - name: gocryptfs-passphrase
+          mountPath: /etc/gocryptfs
+          readOnly: true
+      volumes:
+      - name: websitevolume
+        persistentVolumeClaim:
+          claimName: websitevolume
+      - name: gocryptfs-passphrase
+        secret:
+          secretName: gocryptfs-passphrase
+          defaultMode: 0400
+          items:
+          - key: passphrase
+            path: passphrase

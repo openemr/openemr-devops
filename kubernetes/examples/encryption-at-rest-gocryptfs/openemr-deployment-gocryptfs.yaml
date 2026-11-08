@@ -1,0 +1,431 @@
+# OpenEMR Deployment with in-pod gocryptfs encryption-at-rest over NFS.
+#
+# This is a MODIFIED copy of kubernetes/openemr/deployment.yaml, with the
+# following changes:
+#
+#   1. replicas: 3 (unchanged from default) + strategy: RollingUpdate
+#      gocryptfs in -sharedstorage mode safely supports concurrent mounts
+#      against the same backing directory. Unlike the LUKS sibling example
+#      (which must run single-replica because ext4 inside LUKS is single-
+#      writer), this example preserves the default stack's multi-replica
+#      topology. See README.md § "Concurrent-writer semantics" for the
+#      exact workload caveats.
+#
+#   2. New native sidecar `gocryptfs-mounter` (restartPolicy: Always on an
+#      initContainer, K8s 1.29+ GA). This container is PRIVILEGED (needs
+#      /dev/fuse + CAP_SYS_ADMIN to fuse-mount). It:
+#        - Mounts the gocryptfs backing directory on the NFS-backed
+#          websitevolume via FUSE in -sharedstorage mode.
+#        - Mounts the decrypted view onto a shared emptyDir with
+#          Bidirectional mount propagation so the main openemr container
+#          can see it.
+#        - Stays alive for the pod's lifetime, holding the FUSE mount open.
+#        - On SIGTERM, cleanly fusermount3 -u / umount.
+#
+#   3. The main `openemr` container is UNCHANGED in privilege (not privileged).
+#      It mounts the shared emptyDir with HostToContainer propagation at
+#      /var/www/localhost/htdocs/openemr/sites, so it transparently sees the
+#      gocryptfs-decrypted view the sidecar established.
+#
+#   4. websitevolume is now mounted on the SIDECAR (to reach the gocryptfs
+#      backing directory), NOT on the main container. The main container
+#      only sees the DECRYPTED view via the emptyDir.
+#
+#   5. sslvolume and letsencryptvolume are UNCHANGED (plaintext on NFS).
+#      Rationale: those hold TLS cert material, not PHI. Encrypting them
+#      adds operational cost without improving the PHI trust boundary — an
+#      attacker who can read the NFS backing already has cluster-adjacent
+#      access and TLS cert exfiltration is a separate concern addressed by
+#      the stack's mTLS layers and cert-manager rotation.
+#
+# Prerequisites:
+#   - The #910 default stack is applied (kub-up).
+#   - `gocryptfs-passphrase-secret.yaml` has been applied.
+#   - The one-shot `gocryptfs-init-job.yaml` has completed successfully.
+#   - openemr Deployment has been scaled to 0 and replaced with this one.
+#
+# See README.md for step-by-step adoption.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    name: openemr
+  name: openemr
+spec:
+  # MULTI-REPLICA — gocryptfs in -sharedstorage mode safely handles
+  # concurrent mounts against the same backing directory. See README.md
+  # § "Concurrent-writer semantics" for the workload caveats (safe when
+  # replicas write different files, which is the normal OpenEMR
+  # pattern; same-file concurrent writes still require application-
+  # level coordination, which OpenEMR provides via Redis session state
+  # and per-upload unique filenames).
+  replicas: 3
+  selector:
+    matchLabels:
+      name: openemr
+  strategy:
+    # RollingUpdate preserves availability during rollouts — one pod
+    # rotated at a time, decrypted view stays reachable throughout.
+    # This matches the default stack's Deployment strategy and is a
+    # key reason to pick gocryptfs over LUKS when multi-replica
+    # availability matters.
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        name: openemr
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+      - name: init-mysql-wait
+        image: busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
+        command: ['sh', '-c', "until nc -z mysql 3306; do echo waiting for mysql; sleep 2; done"]
+      - name: init-redis-wait
+        image: busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
+        command: ['sh', '-c', "until nc -z redis 6379; do echo waiting for redis; sleep 2; done"]
+      # Native sidecar (K8s 1.29+ GA): restartPolicy: Always on an initContainer
+      # means this container starts before the main container, runs for the
+      # pod's lifetime, and is terminated AFTER the main container on shutdown.
+      # That termination order is exactly what we need — the main container
+      # must stop writing to /sites before we umount and tear down FUSE.
+      - name: gocryptfs-mounter
+        # Pinned to the same alpine digest as the nfs-server deployment's
+        # stunnel containers (kubernetes/nfs/) so dependabot's
+        # "infrastructure" group bumps them all together.
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+        restartPolicy: Always
+        # startupProbe gates the rest of the pod on the gocryptfs mount
+        # being live. Native-sidecar ordering says subsequent init
+        # containers and the main containers only start after each
+        # sidecar's startupProbe succeeds. Without this, the main
+        # openemr container could race the sidecar's `gocryptfs`
+        # fuse-mount and come up pointing at an empty emptyDir.
+        #
+        # The probe checks for a readiness-marker FILE written onto the
+        # decrypted filesystem immediately after the mount succeeds,
+        # rather than running `mountpoint`. Two reasons:
+        #   1. `mountpoint` lives in util-linux and is not in the base
+        #      alpine image, so until `apk add` finishes inside the
+        #      setup script the probe would error out — a race window
+        #      where kubelet could see the probe fail even though the
+        #      sidecar is making progress. `test -f` is a shell builtin
+        #      and always available.
+        #   2. The marker is written INSIDE the decrypted view, so it is
+        #      torn down with the FUSE mount on fusermount3 -u rather
+        #      than lingering on the emptyDir after an abnormal shutdown.
+        startupProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "test -f /mnt/decrypted/.gocryptfs-ready"
+          periodSeconds: 2
+          failureThreshold: 60
+        securityContext:
+          # gocryptfs mounts via FUSE: needs /dev/fuse and CAP_SYS_ADMIN
+          # for fuse-mount. On most clusters this means privileged: true.
+          # Scoped to this sidecar only; the main openemr container
+          # remains unprivileged.
+          privileged: true
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -eu
+
+          apk add --no-cache gocryptfs fuse3
+
+          BACKING_DIR=/mnt/websitevolume/gocryptfs-backing
+          DECRYPTED_MNT=/mnt/decrypted
+          CONF_FILE=$BACKING_DIR/gocryptfs.conf
+
+          if [ ! -f "$CONF_FILE" ]; then
+            echo "FATAL: $CONF_FILE does not exist."
+            echo "Run gocryptfs-init-job.yaml first."
+            exit 1
+          fi
+
+          # Clean shutdown handler. On SIGTERM (pod termination) we
+          # unmount the decrypted view so the gocryptfs process exits
+          # cleanly and the NFS backing is left in a consistent state.
+          # The main container has already been terminated by the
+          # kubelet at this point (native sidecar termination order).
+          cleanup() {
+            echo "Received shutdown signal; unmounting gocryptfs"
+            # fusermount3 -u is the FUSE-native unmount; if the gocryptfs
+            # process has already exited or the mount is gone, treat as OK.
+            fusermount3 -u "$DECRYPTED_MNT" 2>/dev/null \
+              || umount "$DECRYPTED_MNT" 2>/dev/null \
+              || true
+            exit 0
+          }
+          trap cleanup TERM INT
+
+          mkdir -p "$DECRYPTED_MNT"
+
+          # Sidecar restart recovery. Native sidecars can be restarted
+          # in place by the kubelet without the pod being deleted, so
+          # the FUSE mount from the previous run may still be fully
+          # live. Three cases to distinguish:
+          #
+          #   1. $DECRYPTED_MNT is mounted and its source is a
+          #      gocryptfs FUSE handle — reuse it, skip remount. Doing
+          #      an unmount here would yank a healthy mount out from
+          #      under a running main container.
+          #   2. $DECRYPTED_MNT is mounted but its source is NOT
+          #      gocryptfs (something stale) — unmount and fall through
+          #      to a fresh mount.
+          #   3. $DECRYPTED_MNT is not mounted — fresh mount.
+          reused=0
+          mount_fs=$(awk -v mnt="$DECRYPTED_MNT" '$2 == mnt { print $3 }' /proc/mounts | tail -1)
+          if [ -n "$mount_fs" ]; then
+            case "$mount_fs" in
+              fuse|fuse.gocryptfs)
+                echo "Existing gocryptfs mount at $DECRYPTED_MNT; reusing"
+                reused=1
+                ;;
+              *)
+                echo "Stale non-gocryptfs mount at $DECRYPTED_MNT (type=$mount_fs); unmounting"
+                umount "$DECRYPTED_MNT" || true
+                ;;
+            esac
+          fi
+
+          if [ "$reused" = "0" ]; then
+            echo "Mounting gocryptfs: $BACKING_DIR -> $DECRYPTED_MNT"
+            # -sharedstorage  : REQUIRED for concurrent multi-pod mounts.
+            #                   Disables metadata caching that would make
+            #                   different pods see stale directory views
+            #                   when another pod writes a new file. Small
+            #                   performance cost; essential for multi-
+            #                   replica correctness.
+            # -passfile FILE  : read passphrase from file.
+            # -fg             : foreground so the process stays alive as
+            #                   PID 1's child; without this gocryptfs
+            #                   daemonizes and the shell exits before
+            #                   `wait` sees anything to wait on.
+            # -nosyslog       : logs to stderr (container log), not to
+            #                   syslog (which isn't running in this
+            #                   minimal container).
+            # Note on noexec: gocryptfs does not accept filesystem mount
+            # options via a -o flag the way LUKS/ext4 does. If you need
+            # noexec on the decrypted view, set it on the emptyDir-
+            # backed mount point from the main container's side (which
+            # this stack does not currently do; patches welcome).
+            gocryptfs \
+              -sharedstorage \
+              -passfile /etc/gocryptfs/passphrase \
+              -nosyslog \
+              -fg \
+              "$BACKING_DIR" \
+              "$DECRYPTED_MNT" &
+            GOCRYPTFS_PID=$!
+
+            # Wait for the FUSE mount to actually appear in /proc/mounts.
+            # gocryptfs -fg forks the FUSE kernel-side handshake before
+            # fully entering its request loop; a tight race can see
+            # `gocryptfs` as running but the mount not yet live.
+            for i in $(seq 1 50); do
+              if awk -v mnt="$DECRYPTED_MNT" '$2 == mnt { found=1 } END { exit !found }' /proc/mounts; then
+                echo "gocryptfs FUSE mount live after ${i}00ms"
+                break
+              fi
+              # Bail early if gocryptfs died during handshake rather
+              # than looping until failureThreshold.
+              if ! kill -0 "$GOCRYPTFS_PID" 2>/dev/null; then
+                echo "FATAL: gocryptfs exited during mount handshake"
+                wait "$GOCRYPTFS_PID" || true
+                exit 1
+              fi
+              sleep 0.1
+            done
+          fi
+
+          # Readiness marker INSIDE the decrypted view. Written after
+          # the mount is established so the main container's
+          # startupProbe (which checks for this file) only succeeds once
+          # /mnt/decrypted is really the gocryptfs mount. The marker
+          # lives on the encrypted fs, so it is torn down with the
+          # mount on fusermount3 -u — it cannot linger on the emptyDir
+          # after an abnormal shutdown.
+          : > "$DECRYPTED_MNT/.gocryptfs-ready"
+
+          echo "gocryptfs-decrypted view is live at $DECRYPTED_MNT"
+          echo "Sidecar entering wait on gocryptfs PID $GOCRYPTFS_PID (will clean up on SIGTERM)"
+
+          # Wait on the gocryptfs process itself — if it crashes, the
+          # sidecar exits (and the kubelet restarts it, which will go
+          # through the restart-recovery path above). If we got here
+          # via reuse (reused=1), we didn't spawn gocryptfs ourselves,
+          # so fall back to an idle wait on sleep.
+          if [ "$reused" = "0" ]; then
+            wait "$GOCRYPTFS_PID"
+          else
+            sleep infinity &
+            wait $!
+          fi
+        volumeMounts:
+        - name: websitevolume
+          mountPath: /mnt/websitevolume
+        - name: decrypted-sites
+          mountPath: /mnt/decrypted
+          # Bidirectional: this container's FUSE mount at /mnt/decrypted
+          # propagates OUT to the host mount namespace, from which it
+          # propagates IN to the main container that mounts the same
+          # emptyDir with HostToContainer propagation.
+          mountPropagation: Bidirectional
+        - name: gocryptfs-passphrase
+          mountPath: /etc/gocryptfs
+          readOnly: true
+      containers:
+      - env:
+        - name: MYSQL_HOST
+          value: "mysql"
+        - name: MYSQL_PASS
+          valueFrom:
+            secretKeyRef:
+              name: openemr-credentials
+              key: mysql-pass
+        - name: MYSQL_ROOT_PASS
+          valueFrom:
+            secretKeyRef:
+              name: mysql-credentials
+              key: password
+        - name: MYSQL_USER
+          value: "openemr"
+        - name: OE_PASS
+          valueFrom:
+            secretKeyRef:
+              name: openemr-credentials
+              key: admin-pass
+        - name: OE_USER
+          value: "admin"
+        - name: SESSION_STORAGE_MODE
+          value: "predis-sentinel"
+        - name: REDIS_SENTINELS
+          value: "sentinel-0.sentinel|||sentinel-1.sentinel|||sentinel-2.sentinel"
+        - name: REDIS_MASTER
+          value: "mymaster"
+        - name: REDIS_SENTINELS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: default-password
+        - name: REDIS_MASTER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-credentials
+              key: default-password
+        - name: REDIS_TLS
+          value: "yes"
+        - name: REDIS_X509
+          value: "yes"
+        - name: REDIS_TLS_CERT_KEY_PATH
+          value: "/redis-certs"
+        - name: SWARM_MODE
+          value: "yes"
+        - name: FORCE_DATABASE_X509_CONNECT
+          value: "1"
+        image: openemr/openemr:8.5.0@sha256:62ded377e5055231b24e6a59a5d2351dae02a2132002a77bc7d9e6299749ee1f
+        name: openemr
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 1G
+        startupProbe:
+          exec:
+            command:
+            - cat
+            - /root/instance-swarm-ready
+          periodSeconds: 10
+          # Multi-replica deployment: leader-election races through the
+          # shared gocryptfs-decrypted view, same mechanism as the
+          # default stack's shared NFS. 20 min matches the default
+          # stack's budget.
+          failureThreshold: 120
+        readinessProbe:
+          exec:
+            command:
+            - cat
+            - /root/instance-swarm-ready
+          initialDelaySeconds: 5
+          periodSeconds: 30
+        livenessProbe:
+          tcpSocket:
+            port: 443
+          periodSeconds: 30
+        volumeMounts:
+        - mountPath: /root/certs/mysql/server
+          name: mysql-openemr-client-certs
+        - mountPath: /redis-certs
+          name: redis-openemr-client-certs
+        - mountPath: /var/www/localhost/htdocs/openemr/sites
+          name: decrypted-sites
+          # HostToContainer: see IN the mount the sidecar established in
+          # the host mount namespace via its Bidirectional mount.
+          mountPropagation: HostToContainer
+        - mountPath: /etc/ssl
+          name: sslvolume
+        - mountPath: /etc/letsencrypt
+          name: letsencryptvolume
+      restartPolicy: Always
+      volumes:
+      - name: mysql-openemr-client-certs
+        secret:
+          secretName: mysql-openemr-client-certs
+          items:
+          - key: ca.crt
+            path: mysql-ca
+          - key: tls.crt
+            path: mysql-cert
+          - key: tls.key
+            path: mysql-key
+      - name: redis-openemr-client-certs
+        secret:
+          secretName: redis-openemr-client-certs
+          items:
+          - key: ca.crt
+            path: redis-master-ca
+          - key: tls.crt
+            path: redis-master-cert
+          - key: tls.key
+            path: redis-master-key
+          - key: ca.crt
+            path: redis-sentinel-ca
+          - key: tls.crt
+            path: redis-sentinel-cert
+          - key: tls.key
+            path: redis-sentinel-key
+      # NFS-backed websitevolume. Mounted on the sidecar only. Contains
+      # the gocryptfs backing directory (gocryptfs-backing/). The main
+      # container does NOT mount this directly.
+      - name: websitevolume
+        persistentVolumeClaim:
+          claimName: websitevolume
+      # emptyDir shared between the sidecar (writer, Bidirectional) and
+      # the main openemr container (reader, HostToContainer). The
+      # sidecar fuse-mounts the gocryptfs decrypted view HERE; the main
+      # container sees that mount transparently.
+      #
+      # emptyDir is per-pod, cleared on pod delete. That is CORRECT
+      # here: the DECRYPTED view is pod-local and ephemeral; the
+      # ENCRYPTED gocryptfs-backing directory on NFS is the durable
+      # artifact, shared across all replicas.
+      - name: decrypted-sites
+        emptyDir: {}
+      - name: sslvolume
+        persistentVolumeClaim:
+          claimName: sslvolume
+      - name: letsencryptvolume
+        persistentVolumeClaim:
+          claimName: letsencryptvolume
+      - name: gocryptfs-passphrase
+        secret:
+          secretName: gocryptfs-passphrase
+          defaultMode: 0400
+          items:
+          - key: passphrase
+            path: passphrase
