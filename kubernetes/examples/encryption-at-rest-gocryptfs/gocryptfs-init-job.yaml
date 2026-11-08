@@ -77,6 +77,27 @@ spec:
             exit 1
           fi
 
+          # Refuse to init over a non-empty backing directory that does
+          # NOT contain gocryptfs.conf. This can only happen if a prior
+          # init attempt was interrupted after creating files but before
+          # writing gocryptfs.conf, OR if the operator pointed this Job
+          # at a directory that already contains data (e.g. pre-existing
+          # patient documents from an unrelated setup). Running the
+          # cleanup-on-error path against such a directory would wipe
+          # recoverable data on failure. Make the operator reconcile
+          # manually.
+          if [ -d "$BACKING_DIR" ] && [ -n "$(ls -A "$BACKING_DIR" 2>/dev/null)" ]; then
+            echo "ERROR: $BACKING_DIR exists and is non-empty, but lacks"
+            echo "gocryptfs.conf. Refusing to init — the contents may be"
+            echo "pre-existing data that would be destroyed by this Job's"
+            echo "cleanup-on-error path. Reconcile manually: either"
+            echo "move the contents to a safe location first, or remove"
+            echo "the directory entirely with"
+            echo "  kubectl exec -it <any-pod-mounting-websitevolume> -- rm -rf $BACKING_DIR"
+            echo "then re-run this Job."
+            exit 1
+          fi
+
           # Refuse to proceed if the Secret still contains the published
           # placeholder passphrase (literally checked into this repo). This
           # prevents an operator from accidentally initializing a gocryptfs
@@ -90,21 +111,44 @@ spec:
             exit 1
           fi
 
-          # Cleanup trap: on any failure after this point, remove the
-          # partially-initialized backing directory we created so a rerun
-          # can start from a clean state. The trap is cleared explicitly
-          # after the init succeeds. The pre-flight check above ensures
-          # we only ever clean a directory this Job itself created in
-          # this run.
+          # Track whether this Job created the backing dir. The
+          # cleanup-on-error path removes ONLY what we created in THIS
+          # run (either the whole dir if we created it, or just the
+          # gocryptfs.conf/diriv files we wrote). It must NEVER delete
+          # a pre-existing directory or its contents.
+          CREATED_DIR=0
+          if [ ! -d "$BACKING_DIR" ]; then
+            CREATED_DIR=1
+          fi
+
+          # Cleanup trap: on any failure after this point, remove ONLY
+          # the artifacts this run created so a rerun can start from a
+          # clean state. The trap is cleared explicitly after the init
+          # succeeds. The non-empty / non-conf pre-flight check above
+          # also guarantees we never clean a directory containing
+          # unrelated pre-existing data.
           cleanup_on_error() {
             rc=$?
             echo "Init Job failed (exit $rc) — cleaning up partial artifacts"
-            rm -rf "$BACKING_DIR" || true
+            if [ "$CREATED_DIR" = "1" ]; then
+              # We created the directory in this run — safe to remove
+              # it whole. Nothing pre-existing is inside it (pre-flight
+              # confirmed) and no concurrent writer could have added
+              # anything (the Deployment is scaled to 0, per README
+              # step 1).
+              rm -rf "$BACKING_DIR" || true
+            else
+              # The directory pre-existed but was empty. Remove only
+              # the files gocryptfs -init writes, preserving the
+              # directory itself in case the operator had set up
+              # permissions / selinux labels on it.
+              rm -f "$BACKING_DIR/gocryptfs.conf" "$BACKING_DIR/gocryptfs.diriv" || true
+            fi
             exit "$rc"
           }
           trap cleanup_on_error EXIT
 
-          echo "Creating backing directory: $BACKING_DIR"
+          echo "Creating backing directory: $BACKING_DIR (CREATED_DIR=$CREATED_DIR)"
           mkdir -p "$BACKING_DIR"
           chmod 0700 "$BACKING_DIR"
 
