@@ -53,6 +53,8 @@ LUKS wraps a single ext4 filesystem that cannot be opened read-write by two pods
 
 The `-sharedstorage` mount option disables gocryptfs's own metadata caching so that when pod A writes a new file, pod B sees the new backing-file entry on its next readdir rather than a stale cached view. It is REQUIRED for correctness when multiple pods mount the same backing directory. This example sets it.
 
+**Visibility latency is bounded by the underlying NFS cache, not instant.** `-sharedstorage` closes the gocryptfs-internal cache window, but the backing filesystem (NFS, over the stunnel tunnel in the #910 stack) imposes its own kernel dentry-cache + attribute-cache window on top. The ceiling is the mount's `actimeo` value: the #910 stack pins `actimeo=0` on the openemr `websitevolume` mount, which makes cross-pod visibility effectively immediate — no attribute caching, every readdir re-fetches from the NFS server. On any other NFS configuration (different `actimeo`, a pNFS backend, a non-NFS shared filesystem), the bound shifts accordingly: visibility is "stale by up to `actimeo` seconds", not "instant". If you adapt this example to a backing store with a larger attribute-cache window, writes from pod A are still durable and correct — but pod B may not see them for up to that window. Size your application-level coordination around that bound.
+
 **What is safe:**
 
 - Concurrent writes to **different** files from different replicas (the normal OpenEMR workload — per-upload unique filenames, per-replica temp files, per-session scratch). gocryptfs's per-file independent ciphertext makes this safe at the storage layer. The `-sharedstorage` flag ensures cross-pod directory visibility.
@@ -128,6 +130,16 @@ The correct rotation sequence is:
 
 Unlike LUKS, there is no concept of "key slots" in gocryptfs.conf — it stores a single wrapped master key. Rotation is atomic: after `gocryptfs -passwd` succeeds, the OLD passphrase no longer works. Any pod that has not yet been restarted and is still holding its FUSE mount open continues to serve traffic (the master key is in memory), but a fresh pod started with the OLD passphrase will fail to mount. Plan the rolling restart to begin immediately after the `-passwd` step.
 
+**What `gocryptfs -passwd` does NOT rotate.** The command rewraps the master key with a new KEK derived from the NEW passphrase. **The master key itself does not change.** Consequently, anyone who ever held BOTH the OLD passphrase AND a copy of the pre-rotation `gocryptfs.conf` (e.g. an operator who ran `gocryptfs-xray -dumpmasterkey` with the OLD passphrase, or a backup of the old `gocryptfs.conf` combined with the old passphrase) can still derive the master key and decrypt every file that was written under this backing — including files written AFTER the rotation, because they were encrypted with the same unchanged master key. Passphrase rotation closes the "someone who only has the passphrase but not the config" attack vector, not the "someone who had both at some point" vector.
+
+If the threat model requires rotating the master key itself (e.g. known or suspected master-key compromise), passphrase rotation is NOT sufficient. The correct procedure is to migrate to a fresh backing directory:
+
+1. Scale openemr to 0 (same quiescence procedure as adoption/rollback).
+2. Run a one-off `gocryptfs -init` against a new backing directory with a NEW passphrase — this generates a brand-new master key.
+3. Mount both the OLD and NEW decrypted views in a helper pod, rsync OLD → NEW, verify (file counts + checksum sample, same shape as adoption's step 3b).
+4. Swap the Deployment to point at the NEW backing directory and the NEW passphrase Secret.
+5. Decommission the OLD backing directory per your organization's data-destruction policy (overwrite, cryptographic erase of the holding storage, etc.). Simply deleting the files leaves ciphertext blocks on the NFS backend that remain decryptable if the OLD master key is compromised.
+
 **Hardware KMS integration** (CloudHSM, AWS KMS envelope encryption of the gocryptfs passphrase itself) is the next tier up and out of scope for this example.
 
 **Passphrase loss is irrecoverable.** gocryptfs has no escrow and no backdoor. Back the passphrase up in your organization's password escrow / KMS BEFORE running `gocryptfs-init-job.yaml`.
@@ -192,7 +204,26 @@ kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s \
   && \
   # 1. Scale openemr to 0 so no pod is holding websitevolume open.
   kubectl scale deployment openemr --replicas=0
-kubectl wait --for=delete pod -l name=openemr --timeout=120s
+# Wait for pod deletion AND verify no pod is still present. `kubectl
+# wait --for=delete` returns success on the first termination event
+# it observes on each Pod it snapshotted at invocation time, but can
+# race: a Pod that is deleting slowly (e.g. stuck in Terminating on
+# a lingering mount) may still exist when the wait returns. Follow
+# up with a hard check that `kubectl get pods -l name=openemr -o
+# name` is empty — if ANY openemr pod remains, the migration MUST
+# abort. Proceeding past this point with a live writer still holding
+# websitevolume lets the plaintext rsync step race the pod's own
+# writes, corrupting the migration. Fall through to manual recovery
+# (investigate the stuck pod, `kubectl delete pod --force` only as
+# last resort — it strands the mount, which requires node-level
+# cleanup but at least stops NEW writes).
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+remaining=$(kubectl get pods -l name=openemr -o name 2>/dev/null || true)
+if [ -n "$remaining" ]; then
+  echo "ERROR: openemr pods remained after scale-to-0 + delete wait — aborting migration:"
+  echo "$remaining"
+  exit 1
+fi
 
 # 2. Create the gocryptfs passphrase Secret. In production, replace this
 #    with an ESO-managed ExternalSecret.
@@ -225,7 +256,23 @@ kubectl logs job/gocryptfs-init-websitevolume
 #       gocryptfs -sharedstorage \
 #         -passfile /etc/gocryptfs/passphrase \
 #         /ws/gocryptfs-backing /dec
-#       rsync -aHAX --exclude=gocryptfs-backing /ws/ /dec/
+#       # Verify the FUSE mount is really live BEFORE rsyncing. If
+#       # gocryptfs silently fell back to a plain-directory write
+#       # (e.g. FUSE handshake failed and the process exited leaving
+#       # /dec as a regular directory on the pod rootfs), the rsync
+#       # below would write PLAINTEXT to that directory — the opposite
+#       # of the goal. Confirm /proc/mounts reports a fuse/fuse.gocryptfs
+#       # entry at /dec and abort otherwise.
+#       fs=$(awk '$2 == "/dec" { print $3 }' /proc/mounts | tail -1)
+#       case "$fs" in
+#         fuse|fuse.gocryptfs) echo "verified gocryptfs mount at /dec (type=$fs)" ;;
+#         *) echo "ERROR: /dec is not a live FUSE mount (type='$fs') — aborting"; exit 1 ;;
+#       esac
+#       # Anchor the exclude to the transfer root with a leading slash so
+#       # it matches ONLY /ws/gocryptfs-backing. An unanchored
+#       # `--exclude=gocryptfs-backing` would also skip any plaintext
+#       # subdirectory that happens to carry the same name at depth.
+#       rsync -aHAX --exclude=/gocryptfs-backing /ws/ /dec/
 #       # Verify counts and spot-check files before proceeding.
 #       # Example verification (compare file counts):
 #       SRC_COUNT=$(find /ws -mindepth 1 -maxdepth 20 -type f \
@@ -243,6 +290,32 @@ kubectl logs job/gocryptfs-init-websitevolume
 #     writes-via-decrypted-mount round-trips to ciphertext. Operators
 #     who skip this step have a false sense of compliance.
 #
+#     Re-verify the copy count ONE MORE TIME immediately before the
+#     destructive `rm -rf` — a FUSE unmount or NFS flush between the
+#     verification above and here would be caught here instead of
+#     silently deleting plaintext that never reached the backing dir.
+#     This is cheap defensive insurance; `find | wc -l` of a seeded
+#     openemr `sites/` is well under a second.
+#
+#       # Re-mount read-only purely for the count. Any mismatch at this
+#       # point is a hard stop — do NOT proceed to the delete.
+#       gocryptfs -ro -sharedstorage \
+#         -passfile /etc/gocryptfs/passphrase \
+#         /ws/gocryptfs-backing /dec
+#       fs=$(awk '$2 == "/dec" { print $3 }' /proc/mounts | tail -1)
+#       case "$fs" in
+#         fuse|fuse.gocryptfs) ;;
+#         *) echo "ERROR: /dec remount not FUSE — aborting delete"; exit 1 ;;
+#       esac
+#       SRC_COUNT=$(find /ws -mindepth 1 -maxdepth 20 -type f \
+#         -not -path '/ws/gocryptfs-backing*' | wc -l)
+#       DST_COUNT=$(find /dec -mindepth 1 -maxdepth 20 -type f | wc -l)
+#       fusermount3 -u /dec
+#       [ "$SRC_COUNT" = "$DST_COUNT" ] || {
+#         echo "ERROR: pre-delete count mismatch (src=$SRC_COUNT dst=$DST_COUNT) — aborting"
+#         exit 1
+#       }
+#       # Only now delete the plaintext originals.
 #       find /ws -mindepth 1 -maxdepth 1 ! -name 'gocryptfs-backing' \
 #         -exec rm -rf {} +
 #       # Alternative: relocate the plaintext originals to trusted
@@ -309,9 +382,22 @@ kubectl delete deployment openemr --ignore-not-found
 # first-boot and land plaintext on NFS between the precheck and the
 # gocryptfs init step. Accept the "already empty" case where kubectl
 # wait on an empty pod set returns non-zero.
-kubectl wait --for=delete pod -l name=openemr --timeout=120s \
-  || [ -z "$(kubectl get pods -l name=openemr -o name 2>/dev/null)" ] \
-  || { echo "ERROR: openemr pods remained after delete wait — aborting."; exit 1; }
+#
+# Fail closed if the `kubectl get pods` probe itself errors. A
+# command-not-found, auth failure, or apiserver outage returns a
+# non-zero exit AND an empty stdout — `[ -z "" ]` would then pass
+# vacuously and let the pipeline proceed with no idea whether pods
+# remain. Capture the two signals (stdout + exit) separately.
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+if ! probe=$(kubectl get pods -l name=openemr -o name 2>&1); then
+  echo "ERROR: could not list openemr pods to verify delete: $probe"
+  exit 1
+fi
+if [ -n "$probe" ]; then
+  echo "ERROR: openemr pods remained after delete wait — aborting:"
+  echo "$probe"
+  exit 1
+fi
 
 # 2. Defensive check: confirm no openemr pod ever reached
 #    swarm-ready (i.e. no first-boot completed). If first-boot did
@@ -335,6 +421,26 @@ spec:
     command: ["/bin/sh", "-c"]
     args:
       - |
+        # Three distinct outcomes:
+        #  - file exists: greenfield guarantee is lost, exit 1
+        #  - file does NOT exist AND the mount is reachable: greenfield
+        #    path is viable, exit 0
+        #  - cannot determine (mountpoint missing, permissions error,
+        #    stat system call failed for any other reason): fail closed
+        #    with exit 2 so the operator does not mistake a broken
+        #    check for a successful precheck.
+        if [ ! -d /mnt/websitevolume ]; then
+          echo "PRECHECK_UNKNOWN: /mnt/websitevolume is not accessible as a directory"
+          exit 2
+        fi
+        # Probe the directory itself before trusting the file-existence
+        # test. `ls` failing on the mountpoint indicates a permissions
+        # or NFS-visibility problem distinct from "sqlconf.php does not
+        # exist"; we must not treat that as PRECHECK_OK.
+        if ! ls /mnt/websitevolume >/dev/null 2>&1; then
+          echo "PRECHECK_UNKNOWN: cannot list /mnt/websitevolume"
+          exit 2
+        fi
         if [ -e /mnt/websitevolume/default/sqlconf.php ]; then
           echo "PLAINTEXT_SQLCONF_PRESENT: first-boot already landed on plaintext NFS"
           echo "Greenfield guarantee is lost. Use the migration path instead,"
@@ -356,7 +462,7 @@ EOF
 # go Pending → Running → Succeeded faster than a `--for=condition=Ready`
 # wait can observe, so don't layer that in front.
 kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/greenfield-precheck --timeout=60s \
-  || { echo "Greenfield precheck FAILED — see pod logs"; kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; exit 1; }
+  || { echo "Greenfield precheck FAILED — see pod logs"; kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; echo ""; echo "Next steps: switch to the Migration path (§ 'Migration from a running default-stack deployment' above)."; echo "BEFORE doing so, clean up any partial greenfield artifacts from the current attempt:"; echo "  - delete the greenfield-precheck pod (already attempted above)"; echo "  - delete any passphrase Secret created in step 3: kubectl delete secret gocryptfs-passphrase --ignore-not-found"; echo "  - delete any orphaned init Job if step 4 was reached: kubectl delete job gocryptfs-init-websitevolume --ignore-not-found"; echo "  - the plaintext sqlconf.php on websitevolume is the signal that migration is now the correct path — do NOT wipe websitevolume"; exit 1; }
 kubectl delete pod greenfield-precheck
 
 # 3. Create the gocryptfs passphrase Secret.
@@ -387,6 +493,16 @@ kubectl apply -f openemr-deployment-gocryptfs.yaml
 #    Same two-phase readiness pattern as the migration path — Pod
 #    Ready alone can fire on a follower; verify $config = 1 is
 #    committed before considering the deployment seeded.
+#
+#    First wait for the Deployment's rollout to progress to the point
+#    where its pods exist. `kubectl wait -l name=openemr pod` with
+#    `--for=condition=Ready` snapshots the Pod set at invocation time
+#    and returns immediately with "no matching resources found" if the
+#    Deployment has not yet created a pod (the kube-controller-manager
+#    may lag the `kubectl apply` by a second or two on a loaded
+#    cluster). `rollout status` blocks on the Deployment's own status,
+#    so it does not race pod creation.
+kubectl rollout status deployment/openemr --timeout=1200s
 kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
 kubectl exec deploy/openemr -c openemr -- \
   sh -c 'grep -q "^\$config *= *1" /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'
@@ -402,9 +518,21 @@ kubectl exec deploy/openemr -c openemr -- \
 Downgrading from this example back to the default stack means moving data out of the gocryptfs backing directory onto the plaintext NFS filesystem. The ordering is critical: the staged plaintext must be promoted to `websitevolume`'s root (where the default Deployment mounts) AND verified before the openemr Deployment is swapped back — otherwise openemr comes up seeing stale or missing site files.
 
 ```bash
-# 1. Scale the gocryptfs-enabled openemr to 0.
+# 1. Scale the gocryptfs-enabled openemr to 0, then verify quiescence.
+#    Same two-step pattern as adoption: `kubectl wait --for=delete`
+#    returns on the first termination event per Pod it snapshotted;
+#    a slow-terminating Pod can still be present when the wait exits.
+#    If ANY openemr pod remains (e.g. stuck in Terminating on a
+#    lingering mount), the rollback MUST abort — a running writer
+#    would race the rsync-out step and we would stage a stale view.
 kubectl scale deployment openemr --replicas=0
-kubectl wait --for=delete pod -l name=openemr --timeout=120s
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+remaining=$(kubectl get pods -l name=openemr -o name 2>/dev/null || true)
+if [ -n "$remaining" ]; then
+  echo "ERROR: openemr pods remained after scale-to-0 + delete wait — aborting rollback:"
+  echo "$remaining"
+  exit 1
+fi
 
 # 2. Launch a privileged helper pod that mounts websitevolume,
 #    gocryptfs-mounts the backing dir, rsyncs the decrypted view OUT
@@ -417,6 +545,18 @@ kubectl wait --for=delete pod -l name=openemr --timeout=120s
 #      gocryptfs -sharedstorage \
 #        -passfile /etc/gocryptfs/passphrase \
 #        /ws/gocryptfs-backing /dec
+#      # Verify the FUSE mount succeeded BEFORE reading from /dec.
+#      # If gocryptfs exited before mounting (bad passphrase, missing
+#      # kernel module, etc.) the rsync below would see /dec as an
+#      # empty directory on the pod rootfs and would then "copy out"
+#      # nothing — proceeding to the backing-dir delete at the end
+#      # would destroy the only remaining copy of the data. Abort on
+#      # anything that isn't a live fuse/fuse.gocryptfs mount.
+#      fs=$(awk '$2 == "/dec" { print $3 }' /proc/mounts | tail -1)
+#      case "$fs" in
+#        fuse|fuse.gocryptfs) echo "verified gocryptfs mount at /dec (type=$fs)" ;;
+#        *) echo "ERROR: /dec is not a live FUSE mount (type='$fs') — aborting rollback"; exit 1 ;;
+#      esac
 #      mkdir -p /ws/.rollback-staging
 #      rsync -aHAX /dec/ /ws/.rollback-staging/
 #      # Verify counts and spot-check files BEFORE unmounting.
