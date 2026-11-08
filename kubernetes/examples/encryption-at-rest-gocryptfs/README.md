@@ -218,9 +218,17 @@ kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s \
 # last resort — it strands the mount, which requires node-level
 # cleanup but at least stops NEW writes).
 kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
-remaining=$(kubectl get pods -l name=openemr -o name 2>/dev/null || true)
+# Separate the "kubectl errored" and "kubectl returned zero pods" cases.
+# The earlier pattern `-z "$(kubectl get pods ... 2>/dev/null)"` treated
+# a kubectl API-call failure (empty stdout, error on stderr suppressed)
+# as "no pods remain" — vacuously passing the quiescence gate.
+if ! remaining=$(kubectl get pods -l name=openemr -o name 2>&1); then
+  echo "ERROR: kubectl get pods failed — cannot verify openemr is quiescent."
+  echo "$remaining"
+  exit 1
+fi
 if [ -n "$remaining" ]; then
-  echo "ERROR: openemr pods remained after scale-to-0 + delete wait — aborting migration:"
+  echo "ERROR: openemr pods remained after scale-to-0 + delete wait — aborting:"
   echo "$remaining"
   exit 1
 fi
@@ -457,13 +465,58 @@ spec:
       persistentVolumeClaim:
         claimName: websitevolume
 EOF
-# The pod exits 0 on PRECHECK_OK, 1 otherwise. The Succeeded-phase
-# wait is the correct completion signal — a fast-completing pod can
-# go Pending → Running → Succeeded faster than a `--for=condition=Ready`
-# wait can observe, so don't layer that in front.
-kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/greenfield-precheck --timeout=60s \
-  || { echo "Greenfield precheck FAILED — see pod logs"; kubectl logs pod/greenfield-precheck; kubectl delete pod greenfield-precheck; echo ""; echo "Next steps: switch to the Migration path (§ 'Migration from a running default-stack deployment' above)."; echo "BEFORE doing so, clean up any partial greenfield artifacts from the current attempt:"; echo "  - delete the greenfield-precheck pod (already attempted above)"; echo "  - delete any passphrase Secret created in step 3: kubectl delete secret gocryptfs-passphrase --ignore-not-found"; echo "  - delete any orphaned init Job if step 4 was reached: kubectl delete job gocryptfs-init-websitevolume --ignore-not-found"; echo "  - the plaintext sqlconf.php on websitevolume is the signal that migration is now the correct path — do NOT wipe websitevolume"; exit 1; }
-kubectl delete pod greenfield-precheck
+# The pod exits:
+#   0 — PRECHECK_OK (no plaintext sqlconf.php; proceed with greenfield)
+#   1 — PLAINTEXT_SQLCONF_PRESENT (first-boot already landed; MUST fall back to migration path)
+#   2 — PRECHECK_UNKNOWN (couldn't inspect — mountpoint missing, ls failed, etc.; DIAGNOSE, don't blindly migrate)
+#
+# The Succeeded-phase wait is the correct completion signal — a
+# fast-completing pod can go Pending → Running → Succeeded faster
+# than a `--for=condition=Ready` wait can observe, so don't layer
+# that in front.
+if kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/greenfield-precheck --timeout=60s; then
+  # Phase is Succeeded → container exit 0 → PRECHECK_OK.
+  echo "Greenfield precheck PASSED — no plaintext sqlconf.php on websitevolume."
+  kubectl delete pod greenfield-precheck
+else
+  # Succeeded wait failed. Inspect the pod's container exit code
+  # to distinguish exit 1 (plaintext present) from exit 2
+  # (couldn't check) from a wait timeout (pod stuck).
+  EXIT_CODE=$(kubectl get pod greenfield-precheck \
+    -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}' 2>/dev/null || echo "")
+  kubectl logs pod/greenfield-precheck 2>/dev/null || true
+  case "$EXIT_CODE" in
+    1)
+      echo ""
+      echo "Greenfield precheck result: PLAINTEXT sqlconf.php IS on websitevolume."
+      echo "Greenfield guarantee is lost. Fall back to the Migration path"
+      echo "(§ 'Migration from a running default-stack deployment' above)."
+      echo "BEFORE doing so, clean up partial greenfield artifacts:"
+      echo "  - kubectl delete pod greenfield-precheck --ignore-not-found"
+      echo "  - kubectl delete secret gocryptfs-passphrase --ignore-not-found"
+      echo "  - kubectl delete job gocryptfs-init-websitevolume --ignore-not-found"
+      echo "  - do NOT wipe websitevolume; migration needs the plaintext data"
+      kubectl delete pod greenfield-precheck --ignore-not-found
+      exit 1
+      ;;
+    2|"")
+      # Container exit 2 OR no terminated-state recorded (wait timeout).
+      echo ""
+      echo "Greenfield precheck result: UNKNOWN (container exit: '${EXIT_CODE:-timeout}')."
+      echo "DIAGNOSE AND RETRY. Do NOT fall back to the migration path"
+      echo "without first confirming the plaintext state of websitevolume."
+      echo "  kubectl describe pod/greenfield-precheck"
+      echo "  kubectl get pvc websitevolume"
+      kubectl delete pod greenfield-precheck --ignore-not-found
+      exit 2
+      ;;
+    *)
+      echo "Greenfield precheck: unexpected container exit code '${EXIT_CODE}' — DIAGNOSE."
+      kubectl delete pod greenfield-precheck --ignore-not-found
+      exit 2
+      ;;
+  esac
+fi
 
 # 3. Create the gocryptfs passphrase Secret.
 #    EDIT the passphrase in gocryptfs-passphrase-secret.yaml FIRST
