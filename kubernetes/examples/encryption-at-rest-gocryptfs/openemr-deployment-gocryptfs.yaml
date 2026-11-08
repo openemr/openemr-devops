@@ -352,16 +352,21 @@ spec:
           : > "$DECRYPTED_MNT/.gocryptfs-ready"
 
           echo "gocryptfs-decrypted view is live at $DECRYPTED_MNT"
-          echo "Sidecar entering wait on gocryptfs PID $GOCRYPTFS_PID (will clean up on SIGTERM)"
 
           # Wait on the gocryptfs process itself — if it crashes, the
           # sidecar exits (and the kubelet restarts it, which will go
           # through the restart-recovery path above). If we got here
-          # via reuse (reused=1), we didn't spawn gocryptfs ourselves,
-          # so fall back to an idle wait on sleep.
+          # via reuse (reused=1), we didn't spawn gocryptfs ourselves
+          # so $GOCRYPTFS_PID is unset; under `set -u`, expanding it
+          # would abort the sidecar and tear down the mount propagation
+          # source the main container depends on. Fall back to an idle
+          # wait on sleep on that path — the existing SIGTERM trap on
+          # the sleep subprocess still runs cleanup cleanly.
           if [ "$reused" = "0" ]; then
+            echo "Sidecar entering wait on gocryptfs PID $GOCRYPTFS_PID (will clean up on SIGTERM)"
             wait "$GOCRYPTFS_PID"
           else
+            echo "Sidecar entering idle wait on reused FUSE mount (will clean up on SIGTERM)"
             sleep infinity &
             wait $!
           fi
