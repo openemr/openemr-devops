@@ -269,8 +269,35 @@ jobs:
         # files from a third replica. If -sharedstorage weren't
         # effective, the third replica's gocryptfs process would have
         # a stale directory cache and the reads would fail.
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
+          # BEFORE scaling up, shrink openemr's resource requests so 3
+          # pods can co-schedule on the ubuntu-24.04 runner's 4-CPU /
+          # 16 GiB budget. The shipped manifest keeps production-
+          # realistic requests; CI is the one place that budget cannot
+          # fit MariaDB + Redis/Sentinel + NFS + 3x openemr at those
+          # levels, and the third pod stays Pending indefinitely while
+          # `rollout status` times out. Patch requests to the minimum
+          # that still boots openemr through its startupProbe
+          # reliably, then let the existing 2-replica Deployment roll
+          # under the new requests BEFORE scaling to 3 — otherwise the
+          # existing pods roll mid-test on the request change, and the
+          # scale-up races a rollout-in-progress.
+          echo "Shrinking openemr resource requests for CI budget"
+          kubectl patch deployment openemr --type=strategic --patch '
+          spec:
+            template:
+              spec:
+                containers:
+                - name: openemr
+                  resources:
+                    requests:
+                      cpu: 100m
+                      memory: 500Mi
+          '
+          echo "Waiting for the request-change rollout to settle on the existing replica set"
+          kubectl rollout status deployment/openemr --timeout=600s
+
           echo "Scaling openemr to 3 replicas for cross-replica test"
           kubectl scale deployment openemr --replicas=3
 
