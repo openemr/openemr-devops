@@ -273,6 +273,21 @@ jobs:
         run: |
           echo "Scaling openemr to 3 replicas for cross-replica test"
           kubectl scale deployment openemr --replicas=3
+
+          # IMPORTANT: wait for the Deployment's rollout to complete
+          # BEFORE the selector-wait + pod-count collection below.
+          # `kubectl wait --for=condition=Ready -l name=openemr` races
+          # the Deployment controller: it snapshots the Pod set at the
+          # moment the wait starts (likely 2 pods, the pre-scale state),
+          # the 2 report Ready instantly, the wait returns successful,
+          # and the third pod (still being created) is missed by the
+          # subsequent `kubectl get pod` count check. `rollout status`
+          # blocks until the Deployment's own status reports all desired
+          # replicas available, which is the correct synchronization
+          # point. Then a Ready-condition wait is redundant-but-cheap
+          # insurance against a rollout-status / pod-Ready skew on
+          # kind.
+          kubectl rollout status deployment/openemr --timeout=1200s
           kubectl wait --for=condition=Ready -l name=openemr pod --timeout=600s
 
           # Collect pod names in a deterministic order.
