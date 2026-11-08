@@ -4,7 +4,7 @@ This directory is an **example**, not a default. It demonstrates a variant of Op
 
 - **Option 1 (default stack recommendation):** back the NFS server's PVC with an encrypted StorageClass (cloud KMS, Longhorn, Rook/Ceph). Simple, transparent, zero application change. Keys live with the storage layer / cloud KMS.
 - **Option 2a — LUKS (`examples/encryption-at-rest-luks/`):** the openemr pod wraps `websitevolume` in a LUKS container file. Strongest metadata hiding (NFS sees one opaque blob). **Single-replica only** — LUKS wraps a single ext4 filesystem that cannot be multi-writer.
-- **Option 2b — gocryptfs, this example:** the openemr pod transparently encrypts each file individually via gocryptfs in `-sharedstorage` mode. **Multi-replica (default `replicas: 3`) + `RollingUpdate` preserved.** Trade-off: NFS sees per-file ciphertext blobs with encrypted filenames, not one monolithic opaque blob — directory structure cardinality leaks (number of files, their rough sizes) even though filenames and contents are encrypted.
+- **Option 2b — gocryptfs, this example:** the openemr pod transparently encrypts each file individually via gocryptfs in `-sharedstorage` mode. **Multi-replica (default `replicas: 3`) retained, rollout strategy upgraded from the default stack's `Recreate` to `RollingUpdate`.** Trade-off: NFS sees per-file ciphertext blobs with encrypted filenames, not one monolithic opaque blob — directory structure cardinality leaks (number of files, their rough sizes) even though filenames and contents are encrypted.
 
 **Do not adopt this example unless you have a specific threat model that requires it.** Option 1 covers the overwhelming majority of HIPAA at-rest requirements with far less operational complexity. This example exists for users whose threat model treats the NFS server pod (or the storage layer under it) as untrusted AND who cannot accept the single-replica downgrade that the LUKS sibling example imposes.
 
@@ -34,7 +34,7 @@ Pick **Option 1 (encrypted StorageClass)** when:
 | **Where encryption happens** | Storage layer (below NFS server pod) | Application pod (inside LUKS container file) | Application pod (FUSE, per-file) |
 | **NFS server pod sees** | Plaintext | One opaque LUKS container file | Per-file ciphertext + encrypted filenames |
 | **Replicas supported** | Any | **1** | **Any** (default 3; `-sharedstorage` mode) |
-| **Rolling updates** | Yes | No (Recreate) | **Yes** (RollingUpdate preserved) |
+| **Rolling updates** | Yes | No (Recreate) | **Yes** (RollingUpdate; upgraded from the default stack's Recreate) |
 | **Metadata leaked to NFS** | File tree, names, sizes, access times | None (single opaque file) | File count, per-file ciphertext sizes (filenames are encrypted) |
 | **Privilege required** | None beyond default | Privileged sidecar | Privileged sidecar (FUSE needs `/dev/fuse` + `CAP_SYS_ADMIN`) |
 | **Operational complexity** | Low | Medium | Medium |
@@ -57,11 +57,11 @@ The `-sharedstorage` mount option disables gocryptfs's own metadata caching so t
 
 - Concurrent writes to **different** files from different replicas (the normal OpenEMR workload — per-upload unique filenames, per-replica temp files, per-session scratch). gocryptfs's per-file independent ciphertext makes this safe at the storage layer. The `-sharedstorage` flag ensures cross-pod directory visibility.
 - Concurrent reads of the same file from different replicas.
-- One replica reading a file that another replica is actively writing. The reader may see a partial write (same as any shared POSIX filesystem), but not corrupted ciphertext.
 
 **What is NOT safe without application-level coordination:**
 
 - Concurrent writes to the **same** file from multiple replicas. gocryptfs does not provide cross-pod file locking. If two replicas truly need to coordinate same-file writes, OpenEMR (or the operator) must provide that coordination — same as on any POSIX-RWX shared filesystem. In practice, OpenEMR does not have this pattern at the `sites/` layer: session state lives in Redis, per-request temp files use unique names, and document uploads use unique paths. The one caveat worth calling out is first-boot leader election via the shared sites volume (see `startupProbe` comment in the default `deployment.yaml`): this is the only place OpenEMR writes a specific well-known marker path from multiple replicas on startup. The existing election logic already handles the "another leader got there first" race by checking before writing and is tested on multi-replica NFS; it works the same way on gocryptfs-over-NFS.
+- A replica reading a file that another replica is **actively overwriting**. gocryptfs rewrites a file as a sequence of fixed-size encrypted blocks on the backing store; a reader whose read lands between the writer's block-level flushes can see one block from the OLD ciphertext followed by one block from the NEW ciphertext, which authenticates as valid blocks individually but is nonsense as a sequence. The gocryptfs kernel path then returns an I/O error to the reader rather than silently returning partial-mixed data. This is a correctness-by-design behavior (an authenticated-encryption filesystem cannot fabricate a consistent view across a concurrent overwrite), but it does mean that any OpenEMR code path that reads a file another replica is simultaneously rewriting may see `EIO`. If reads must succeed in that scenario, the application must coordinate the writer and readers (e.g. write to a temp file and `rename()` into place — which OpenEMR's upload path already does; the caveat applies only to custom code or modules that rewrite files in place).
 
 If your OpenEMR deployment adds a feature that concurrent-writes a shared `sites/` path from multiple replicas without coordination, that feature is already broken on the default NFS stack, not just this example — the fix belongs in OpenEMR core, not here.
 
@@ -117,7 +117,7 @@ The correct rotation sequence is:
    # interactively enter the OLD passphrase, then the NEW one twice
    ```
 
-   (For automation, gocryptfs also accepts `-masterkey` to re-wrap under a new scrypt-derived KEK without the old passphrase, but only if you have the raw master key exported from a prior `gocryptfs -info -masterkey-stdin` call.)
+   (For automation, gocryptfs also accepts `-masterkey=<hex>` on mount to bypass the passphrase path entirely — useful if you have escrowed the raw master key. To export the master key for escrow, use `gocryptfs-xray -dumpmasterkey` against the backing dir's `gocryptfs.conf`; it prompts for the current passphrase and prints the hex master key. Store that value in your KMS alongside the passphrase. Note that neither `gocryptfs -info` nor `-masterkey stdin` exports the key — `-info` only prints structural metadata, and `-masterkey` is a mount-time import flag.)
 
 2. Update the Kubernetes Secret (`gocryptfs-passphrase`) to the NEW passphrase. If you are using ESO, rotate the upstream secret and let ESO materialize.
 
@@ -171,22 +171,40 @@ kubectl logs job/gocryptfs-init-websitevolume
 #
 #     Run a short-lived privileged helper pod that mounts websitevolume,
 #     fuse-mounts the gocryptfs backing dir, rsyncs the plaintext sites
-#     contents into the decrypted view, unmounts, then exits. Tailor this
-#     to your environment: the shape is:
+#     contents into the decrypted view, verifies, DELETES THE PLAINTEXT
+#     ORIGINALS, unmounts, then exits. Tailor this to your environment:
+#     the shape is:
 #
 #       mount websitevolume at /ws
 #       gocryptfs -sharedstorage \
 #         -passfile /etc/gocryptfs/passphrase \
 #         /ws/gocryptfs-backing /dec
 #       rsync -aHAX --exclude=gocryptfs-backing /ws/ /dec/
-#       # (verify counts / spot-check files before proceeding)
+#       # Verify counts and spot-check files before proceeding.
+#       # Example verification (compare file counts):
+#       SRC_COUNT=$(find /ws -mindepth 1 -maxdepth 20 -type f \
+#         -not -path '/ws/gocryptfs-backing*' | wc -l)
+#       DST_COUNT=$(find /dec -mindepth 1 -maxdepth 20 -type f | wc -l)
+#       [ "$SRC_COUNT" = "$DST_COUNT" ] || { echo "MISMATCH"; exit 1; }
 #       fusermount3 -u /dec
 #
-#     Only after verifying the copy, optionally delete the now-redundant
-#     plaintext originals from /ws (everything except gocryptfs-backing/).
-#     Leaving them in place is also valid — the main container will no
-#     longer see them because it mounts the decrypted view, not
-#     websitevolume — but the plaintext is still on NFS until removed.
+#     Then REMOVE the plaintext originals from /ws (everything except
+#     gocryptfs-backing/). This is REQUIRED, not optional: leaving them
+#     in place means the NFS backing continues to store PHI in
+#     plaintext, defeating the entire purpose of adopting this example.
+#     The marker-based validate-encryption.sh does NOT detect stray
+#     plaintext from a prior setup — it only proves that a fresh
+#     writes-via-decrypted-mount round-trips to ciphertext. Operators
+#     who skip this step have a false sense of compliance.
+#
+#       find /ws -mindepth 1 -maxdepth 1 ! -name 'gocryptfs-backing' \
+#         -exec rm -rf {} +
+#       # Alternative: relocate the plaintext originals to trusted
+#       # storage (encrypted PV, KMS-backed object storage, etc.) if
+#       # retention is required for audit.
+#
+#     After this step, `ls /ws` must show exactly one entry:
+#     gocryptfs-backing/.
 
 # 4. Replace the default openemr Deployment with the gocryptfs-enabled one.
 #    This REMOVES the existing openemr Deployment and creates the new
@@ -226,21 +244,54 @@ VALIDATE_FULL=1 ./validate-encryption.sh
 
 ## What about rolling back?
 
-Downgrading from this example back to the default stack means moving data out of the gocryptfs backing directory onto the plaintext NFS filesystem.
+Downgrading from this example back to the default stack means moving data out of the gocryptfs backing directory onto the plaintext NFS filesystem. The ordering is critical: the staged plaintext must be promoted to `websitevolume`'s root (where the default Deployment mounts) AND verified before the openemr Deployment is swapped back — otherwise openemr comes up seeing stale or missing site files.
 
 ```bash
 # 1. Scale the gocryptfs-enabled openemr to 0.
 kubectl scale deployment openemr --replicas=0
 kubectl wait --for=delete pod -l name=openemr --timeout=120s
 
-# 2. Launch a privileged helper pod that mounts gocryptfs, rsyncs the
-#    decrypted view OUT to a plaintext location on websitevolume, then
-#    unmounts and wipes the backing dir. This is a manual operation —
-#    tailor the helper to your environment. The shape is: mount
-#    websitevolume, gocryptfs-mount the backing dir, rsync its contents
-#    to a staging dir on websitevolume, then rm -rf gocryptfs-backing/.
+# 2. Launch a privileged helper pod that mounts websitevolume,
+#    gocryptfs-mounts the backing dir, rsyncs the decrypted view OUT
+#    to a staging directory on websitevolume, verifies it, promotes it
+#    to websitevolume's root (where the default stack's openemr
+#    Deployment mounts), and only then deletes the gocryptfs backing
+#    dir. Tailor the helper to your environment. The shape is:
+#
+#      mount websitevolume at /ws
+#      gocryptfs -sharedstorage \
+#        -passfile /etc/gocryptfs/passphrase \
+#        /ws/gocryptfs-backing /dec
+#      mkdir -p /ws/.rollback-staging
+#      rsync -aHAX /dec/ /ws/.rollback-staging/
+#      # Verify counts and spot-check files BEFORE unmounting.
+#      SRC_COUNT=$(find /dec -mindepth 1 -maxdepth 20 -type f | wc -l)
+#      DST_COUNT=$(find /ws/.rollback-staging -mindepth 1 -maxdepth 20 \
+#        -type f | wc -l)
+#      [ "$SRC_COUNT" = "$DST_COUNT" ] || { echo "MISMATCH"; exit 1; }
+#      fusermount3 -u /dec
+#      # Promote staging → websitevolume root. Move the staged contents
+#      # up one level so openemr's /sites mount sees them where it
+#      # expects. Reconcile any leftover siblings of gocryptfs-backing/
+#      # at /ws (there should be none after the adoption-step 3b
+#      # cleanup, but defensively handle any that exist).
+#      for entry in /ws/.rollback-staging/*; do
+#        base=$(basename "$entry")
+#        [ "$base" = "gocryptfs-backing" ] && continue
+#        if [ -e "/ws/$base" ]; then
+#          echo "WARN: /ws/$base already exists — reconcile manually"
+#          exit 1
+#        fi
+#        mv "$entry" "/ws/$base"
+#      done
+#      rmdir /ws/.rollback-staging
+#      # Only NOW remove the gocryptfs backing dir. If anything above
+#      # failed, the backing dir is still intact and recovery is
+#      # possible.
+#      rm -rf /ws/gocryptfs-backing
 
-# 3. Re-apply the default kubernetes/openemr/deployment.yaml.
+# 3. Re-apply the default kubernetes/openemr/deployment.yaml. The
+#    Deployment comes up pointing at the promoted plaintext contents.
 kubectl apply -f ../../openemr/deployment.yaml
 ```
 
@@ -253,7 +304,7 @@ The reverse (plaintext NFS → gocryptfs) is the step-by-step adoption sequence 
 - **No growth planning required.** Unlike LUKS, gocryptfs does not pre-allocate a fixed-size container. Space usage grows as the plaintext would, plus a small per-file ciphertext header overhead (~a few bytes per file). The NFS backing PV's capacity constraints apply the same way they do to the default plaintext stack.
 - **The backing NFS PV's capacity is shared across the gocryptfs backing directory plus `sslvolume` and `letsencryptvolume`.** See `kubernetes/README.md` § "Capacity caveat (shared backing PV)".
 - **Backups must handle the backing directory as a tree, not a blob.** `kubectl cp` / `rsync` of `gocryptfs-backing/` is a valid backup — restoring it to a fresh PVC and applying this deployment with the same passphrase will mount it successfully. Tools that walk filesystem trees will see encrypted filenames (opaque identifiers) but can still enumerate and copy them.
-- **Native-sidecar termination order** (the sidecar stops AFTER the main container on pod shutdown) is critical. This requires Kubernetes 1.29+ for the `restartPolicy: Always` initContainer semantics to be GA. On older clusters, the pattern needs adjustment.
+- **Native-sidecar termination order** (the sidecar stops AFTER the main container on pod shutdown) is critical. The `restartPolicy: Always` initContainer pattern (the `SidecarContainers` feature) is **beta/default-on since Kubernetes 1.29** and **GA/locked since 1.33**. On 1.29..1.32 it works as documented as long as the `SidecarContainers` feature gate remains enabled on both the apiserver and every kubelet that may run this pod (the default); if a cluster admin has explicitly disabled the gate, the sidecar container will not be treated as a sidecar and the Deployment can get stuck during init. On Kubernetes older than 1.29, this pattern does not apply and the example needs adjustment (a plain sidecar container + shutdown hook).
 - **Not tested with cluster upgrades that change the FUSE module.** FUSE is stable kernel surface but if an upgrade removes the module from the node image, the sidecar fails at mount time. Confirm FUSE availability on your node image before adopting.
 - **Secret rotation requires a pod restart.** `gocryptfs -passwd` rewraps `gocryptfs.conf` immediately, but the sidecar re-reads the Secret only on pod start. Plan a rolling restart after rotation.
 
@@ -264,5 +315,5 @@ The reverse (plaintext NFS → gocryptfs) is the step-by-step adoption sequence 
 | `README.md` | This document. |
 | `gocryptfs-passphrase-secret.yaml` | Example Secret with a placeholder passphrase. Replace before use. |
 | `gocryptfs-init-job.yaml` | One-shot Job that initializes the gocryptfs backing directory. Run once. Unprivileged. |
-| `openemr-deployment-gocryptfs.yaml` | Modified openemr Deployment with privileged `gocryptfs-mounter` sidecar. 3 replicas + RollingUpdate preserved. |
+| `openemr-deployment-gocryptfs.yaml` | Modified openemr Deployment with privileged `gocryptfs-mounter` sidecar. 3 replicas retained; rollout strategy upgraded from the default's `Recreate` to `RollingUpdate`. |
 | `validate-encryption.sh` | End-to-end validation script. Writes a plaintext marker through openemr's `/sites`, verifies `gocryptfs.conf` cipher + filename encryption, confirms no plaintext filenames leak into the raw backing, and head-samples every backing file for marker leakage. Set `VALIDATE_FULL=1` to additionally scan the full contents of every backing file. |
