@@ -287,11 +287,29 @@ spec:
             # gocryptfs -fg forks the FUSE kernel-side handshake before
             # fully entering its request loop; a tight race can see
             # `gocryptfs` as running but the mount not yet live.
+            #
+            # IMPORTANT: match on fs-type fuse / fuse.gocryptfs, not on
+            # "any mount at this path". The underlying emptyDir is also
+            # mounted at $DECRYPTED_MNT (kubernetes bind-mounts it in
+            # before this container starts), so "$2 == mnt" is already
+            # true before gocryptfs has done anything. Checking the
+            # fs-type field is how we distinguish "FUSE overmount is
+            # live" from "emptyDir is sitting there waiting." If we
+            # accepted the emptyDir match here, the final verification
+            # at the bottom of this script would catch it — but the
+            # loop would exit on iteration 1, bypass the retry window,
+            # and the final check would exit the sidecar before gocryptfs
+            # had a chance to complete its handshake. Pod restarts would
+            # not fix this (same race on every restart), so the pod
+            # would never come up.
             for i in $(seq 1 50); do
-              if awk -v mnt="$DECRYPTED_MNT" '$2 == mnt { found=1 } END { exit !found }' /proc/mounts; then
-                echo "gocryptfs FUSE mount live after ${i}00ms"
-                break
-              fi
+              fs_type=$(awk -v mnt="$DECRYPTED_MNT" '$2 == mnt { print $3 }' /proc/mounts | tail -1)
+              case "$fs_type" in
+                fuse|fuse.gocryptfs)
+                  echo "gocryptfs FUSE mount live after ${i}00ms (type=$fs_type)"
+                  break
+                  ;;
+              esac
               # Bail early if gocryptfs died during handshake rather
               # than looping until failureThreshold.
               if ! kill -0 "$GOCRYPTFS_PID" 2>/dev/null; then
