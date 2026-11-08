@@ -1,0 +1,371 @@
+name: Kubernetes gocryptfs example
+
+# Exercises the kubernetes/examples/encryption-at-rest-gocryptfs/ adoption
+# flow:
+#   1. Bring up the default stack via the shared composite action.
+#   2. Follow the example's README step-by-step (scale down → init
+#      gocryptfs backing dir → migrate plaintext sites/ into the
+#      encrypted view → swap the openemr Deployment for the gocryptfs
+#      variant → wait Ready across all replicas).
+#   3. Prove openemr functions atop the gocryptfs-decrypted mount (HTTP
+#      response + unit tests).
+#   4. Prove encryption is actually effective (validate-encryption.sh).
+#   5. Prove -sharedstorage mode works across replicas (write from
+#      replica 1, write different file from replica 2, read both back
+#      from replica 3).
+#
+# Trigger paths cover the example itself plus files it depends on: the
+# default openemr Deployment (the gocryptfs variant is a modified copy),
+# the NFS stack it layers over, the kub-up script that the composite
+# action runs, and the composite action itself.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'kubernetes/examples/encryption-at-rest-gocryptfs/**'
+      - 'kubernetes/openemr/deployment.yaml'
+      - 'kubernetes/nfs/**'
+      - 'kubernetes/kub-up'
+      - '.github/actions/kubernetes-stack-up/**'
+      - '.github/workflows/test-kubernetes-gocryptfs.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'kubernetes/examples/encryption-at-rest-gocryptfs/**'
+      - 'kubernetes/openemr/deployment.yaml'
+      - 'kubernetes/nfs/**'
+      - 'kubernetes/kub-up'
+      - '.github/actions/kubernetes-stack-up/**'
+      - '.github/workflows/test-kubernetes-gocryptfs.yml'
+  workflow_dispatch:
+
+jobs:
+  gocryptfs-example-test:
+    name: gocryptfs example adoption + validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Bring up OpenEMR default stack
+        uses: ./.github/actions/kubernetes-stack-up
+
+      - name: Scale openemr + phpmyadmin to 0 (quiesce writes before init)
+        run: |
+          kubectl scale deployment openemr phpmyadmin --replicas=0
+          kubectl wait --for=delete pod -l name=openemr --timeout=120s
+          kubectl wait --for=delete pod -l name=phpmyadmin --timeout=120s
+
+      - name: Create real gocryptfs passphrase Secret (bypass placeholder gate)
+        run: |
+          # openssl rand -base64 48 → 64 chars of base64, well above any
+          # sensible entropy minimum. Does not match the committed
+          # placeholder, so the init Job's placeholder-check lets this
+          # through.
+          kubectl create secret generic gocryptfs-passphrase \
+            --from-literal=passphrase="$(openssl rand -base64 48)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Run gocryptfs init Job
+        run: |
+          kubectl apply -f kubernetes/examples/encryption-at-rest-gocryptfs/gocryptfs-init-job.yaml
+          kubectl wait --for=condition=complete job/gocryptfs-init-websitevolume --timeout=180s
+          echo "--- init Job logs ---"
+          kubectl logs job/gocryptfs-init-websitevolume
+
+      - name: Run plaintext → encrypted migration helper
+        # NOTE: the alpine image digest below is inline in a kubectl
+        # pod spec (heredoc), which dependabot's docker ecosystem
+        # does NOT scan — it only scans top-level `image:` fields
+        # in Kubernetes YAML and Dockerfiles, not inline pod specs
+        # in GHA workflow shell steps. Keep this digest in sync with
+        # the kubernetes/nfs/ + kubernetes/examples/
+        # encryption-at-rest-gocryptfs/ pins when dependabot's
+        # "infrastructure" group bumps those.
+        run: |
+          # Exercises the migration step the example README documents
+          # (step 3b): rsync the plaintext sites/ contents already on
+          # websitevolume into the newly-initialized gocryptfs backing,
+          # so the gocryptfs-variant openemr pod sees existing config
+          # (sqlconf.php, demo seed, etc.) instead of boot-strapping
+          # from scratch.
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: gocryptfs-migrate-helper
+          spec:
+            restartPolicy: Never
+            automountServiceAccountToken: false
+            containers:
+            - name: migrate
+              image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  apk add --no-cache gocryptfs fuse3 rsync
+                  mkdir -p /dec
+                  # -sharedstorage is required even for the solo migration
+                  # mount: this is the same backing dir the per-replica
+                  # pods will mount later, and gocryptfs refuses to mix
+                  # -sharedstorage vs non- modes against the same backing.
+                  gocryptfs -sharedstorage \
+                    -passfile /etc/gocryptfs/passphrase \
+                    /mnt/websitevolume/gocryptfs-backing /dec &
+                  GOFS=$!
+                  # Wait for the FUSE mount to appear before rsync.
+                  for i in $(seq 1 50); do
+                    if awk '$2 == "/dec" { found=1 } END { exit !found }' /proc/mounts; then
+                      break
+                    fi
+                    if ! kill -0 "$GOFS" 2>/dev/null; then
+                      echo "FATAL: gocryptfs exited during migration mount"
+                      exit 1
+                    fi
+                    sleep 0.1
+                  done
+                  rsync -aHAX --exclude=gocryptfs-backing \
+                    /mnt/websitevolume/ /dec/
+                  sync
+                  fusermount3 -u /dec
+                  wait "$GOFS" || true
+                  echo "MIGRATION_OK"
+              securityContext:
+                privileged: true
+              volumeMounts:
+                - name: websitevolume
+                  mountPath: /mnt/websitevolume
+                - name: gocryptfs-passphrase
+                  mountPath: /etc/gocryptfs
+                  readOnly: true
+            volumes:
+              - name: websitevolume
+                persistentVolumeClaim:
+                  claimName: websitevolume
+              - name: gocryptfs-passphrase
+                secret:
+                  secretName: gocryptfs-passphrase
+                  defaultMode: 0400
+                  items:
+                    - key: passphrase
+                      path: passphrase
+          EOF
+          # Poll until the helper's phase is terminal (Succeeded or Failed).
+          for _ in $(seq 1 60); do
+            PHASE=$(kubectl get pod gocryptfs-migrate-helper -o jsonpath='{.status.phase}' 2>/dev/null || echo Unknown)
+            case "$PHASE" in
+              Succeeded|Failed) break ;;
+            esac
+            sleep 5
+          done
+          echo "--- migration helper logs ---"
+          kubectl logs gocryptfs-migrate-helper
+          PHASE=$(kubectl get pod gocryptfs-migrate-helper -o jsonpath='{.status.phase}')
+          kubectl delete pod gocryptfs-migrate-helper --wait=false
+          if [ "$PHASE" != "Succeeded" ]; then
+            echo "ERROR: migration helper exited with phase $PHASE"
+            exit 1
+          fi
+
+      - name: Swap openemr Deployment for the gocryptfs variant
+        run: |
+          # kubectl replace (not apply) because the Deployment name is
+          # the same but the spec differs significantly (strategy,
+          # sidecar, mount topology). Replace tears down the old one
+          # first — safe here because we scaled to 0 above.
+          #
+          # CI resource floor: drop replicas to 2 for the base workflow
+          # (matches the default-stack integration workflow's budget
+          # on the GHA ubuntu-24.04 runner). The multi-replica concurrent-
+          # write step below explicitly scales back to 3 to exercise
+          # cross-replica -sharedstorage visibility.
+          kubectl replace -f kubernetes/examples/encryption-at-rest-gocryptfs/openemr-deployment-gocryptfs.yaml
+          kubectl scale deployment openemr --replicas=2
+          echo "Waiting for gocryptfs-variant openemr pods to reach Ready..."
+          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
+
+      - name: Verify all pods running
+        run: |
+          kubectl get pods
+          NOT_RUNNING=$(kubectl get pods --no-headers | grep -v Running | grep -v Completed || true)
+          if [ -n "$NOT_RUNNING" ]; then
+            echo "ERROR: Some pods are not running:"
+            echo "$NOT_RUNNING"
+            exit 1
+          fi
+          echo "PASS: All pods running"
+
+      - name: Test OpenEMR HTTP response (atop gocryptfs)
+        run: |
+          kubectl port-forward service/openemr 8080:8080 &
+          PF_PID=$!
+          trap 'kill $PF_PID 2>/dev/null || true' EXIT
+
+          # Poll until the port-forward tunnel is live rather than relying
+          # on a fixed sleep. 30 × 1s = 30s cap covers startup jitter;
+          # typical delay is <3s. Use curl's exit code (not its printed
+          # body) as the "tunnel live" signal — curl writes "000" to
+          # stdout on connection failure, so `curl ... || echo "000"`
+          # would append "000" to that "000" and produce the bogus
+          # HTTP_CODE "000000" on the first attempt, which is != "000"
+          # and would break out of the loop prematurely.
+          HTTP_CODE="000"
+          for _ in $(seq 1 30); do
+            if CURL_OUT=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080 2>/dev/null); then
+              HTTP_CODE="$CURL_OUT"
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 400 ]; then
+            echo "ERROR: OpenEMR returned HTTP $HTTP_CODE atop gocryptfs"
+            exit 1
+          fi
+          echo "PASS: OpenEMR HTTP responding atop gocryptfs (status $HTTP_CODE)"
+
+      - name: Get openemr pod name
+        id: openemr-pod
+        run: |
+          POD=$(kubectl get pods -l name=openemr -o jsonpath='{.items[0].metadata.name}')
+          echo "pod=$POD" >> "$GITHUB_OUTPUT"
+          echo "Using OpenEMR pod: $POD"
+
+      - name: Initialize OpenEMR database
+        timeout-minutes: 2
+        run: |
+          kubectl exec mysql-sts-0 -- mariadb -u root -proot -e '
+              INSERT INTO product_registration (opt_out) VALUES (1);
+              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_api";
+              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_fhir_api";
+              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_portal_api";
+              UPDATE globals SET gl_value = 3 WHERE gl_name = "oauth_password_grant";
+              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_system_scopes_api";
+            ' openemr
+
+      - name: Install dev dependencies (atop gocryptfs)
+        timeout-minutes: 5
+        run: |
+          kubectl exec ${{ steps.openemr-pod.outputs.pod }} -- \
+            sh -c 'cd /var/www/localhost/htdocs/openemr && composer install --dev --no-interaction --optimize-autoloader --ignore-platform-reqs'
+
+      - name: Unit tests (atop gocryptfs)
+        timeout-minutes: 5
+        run: |
+          kubectl get pod ${{ steps.openemr-pod.outputs.pod }} -o jsonpath='{.status.phase}' && echo ""
+          kubectl exec ${{ steps.openemr-pod.outputs.pod }} -- \
+            sh -c 'cd /var/www/localhost/htdocs/openemr && php -d memory_limit=8G ./vendor/bin/phpunit --colors=always --testdox --stop-on-failure --testsuite unit'
+
+      - name: Validate gocryptfs encryption effectiveness
+        run: bash kubernetes/examples/encryption-at-rest-gocryptfs/validate-encryption.sh
+
+      - name: Multi-replica concurrent-write test (-sharedstorage proof)
+        # The point of this example (vs LUKS) is that multiple openemr
+        # replicas can mount the same gocryptfs backing dir and see a
+        # consistent view. Prove it: scale to 3, write a replica-
+        # specific file from each of two replicas, then read BOTH
+        # files from a third replica. If -sharedstorage weren't
+        # effective, the third replica's gocryptfs process would have
+        # a stale directory cache and the reads would fail.
+        timeout-minutes: 10
+        run: |
+          echo "Scaling openemr to 3 replicas for cross-replica test"
+          kubectl scale deployment openemr --replicas=3
+          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=600s
+
+          # Collect pod names in a deterministic order.
+          mapfile -t PODS < <(kubectl get pod -l name=openemr -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
+          if [ "${#PODS[@]}" -lt 3 ]; then
+            echo "ERROR: expected 3 openemr pods, got ${#PODS[@]}"
+            kubectl get pod -l name=openemr
+            exit 1
+          fi
+          POD_A="${PODS[0]}"
+          POD_B="${PODS[1]}"
+          POD_C="${PODS[2]}"
+          echo "Replica A (writer 1): $POD_A"
+          echo "Replica B (writer 2): $POD_B"
+          echo "Replica C (reader):   $POD_C"
+
+          STAMP=$(date +%s)
+          MARKER_A="SHAREDSTORAGE-FROM-A-${STAMP}"
+          MARKER_B="SHAREDSTORAGE-FROM-B-${STAMP}"
+          FILE_A="/var/www/localhost/htdocs/openemr/sites/sharedstorage-test-from-a-${STAMP}.txt"
+          FILE_B="/var/www/localhost/htdocs/openemr/sites/sharedstorage-test-from-b-${STAMP}.txt"
+
+          echo "=== Write file A from replica A ==="
+          kubectl exec "$POD_A" -c openemr -- sh -c "echo '${MARKER_A}' > ${FILE_A}"
+
+          echo "=== Write file B from replica B ==="
+          kubectl exec "$POD_B" -c openemr -- sh -c "echo '${MARKER_B}' > ${FILE_B}"
+
+          # Give gocryptfs on the reader a brief moment to re-stat the
+          # directory. In -sharedstorage mode this is bounded by the
+          # NFS cache attribute timeout the stack sets (actimeo=0 on
+          # the stunneled NFS mount, so effectively zero), but a tiny
+          # settle wait reduces test flakiness without masking a real
+          # staleness bug.
+          sleep 2
+
+          echo "=== Read file A from replica C ==="
+          SEEN_A=$(kubectl exec "$POD_C" -c openemr -- cat "${FILE_A}")
+          echo "Replica C saw file A as: ${SEEN_A}"
+          if [ "${SEEN_A}" != "${MARKER_A}" ]; then
+            echo "FAIL: replica C could not read replica A's file via gocryptfs -sharedstorage"
+            exit 1
+          fi
+
+          echo "=== Read file B from replica C ==="
+          SEEN_B=$(kubectl exec "$POD_C" -c openemr -- cat "${FILE_B}")
+          echo "Replica C saw file B as: ${SEEN_B}"
+          if [ "${SEEN_B}" != "${MARKER_B}" ]; then
+            echo "FAIL: replica C could not read replica B's file via gocryptfs -sharedstorage"
+            exit 1
+          fi
+
+          echo "=== Cross-check: reader must list both files ==="
+          LISTED=$(kubectl exec "$POD_C" -c openemr -- ls /var/www/localhost/htdocs/openemr/sites/ \
+            | grep -c "sharedstorage-test-from-" || true)
+          if [ "${LISTED}" -lt 2 ]; then
+            echo "FAIL: replica C only saw ${LISTED} of 2 expected shared-storage test files"
+            kubectl exec "$POD_C" -c openemr -- ls -la /var/www/localhost/htdocs/openemr/sites/
+            exit 1
+          fi
+
+          echo "PASS: gocryptfs -sharedstorage mode works across 3 replicas."
+
+          # Cleanup — any replica can delete (shared view).
+          kubectl exec "$POD_A" -c openemr -- rm -f "${FILE_A}" "${FILE_B}"
+
+      - name: Collect debug info on failure
+        if: failure()
+        run: |
+          echo "=== Pod Status ==="
+          kubectl get pods -o wide
+          echo "=== Events ==="
+          kubectl get events --sort-by='.lastTimestamp' | tail -40
+          echo "=== OpenEMR (main container) Logs ==="
+          kubectl logs -l name=openemr -c openemr --tail=100 2>/dev/null || true
+          # Loop every openemr pod and dump its sidecar (multi-replica).
+          for POD in $(kubectl get pod -l name=openemr -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+            echo "=== gocryptfs-mounter sidecar logs for $POD ==="
+            kubectl logs "$POD" -c gocryptfs-mounter --tail=100 2>/dev/null || true
+          done
+          echo "=== nfs-server (ganesha) logs ==="
+          NFS_POD=$(kubectl get pod -l app=nfs-server -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+          if [ -n "$NFS_POD" ]; then
+            kubectl logs "$NFS_POD" -c nfs-server 2>/dev/null || true
+          fi
+          echo "=== gocryptfs-init Job logs ==="
+          kubectl logs job/gocryptfs-init-websitevolume 2>/dev/null || true
+          echo "=== gocryptfs-migrate-helper logs (if still present) ==="
+          kubectl logs gocryptfs-migrate-helper 2>/dev/null || true
+
+      - name: Cleanup
+        if: always()
+        working-directory: kubernetes
+        run: |
+          bash kub-down 2>/dev/null || true
+          kind delete cluster 2>/dev/null || true
