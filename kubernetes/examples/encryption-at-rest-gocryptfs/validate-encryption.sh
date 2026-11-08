@@ -50,7 +50,7 @@ VALIDATE_FULL="${VALIDATE_FULL:-0}"
 # create are swept up. Separate arrays rather than a stack of overlapping
 # traps so a later `trap '...' EXIT` cannot clobber the marker cleanup.
 declare -a CLEANUP_TMPFILES=()
-# shellcheck disable=SC2329  # invoked indirectly via `trap ... EXIT`
+# shellcheck disable=SC2329,SC2317  # function + body invoked indirectly via `trap ... EXIT`
 cleanup_all() {
   rc=$?
   if [[ -n "${OPENEMR_POD:-}" ]]; then
