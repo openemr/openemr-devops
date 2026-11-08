@@ -15,18 +15,25 @@ kubectl wait --for=condition=Ready nodes --all --timeout=120s
 # backoff 10/20/30/40/50s across 5 attempts = 150s worst-case wait,
 # well under the 120s cert-manager-webhook-Available wait that follows.
 CERT_MANAGER_URL="https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml"
+CERT_MANAGER_MAX_ATTEMPTS=5
 CERT_MANAGER_APPLIED=0
-for attempt in 1 2 3 4 5; do
+attempt=1
+while [ "${attempt}" -le "${CERT_MANAGER_MAX_ATTEMPTS}" ]; do
     if kubectl apply --validate=false -f "${CERT_MANAGER_URL}"; then
         CERT_MANAGER_APPLIED=1
         break
     fi
-    backoff=$((attempt * 10))
-    echo "...cert-manager apply attempt ${attempt} failed; retrying in ${backoff}s..."
-    sleep "${backoff}"
+    # Only sleep between attempts, not after the final failure —
+    # no point waiting 50s just to exit the loop.
+    if [ "${attempt}" -lt "${CERT_MANAGER_MAX_ATTEMPTS}" ]; then
+        backoff=$((attempt * 10))
+        echo "...cert-manager apply attempt ${attempt} failed; retrying in ${backoff}s..."
+        sleep "${backoff}"
+    fi
+    attempt=$((attempt + 1))
 done
 if [ "${CERT_MANAGER_APPLIED}" -eq 0 ]; then
-    echo "ERROR: cert-manager apply failed after 5 attempts."
+    echo "ERROR: cert-manager apply failed after ${CERT_MANAGER_MAX_ATTEMPTS} attempts."
     echo "Check https://www.githubstatus.com and retry, or"
     echo "download the manifest locally and re-point this script."
     exit 1

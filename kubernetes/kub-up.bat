@@ -19,7 +19,12 @@ if %CERT_MANAGER_ATTEMPTS% geq 3 (
     exit /b 1
 )
 echo ...cert-manager apply attempt %CERT_MANAGER_ATTEMPTS% failed; retrying...
-timeout 20
+REM Use `ping` as a portable 20-second delay. `timeout` requires a TTY
+REM and fails silently when the script's stdin is redirected (e.g.
+REM `kub-up.bat < some-input` or CI non-interactive runs).
+REM `ping -n 21 127.0.0.1 >nul` waits ~20s (first ping is immediate,
+REM subsequent 20 are 1s apart).
+ping -n 21 127.0.0.1 >nul
 goto cert_manager_retry
 :cert_manager_applied
 kubectl wait --for=condition=Available --timeout=120s -n cert-manager deployment/cert-manager-webhook
