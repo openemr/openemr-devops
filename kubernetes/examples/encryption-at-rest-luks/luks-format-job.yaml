@@ -42,10 +42,13 @@ spec:
       automountServiceAccountToken: false
       containers:
       - name: luks-format
-        # Alpine with cryptsetup installed. Pin by digest in production.
+        # Alpine with cryptsetup installed at container start.
         # The image needs: cryptsetup, e2fsprogs (mkfs.ext4), util-linux
         # (losetup), coreutils (fallocate/dd).
-        image: alpine:3.20
+        # Pinned to the same alpine digest as the nfs-server deployment's
+        # stunnel containers (kubernetes/nfs/) so dependabot's
+        # "infrastructure" group bumps them all together.
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
         command:
         - /bin/sh
         - -c

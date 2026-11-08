@@ -92,7 +92,10 @@ spec:
       # That termination order is exactly what we need — the main container
       # must stop writing to /sites before we unmount and luksClose.
       - name: luks-opener
-        image: alpine:3.20
+        # Pinned to the same alpine digest as the nfs-server deployment's
+        # stunnel containers (kubernetes/nfs/) so dependabot's
+        # "infrastructure" group bumps them all together.
+        image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
         restartPolicy: Always
         # startupProbe gates the rest of the pod on the LUKS mount being
         # live. Native-sidecar ordering says subsequent init containers

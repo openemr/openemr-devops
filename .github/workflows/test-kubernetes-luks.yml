@@ -70,6 +70,14 @@ jobs:
           kubectl logs job/luks-format-websitevolume
 
       - name: Run plaintext → encrypted migration helper
+        # NOTE: the alpine image digest below is inline in a kubectl
+        # pod spec (heredoc), which dependabot's docker ecosystem
+        # does NOT scan — it only scans top-level `image:` fields
+        # in Kubernetes YAML and Dockerfiles, not inline pod specs
+        # in GHA workflow shell steps. Keep this digest in sync with
+        # the kubernetes/nfs/ + kubernetes/examples/
+        # encryption-at-rest-luks/ pins when dependabot's
+        # "infrastructure" group bumps those.
         run: |
           # Exercises the migration step the example README documents
           # (step 3b): rsync the plaintext sites/ contents already on
@@ -87,7 +95,7 @@ jobs:
             automountServiceAccountToken: false
             containers:
             - name: migrate
-              image: alpine:3.20
+              image: alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
               command: ["/bin/sh", "-c"]
               args:
                 - |
