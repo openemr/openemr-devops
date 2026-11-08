@@ -101,8 +101,18 @@ echo "=== Step 2a: Verify the live gocryptfs mount in the sidecar ==="
 # files and the whole script reports PASS on unencrypted storage.
 # Fail hard here instead.
 # shellcheck disable=SC2016  # the $2/$3 inside single quotes are awk fields, not shell variables
+#
+# NOTE: do NOT `exit` on the first match. The kubelet bind-mounts an
+# emptyDir at /mnt/decrypted BEFORE the sidecar's gocryptfs process
+# runs — so /proc/mounts can contain two entries at this path, with
+# the emptyDir listed first (older in the mount table) and the FUSE
+# overmount listed later. The EFFECTIVE mount at that path is the
+# last entry; taking the first would reject a healthy FUSE-overmounted
+# setup. The sidecar's own final-verification path (in the Deployment
+# manifest) uses the same `tail -1` pattern for the same reason.
 MOUNT_FS_LINE=$(kubectl exec "${OPENEMR_POD}" -c gocryptfs-mounter -- \
-  awk '$2 == "/mnt/decrypted" { print $3; exit }' /proc/mounts 2>/dev/null || true)
+  awk '$2 == "/mnt/decrypted" { print $3 }' /proc/mounts 2>/dev/null \
+  | tail -1 || true)
 echo "Sidecar /proc/mounts fs-type for /mnt/decrypted: '${MOUNT_FS_LINE}'"
 case "${MOUNT_FS_LINE}" in
   fuse|fuse.gocryptfs)
@@ -457,8 +467,16 @@ if [[ "${VALIDATE_FULL}" = "1" ]]; then
       # grep -a reads the whole file; any read error (I/O, permission)
       # makes grep exit non-zero. We treat non-zero-on-no-match (exit
       # 1) as "no hits" and anything else as a scan error.
-      HITS=$(grep -a -c -F "$MARKER" "$f" 2>/dev/null)
-      GREP_RC=$?
+      #
+      # IMPORTANT: this inner sh runs with set -eu. A bare
+      # HITS=$(grep ...) would see grep exit 1 on no-match and errexit
+      # out of the inner shell BEFORE we could inspect $?, so the
+      # full-scan step would FAIL on clean storage. Guard the
+      # assignment with || GREP_RC=$? so the status is captured and
+      # errexit does not fire. Matches the shape the LUKS sibling
+      # validate-encryption.sh uses for the same reason.
+      GREP_RC=0
+      HITS=$(grep -a -c -F "$MARKER" "$f" 2>/dev/null) || GREP_RC=$?
       case "$GREP_RC" in
         0|1)
           if [ "$GREP_RC" = "0" ] && [ -n "$HITS" ] && [ "$HITS" != "0" ]; then
