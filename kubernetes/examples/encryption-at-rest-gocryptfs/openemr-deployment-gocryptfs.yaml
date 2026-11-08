@@ -4,15 +4,23 @@
 # following changes:
 #
 #   1. replicas: 3 (unchanged from default) + strategy: RollingUpdate
+#      (the default stack uses strategy: Recreate, which this example
+#      CHANGES to RollingUpdate).
 #      gocryptfs in -sharedstorage mode safely supports concurrent mounts
-#      against the same backing directory. Unlike the LUKS sibling example
-#      (which must run single-replica because ext4 inside LUKS is single-
-#      writer), this example preserves the default stack's multi-replica
-#      topology. See README.md § "Concurrent-writer semantics" for the
+#      against the same backing directory, so unlike the default stack
+#      (where Recreate exists because a single new pod needs sole access
+#      to the ext4 journal during startup leader election) and unlike the
+#      LUKS sibling example (which must run single-replica because ext4
+#      inside LUKS is single-writer), this example can preserve the
+#      multi-replica topology AND flip to RollingUpdate for zero-downtime
+#      rollouts. See README.md § "Concurrent-writer semantics" for the
 #      exact workload caveats.
 #
 #   2. New native sidecar `gocryptfs-mounter` (restartPolicy: Always on an
-#      initContainer, K8s 1.29+ GA). This container is PRIVILEGED (needs
+#      initContainer). This pattern is beta/default-on since Kubernetes
+#      1.29 and GA since 1.33 — on 1.29..1.32 the `SidecarContainers`
+#      feature gate must remain enabled on apiserver AND kubelet
+#      (which is the default). This container is PRIVILEGED (needs
 #      /dev/fuse + CAP_SYS_ADMIN to fuse-mount). It:
 #        - Mounts the gocryptfs backing directory on the NFS-backed
 #          websitevolume via FUSE in -sharedstorage mode.
@@ -64,11 +72,15 @@ spec:
     matchLabels:
       name: openemr
   strategy:
-    # RollingUpdate preserves availability during rollouts — one pod
-    # rotated at a time, decrypted view stays reachable throughout.
-    # This matches the default stack's Deployment strategy and is a
-    # key reason to pick gocryptfs over LUKS when multi-replica
-    # availability matters.
+    # RollingUpdate — one pod rotated at a time, decrypted view stays
+    # reachable through the rollout. This is a CHANGE from the default
+    # stack's `strategy: Recreate`; the default picks Recreate because
+    # OpenEMR's first-boot leader election writes a well-known path on
+    # the shared NFS and a single new pod coming up by itself keeps
+    # that race trivial. gocryptfs-over-NFS tolerates concurrent mounts
+    # (via -sharedstorage) and the leader-election logic already
+    # handles races, so flipping to RollingUpdate is the multi-replica
+    # availability win this example buys versus the LUKS sibling.
     type: RollingUpdate
   template:
     metadata:
@@ -83,11 +95,14 @@ spec:
       - name: init-redis-wait
         image: busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
         command: ['sh', '-c', "until nc -z redis 6379; do echo waiting for redis; sleep 2; done"]
-      # Native sidecar (K8s 1.29+ GA): restartPolicy: Always on an initContainer
-      # means this container starts before the main container, runs for the
-      # pod's lifetime, and is terminated AFTER the main container on shutdown.
-      # That termination order is exactly what we need — the main container
-      # must stop writing to /sites before we umount and tear down FUSE.
+      # Native sidecar (K8s 1.29 beta / 1.33 GA): restartPolicy: Always
+      # on an initContainer means this container starts before the main
+      # container, runs for the pod's lifetime, and is terminated AFTER
+      # the main container on shutdown. That termination order is
+      # exactly what we need — the main container must stop writing to
+      # /sites before we umount and tear down FUSE. On 1.29..1.32 the
+      # `SidecarContainers` feature gate must remain enabled on both
+      # apiserver and kubelet (it is on by default).
       - name: gocryptfs-mounter
         # Pinned to the same alpine digest as the nfs-server deployment's
         # stunnel containers (kubernetes/nfs/) so dependabot's
@@ -163,30 +178,68 @@ spec:
 
           mkdir -p "$DECRYPTED_MNT"
 
+          # Enable user_allow_other in fuse.conf so that the
+          # -allow_other mount option below is honored — without it the
+          # kernel restricts the FUSE mount to the invoking user (root
+          # in this sidecar), and the main openemr container's non-root
+          # Apache worker would get EACCES reading /sites. Using sed to
+          # uncomment is idempotent on the stock alpine fuse3 package's
+          # /etc/fuse.conf and tolerant of repeated sidecar restarts.
+          # (On most kernels root-mounted FUSE honors -allow_other
+          # unconditionally, but belt-and-suspenders: an explicit
+          # user_allow_other avoids any cross-distro surprise.)
+          if [ -f /etc/fuse.conf ]; then
+            sed -i 's/^#user_allow_other/user_allow_other/' /etc/fuse.conf
+          else
+            echo "user_allow_other" > /etc/fuse.conf
+          fi
+
           # Sidecar restart recovery. Native sidecars can be restarted
           # in place by the kubelet without the pod being deleted, so
-          # the FUSE mount from the previous run may still be fully
-          # live. Three cases to distinguish:
+          # the FUSE mount from the previous run may still be visible
+          # in /proc/mounts. Three cases to distinguish:
           #
-          #   1. $DECRYPTED_MNT is mounted and its source is a
-          #      gocryptfs FUSE handle — reuse it, skip remount. Doing
-          #      an unmount here would yank a healthy mount out from
-          #      under a running main container.
-          #   2. $DECRYPTED_MNT is mounted but its source is NOT
-          #      gocryptfs (something stale) — unmount and fall through
-          #      to a fresh mount.
-          #   3. $DECRYPTED_MNT is not mounted — fresh mount.
+          #   1. $DECRYPTED_MNT is a live gocryptfs FUSE mount that is
+          #      still readable — reuse it, skip remount. Doing an
+          #      unmount here would yank a healthy mount out from under
+          #      a running main container.
+          #   2. $DECRYPTED_MNT is a gocryptfs FUSE mount but the
+          #      backing gocryptfs process has crashed, so reads return
+          #      I/O errors — unmount (fusermount3 -u) and remount
+          #      cleanly.
+          #   3. $DECRYPTED_MNT is NOT a FUSE mount (ext4/tmpfs/etc. —
+          #      i.e. this is the raw emptyDir volume mount). LEAVE IT
+          #      ALONE. gocryptfs will FUSE-mount ON TOP via its own
+          #      mount(2) call, and the Bidirectional mount propagation
+          #      carries that FUSE view to the main container. Unmounting
+          #      the emptyDir here would detach the volume from this
+          #      sidecar's mount namespace, and the subsequent gocryptfs
+          #      FUSE mount would land on a non-propagated path — the
+          #      main container's HostToContainer mount would still see
+          #      the orphaned original emptyDir instead of the FUSE view.
           reused=0
           mount_fs=$(awk -v mnt="$DECRYPTED_MNT" '$2 == mnt { print $3 }' /proc/mounts | tail -1)
           if [ -n "$mount_fs" ]; then
             case "$mount_fs" in
               fuse|fuse.gocryptfs)
-                echo "Existing gocryptfs mount at $DECRYPTED_MNT; reusing"
-                reused=1
+                # Confirm the mount is actually functional. A crashed
+                # gocryptfs process can leave a FUSE mount visible in
+                # /proc/mounts whose reads/writes return I/O error.
+                if ls "$DECRYPTED_MNT" >/dev/null 2>&1; then
+                  echo "Existing gocryptfs mount at $DECRYPTED_MNT is live; reusing"
+                  reused=1
+                else
+                  echo "Existing gocryptfs mount at $DECRYPTED_MNT is non-functional; reclaiming"
+                  fusermount3 -u "$DECRYPTED_MNT" 2>/dev/null \
+                    || umount "$DECRYPTED_MNT" 2>/dev/null \
+                    || true
+                fi
                 ;;
               *)
-                echo "Stale non-gocryptfs mount at $DECRYPTED_MNT (type=$mount_fs); unmounting"
-                umount "$DECRYPTED_MNT" || true
+                # This is the underlying emptyDir volume mount (shows as
+                # ext4/tmpfs/etc. depending on the node backing store).
+                # Leave it alone — gocryptfs will FUSE-mount over it.
+                echo "Emptying-dir volume mount at $DECRYPTED_MNT (type=$mount_fs); gocryptfs will FUSE-mount over it"
                 ;;
             esac
           fi
@@ -207,6 +260,14 @@ spec:
             # -nosyslog       : logs to stderr (container log), not to
             #                   syslog (which isn't running in this
             #                   minimal container).
+            # -allow_other    : by default gocryptfs restricts the FUSE
+            #                   mount to the invoking user (root in the
+            #                   sidecar). The main openemr container's
+            #                   Apache worker runs as a non-root user and
+            #                   would get EACCES on /sites reads/writes
+            #                   without this flag. The user_allow_other
+            #                   setup above gates the kernel into
+            #                   accepting it.
             # Note on noexec: gocryptfs does not accept filesystem mount
             # options via a -o flag the way LUKS/ext4 does. If you need
             # noexec on the decrypted view, set it on the emptyDir-
@@ -214,6 +275,7 @@ spec:
             # this stack does not currently do; patches welcome).
             gocryptfs \
               -sharedstorage \
+              -allow_other \
               -passfile /etc/gocryptfs/passphrase \
               -nosyslog \
               -fg \
@@ -241,13 +303,34 @@ spec:
             done
           fi
 
+          # Final verification before signaling readiness: confirm
+          # /mnt/decrypted is REALLY a live FUSE mount. If gocryptfs
+          # silently fell back to writing into the underlying emptyDir
+          # (e.g. its mount(2) failed but it kept running), the marker
+          # below would land on the ext4 emptyDir and the startupProbe
+          # would falsely pass — the main container would then come up
+          # on UNENCRYPTED, pod-local storage. Fail closed instead.
+          final_fs=$(awk -v mnt="$DECRYPTED_MNT" '$2 == mnt { print $3 }' /proc/mounts | tail -1)
+          case "$final_fs" in
+            fuse|fuse.gocryptfs)
+              echo "Verified $DECRYPTED_MNT is a live FUSE mount (type=$final_fs)"
+              ;;
+            *)
+              echo "FATAL: $DECRYPTED_MNT is NOT a FUSE mount (type='$final_fs')."
+              echo "gocryptfs may have exited without mounting, or the mount silently failed."
+              echo "/proc/mounts entries for $DECRYPTED_MNT:"
+              awk -v mnt="$DECRYPTED_MNT" '$2 == mnt' /proc/mounts || true
+              exit 1
+              ;;
+          esac
+
           # Readiness marker INSIDE the decrypted view. Written after
-          # the mount is established so the main container's
-          # startupProbe (which checks for this file) only succeeds once
-          # /mnt/decrypted is really the gocryptfs mount. The marker
-          # lives on the encrypted fs, so it is torn down with the
-          # mount on fusermount3 -u — it cannot linger on the emptyDir
-          # after an abnormal shutdown.
+          # the mount is established AND after the fs-type verification
+          # above, so the main container's startupProbe only succeeds
+          # once /mnt/decrypted is really the gocryptfs mount. The
+          # marker lives on the encrypted fs, so it is torn down with
+          # the mount on fusermount3 -u — it cannot linger on the
+          # emptyDir after an abnormal shutdown.
           : > "$DECRYPTED_MNT/.gocryptfs-ready"
 
           echo "gocryptfs-decrypted view is live at $DECRYPTED_MNT"
