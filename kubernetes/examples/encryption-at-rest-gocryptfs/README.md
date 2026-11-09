@@ -209,26 +209,44 @@ kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s \
 # it observes on each Pod it snapshotted at invocation time, but can
 # race: a Pod that is deleting slowly (e.g. stuck in Terminating on
 # a lingering mount) may still exist when the wait returns. Follow
-# up with a hard check that `kubectl get pods -l name=openemr -o
-# name` is empty — if ANY openemr pod remains, the migration MUST
+# up with a hard check that NO pod is still holding the
+# `websitevolume` PVC open — if ANY remains, the migration MUST
 # abort. Proceeding past this point with a live writer still holding
 # websitevolume lets the plaintext rsync step race the pod's own
 # writes, corrupting the migration. Fall through to manual recovery
 # (investigate the stuck pod, `kubectl delete pod --force` only as
 # last resort — it strands the mount, which requires node-level
 # cleanup but at least stops NEW writes).
+#
+# Enumerate ALL pods in the namespace (no label selector) and inspect
+# each one's `.spec.volumes[*].persistentVolumeClaim.claimName` for
+# `websitevolume`. Label-scoped probes (`-l name=openemr`) miss
+# writers whose labels were rotated — a canary with `track=canary`, a
+# rename-in-place, or a one-off debug pod that mounted the PVC for
+# a copy would all slip past. The PVC-mount signal is what we
+# actually care about (anything holding the volume open corrupts the
+# migration), so inspect it directly.
+#
+# Capture stderr separately. A kubectl API-call failure must NOT be
+# conflated with "no matching pods" — prior `2>/dev/null`/`2>&1`
+# patterns would either hide the error entirely or fold it onto
+# stdout where the emptiness check would misread it as a pod name.
 kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
-# Separate the "kubectl errored" and "kubectl returned zero pods" cases.
-# The earlier pattern `-z "$(kubectl get pods ... 2>/dev/null)"` treated
-# a kubectl API-call failure (empty stdout, error on stderr suppressed)
-# as "no pods remain" — vacuously passing the quiescence gate.
-if ! remaining=$(kubectl get pods -l name=openemr -o name 2>&1); then
-  echo "ERROR: kubectl get pods failed — cannot verify openemr is quiescent."
-  echo "$remaining"
+err_file=$(mktemp)
+if ! remaining=$(kubectl get pods \
+    -o jsonpath='{range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}{.metadata.name}{"\n"}{end}' \
+    2>"$err_file"); then
+  echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
+  cat "$err_file"
+  rm -f "$err_file"
   exit 1
 fi
+rm -f "$err_file"
+# Trim trailing blank line that jsonpath's `{"\n"}` emits even on
+# the empty-match case.
+remaining=$(printf '%s' "$remaining" | sed '/^$/d')
 if [ -n "$remaining" ]; then
-  echo "ERROR: openemr pods remained after scale-to-0 + delete wait — aborting:"
+  echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting:"
   echo "$remaining"
   exit 1
 fi
@@ -575,14 +593,32 @@ Downgrading from this example back to the default stack means moving data out of
 #    Same two-step pattern as adoption: `kubectl wait --for=delete`
 #    returns on the first termination event per Pod it snapshotted;
 #    a slow-terminating Pod can still be present when the wait exits.
-#    If ANY openemr pod remains (e.g. stuck in Terminating on a
-#    lingering mount), the rollback MUST abort — a running writer
-#    would race the rsync-out step and we would stage a stale view.
+#    If ANY pod still holds `websitevolume` (e.g. stuck in Terminating
+#    on a lingering mount, or a debug pod unrelated to the Deployment),
+#    the rollback MUST abort — a running writer would race the
+#    rsync-out step and we would stage a stale view.
+#
+#    Same PVC-mount probe as the migration path above: enumerate ALL
+#    pods and filter by `.spec.volumes[*].persistentVolumeClaim.
+#    claimName`. Label-scoped probes miss pods whose labels were
+#    rotated; the PVC-mount signal is what actually matters.
+#    Capture stderr separately so a kubectl API-call failure does
+#    not fold onto stdout and get misread as a pod name.
 kubectl scale deployment openemr --replicas=0
 kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
-remaining=$(kubectl get pods -l name=openemr -o name 2>/dev/null || true)
+err_file=$(mktemp)
+if ! remaining=$(kubectl get pods \
+    -o jsonpath='{range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}{.metadata.name}{"\n"}{end}' \
+    2>"$err_file"); then
+  echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
+  cat "$err_file"
+  rm -f "$err_file"
+  exit 1
+fi
+rm -f "$err_file"
+remaining=$(printf '%s' "$remaining" | sed '/^$/d')
 if [ -n "$remaining" ]; then
-  echo "ERROR: openemr pods remained after scale-to-0 + delete wait — aborting rollback:"
+  echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting rollback:"
   echo "$remaining"
   exit 1
 fi

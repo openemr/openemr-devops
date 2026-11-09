@@ -202,7 +202,41 @@ kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s \
   && \
   # 1. Scale openemr to 0 so no pod is holding websitevolume open.
   kubectl scale deployment openemr --replicas=0
-kubectl wait --for=delete pod -l name=openemr --timeout=120s
+# Wait for pod deletion AND verify no pod is still present. `kubectl
+# wait --for=delete` returns success on the first termination event
+# it observes per snapshotted Pod; a slow-terminating Pod can still
+# be present when the wait returns. Follow up with a hard check that
+# NO pod is still holding the `websitevolume` PVC open — if ANY
+# remains, the migration MUST abort. A live writer during the
+# rsync-in step corrupts the migration.
+#
+# Enumerate ALL pods in the namespace (no label selector) and inspect
+# each one's `.spec.volumes[*].persistentVolumeClaim.claimName` for
+# `websitevolume`. Label-scoped probes (`-l name=openemr`) miss
+# writers whose labels were rotated — a canary with `track=canary`, a
+# rename-in-place, or a one-off debug pod that mounted the PVC for
+# a copy would all slip past. The PVC-mount signal is what we
+# actually care about, so inspect it directly.
+#
+# Capture stderr separately so a kubectl API-call failure does not
+# fold onto stdout and get misread as a pod name.
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+err_file=$(mktemp)
+if ! remaining=$(kubectl get pods \
+    -o jsonpath='{range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}{.metadata.name}{"\n"}{end}' \
+    2>"$err_file"); then
+  echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
+  cat "$err_file"
+  rm -f "$err_file"
+  exit 1
+fi
+rm -f "$err_file"
+remaining=$(printf '%s' "$remaining" | sed '/^$/d')
+if [ -n "$remaining" ]; then
+  echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting:"
+  echo "$remaining"
+  exit 1
+fi
 
 # 2. Create the LUKS passphrase Secret. In production, replace this with
 #    an ESO-managed ExternalSecret.
@@ -486,9 +520,38 @@ kubectl exec deploy/openemr -c openemr -- \
 Downgrading from this example back to the default stack means moving data out of the LUKS container file onto the plaintext NFS filesystem.
 
 ```bash
-# 1. Scale the LUKS-enabled openemr to 0.
+# 1. Scale the LUKS-enabled openemr to 0, then verify quiescence.
+#    Same two-step pattern as adoption: `kubectl wait --for=delete`
+#    returns on the first termination event per snapshotted Pod; a
+#    slow-terminating Pod can still be present when the wait returns.
+#    If ANY pod still holds `websitevolume` (stuck in Terminating on
+#    a lingering mount, or a debug pod unrelated to the Deployment),
+#    the rollback MUST abort — a running writer would race the
+#    rsync-out step and we would stage a stale view.
+#
+#    PVC-mount probe (not a label probe): enumerate ALL pods and
+#    filter by `.spec.volumes[*].persistentVolumeClaim.claimName`.
+#    Label-scoped probes miss pods whose labels were rotated. Capture
+#    stderr separately so a kubectl API-call failure does not fold
+#    onto stdout and get misread as a pod name.
 kubectl scale deployment openemr --replicas=0
-kubectl wait --for=delete pod -l name=openemr --timeout=120s
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+err_file=$(mktemp)
+if ! remaining=$(kubectl get pods \
+    -o jsonpath='{range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}{.metadata.name}{"\n"}{end}' \
+    2>"$err_file"); then
+  echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
+  cat "$err_file"
+  rm -f "$err_file"
+  exit 1
+fi
+rm -f "$err_file"
+remaining=$(printf '%s' "$remaining" | sed '/^$/d')
+if [ -n "$remaining" ]; then
+  echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting rollback:"
+  echo "$remaining"
+  exit 1
+fi
 
 # 2. Launch a privileged helper pod that opens the LUKS file, mounts it,
 #    and copies the contents OUT to a plaintext location. This is a
