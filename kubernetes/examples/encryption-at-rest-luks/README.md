@@ -356,14 +356,26 @@ if [ -n "$probe" ]; then
   exit 1
 fi
 
-# 2. Defensive check: confirm no openemr pod ever reached
-#    swarm-ready (i.e. no first-boot completed). If first-boot did
-#    land, sqlconf.php is already on plaintext NFS and the greenfield
-#    guarantee is lost — fall back to the migration path.
+# 2. Defensive check: confirm no plaintext openemr state exists on
+#    websitevolume. The greenfield guarantee is "no plaintext data on
+#    NFS", which means the volume must be empty before the LUKS
+#    container is formatted. Scoping the check to sqlconf.php alone
+#    would miss uploaded documents, cert material, or any other
+#    partially-landed state from a prior aborted first-boot (e.g. a
+#    pod that wrote documents before being killed). Insist on an
+#    empty volume, with a narrow carve-out for the LUKS init artifact
+#    (.openemr-sites.luks) in case format already succeeded on a
+#    prior attempt.
 #
-#    The simplest signal is the sqlconf.php file itself on
-#    websitevolume. If it does NOT exist, no pod wrote it. We check
-#    from a short-lived pod that mounts websitevolume read-only.
+#    Clean up any stale precheck pod from a prior attempt BEFORE the
+#    apply. `kubectl apply` on an existing pod with a different spec
+#    is a no-op (the Pod kind rejects most spec mutations) and would
+#    leave us reading stale state from the old pod. --wait=true
+#    ensures the old pod is fully gone before we recreate.
+if ! kubectl delete pod greenfield-precheck --ignore-not-found --wait=true; then
+  echo "ERROR: failed to remove stale greenfield-precheck pod from a prior attempt."
+  exit 1
+fi
 cat <<'EOF' | kubectl apply -f -
 apiVersion: v1
 kind: Pod
@@ -373,38 +385,79 @@ spec:
   restartPolicy: Never
   automountServiceAccountToken: false
   containers:
-  - name: check
+  # Container name is load-bearing: the `kubectl wait` below filters
+  # on containerStatuses[?(@.name=="precheck")], so renaming here
+  # requires updating the wait expression too.
+  - name: precheck
     image: alpine:3.24
     command: ["/bin/sh", "-c"]
     args:
       - |
-        # Three distinct outcomes:
-        #  - file exists: greenfield guarantee is lost, exit 1
-        #  - file does NOT exist AND the mount is reachable: greenfield
-        #    path is viable, exit 0
-        #  - cannot determine (mountpoint missing, permissions error,
-        #    stat system call failed for any other reason): fail closed
-        #    with exit 2 so the operator does not mistake a broken
-        #    check for a successful precheck.
+        # Four distinct outcomes:
+        #  - mount unreachable (dir missing or unlistable): exit 2
+        #    (PRECHECK_UNKNOWN) — the operator must diagnose, not
+        #    mistake a broken check for a passing one.
+        #  - any entry besides the .openemr-sites.luks carve-out:
+        #    exit 1 (EXISTING_DATA_PRESENT) — the greenfield
+        #    guarantee is lost. Fall back to the migration path.
+        #  - exactly the carve-out entry (.openemr-sites.luks alone,
+        #    from a prior successful format): exit 0 — the greenfield
+        #    sequence can resume from the Deployment-apply step.
+        #  - truly empty: exit 0 — proceed with the full greenfield
+        #    sequence.
         if [ ! -d /mnt/websitevolume ]; then
           echo "PRECHECK_UNKNOWN: /mnt/websitevolume is not accessible as a directory"
           exit 2
         fi
-        # Probe the directory itself before trusting the file-existence
-        # test. `ls` failing on the mountpoint indicates a permissions
-        # or NFS-visibility problem distinct from "sqlconf.php does not
-        # exist"; we must not treat that as PRECHECK_OK.
+        # Probe the directory itself before trusting the entry listing.
+        # `ls` failing on the mountpoint indicates a permissions or
+        # NFS-visibility problem distinct from "volume is empty"; we
+        # must not treat that as PRECHECK_OK.
         if ! ls /mnt/websitevolume >/dev/null 2>&1; then
           echo "PRECHECK_UNKNOWN: cannot list /mnt/websitevolume"
           exit 2
         fi
-        if [ -e /mnt/websitevolume/default/sqlconf.php ]; then
-          echo "PLAINTEXT_SQLCONF_PRESENT: first-boot already landed on plaintext NFS"
-          echo "Greenfield guarantee is lost. Use the migration path instead,"
-          echo "or wipe websitevolume and start over."
+        # Enumerate top-level entries into a tempfile so we can
+        # iterate without an inline heredoc (which would collide with
+        # the outer YAML block scalar's indentation rules). `ls -A`
+        # includes dotfiles but omits . and ..; iterate line-by-line
+        # and match each against the allowlist. Use a semicolon-
+        # separated accumulator so the diagnostic list stays on one
+        # line (embedded newlines in a shell variable would complicate
+        # the YAML-embedded block scalar further down, and we do not
+        # need line breaks in the message).
+        ls_out=$(mktemp)
+        if ! ls -A /mnt/websitevolume >"$ls_out" 2>/dev/null; then
+          echo "PRECHECK_UNKNOWN: ls -A failed on /mnt/websitevolume"
+          rm -f "$ls_out"
+          exit 2
+        fi
+        unexpected=""
+        while IFS= read -r entry; do
+          [ -z "$entry" ] && continue
+          case "$entry" in
+            # Carve-out: the LUKS format Job's artifact. If format
+            # already ran (prior-attempt resume), the container file
+            # is permitted at the top level.
+            .openemr-sites.luks) ;;
+            *)
+              if [ -z "$unexpected" ]; then
+                unexpected="$entry"
+              else
+                unexpected="$unexpected; $entry"
+              fi
+              ;;
+          esac
+        done <"$ls_out"
+        rm -f "$ls_out"
+        if [ -n "$unexpected" ]; then
+          echo "EXISTING_DATA_PRESENT: /mnt/websitevolume holds entries beyond the allowlist: $unexpected"
+          echo "The greenfield guarantee requires an empty volume (or only"
+          echo ".openemr-sites.luks from a prior-attempt format). Fall back"
+          echo "to the migration path, or wipe websitevolume and retry."
           exit 1
         fi
-        echo "PRECHECK_OK: no plaintext sqlconf.php found; greenfield path is viable"
+        echo "PRECHECK_OK: /mnt/websitevolume is empty (or only holds the LUKS container file); greenfield path is viable"
     volumeMounts:
       - name: websitevolume
         mountPath: /mnt/websitevolume
@@ -415,41 +468,61 @@ spec:
         claimName: websitevolume
 EOF
 # The pod exits:
-#   0 — PRECHECK_OK (no plaintext sqlconf.php; proceed with greenfield)
-#   1 — PLAINTEXT_SQLCONF_PRESENT (first-boot already landed; MUST fall back to migration path)
+#   0 — PRECHECK_OK (volume empty or only .openemr-sites.luks; proceed with greenfield)
+#   1 — EXISTING_DATA_PRESENT (plaintext entries present; MUST fall back to migration path)
 #   2 — PRECHECK_UNKNOWN (couldn't inspect — mountpoint missing, ls failed, etc.; DIAGNOSE, don't blindly migrate)
 #
-# The Succeeded-phase wait is the correct completion signal — a
-# fast-completing pod can go Pending → Running → Succeeded faster
-# than a `--for=condition=Ready` wait can observe, so don't layer
-# that in front.
-if kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/greenfield-precheck --timeout=60s; then
-  echo "Greenfield precheck PASSED — no plaintext sqlconf.php on websitevolume."
+# Wait on the NAMED container's termination, not pod phase. A pod
+# with multiple containers could be Pending/Running while the probe
+# container has already terminated with an exit code — pod-phase
+# wait would miss that. `containerStatuses[?(@.name=="precheck")].
+# state.terminated.exitCode` reads the exit code directly; a
+# successful wait implies exit 0, and a failed wait means either
+# non-zero exit or timeout, which we disambiguate below.
+if kubectl wait \
+     --for=jsonpath='{.status.containerStatuses[?(@.name=="precheck")].state.terminated.exitCode}'=0 \
+     pod/greenfield-precheck --timeout=60s; then
+  echo "Greenfield precheck PASSED — websitevolume is empty (or only .openemr-sites.luks)."
   kubectl delete pod greenfield-precheck
 else
+  # Succeeded wait failed. Capture diagnostics BEFORE deleting the
+  # pod (describing a missing resource produces no useful output).
   EXIT_CODE=$(kubectl get pod greenfield-precheck \
-    -o jsonpath='{.status.containerStatuses[0].state.terminated.exitCode}' 2>/dev/null || echo "")
-  kubectl logs pod/greenfield-precheck 2>/dev/null || true
+    -o jsonpath='{.status.containerStatuses[?(@.name=="precheck")].state.terminated.exitCode}' 2>/dev/null || echo "")
+  echo ""
+  echo "--- diagnostics for greenfield-precheck (captured pre-delete) ---"
+  kubectl describe pod/greenfield-precheck 2>/dev/null || echo "(describe failed)"
+  echo ""
+  echo "--- logs for greenfield-precheck ---"
+  kubectl logs pod/greenfield-precheck 2>/dev/null || echo "(logs failed)"
+  echo "--- end diagnostics ---"
+  echo ""
   case "$EXIT_CODE" in
     1)
-      echo ""
-      echo "Greenfield precheck result: PLAINTEXT sqlconf.php IS on websitevolume."
+      echo "Greenfield precheck result: EXISTING_DATA on websitevolume."
       echo "Greenfield guarantee is lost. Fall back to the Migration path"
       echo "(§ 'Migration from a running default-stack deployment' above)."
       echo "BEFORE doing so, clean up partial greenfield artifacts:"
       echo "  - kubectl delete pod greenfield-precheck --ignore-not-found"
-      echo "  - kubectl delete secret luks-passphrase --ignore-not-found"
       echo "  - kubectl delete job luks-format-websitevolume --ignore-not-found"
+      echo "  - If the luks-passphrase Secret came from this attempt"
+      echo "    (i.e. you applied luks-passphrase-secret.yaml directly"
+      echo "    in step 3 below): kubectl delete secret luks-passphrase"
+      echo "    If it came from External Secrets Operator (ESO) or any other"
+      echo "    controller-managed source: DO NOT delete it — let the"
+      echo "    controller reconcile. Check for ESO ownership first:"
+      echo "      kubectl get secret luks-passphrase -o jsonpath='{.metadata.ownerReferences}'"
+      echo "    Non-empty ownerReferences (or an annotation like"
+      echo "    'external-secrets.io/managed') means another controller owns it."
       echo "  - do NOT wipe websitevolume; migration needs the plaintext data"
       kubectl delete pod greenfield-precheck --ignore-not-found
       exit 1
       ;;
     2|"")
-      echo ""
       echo "Greenfield precheck result: UNKNOWN (container exit: '${EXIT_CODE:-timeout}')."
       echo "DIAGNOSE AND RETRY. Do NOT fall back to the migration path"
       echo "without first confirming the plaintext state of websitevolume."
-      echo "  kubectl describe pod/greenfield-precheck"
+      echo "The diagnostics above are the starting point; also check:"
       echo "  kubectl get pvc websitevolume"
       kubectl delete pod greenfield-precheck --ignore-not-found
       exit 2
