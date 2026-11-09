@@ -711,13 +711,48 @@ if [ "$EXIT_CODE" = "0" ]; then
   # The precheck container's final log line distinguishes the two
   # (PRECHECK_OK: EMPTY vs PRECHECK_OK: RESUME); capture the logs here
   # BEFORE deleting the pod so the signal survives.
-  PRECHECK_LOG=$(kubectl logs pod/greenfield-precheck 2>/dev/null || true)
+  #
+  # Fail-closed classification. The precheck container exited 0, but
+  # exit 0 alone does not tell us WHICH of the two safe outcomes it
+  # saw — only its log line does. `kubectl logs` can fail independently
+  # of container exit (API glitch, pod GC race, authz on logs subresource)
+  # and return an empty string under `|| true`. Branching on "RESUME
+  # marker present → RESUME, everything else → EMPTY" would silently
+  # route a log-read failure OR an unclassified marker through the
+  # EMPTY arm — which runs the init Job, and the init Job's own guard
+  # refuses to re-init on top of an existing backing, so the symptom
+  # would be a failed Job on a resume attempt. Classify three ways
+  # explicitly: RESUME marker, EMPTY marker, or ABORT.
+  PRECHECK_LOG_ERR=$(mktemp)
+  PRECHECK_LOG=$(kubectl logs pod/greenfield-precheck 2>"$PRECHECK_LOG_ERR") || PRECHECK_LOG_FAILED=yes
+  if [ "${PRECHECK_LOG_FAILED:-no}" = "yes" ]; then
+    echo "ERROR: kubectl logs pod/greenfield-precheck failed — cannot classify precheck outcome."
+    echo "       The container exited 0, but without its log line we cannot tell"
+    echo "       EMPTY (run init Job) from RESUME (skip init Job). ABORTING."
+    cat "$PRECHECK_LOG_ERR" >&2
+    rm -f "$PRECHECK_LOG_ERR"
+    kubectl delete pod greenfield-precheck --ignore-not-found
+    exit 2
+  fi
+  rm -f "$PRECHECK_LOG_ERR"
   if printf '%s\n' "$PRECHECK_LOG" | grep -q '^PRECHECK_OK: RESUME'; then
     RESUME=yes
     echo "Greenfield precheck PASSED (RESUME) — websitevolume already holds a well-formed gocryptfs-backing/ from a prior init. The init Job will be SKIPPED below."
-  else
+  elif printf '%s\n' "$PRECHECK_LOG" | grep -q '^PRECHECK_OK: EMPTY'; then
     RESUME=no
     echo "Greenfield precheck PASSED (EMPTY) — websitevolume is empty. The init Job will run below."
+  else
+    echo "ERROR: greenfield-precheck exited 0 but its log contains neither"
+    echo "       'PRECHECK_OK: RESUME' nor 'PRECHECK_OK: EMPTY'. Something"
+    echo "       truncated the log or changed the precheck script without"
+    echo "       updating the classifier. ABORTING — do NOT guess at the"
+    echo "       downstream path."
+    echo ""
+    echo "--- captured log ---"
+    printf '%s\n' "$PRECHECK_LOG"
+    echo "--- end captured log ---"
+    kubectl delete pod greenfield-precheck --ignore-not-found
+    exit 2
   fi
   kubectl delete pod greenfield-precheck
 else
