@@ -164,6 +164,49 @@ Starting from a running #910 default stack:
 #    first-boot. Verify:
 kubectl get deployment openemr
 kubectl get pvc websitevolume sslvolume letsencryptvolume
+
+# 0a. If the luks-passphrase Secret is ALREADY present (e.g. an
+#     operator provisioned it via External Secrets Operator ahead of
+#     this migration), validate its shape BEFORE the destructive
+#     scale-to-0 step below. A Secret with no `passphrase` key, or a
+#     key that base64-decodes to empty / whitespace-only, would ride
+#     through the Secret-adoption gate in step 2, then the format Job
+#     would refuse at luksFormat time — by which point the running
+#     deployment has already been scaled down and the migration is
+#     half-committed. Fail fast here instead.
+#
+#     Only validate when the Secret is present; the Secret-adoption
+#     gate in step 2 handles the absent case. Treat a kubectl API
+#     error on the probe the same way the adoption gate does:
+#     an indeterminate cluster state must not proceed to the
+#     destructive scale-down.
+secret_probe_err=$(mktemp)
+if kubectl get secret luks-passphrase -o name >/dev/null 2>"$secret_probe_err"; then
+  passphrase_b64=$(kubectl get secret luks-passphrase \
+                   -o jsonpath='{.data.passphrase}' 2>/dev/null || true)
+  if [ -z "$passphrase_b64" ]; then
+    echo "ERROR: Secret 'luks-passphrase' exists but has no 'passphrase' key."
+    echo "       Refusing to scale openemr to 0 — fix the Secret shape first."
+    rm -f "$secret_probe_err"
+    exit 1
+  fi
+  decoded_len=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null \
+                | tr -d '[:space:]' | wc -c | tr -d ' ')
+  if [ "$decoded_len" = "0" ]; then
+    echo "ERROR: Secret 'luks-passphrase' 'passphrase' key decodes to empty/whitespace."
+    echo "       Refusing to scale openemr to 0 — fix the Secret value first."
+    rm -f "$secret_probe_err"
+    exit 1
+  fi
+elif ! grep -qi 'NotFound\|not found' "$secret_probe_err"; then
+  echo "ERROR: kubectl get secret luks-passphrase returned an API error that is NOT NotFound:"
+  cat "$secret_probe_err" >&2
+  echo "       Refusing to scale openemr to 0 — cluster state is indeterminate."
+  rm -f "$secret_probe_err"
+  exit 1
+fi
+rm -f "$secret_probe_err"
+
 # Wait for openemr pods to reach Ready AND verify that the leader
 # completed its first-boot seed. openemr's first-boot writes
 # sqlconf.php and seeds the admin user + Gacl rows; scaling to 0
