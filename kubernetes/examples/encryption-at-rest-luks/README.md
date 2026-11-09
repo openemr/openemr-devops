@@ -913,18 +913,35 @@ if kubectl get secret luks-passphrase -o name >/dev/null 2>"$secret_err"; then
     #     LUKS container, so there is no master key to protect. Editing
     #     the Secret BEFORE running the format Job is the correct move.
     if [ "${RESUME:-no}" = "yes" ]; then
-      echo "WARNING: existing Secret still carries the published placeholder"
-      echo "passphrase, AND the precheck selected the RESUME path."
-      echo "DO NOT edit this Secret in place — the existing container's"
-      echo "keyslots wrap the master key with whatever passphrase was"
-      echo "used at format, and a new Secret value cannot open any slot."
-      echo "Rotate the container FIRST:"
-      echo "  * run \`cryptsetup luksAddKey\` (new passphrase) then"
-      echo "    \`cryptsetup luksRemoveKey\` (old passphrase) against"
-      echo "    /mnt/websitevolume/.openemr-sites.luks from a privileged"
-      echo "    helper pod; THEN"
-      echo "  * update this Secret to the new passphrase."
-      echo "If the old passphrase is lost, the container is unrecoverable."
+      # ABORT on RESUME + placeholder. There is no safe forward path:
+      # the existing container's LUKS keyslots wrap the master key with
+      # whatever passphrase was used at format, and the placeholder
+      # does not match any slot. Letting the setup continue (as a mere
+      # warning) would apply the LUKS-enabled Deployment and the
+      # sidecar would crashloop at every pod start against a Secret
+      # that cannot open any keyslot. The operator must either add a
+      # new passphrase to a free keyslot using the OLD passphrase
+      # (`cryptsetup luksAddKey` + `luksRemoveKey`) and then update
+      # the Secret — or, if the old passphrase is lost, see the
+      # multi-slot / header-backup recovery notes in § Key management.
+      echo "ERROR: existing Secret still carries the published placeholder"
+      echo "       passphrase, AND the precheck selected the RESUME path."
+      echo "       There is no safe recovery from here — refusing to continue."
+      echo ""
+      echo "       The existing container's LUKS keyslots wrap the master key"
+      echo "       with whatever passphrase was used at format; the placeholder"
+      echo "       does not match any slot, and a new Secret value cannot open"
+      echo "       any slot without that old passphrase."
+      echo ""
+      echo "       To recover, rotate the container FIRST:"
+      echo "         * run \`cryptsetup luksAddKey\` (new passphrase) then"
+      echo "           \`cryptsetup luksRemoveKey\` (old passphrase) against"
+      echo "           /mnt/websitevolume/.openemr-sites.luks from a privileged"
+      echo "           helper pod; THEN"
+      echo "         * update this Secret to the new passphrase."
+      echo "       See § Key management for the multi-slot / header-backup"
+      echo "       recovery path if the old passphrase is lost."
+      exit 1
     else
       echo "WARNING: existing Secret still carries the published placeholder"
       echo "passphrase. The format Job will refuse to run against it. Replace"
@@ -940,10 +957,16 @@ elif grep -qi 'NotFound\|not found' "$secret_err"; then
                  | base64 -d 2>/dev/null || true)
       if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
         if [ "${RESUME:-no}" = "yes" ]; then
-          echo "WARNING: concurrently-created Secret still carries the published"
-          echo "placeholder, AND the precheck selected the RESUME path. DO NOT"
-          echo "edit this Secret — rotate the container via \`cryptsetup"
-          echo "luksAddKey\` + \`luksRemoveKey\` first (see above)."
+          # ABORT on RESUME + placeholder (same reasoning as the
+          # existing-Secret branch above). No safe forward path.
+          echo "ERROR: concurrently-created Secret still carries the published"
+          echo "       placeholder, AND the precheck selected the RESUME path."
+          echo "       There is no safe recovery from here — refusing to continue."
+          echo "       Rotate the container via \`cryptsetup luksAddKey\` +"
+          echo "       \`luksRemoveKey\` first (see the existing-Secret branch"
+          echo "       above for the full sequence)."
+          rm -f "$secret_err"
+          exit 1
         else
           echo "WARNING: concurrently-created Secret still carries the published"
           echo "placeholder passphrase. The format Job will refuse to run against it."

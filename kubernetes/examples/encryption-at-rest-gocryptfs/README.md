@@ -1063,17 +1063,34 @@ if kubectl get secret gocryptfs-passphrase -o name >/dev/null 2>"$secret_err"; t
     #     backing, so there is no master key to protect. Editing the
     #     Secret BEFORE running the init Job is the correct move.
     if [ "${RESUME:-no}" = "yes" ]; then
-      echo "WARNING: existing Secret still carries the published placeholder"
-      echo "passphrase, AND the precheck selected the RESUME path."
-      echo "DO NOT edit this Secret in place — the existing backing's"
-      echo "gocryptfs.conf wraps the master key with whatever passphrase"
-      echo "was used at init, and a new Secret value cannot decrypt it."
-      echo "Rotate the backing FIRST:"
-      echo "  * run \`gocryptfs -passwd /mnt/websitevolume/gocryptfs-backing\`"
-      echo "    from a privileged helper pod with the old passphrase file"
-      echo "    mounted; THEN"
-      echo "  * update this Secret to the new passphrase."
-      echo "If the old passphrase is lost, the backing is unrecoverable."
+      # ABORT on RESUME + placeholder. There is no safe forward path:
+      # the existing backing's gocryptfs.conf wraps the master key with
+      # whatever passphrase was used at init, and the placeholder
+      # cannot decrypt it. Letting the setup continue (as a mere
+      # warning) would apply the gocryptfs-enabled Deployment and the
+      # sidecar would crashloop at every pod start against a Secret
+      # that cannot open the backing. The operator must either rotate
+      # the backing with the OLD passphrase (via `gocryptfs -passwd`)
+      # and then update the Secret to a new value — or, if the old
+      # passphrase is lost, treat the backing as unrecoverable (see
+      # the master-key recovery note in § Key management).
+      echo "ERROR: existing Secret still carries the published placeholder"
+      echo "       passphrase, AND the precheck selected the RESUME path."
+      echo "       There is no safe recovery from here — refusing to continue."
+      echo ""
+      echo "       The existing backing's gocryptfs.conf wraps the master key"
+      echo "       with whatever passphrase was used at init; the placeholder"
+      echo "       cannot decrypt it, and a new Secret value cannot re-wrap"
+      echo "       the on-disk master key without that old passphrase."
+      echo ""
+      echo "       To recover, rotate the backing FIRST:"
+      echo "         * run \`gocryptfs -passwd /mnt/websitevolume/gocryptfs-backing\`"
+      echo "           from a privileged helper pod with the OLD passphrase"
+      echo "           file mounted; THEN"
+      echo "         * update this Secret to the new passphrase."
+      echo "       See § Key management for the master-key escrow / recovery"
+      echo "       path if the old passphrase is lost."
+      exit 1
     else
       echo "WARNING: existing Secret still carries the published placeholder"
       echo "passphrase. The init Job will refuse to run against it. Replace"
@@ -1089,10 +1106,15 @@ elif grep -qi 'NotFound\|not found' "$secret_err"; then
                  | base64 -d 2>/dev/null || true)
       if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
         if [ "${RESUME:-no}" = "yes" ]; then
-          echo "WARNING: concurrently-created Secret still carries the published"
-          echo "placeholder, AND the precheck selected the RESUME path. DO NOT"
-          echo "edit this Secret — rotate the backing via \`gocryptfs -passwd\`"
-          echo "first (see above)."
+          # ABORT on RESUME + placeholder (same reasoning as the
+          # existing-Secret branch above). No safe forward path.
+          echo "ERROR: concurrently-created Secret still carries the published"
+          echo "       placeholder, AND the precheck selected the RESUME path."
+          echo "       There is no safe recovery from here — refusing to continue."
+          echo "       Rotate the backing via \`gocryptfs -passwd\` first (see the"
+          echo "       existing-Secret branch above for the full sequence)."
+          rm -f "$secret_err"
+          exit 1
         else
           echo "WARNING: concurrently-created Secret still carries the published"
           echo "placeholder passphrase. The init Job will refuse to run against it."
