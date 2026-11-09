@@ -630,24 +630,35 @@ EOF
 # Wait on the NAMED container's termination, not pod phase. A pod
 # with multiple containers could be Pending/Running while the probe
 # container has already terminated with an exit code — pod-phase
-# wait would miss that. `containerStatuses[?(@.name=="precheck")].
-# state.terminated.exitCode` reads the exit code directly; a
-# successful wait implies exit 0, and a failed wait means either
-# non-zero exit or timeout, which we disambiguate below.
-if kubectl wait \
-     --for=jsonpath='{.status.containerStatuses[?(@.name=="precheck")].state.terminated.exitCode}'=0 \
-     pod/greenfield-precheck --timeout=60s; then
-  # precheck container terminated with exit 0 → PRECHECK_OK.
+# wait would miss that.
+#
+# Poll for the precheck container's terminated state via
+# `go-template` rather than `kubectl wait --for=jsonpath=` with a
+# filter expression. `kubectl wait --for=jsonpath` landed in 1.23
+# but filter expressions INSIDE that jsonpath against an array
+# (containerStatuses[?(@.name=="precheck")]) were not reliably
+# supported until kubectl 1.29; on 1.28 the expression either
+# returns "no matches" immediately or times out silently. The
+# go-template form below works on every supported kubectl release
+# because it runs client-side after the get completes.
+EXIT_CODE=""
+for attempt in $(seq 1 60); do
+  EXIT_CODE=$(kubectl get pod greenfield-precheck \
+    -o go-template='{{range .status.containerStatuses}}{{if eq .name "precheck"}}{{if .state.terminated}}{{.state.terminated.exitCode}}{{end}}{{end}}{{end}}' \
+    2>/dev/null || echo "")
+  if [ -n "$EXIT_CODE" ]; then
+    break
+  fi
+  sleep 1
+done
+
+if [ "$EXIT_CODE" = "0" ]; then
   echo "Greenfield precheck PASSED — websitevolume is empty (or only gocryptfs-backing/)."
   kubectl delete pod greenfield-precheck
 else
-  # Succeeded wait failed. Capture diagnostics BEFORE deleting the
-  # pod (describing a missing resource produces no useful output).
-  # Inspect the named precheck container's exit code to distinguish
-  # exit 1 (data present) from exit 2 (couldn't check) from a wait
-  # timeout (container stuck).
-  EXIT_CODE=$(kubectl get pod greenfield-precheck \
-    -o jsonpath='{.status.containerStatuses[?(@.name=="precheck")].state.terminated.exitCode}' 2>/dev/null || echo "")
+  # Precheck container exited non-zero OR did not terminate within
+  # the poll window. Capture diagnostics BEFORE deleting the pod
+  # (describing a missing resource produces no useful output).
   echo ""
   echo "--- diagnostics for greenfield-precheck (captured pre-delete) ---"
   kubectl describe pod/greenfield-precheck 2>/dev/null || echo "(describe failed)"
@@ -678,7 +689,7 @@ else
       exit 1
       ;;
     2|"")
-      # Container exit 2 OR no terminated-state recorded (wait timeout).
+      # Container exit 2 OR no terminated-state recorded (poll timeout).
       echo "Greenfield precheck result: UNKNOWN (container exit: '${EXIT_CODE:-timeout}')."
       echo "DIAGNOSE AND RETRY. Do NOT fall back to the migration path"
       echo "without first confirming the plaintext state of websitevolume."
