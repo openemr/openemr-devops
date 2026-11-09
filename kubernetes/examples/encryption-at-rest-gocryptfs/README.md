@@ -802,7 +802,26 @@ Downgrading from this example back to the default stack means moving data out of
 #
 #    Capture stderr separately so a kubectl API-call failure does
 #    not fold onto stdout and get misread as a pod name.
-kubectl scale deployment openemr --replicas=0
+#
+#    Gate the quiescence probe on scale-to-0 SUCCESS. A `kubectl
+#    scale` that errors out (API 4xx/5xx, insufficient RBAC,
+#    Deployment-not-found) would otherwise let the probe run
+#    unchanged — and the probe would vacuously report "no pods
+#    mounting websitevolume" when the real state is "the Deployment
+#    still has 1 replica but we failed to scale it, OR the
+#    Deployment doesn't exist in this namespace and there never
+#    were any pods to see." Either way, trusting the probe
+#    post-scale-failure would advance the rollback against stale
+#    knowledge of writer state. Abort immediately on scale failure.
+if ! kubectl scale deployment openemr --replicas=0; then
+  echo "ERROR: kubectl scale deployment/openemr --replicas=0 failed — aborting rollback."
+  echo "The quiescence probe cannot run because we have not confirmed"
+  echo "the Deployment's replica count went to 0. Investigate: did the"
+  echo "Deployment ever exist (kubectl get deploy openemr)? Does the"
+  echo "current context have RBAC for scale? Rerun this script once"
+  echo "the scale command returns success."
+  exit 1
+fi
 kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
 err_file=$(mktemp)
 if ! probe=$(kubectl get pods \
