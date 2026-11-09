@@ -286,7 +286,20 @@ fi
 # init Job would then refuse to run against it (its guard rejects the
 # placeholder value). If ESO manages this Secret, do NOT apply the
 # local manifest at all; let ESO own the lifecycle.
-if kubectl get secret gocryptfs-passphrase >/dev/null 2>&1; then
+#
+# The lookup distinguishes three outcomes:
+#   * exists         → NOT applying; surface placeholder warning;
+#   * confirmed-absent → create (not apply) so a concurrent ESO
+#                      creation between our check and our create loses
+#                      cleanly with AlreadyExists rather than racing
+#                      an overwrite;
+#   * other API error → ABORT (RBAC denied, API server unreachable,
+#                      network blip). The bare `>/dev/null 2>&1` arm
+#                      swallowed all of these as "does not exist" and
+#                      proceeded to apply the placeholder on top of
+#                      whatever state the cluster was actually in.
+secret_err=$(mktemp)
+if kubectl get secret gocryptfs-passphrase -o name >/dev/null 2>"$secret_err"; then
   echo "Secret 'gocryptfs-passphrase' already exists — NOT applying the local manifest."
   existing=$(kubectl get secret gocryptfs-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
              | base64 -d 2>/dev/null || true)
@@ -294,9 +307,34 @@ if kubectl get secret gocryptfs-passphrase >/dev/null 2>&1; then
     echo "WARNING: existing Secret still carries the published placeholder"
     echo "passphrase. The init Job will refuse to run against it."
   fi
+elif grep -qi 'NotFound\|not found' "$secret_err"; then
+  # Confirmed not found — create. `kubectl create` fails with
+  # AlreadyExists on a concurrent ESO creation, which is the
+  # correct outcome: we'd rather lose the race than overwrite.
+  if ! kubectl create -f gocryptfs-passphrase-secret.yaml 2>"$secret_err"; then
+    if grep -qi 'AlreadyExists\|already exists' "$secret_err"; then
+      echo "Secret 'gocryptfs-passphrase' was created concurrently (likely by ESO) — NOT overwriting."
+      existing=$(kubectl get secret gocryptfs-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+                 | base64 -d 2>/dev/null || true)
+      if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+        echo "WARNING: concurrently-created Secret still carries the published"
+        echo "placeholder passphrase. The init Job will refuse to run against it."
+      fi
+    else
+      echo "ERROR: kubectl create secret gocryptfs-passphrase failed:"
+      cat "$secret_err" >&2
+      rm -f "$secret_err"
+      exit 1
+    fi
+  fi
 else
-  kubectl apply -f gocryptfs-passphrase-secret.yaml
+  echo "ERROR: kubectl get secret gocryptfs-passphrase returned an API error that is NOT NotFound:"
+  cat "$secret_err" >&2
+  echo "       Refusing to proceed — the cluster state is indeterminate."
+  rm -f "$secret_err"
+  exit 1
 fi
+rm -f "$secret_err"
 
 # 3. Run the one-shot init Job. This initializes the gocryptfs backing
 #    directory (gocryptfs.conf + gocryptfs.diriv) inside websitevolume.
@@ -903,7 +941,17 @@ fi
 #     data loss waiting for the next pod restart.
 # If ESO manages this Secret, do NOT apply the local manifest at all —
 # let ESO own the lifecycle (see § Key management).
-if kubectl get secret gocryptfs-passphrase >/dev/null 2>&1; then
+#
+# Three-way classification (matches the migration path above):
+#   * exists         → NOT applying; surface placeholder warning;
+#   * confirmed-absent → create (not apply) so a concurrent ESO
+#                      creation between our check and our create loses
+#                      cleanly with AlreadyExists rather than racing
+#                      an overwrite — especially critical on the resume
+#                      path where overwrite = silent data loss;
+#   * other API error → ABORT.
+secret_err=$(mktemp)
+if kubectl get secret gocryptfs-passphrase -o name >/dev/null 2>"$secret_err"; then
   echo "Secret 'gocryptfs-passphrase' already exists — NOT applying the local manifest."
   echo "If it is ESO-managed, this is the intended state. If it was left"
   echo "over from a prior run, verify its value is the passphrase used to"
@@ -916,9 +964,31 @@ if kubectl get secret gocryptfs-passphrase >/dev/null 2>&1; then
     echo "the value (direct edit, or let ESO reconcile a real one) before"
     echo "proceeding."
   fi
+elif grep -qi 'NotFound\|not found' "$secret_err"; then
+  if ! kubectl create -f gocryptfs-passphrase-secret.yaml 2>"$secret_err"; then
+    if grep -qi 'AlreadyExists\|already exists' "$secret_err"; then
+      echo "Secret 'gocryptfs-passphrase' was created concurrently (likely by ESO) — NOT overwriting."
+      existing=$(kubectl get secret gocryptfs-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+                 | base64 -d 2>/dev/null || true)
+      if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+        echo "WARNING: concurrently-created Secret still carries the published"
+        echo "placeholder passphrase. The init Job will refuse to run against it."
+      fi
+    else
+      echo "ERROR: kubectl create secret gocryptfs-passphrase failed:"
+      cat "$secret_err" >&2
+      rm -f "$secret_err"
+      exit 1
+    fi
+  fi
 else
-  kubectl apply -f gocryptfs-passphrase-secret.yaml
+  echo "ERROR: kubectl get secret gocryptfs-passphrase returned an API error that is NOT NotFound:"
+  cat "$secret_err" >&2
+  echo "       Refusing to proceed — the cluster state is indeterminate."
+  rm -f "$secret_err"
+  exit 1
 fi
+rm -f "$secret_err"
 
 # 4. Run the one-shot init Job against the (empty) websitevolume.
 #    This creates gocryptfs.conf + gocryptfs-backing/ WITHOUT any
