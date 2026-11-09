@@ -218,12 +218,30 @@ kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s \
 # a copy would all slip past. The PVC-mount signal is what we
 # actually care about, so inspect it directly.
 #
+# NOTE on the jsonpath shape. The naive form
+#   {range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}
+# expands an ARRAY on the left of ==; the behavior of that
+# comparison is inconsistent across kubectl versions and jsonpath
+# implementations. Use the robust form: print `<podName>
+# <claimName1> ...` for every pod, then awk-filter rows whose
+# second-or-later column equals websitevolume. Whole-field match,
+# no substring collisions.
+#
+# COVERAGE note. This probe catches pods mounting the websitevolume
+# PVC in this namespace. It does NOT catch pods with direct NFS
+# volumeMounts bypassing the PVC, pods in other namespaces that
+# mount the same NFS share via their own PVCs, or external NFS
+# clients from outside the cluster. If your topology is non-standard
+# on any of those axes, verify quiescence from THAT side before
+# proceeding — a live writer anywhere would race the rsync-in step
+# and corrupt the migration.
+#
 # Capture stderr separately so a kubectl API-call failure does not
 # fold onto stdout and get misread as a pod name.
 kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
 err_file=$(mktemp)
-if ! remaining=$(kubectl get pods \
-    -o jsonpath='{range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}{.metadata.name}{"\n"}{end}' \
+if ! probe=$(kubectl get pods \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.volumes[*].persistentVolumeClaim.claimName}{"\n"}{end}' \
     2>"$err_file"); then
   echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
   cat "$err_file"
@@ -231,7 +249,9 @@ if ! remaining=$(kubectl get pods \
   exit 1
 fi
 rm -f "$err_file"
-remaining=$(printf '%s' "$remaining" | sed '/^$/d')
+remaining=$(printf '%s\n' "$probe" | awk '
+  NF >= 2 { for (i = 2; i <= NF; i++) if ($i == "websitevolume") { print $1; next } }
+')
 if [ -n "$remaining" ]; then
   echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting:"
   echo "$remaining"
@@ -694,14 +714,25 @@ Downgrading from this example back to the default stack means moving data out of
 #
 #    PVC-mount probe (not a label probe): enumerate ALL pods and
 #    filter by `.spec.volumes[*].persistentVolumeClaim.claimName`.
-#    Label-scoped probes miss pods whose labels were rotated. Capture
-#    stderr separately so a kubectl API-call failure does not fold
-#    onto stdout and get misread as a pod name.
+#    Label-scoped probes miss pods whose labels were rotated. See
+#    the migration-path probe comment above for the jsonpath-vs-awk
+#    shape rationale.
+#
+#    COVERAGE note. This probe catches pods mounting the
+#    websitevolume PVC in this namespace. It does NOT catch pods
+#    with direct NFS volumeMounts bypassing the PVC, pods in other
+#    namespaces that mount the same NFS share via their own PVCs,
+#    or external NFS clients from outside the cluster. If your
+#    topology is non-standard on any of those axes, verify
+#    quiescence from THAT side before proceeding.
+#
+#    Capture stderr separately so a kubectl API-call failure does
+#    not fold onto stdout and get misread as a pod name.
 kubectl scale deployment openemr --replicas=0
 kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
 err_file=$(mktemp)
-if ! remaining=$(kubectl get pods \
-    -o jsonpath='{range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}{.metadata.name}{"\n"}{end}' \
+if ! probe=$(kubectl get pods \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.volumes[*].persistentVolumeClaim.claimName}{"\n"}{end}' \
     2>"$err_file"); then
   echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
   cat "$err_file"
@@ -709,7 +740,9 @@ if ! remaining=$(kubectl get pods \
   exit 1
 fi
 rm -f "$err_file"
-remaining=$(printf '%s' "$remaining" | sed '/^$/d')
+remaining=$(printf '%s\n' "$probe" | awk '
+  NF >= 2 { for (i = 2; i <= NF; i++) if ($i == "websitevolume") { print $1; next } }
+')
 if [ -n "$remaining" ]; then
   echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting rollback:"
   echo "$remaining"

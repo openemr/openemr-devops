@@ -227,14 +227,36 @@ kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s \
 # actually care about (anything holding the volume open corrupts the
 # migration), so inspect it directly.
 #
+# NOTE on the jsonpath shape. The naive form
+#   {range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}
+# expands an ARRAY on the left of ==; the behavior of that comparison
+# is inconsistent across kubectl versions and jsonpath
+# implementations (some emit the pod once, some emit per-matching-
+# volume, some skip entirely). Use the robust form instead: print
+# `<podName> <claimName1> <claimName2> ...` for every pod, then
+# awk-filter rows whose second-or-later column equals websitevolume.
+# This matches claimName as a whole field (not a substring) and
+# survives pods with multiple PVCs.
+#
+# COVERAGE note. This probe catches the common case (pods mounting
+# the websitevolume PVC in this namespace). It does NOT catch:
+#   - pods with direct NFS volumeMounts bypassing the PVC
+#   - pods in OTHER namespaces that happen to mount the same NFS
+#     share via their own PVCs (unusual in this stack, but possible)
+#   - external NFS clients from outside the cluster
+# If your topology is non-standard on any of those axes, verify
+# quiescence from THAT side (e.g. inspect the NFS server's active
+# client list) BEFORE proceeding — a live writer from any of those
+# sources would race the rsync-in step and corrupt the migration.
+#
 # Capture stderr separately. A kubectl API-call failure must NOT be
 # conflated with "no matching pods" — prior `2>/dev/null`/`2>&1`
 # patterns would either hide the error entirely or fold it onto
 # stdout where the emptiness check would misread it as a pod name.
 kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
 err_file=$(mktemp)
-if ! remaining=$(kubectl get pods \
-    -o jsonpath='{range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}{.metadata.name}{"\n"}{end}' \
+if ! probe=$(kubectl get pods \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.volumes[*].persistentVolumeClaim.claimName}{"\n"}{end}' \
     2>"$err_file"); then
   echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
   cat "$err_file"
@@ -242,9 +264,12 @@ if ! remaining=$(kubectl get pods \
   exit 1
 fi
 rm -f "$err_file"
-# Trim trailing blank line that jsonpath's `{"\n"}` emits even on
-# the empty-match case.
-remaining=$(printf '%s' "$remaining" | sed '/^$/d')
+# Post-filter in awk: print the pod name (column 1) if any later
+# column (claimName) equals "websitevolume". Whole-field match, no
+# substring collisions (e.g. "websitevolume-backup" won't trip).
+remaining=$(printf '%s\n' "$probe" | awk '
+  NF >= 2 { for (i = 2; i <= NF; i++) if ($i == "websitevolume") { print $1; next } }
+')
 if [ -n "$remaining" ]; then
   echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting:"
   echo "$remaining"
@@ -750,14 +775,27 @@ Downgrading from this example back to the default stack means moving data out of
 #    Same PVC-mount probe as the migration path above: enumerate ALL
 #    pods and filter by `.spec.volumes[*].persistentVolumeClaim.
 #    claimName`. Label-scoped probes miss pods whose labels were
-#    rotated; the PVC-mount signal is what actually matters.
+#    rotated; the PVC-mount signal is what actually matters. See the
+#    migration-path probe comment above for the jsonpath-vs-awk
+#    shape rationale.
+#
+#    COVERAGE note. This probe catches pods mounting the
+#    websitevolume PVC in this namespace. It does NOT catch pods
+#    with direct NFS volumeMounts bypassing the PVC, pods in other
+#    namespaces that mount the same NFS share via their own PVCs,
+#    or external NFS clients from outside the cluster. If your
+#    topology is non-standard on any of those axes, verify
+#    quiescence from THAT side before proceeding — a live writer
+#    anywhere would race the rsync-out step and we would stage a
+#    stale view.
+#
 #    Capture stderr separately so a kubectl API-call failure does
 #    not fold onto stdout and get misread as a pod name.
 kubectl scale deployment openemr --replicas=0
 kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
 err_file=$(mktemp)
-if ! remaining=$(kubectl get pods \
-    -o jsonpath='{range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}{.metadata.name}{"\n"}{end}' \
+if ! probe=$(kubectl get pods \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.volumes[*].persistentVolumeClaim.claimName}{"\n"}{end}' \
     2>"$err_file"); then
   echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
   cat "$err_file"
@@ -765,7 +803,9 @@ if ! remaining=$(kubectl get pods \
   exit 1
 fi
 rm -f "$err_file"
-remaining=$(printf '%s' "$remaining" | sed '/^$/d')
+remaining=$(printf '%s\n' "$probe" | awk '
+  NF >= 2 { for (i = 2; i <= NF; i++) if ($i == "websitevolume") { print $1; next } }
+')
 if [ -n "$remaining" ]; then
   echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting rollback:"
   echo "$remaining"
