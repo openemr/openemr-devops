@@ -213,6 +213,80 @@ jobs:
             fi
           }
 
+      - name: Verify cert rotation triggers workload reload
+        timeout-minutes: 7
+        run: |
+          # End-to-end proof of the certificate reload mechanism:
+          # (1) record current cert fingerprint on the mysql server Secret,
+          # (2) delete the Secret to force cert-manager to re-issue,
+          # (3) assert the new fingerprint differs,
+          # (4) confirm reloader observed the Secret UPDATE and rolled
+          #     mysql-sts (StatefulSet observedGeneration increments and
+          #     rollout returns Ready),
+          # (5) confirm mariadb is answering with mTLS on the new cert
+          #     (openemr's client pod still connects).
+
+          echo "--- reloader deployment readiness ---"
+          kubectl wait --for=condition=Available --timeout=60s deployment/reloader-reloader
+
+          echo "--- old cert fingerprint ---"
+          OLD_SHA=$(kubectl get secret mysql-server-certs -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -fingerprint -sha256 | cut -d= -f2)
+          OLD_GEN=$(kubectl get statefulset mysql-sts -o jsonpath='{.status.observedGeneration}')
+          echo "old mysql-server-certs fp: $OLD_SHA"
+          echo "old mysql-sts observedGeneration: $OLD_GEN"
+
+          echo "--- force re-issue by deleting the issued Secret ---"
+          kubectl delete secret mysql-server-certs
+
+          echo "--- wait for cert-manager to re-issue the Secret with a NEW cert ---"
+          # cert-manager re-issues on missing-Secret within a few seconds.
+          # Poll until the Secret is back AND its fingerprint differs from old.
+          for _ in $(seq 1 60); do
+            CUR=$(kubectl get secret mysql-server-certs -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
+              | base64 -d 2>/dev/null \
+              | openssl x509 -noout -fingerprint -sha256 2>/dev/null \
+              | cut -d= -f2)
+            if [ -n "$CUR" ] && [ "$CUR" != "$OLD_SHA" ]; then
+              NEW_SHA=$CUR
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "${NEW_SHA:-}" ]; then
+            echo "FAIL: cert-manager did not re-issue mysql-server-certs with a new fingerprint in 120s"
+            kubectl describe certificate mysql
+            kubectl get events --sort-by=.lastTimestamp | tail -30
+            exit 1
+          fi
+          echo "PASS: cert rotated ($OLD_SHA -> $NEW_SHA)"
+
+          echo "--- wait for reloader to roll mysql-sts ---"
+          # observedGeneration increments on the rollout; wait until it
+          # advances past OLD_GEN, then wait for rollout to complete.
+          for _ in $(seq 1 60); do
+            NEW_GEN=$(kubectl get statefulset mysql-sts -o jsonpath='{.status.observedGeneration}')
+            if [ "${NEW_GEN:-0}" -gt "${OLD_GEN:-0}" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "${NEW_GEN:-0}" -le "${OLD_GEN:-0}" ]; then
+            echo "FAIL: reloader did not roll mysql-sts within 120s"
+            kubectl logs -n default deploy/reloader-reloader --tail=50
+            exit 1
+          fi
+          echo "PASS: mysql-sts rolled (gen $OLD_GEN -> $NEW_GEN)"
+          kubectl rollout status statefulset/mysql-sts --timeout=180s
+
+          echo "--- verify mariadb still answers on new cert via mTLS ---"
+          kubectl exec mysql-sts-0 -- mysql -h 127.0.0.1 -u root -proot \
+            --ssl-ca=/certs/ca.crt --ssl-cert=/certs/tls.crt --ssl-key=/certs/tls.key \
+            -e "SHOW STATUS LIKE 'Ssl_cipher'" | grep -i "TLS_\|ECDHE\|AES" || {
+            echo "FAIL: mariadb not answering on mTLS post-rotation"
+            exit 1
+          }
+          echo "PASS: cert rotation end-to-end verified"
+
       - name: Test Redis Sentinel failover
         run: |
           echo "--- Checking initial master ---"

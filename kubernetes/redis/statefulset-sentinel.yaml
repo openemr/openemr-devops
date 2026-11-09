@@ -3,6 +3,11 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: sentinel
+  annotations:
+    # stakater/reloader: on any UPDATE to the listed Secret (cert-manager
+    # rotation triggers one), roll this StatefulSet so the pods pick up
+    # the new certs. See kubernetes/README.md -> Certificate reload mechanism.
+    secret.reloader.stakater.com/reload: "sentinel-certs"
 spec:
   serviceName: sentinel
   replicas: 3

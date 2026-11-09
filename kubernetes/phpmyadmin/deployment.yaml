@@ -1,9 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
-metadata:  
+metadata:
   labels:
     name: phpmyadmin
   name: phpmyadmin
+  annotations:
+    # stakater/reloader: on any UPDATE to the listed Secrets (cert-manager
+    # rotation triggers one), roll this Deployment so the pods pick up the
+    # new certs. See kubernetes/README.md -> Certificate reload mechanism.
+    secret.reloader.stakater.com/reload: "phpmyadmin-server-certs,mysql-phpmyadmin-client-certs"
 spec:
   replicas: 1
   selector:

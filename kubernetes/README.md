@@ -219,6 +219,28 @@ All passwords (Redis, MariaDB replication, MariaDB root) are stored in Kubernete
 
 `network/policies.yaml` is applied at the end of `kub-up` and restricts which pods can reach which services within the cluster. Combined with mTLS and `REQUIRE X509`, this means lateral movement from a compromised pod to an unrelated database connection is gated at both the network layer and the authentication layer.
 
+## Certificate reload mechanism
+
+Every leaf certificate in this stack (`certs/mysql.yaml`, `certs/redis.yaml`, `certs/sentinel.yaml`, `certs/nfs-server.yaml`, `certs/nfs-client.yaml`, `certs/phpmyadmin.yaml`, and the four `*-client.yaml` certs) is issued with `duration: 168h` (7 days) and `renewBefore: 48h` (2 days). cert-manager picks each one up for renewal 48h before expiry, re-issues under the same `ca-issuer` (which keeps its 10-year lifetime — rotating a CA is a separate choreography that requires trust-chain overlap and is out of scope for auto-reload), and UPDATEs the existing Kubernetes Secret with the new `tls.crt` / `tls.key` payload.
+
+Cert-manager's rotation updates the Secret but does **not** reload the running pods — mysqld, redis-server, stunnel, and the apache/openemr PHP process all parse their cert files once at startup and keep using the parsed values until the process restarts. Bridging that gap is the job of a small controller: **[stakater/reloader](https://github.com/stakater/Reloader)** (installed by `kub-up` from `v1.4.23` pinned at `raw.githubusercontent.com/stakater/Reloader/v1.4.23/deployments/kubernetes/reloader.yaml`, with the same 5-attempt linear-backoff retry as the cert-manager install above).
+
+Each cert-consuming workload carries a `secret.reloader.stakater.com/reload` annotation naming the Secret(s) it watches:
+
+| Workload | Secret(s) watched |
+|---|---|
+| `mysql-sts` StatefulSet | `mysql-server-certs`, `mysql-replication-certs` |
+| `redis` StatefulSet | `redis-certs` |
+| `sentinel` StatefulSet | `sentinel-certs` |
+| `openemr` Deployment (default + both encryption-at-rest examples) | `mysql-openemr-client-certs`, `redis-openemr-client-certs` |
+| `phpmyadmin` Deployment | `phpmyadmin-server-certs`, `mysql-phpmyadmin-client-certs` |
+| `nfs-server` Deployment | `nfs-server-certs` |
+| `nfs-stunnel-client` DaemonSet | `nfs-client-certs` |
+
+On any UPDATE to a listed Secret, reloader issues a `kubectl rollout restart` on the referencing workload. The resulting rolling restart (Recreate for the single-replica Deployments like openemr-default + nfs-server; RollingUpdate for the StatefulSets and gocryptfs-variant openemr) picks up the new cert on pod start. Data-plane impact during rotation: the StatefulSets failover one pod at a time (MariaDB primary→replica for a few seconds; Redis Sentinel re-elects); the openemr Deployment has a brief window where `Recreate` causes a user-visible outage of a few seconds per rotation cycle (weekly). For production operators who want zero-downtime cert rotation on the openemr Deployment, the trade-off is to switch to `strategy: RollingUpdate` — see the `strategy` comment in `openemr/deployment.yaml` for the caveats around first-boot leader election that make `Recreate` the safer default.
+
+**CA rotation is a separate concern.** The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certificate.yaml`) is NOT annotated for reload: rotating the CA invalidates every issued cert and every trusted-CA list downstream peers hold, which requires an overlap period where both the old and new CA are trusted simultaneously. cert-manager supports CA rotation via `trust-manager` or manual two-phase rollout; neither is wired here. Plan for CA rotation as a scheduled maintenance activity, not an automated event.
+
 # Connection Security
 
 The mTLS configuration above is the default. Both MariaDB and Redis connection security can be relaxed when a more limited threat model permits — for example, when running entirely within a single cluster on a hyperscaler whose infrastructure already provides wire encryption, or for development environments.

@@ -4,6 +4,12 @@ metadata:
   name: nfs-server
   labels:
     app: nfs-server
+  annotations:
+    # stakater/reloader: on any UPDATE to the listed Secret (cert-manager
+    # rotation triggers one), roll this Deployment so the stunnel server
+    # pod picks up the new cert. See kubernetes/README.md -> Certificate
+    # reload mechanism.
+    secret.reloader.stakater.com/reload: "nfs-server-certs"
 spec:
   replicas: 1
   strategy:

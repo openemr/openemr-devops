@@ -2,6 +2,11 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: mysql-sts
+  annotations:
+    # stakater/reloader: on any UPDATE to the listed Secrets (cert-manager
+    # rotation triggers one), roll this StatefulSet so the pods pick up the
+    # new certs. See kubernetes/README.md -> Certificate reload mechanism.
+    secret.reloader.stakater.com/reload: "mysql-server-certs,mysql-replication-certs"
 spec:
   serviceName: "mysql"
   replicas: 2

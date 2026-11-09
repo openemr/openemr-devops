@@ -4,6 +4,12 @@ metadata:
   name: nfs-stunnel-client
   labels:
     app: nfs-stunnel-client
+  annotations:
+    # stakater/reloader: on any UPDATE to the listed Secret (cert-manager
+    # rotation triggers one), roll the DaemonSet pods on every node so
+    # each stunnel client picks up the new cert. See kubernetes/README.md
+    # -> Certificate reload mechanism.
+    secret.reloader.stakater.com/reload: "nfs-client-certs"
 spec:
   selector:
     matchLabels:

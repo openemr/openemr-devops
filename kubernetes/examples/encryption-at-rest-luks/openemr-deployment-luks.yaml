@@ -46,6 +46,11 @@ metadata:
   labels:
     name: openemr
   name: openemr
+  annotations:
+    # stakater/reloader: on any UPDATE to the listed Secrets (cert-manager
+    # rotation triggers one), roll this Deployment so the pods pick up the
+    # new certs. See kubernetes/README.md -> Certificate reload mechanism.
+    secret.reloader.stakater.com/reload: "mysql-openemr-client-certs,redis-openemr-client-certs"
 spec:
   # SINGLE REPLICA — see header comment and README.md. Do not scale up.
   replicas: 1

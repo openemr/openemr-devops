@@ -30,6 +30,25 @@ goto cert_manager_retry
 kubectl wait --for=condition=Available --timeout=120s -n cert-manager deployment/cert-manager-webhook
 timeout 15
 
+REM bring in stakater/reloader (same shape as cert-manager retry above).
+REM Rolls cert-consuming workloads when cert-manager rotates their
+REM Secrets. See kubernetes/README.md -> Certificate reload mechanism.
+set RELOADER_ATTEMPTS=0
+:reloader_retry
+set /a RELOADER_ATTEMPTS+=1
+kubectl apply -f https://raw.githubusercontent.com/stakater/Reloader/v1.4.23/deployments/kubernetes/reloader.yaml
+if %errorlevel%==0 goto reloader_applied
+if %RELOADER_ATTEMPTS% geq 3 (
+    echo ERROR: reloader apply failed after 3 attempts.
+    echo Check https://www.githubstatus.com and retry.
+    exit /b 1
+)
+echo ...reloader apply attempt %RELOADER_ATTEMPTS% failed; retrying...
+ping -n 21 127.0.0.1 >nul
+goto reloader_retry
+:reloader_applied
+kubectl wait --for=condition=Available --timeout=120s deployment/reloader-reloader
+
 kubectl apply ^
     -f certs/selfsigned-issuer.yaml ^
     -f certs/ca-certificate.yaml ^

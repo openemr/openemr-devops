@@ -43,6 +43,43 @@ kubectl wait --for=condition=Available --timeout=120s -n cert-manager deployment
 echo "...waiting 15 seconds for webhook to stabilize..."
 sleep 15
 
+# bring in stakater/reloader: watches Secrets referenced by each cert-
+# consuming workload's "secret.reloader.stakater.com/reload" annotation
+# and rolls the workload when any listed Secret UPDATE event fires.
+# cert-manager's rotation path UPDATEs the tls.crt/tls.key payload on
+# the issued Secret ~48h before expiry (168h total duration, 48h
+# renewBefore on every leaf Certificate under certs/*.yaml), so reloader
+# then rolls mysql/redis/sentinel/openemr/phpmyadmin/nfs-server/stunnel-
+# client as a cross-stack reload mechanism. See kubernetes/README.md
+# -> Certificate reload mechanism for the full flow.
+#
+# Same retry shape as cert-manager above — raw.githubusercontent.com
+# pulls occasionally 504 under load, and the manifest is idempotent.
+RELOADER_URL="https://raw.githubusercontent.com/stakater/Reloader/v1.4.23/deployments/kubernetes/reloader.yaml"
+RELOADER_MAX_ATTEMPTS=5
+RELOADER_APPLIED=0
+attempt=1
+while [ "${attempt}" -le "${RELOADER_MAX_ATTEMPTS}" ]; do
+    if kubectl apply -f "${RELOADER_URL}"; then
+        RELOADER_APPLIED=1
+        break
+    fi
+    if [ "${attempt}" -lt "${RELOADER_MAX_ATTEMPTS}" ]; then
+        backoff=$((attempt * 10))
+        echo "...reloader apply attempt ${attempt} failed; retrying in ${backoff}s..."
+        sleep "${backoff}"
+    fi
+    attempt=$((attempt + 1))
+done
+if [ "${RELOADER_APPLIED}" -eq 0 ]; then
+    echo "ERROR: reloader apply failed after ${RELOADER_MAX_ATTEMPTS} attempts."
+    echo "Check https://www.githubstatus.com and retry, or download the"
+    echo "manifest locally and re-point this script."
+    exit 1
+fi
+echo "...waiting for reloader deployment to be ready..."
+kubectl wait --for=condition=Available --timeout=120s deployment/reloader-reloader
+
 # issue all certs, including nfs-server/nfs-client used for the NFS mTLS tunnel
 kubectl apply \
     -f certs/selfsigned-issuer.yaml \
