@@ -256,25 +256,50 @@ jobs:
           echo "old mysql-server-certs fp: $OLD_SHA"
           echo "old mysql-sts observedGeneration: $OLD_GEN"
 
-          echo "--- start background data-plane probe (1 Hz, via Service) ---"
+          echo "--- start background data-plane probe (1 Hz, via Service, retry-aware) ---"
           # Probe writes one line per iteration to /tmp/probe.log. Each
-          # line is 'OK' or 'FAIL'. The probe uses the mysql Service
-          # (DNS-resolved, load-balances to both pods), uses the mysql
-          # SAN-listed hostname 'mysql' (not 127.0.0.1 which is NOT in
-          # any cert's dnsNames), and uses the openemr client cert
-          # (which is the actual production mTLS client path). Each
-          # kubectl exec wrapped in `timeout 10s` so a hung iteration
-          # cannot stall the probe loop or the whole test step.
+          # line is 'OK' (one of up to 3 attempts succeeded) or 'FAIL'
+          # (3 attempts over ~3s all failed — a sustained outage, not
+          # a transient endpoint-update gap).
+          #
+          # Rationale for 3-attempt retry: StatefulSet rolling update
+          # on replicas:2 inherently produces brief Service-endpoint
+          # gaps as pods transition Ready -> Terminating -> Ready.
+          # kube-proxy's endpoint-sync lag is typically 1-3s per
+          # cutover; a single kubectl exec unlucky enough to land in
+          # that window would be counted as a data-plane failure
+          # under a single-shot probe, even though a well-behaved
+          # application-layer retry loop would see it as transient
+          # jitter. By retrying inside each probe iteration we only
+          # record FAIL for OUTAGES THAT LAST LONGER THAN THE RETRY
+          # WINDOW -- the shape of failure that would actually hurt
+          # an application. The target is zero FAIL iterations through
+          # a healthy rotation.
+          #
+          # Connection shape: mysql Service (SAN-listed hostname, not
+          # 127.0.0.1 which is NOT in any cert's dnsNames) + openemr
+          # client cert (the production mTLS client path, mounted at
+          # /root/certs/mysql/server/ per kubernetes/openemr/deployment.yaml).
+          # Each kubectl exec attempt wrapped in `timeout 5s` so a
+          # hung attempt cannot stall the probe loop.
           rm -f /tmp/probe.log /tmp/probe.stop
           (
             while [ ! -f /tmp/probe.stop ]; do
               ts=$(date +%s)
-              if timeout 10s kubectl exec deploy/openemr -- \
-                  mariadb -h mysql -u openemr -popenemr \
-                    --ssl-ca=/root/certs/mysql/server/mysql-ca \
-                    --ssl-cert=/root/certs/mysql/server/mysql-cert \
-                    --ssl-key=/root/certs/mysql/server/mysql-key \
-                    -e "SELECT 1" openemr >/dev/null 2>&1; then
+              success=0
+              for _ in 1 2 3; do
+                if timeout 5s kubectl exec deploy/openemr -- \
+                    mariadb -h mysql -u openemr -popenemr \
+                      --ssl-ca=/root/certs/mysql/server/mysql-ca \
+                      --ssl-cert=/root/certs/mysql/server/mysql-cert \
+                      --ssl-key=/root/certs/mysql/server/mysql-key \
+                      -e "SELECT 1" openemr >/dev/null 2>&1; then
+                  success=1
+                  break
+                fi
+                sleep 1
+              done
+              if [ "$success" = "1" ]; then
                 echo "$ts OK" >> /tmp/probe.log
               else
                 echo "$ts FAIL" >> /tmp/probe.log
@@ -350,24 +375,25 @@ jobs:
           FAIL_COUNT=$(grep -c ' FAIL$' /tmp/probe.log || true)
           TOTAL=$((OK_COUNT + FAIL_COUNT))
           echo "probe: OK=$OK_COUNT FAIL=$FAIL_COUNT TOTAL=$TOTAL"
-          # mysql-sts is replicas: 2 with OrderedReady + RollingUpdate;
-          # the mysql Service load-balances to both pods via the
-          # readiness-gated endpoints list, so SELECT-style reads
-          # remain available throughout rotation (one pod is always
-          # Ready). Demand success rate >=95% (cross-multiply to avoid
-          # integer-division truncation in the threshold: compare
-          # OK_COUNT * 100 against TOTAL * 95), with a small absolute
-          # tolerance for one-off endpoint-update microjitter.
+          # Each probe iteration retries internally (3 attempts over
+          # ~3s before declaring FAIL), so the only way a probe records
+          # FAIL is a SUSTAINED outage lasting longer than the retry
+          # window. mysql-sts is replicas: 2 with OrderedReady +
+          # RollingUpdate; the mysql Service load-balances to both pods
+          # via the readiness-gated endpoints list, so one pod is
+          # always Ready and a well-behaved application-layer retry
+          # (which this probe simulates) sees no sustained outage.
+          # Demand zero FAIL iterations through the rotation window.
           if [ "$TOTAL" -lt 10 ]; then
             echo "FAIL: probe window too short — expected >=10 iterations, got $TOTAL"
             exit 1
           fi
-          if [ "$((OK_COUNT * 100))" -lt "$((TOTAL * 95))" ]; then
-            echo "FAIL: data-plane probe success rate below 95% ($OK_COUNT/$TOTAL)"
+          if [ "$FAIL_COUNT" -gt 0 ]; then
+            echo "FAIL: data plane experienced sustained outage during rotation ($FAIL_COUNT/$TOTAL iterations failed after 3 retries each)"
             tail -40 /tmp/probe.log
             exit 1
           fi
-          echo "PASS: data plane remained available through rotation ($OK_COUNT/$TOTAL successes)"
+          echo "PASS: data plane remained uninterrupted through rotation ($OK_COUNT/$TOTAL successes, 0 sustained outages)"
 
           echo "--- verify replication still healthy post-rotation (mTLS on new certs end-to-end) ---"
           # Poll SHOW REPLICA STATUS up to 60s instead of a fixed sleep:
