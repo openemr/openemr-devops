@@ -262,22 +262,19 @@ jobs:
           # (DNS-resolved, load-balances to both pods), uses the mysql
           # SAN-listed hostname 'mysql' (not 127.0.0.1 which is NOT in
           # any cert's dnsNames), and uses the openemr client cert
-          # (which is the actual production mTLS client path).
+          # (which is the actual production mTLS client path). Each
+          # kubectl exec wrapped in `timeout 10s` so a hung iteration
+          # cannot stall the probe loop or the whole test step.
           rm -f /tmp/probe.log /tmp/probe.stop
           (
             while [ ! -f /tmp/probe.stop ]; do
               ts=$(date +%s)
-              # mysql shell command: use the mariadb binary (not the
-              # mysql symlink -- MariaDB images typically ship mariadb
-              # as the canonical name), connect to the Service, use the
-              # openemr client cert mounted at /root/certs/mysql/server/
-              # (see kubernetes/openemr/deployment.yaml volumes: block).
-              if kubectl exec deploy/openemr -- \
+              if timeout 10s kubectl exec deploy/openemr -- \
                   mariadb -h mysql -u openemr -popenemr \
                     --ssl-ca=/root/certs/mysql/server/mysql-ca \
                     --ssl-cert=/root/certs/mysql/server/mysql-cert \
                     --ssl-key=/root/certs/mysql/server/mysql-key \
-                    -N -e "SELECT 1" openemr >/dev/null 2>&1; then
+                    -e "SELECT 1" openemr >/dev/null 2>&1; then
                 echo "$ts OK" >> /tmp/probe.log
               else
                 echo "$ts FAIL" >> /tmp/probe.log
@@ -286,7 +283,24 @@ jobs:
             done
           ) &
           PROBE_PID=$!
-          sleep 3   # baseline
+
+          echo "--- wait for probe to establish baseline (first OK) ---"
+          # Poll /tmp/probe.log instead of a fixed sleep. If the probe
+          # never gets a successful iteration within 30s, something is
+          # wrong with the pre-rotation stack state and the test should
+          # fail loud rather than entering rotation with no baseline.
+          for _ in $(seq 1 30); do
+            if grep -q ' OK$' /tmp/probe.log 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if ! grep -q ' OK$' /tmp/probe.log 2>/dev/null; then
+            echo "FAIL: probe never reached a successful baseline in 30s"
+            tail -20 /tmp/probe.log || true
+            touch /tmp/probe.stop ; wait "$PROBE_PID" 2>/dev/null || true
+            exit 1
+          fi
 
           echo "--- force cert-manager renew (updates Secret in place) ---"
           cmctl renew mysql
@@ -336,30 +350,46 @@ jobs:
           FAIL_COUNT=$(grep -c ' FAIL$' /tmp/probe.log || true)
           TOTAL=$((OK_COUNT + FAIL_COUNT))
           echo "probe: OK=$OK_COUNT FAIL=$FAIL_COUNT TOTAL=$TOTAL"
-          # OrderedReady + RollingUpdate on replicas: 2 means exactly one
-          # pod is Terminating at a time; the Service's other endpoint
-          # keeps answering. Allow for a small window (~5 iterations)
-          # of probe failure during each pod cutover; demand >80% success.
+          # mysql-sts is replicas: 2 with OrderedReady + RollingUpdate;
+          # the mysql Service load-balances to both pods via the
+          # readiness-gated endpoints list, so SELECT-style reads
+          # remain available throughout rotation (one pod is always
+          # Ready). Demand success rate >=95% (cross-multiply to avoid
+          # integer-division truncation in the threshold: compare
+          # OK_COUNT * 100 against TOTAL * 95), with a small absolute
+          # tolerance for one-off endpoint-update microjitter.
           if [ "$TOTAL" -lt 10 ]; then
             echo "FAIL: probe window too short — expected >=10 iterations, got $TOTAL"
             exit 1
           fi
-          THRESHOLD=$((TOTAL * 80 / 100))
-          if [ "$OK_COUNT" -lt "$THRESHOLD" ]; then
-            echo "FAIL: data-plane probe success rate below 80% ($OK_COUNT/$TOTAL)"
+          if [ "$((OK_COUNT * 100))" -lt "$((TOTAL * 95))" ]; then
+            echo "FAIL: data-plane probe success rate below 95% ($OK_COUNT/$TOTAL)"
             tail -40 /tmp/probe.log
             exit 1
           fi
           echo "PASS: data plane remained available through rotation ($OK_COUNT/$TOTAL successes)"
 
           echo "--- verify replication still healthy post-rotation (mTLS on new certs end-to-end) ---"
-          sleep 5   # let replication re-establish after the primary rolled
-          SLAVE_IO=$(kubectl exec mysql-sts-1 -- mariadb -u root -proot -N -e "SHOW REPLICA STATUS\G" 2>/dev/null | grep "Slave_IO_Running:" | head -1 | awk '{print $NF}' | tr -d '\r')
-          SLAVE_SQL=$(kubectl exec mysql-sts-1 -- mariadb -u root -proot -N -e "SHOW REPLICA STATUS\G" 2>/dev/null | grep "Slave_SQL_Running:" | head -1 | awk '{print $NF}' | tr -d '\r')
+          # Poll SHOW REPLICA STATUS up to 60s instead of a fixed sleep:
+          # the replica pod has just rolled and its I/O thread may take a
+          # few seconds to reconnect to the primary on the new certs.
+          # Note: no `-N` flag on mariadb — in vertical (\G) mode -N
+          # suppresses the field-name prefix, breaking the grep below.
+          SLAVE_IO=""
+          SLAVE_SQL=""
+          for _ in $(seq 1 30); do
+            STATUS=$(kubectl exec mysql-sts-1 -- mariadb -u root -proot -e "SHOW REPLICA STATUS\G" 2>/dev/null)
+            SLAVE_IO=$(echo "$STATUS"  | grep "Slave_IO_Running:"  | head -1 | awk '{print $NF}' | tr -d '\r')
+            SLAVE_SQL=$(echo "$STATUS" | grep "Slave_SQL_Running:" | head -1 | awk '{print $NF}' | tr -d '\r')
+            if [ "$SLAVE_IO" = "Yes" ] && [ "$SLAVE_SQL" = "Yes" ]; then
+              break
+            fi
+            sleep 2
+          done
           echo "Slave_IO_Running=$SLAVE_IO  Slave_SQL_Running=$SLAVE_SQL"
           if [ "$SLAVE_IO" != "Yes" ] || [ "$SLAVE_SQL" != "Yes" ]; then
-            echo "FAIL: replication broken post-rotation (mTLS between primary and replica would be the first thing to break on a bad cert reload)"
-            kubectl exec mysql-sts-1 -- mariadb -u root -proot -e "SHOW REPLICA STATUS\G" 2>&1 | tail -40
+            echo "FAIL: replication not recovered within 60s post-rotation (mTLS between primary and replica would be the first thing to break on a bad cert reload)"
+            kubectl exec mysql-sts-1 -- mariadb -u root -proot -e "SHOW REPLICA STATUS\G" 2>&1 | head -60
             exit 1
           fi
           echo "PASS: cert rotation end-to-end verified (rotation + reload + data plane + mTLS replication)"
