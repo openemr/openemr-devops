@@ -140,7 +140,37 @@ The correct rotation sequence is:
 
 **Hardware KMS integration** (CloudHSM, AWS KMS envelope encryption of the LUKS passphrase itself) is the next tier up — supported by cryptsetup via `--header` separation and tokens but out of scope for this example.
 
-**Passphrase loss is irrecoverable.** LUKS has no escrow and no backdoor. Back the passphrase up in your organization's password escrow / KMS BEFORE running `luks-format-job.yaml`.
+**Passphrase loss without a backup keyslot or escrowed header is irrecoverable.** LUKS has no backdoor and no built-in escrow. Back the primary passphrase up in your organization's password escrow / KMS BEFORE running `luks-format-job.yaml`.
+
+LUKS has two documented recovery axes that do not exist for gocryptfs:
+
+- **Multiple key slots (up to 8).** LUKS2 headers carry up to 8 independent key slots, each wrapping the same master key under its own passphrase. If a SECOND passphrase was added to a free slot via `cryptsetup luksAddKey` BEFORE the primary was lost, that second passphrase still opens the container — any one slot's passphrase is sufficient to unlock. For production, provision at least one escrow slot (operator-held) in addition to the operational slot (Kubernetes Secret / ESO):
+
+  ```bash
+  # from a privileged helper pod that mounts websitevolume,
+  # with the current (soon-to-be-primary) passphrase on a tmpfs
+  cryptsetup luksAddKey /mnt/websitevolume/.openemr-sites.luks \
+    /tmp/escrow-passphrase
+  # the current passphrase authenticates; the file at
+  # /tmp/escrow-passphrase goes into a NEW free slot. Store
+  # /tmp/escrow-passphrase in your KMS and destroy the tmpfs copy.
+  ```
+
+  List slots with `cryptsetup luksDump /mnt/websitevolume/.openemr-sites.luks`. Each populated slot is independently usable; removing one (`luksRemoveKey`) does NOT affect the others.
+
+- **LUKS header backup.** `cryptsetup luksHeaderBackup` writes a copy of the on-disk header (which contains all key slots and the wrapped master key) to a separate file. Store that backup alongside at least one slot's passphrase in a separate secure location:
+
+  ```bash
+  cryptsetup luksHeaderBackup /mnt/websitevolume/.openemr-sites.luks \
+    --header-backup-file /tmp/luks-header-backup
+  # move /tmp/luks-header-backup to your KMS / offline vault
+  ```
+
+  If the on-disk header is later corrupted but the ciphertext body is intact, `cryptsetup luksHeaderRestore` plus the escrowed slot passphrase recovers access. The header backup is useless without AT LEAST ONE of the slot passphrases it carries — treat the two as a pair.
+
+**Caveat — header-backup restore clobbers any newer slot state.** `luksHeaderRestore` overwrites the current on-disk header, so if slots were rotated since the backup was taken (new slot added, old slot retired), those changes are lost on restore. Refresh the header backup after every key rotation, not just at format time.
+
+Treat multiple keyslots + header backup as the LUKS equivalent of "master key escrow" in gocryptfs. Passphrase loss with no escrow slot AND no header backup — and with no second operator who has their own copy of a slot passphrase — means the container is unrecoverable.
 
 ## Persistence semantics
 

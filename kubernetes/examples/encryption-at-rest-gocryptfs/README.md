@@ -142,7 +142,21 @@ If the threat model requires rotating the master key itself (e.g. known or suspe
 
 **Hardware KMS integration** (CloudHSM, AWS KMS envelope encryption of the gocryptfs passphrase itself) is the next tier up and out of scope for this example.
 
-**Passphrase loss is irrecoverable.** gocryptfs has no escrow and no backdoor. Back the passphrase up in your organization's password escrow / KMS BEFORE running `gocryptfs-init-job.yaml`.
+**Passphrase loss without an escrowed master key is irrecoverable.** gocryptfs has no backdoor and no built-in escrow. Back the passphrase up in your organization's password escrow / KMS BEFORE running `gocryptfs-init-job.yaml`.
+
+There is one documented recovery path: if the raw master key was exported at init time (via `gocryptfs-xray -dumpmasterkey` against `gocryptfs.conf` with the OLD passphrase) and stored separately in the KMS, the backing can be recovered via
+
+```bash
+gocryptfs -passwd -masterkey=<hex> /mnt/websitevolume/gocryptfs-backing
+# prompts for a NEW passphrase twice; rewraps the on-disk master
+# key under the new passphrase without needing the old one
+```
+
+which resets the wrapped passphrase in `gocryptfs.conf` without needing the old passphrase. This is the only reason to escrow the master key alongside the passphrase. The recovery flow is: run `-passwd -masterkey` to set a new passphrase, update the Kubernetes Secret to match, then roll the pods.
+
+**Caveat — master-key correctness is not verified before the rewrap.** `gocryptfs -passwd -masterkey` does NOT check whether the supplied master key matches the one `gocryptfs.conf` was initialized with: it blindly rewraps the supplied key under the new passphrase and overwrites `gocryptfs.conf`. If the supplied value is wrong (wrong backup entry, transposed hex, wrong backing directory), the recovery silently bricks the backing — the new config describes a different master key than the one the ciphertext was written under, and no future mount will succeed. Before running the recovery, make a byte-for-byte backup copy of `gocryptfs.conf` from the backing directory, and keep it until a mount with the new passphrase has been proven to work end-to-end.
+
+Treat master-key escrow as a defence-in-depth measure, not a routine recovery mechanism. Passphrase loss with no master-key escrow — and with no second operator who has their own copy of the passphrase — means the backing is unrecoverable.
 
 ## Persistence semantics
 
