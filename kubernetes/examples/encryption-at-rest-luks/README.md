@@ -140,7 +140,42 @@ The correct rotation sequence is:
 
 **Hardware KMS integration** (CloudHSM, AWS KMS envelope encryption of the LUKS passphrase itself) is the next tier up — supported by cryptsetup via `--header` separation and tokens but out of scope for this example.
 
-**Passphrase loss is irrecoverable.** LUKS has no escrow and no backdoor. Back the passphrase up in your organization's password escrow / KMS BEFORE running `luks-format-job.yaml`.
+**Passphrase loss without a backup keyslot or escrowed header is irrecoverable.** LUKS has no backdoor and no built-in escrow. Back the primary passphrase up in your organization's password escrow / KMS BEFORE running `luks-format-job.yaml`.
+
+LUKS has two documented recovery axes that do not exist for gocryptfs:
+
+- **Multiple key slots (up to 32).** LUKS2 headers carry up to 32 independent key slots, each wrapping the same master key under its own passphrase. The practical ceiling is lower — the on-disk key-slot area and the master-key size both constrain how many slots actually fit (defaults give you ample headroom; `cryptsetup luksDump` reports allocated vs. free slots for the specific container). If a SECOND passphrase was added to a free slot via `cryptsetup luksAddKey` BEFORE the primary was lost, that second passphrase still opens the container — any one slot's passphrase is sufficient to unlock. For production, provision at least one escrow slot (operator-held) in addition to the operational slot (Kubernetes Secret / ESO):
+
+  ```bash
+  # from a privileged helper pod that mounts websitevolume,
+  # with the current (soon-to-be-primary) passphrase on a tmpfs
+  cryptsetup luksAddKey /mnt/websitevolume/.openemr-sites.luks \
+    /tmp/escrow-passphrase
+  # the current passphrase authenticates; the file at
+  # /tmp/escrow-passphrase goes into a NEW free slot. Store
+  # /tmp/escrow-passphrase in your KMS and destroy the tmpfs copy.
+  ```
+
+  List slots with `cryptsetup luksDump /mnt/websitevolume/.openemr-sites.luks`. Each populated slot is independently usable; removing one (`luksRemoveKey`) does NOT affect the others.
+
+- **LUKS header backup.** `cryptsetup luksHeaderBackup` writes a copy of the on-disk header (which contains all key slots and the wrapped master key) to a separate file. Store that backup alongside at least one slot's passphrase in a separate secure location:
+
+  ```bash
+  cryptsetup luksHeaderBackup /mnt/websitevolume/.openemr-sites.luks \
+    --header-backup-file /tmp/luks-header-backup
+  # move /tmp/luks-header-backup to your KMS / offline vault
+  ```
+
+  If the on-disk header is later corrupted but the ciphertext body is intact, `cryptsetup luksHeaderRestore` plus the escrowed slot passphrase recovers access. The header backup is useless without AT LEAST ONE of the slot passphrases it carries — treat the two as a pair.
+
+**Caveat — header-backup restore clobbers any newer slot state.** `luksHeaderRestore` overwrites the current on-disk header, so if slots were rotated since the backup was taken (new slot added, old slot retired), those changes are lost on restore. Refresh the header backup after every key rotation, not just at format time.
+
+**Caveat — old header backups bypass passphrase retirement.** `luksRemoveKey` retires a passphrase from the current on-disk header only; it does NOT reach into any header backup that was taken before the retirement. Anyone who holds BOTH an old header backup AND the retired slot's passphrase can `luksHeaderRestore` onto the container (or run `cryptsetup luksOpen --header /path/to/old-backup` against the live ciphertext body) and regain access, even though the retired slot no longer exists in the on-disk header. Rotating a passphrase does not revoke it if an old backup survived the rotation. Mitigations:
+
+- **Treat header backups like keys.** Store them under the same access controls, audit, and destruction policy as the slot passphrases themselves. When a passphrase is retired, destroy every header backup taken while that passphrase was live, same day.
+- **If the backup chain of custody is broken, the master key must be rotated — not just the passphrase.** A passphrase-only rotation (`luksAddKey` + `luksRemoveKey`) cannot revoke a leaked old backup, because that old backup wraps the SAME master key. Full revocation requires `cryptsetup reencrypt` (which rewrites every ciphertext block under a new master key), followed by a fresh header backup and destruction of all prior backups.
+
+Treat multiple keyslots + header backup as the LUKS equivalent of "master key escrow" in gocryptfs. Passphrase loss with no escrow slot AND no header backup — and with no second operator who has their own copy of a slot passphrase — means the container is unrecoverable.
 
 ## Persistence semantics
 
@@ -150,21 +185,266 @@ The correct rotation sequence is:
 
 ## Step-by-step adoption
 
+Two paths are supported:
+
+- **Migration from a running default-stack deployment** — openemr has already run first-boot on plaintext NFS; migrate the existing site contents into a freshly-formatted LUKS container. Simplest flow; the one the CI workflow exercises. **Caveat:** first-boot wrote `sqlconf.php` (containing the DB password) and the initial GACL rows to plaintext NFS. For deployments where even a historical plaintext snapshot of those credentials is disqualifying, use the greenfield path below.
+- **Greenfield adoption (no plaintext first-boot)** — the LUKS container is created BEFORE openemr first-boot runs, so `sqlconf.php` and the demo seed land inside the LUKS filesystem from the beginning. More operationally tight (relies on racing kubelet to delete the default openemr Deployment before its pods boot) and gated by a defensive check that falls back to the migration path if that race is lost.
+
+### Migration from a running default-stack deployment
+
 Starting from a running #910 default stack:
 
 ```bash
-# 0. Prerequisites: #910 default stack is up. Verify:
+# 0. Prerequisites: #910 default stack is up AND openemr has completed
+#    first-boot. Verify:
 kubectl get deployment openemr
 kubectl get pvc websitevolume sslvolume letsencryptvolume
 
-# 1. Scale openemr to 0 so no pod is holding websitevolume open.
-kubectl scale deployment openemr --replicas=0
-kubectl wait --for=delete pod -l name=openemr --timeout=120s
+# 0a. If the luks-passphrase Secret is ALREADY present (e.g. an
+#     operator provisioned it via External Secrets Operator ahead of
+#     this migration), validate its shape BEFORE the destructive
+#     scale-to-0 step below. A Secret with no `passphrase` key, or a
+#     key that base64-decodes to empty / whitespace-only, would ride
+#     through the Secret-adoption gate in step 2, then the format Job
+#     would refuse at luksFormat time — by which point the running
+#     deployment has already been scaled down and the migration is
+#     half-committed. Fail fast here instead.
+#
+#     Only validate when the Secret is present; the Secret-adoption
+#     gate in step 2 handles the absent case. Treat a kubectl API
+#     error on the probe the same way the adoption gate does:
+#     an indeterminate cluster state must not proceed to the
+#     destructive scale-down.
+# The published placeholder value (from luks-passphrase-secret.yaml).
+# Treated as an unusable sentinel at every gate: the format Job refuses
+# to run against it, and the destructive gates (pre-scale here, pre-
+# adopt, pre-format, pre-resume) refuse to advance with it in place.
+# Keep this in sync with the value shipped in the placeholder manifest.
+LUKS_PLACEHOLDER_PASSPHRASE='example-development-passphrase-REPLACE-ME'
+secret_probe_err=$(mktemp)
+if kubectl get secret luks-passphrase -o name >/dev/null 2>"$secret_probe_err"; then
+  passphrase_b64=$(kubectl get secret luks-passphrase \
+                   -o jsonpath='{.data.passphrase}' 2>/dev/null || true)
+  if [ -z "$passphrase_b64" ]; then
+    echo "ERROR: Secret 'luks-passphrase' exists but has no 'passphrase' key."
+    echo "       Refusing to scale openemr to 0 — fix the Secret shape first."
+    rm -f "$secret_probe_err"
+    exit 1
+  fi
+  decoded=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null || true)
+  decoded_len=$(printf '%s' "$decoded" | tr -d '[:space:]' | wc -c | tr -d ' ')
+  if [ "$decoded_len" = "0" ]; then
+    echo "ERROR: Secret 'luks-passphrase' 'passphrase' key decodes to empty/whitespace."
+    echo "       Refusing to scale openemr to 0 — fix the Secret value first."
+    rm -f "$secret_probe_err"
+    exit 1
+  fi
+  # Placeholder-rejection at the pre-scale gate. The format Job would
+  # refuse against this value at luksFormat time, but by then the
+  # deployment has already been scaled to 0 and the migration is half-
+  # committed (the running openemr is gone; the LUKS container was never
+  # formatted). Catching it here keeps the stack intact — the operator
+  # fixes the Secret, re-runs this script, and the destructive scale-
+  # down only ever happens against a Secret that will actually open the
+  # container once formatted.
+  if [ "$decoded" = "$LUKS_PLACEHOLDER_PASSPHRASE" ]; then
+    echo "ERROR: Secret 'luks-passphrase' still carries the published placeholder value."
+    echo "       Refusing to scale openemr to 0 — replace the placeholder first"
+    echo "       (direct edit of the manifest, or let ESO materialize a real one)."
+    rm -f "$secret_probe_err"
+    exit 1
+  fi
+elif ! grep -qi 'NotFound\|not found' "$secret_probe_err"; then
+  echo "ERROR: kubectl get secret luks-passphrase returned an API error that is NOT NotFound:"
+  cat "$secret_probe_err" >&2
+  echo "       Refusing to scale openemr to 0 — cluster state is indeterminate."
+  rm -f "$secret_probe_err"
+  exit 1
+fi
+rm -f "$secret_probe_err"
+
+# Wait for openemr pods to reach Ready AND verify that the leader
+# completed its first-boot seed. openemr's first-boot writes
+# sqlconf.php and seeds the admin user + Gacl rows; scaling to 0
+# before that completes would carry partial state through the
+# migration and the next boot inside LUKS would skip first-boot
+# while the DB is still incomplete (the AclMain::testAclCheckCore
+# flake).
+#
+# Pod Ready alone is not quite enough on its own, even though the
+# default Deployment's readinessProbe is `cat /root/instance-swarm-
+# ready` which is only written after leader-election + setup
+# completes. The reason: `kubectl wait --for=condition=Ready` with a
+# label selector operates on the resources that match at invocation
+# time, and in the "pods scheduled but not yet Ready" window a
+# follower that has decided "leader marker exists → skip to fast
+# path" can satisfy Ready before the leader has finished writing
+# `$config = 1` to sqlconf.php (openemr's leader-election commits
+# the full seed, THEN flips the $config flag — the two-phase pattern
+# openemr/openemr#15084 formalized). Explicitly check sqlconf.php on
+# websitevolume shows `$config = 1`; that is the true "seed
+# complete" signal.
+#
+# The `&&` chain is load-bearing: if the wait times out (first-boot
+# wedged on some other issue — ganesha misbehaving, MySQL not
+# reachable, etc.) the scale command must NOT run. Scaling partial
+# first-boot preserves a half-configured sqlconf.php that the next
+# boot inside LUKS would then accept as "already configured" and
+# skip setup, leaving the DB without the initial admin user.
+kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s \
+  && \
+  # Verify the leader has committed the two-phase seed. $config = 1
+  # is written AFTER all seeding steps commit, so this flag's
+  # presence proves the admin user and GACL rows are in place.
+  kubectl exec deploy/openemr -c openemr -- \
+    sh -c 'grep -q "^\$config *= *1" /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php' \
+  && \
+  # 1. Scale openemr to 0 so no pod is holding websitevolume open.
+  kubectl scale deployment openemr --replicas=0
+# Wait for pod deletion AND verify no pod is still present. `kubectl
+# wait --for=delete` returns success on the first termination event
+# it observes per snapshotted Pod; a slow-terminating Pod can still
+# be present when the wait returns. Follow up with a hard check that
+# NO pod is still holding the `websitevolume` PVC open — if ANY
+# remains, the migration MUST abort. A live writer during the
+# rsync-in step corrupts the migration.
+#
+# Enumerate ALL pods in the namespace (no label selector) and inspect
+# each one's `.spec.volumes[*].persistentVolumeClaim.claimName` for
+# `websitevolume`. Label-scoped probes (`-l name=openemr`) miss
+# writers whose labels were rotated — a canary with `track=canary`, a
+# rename-in-place, or a one-off debug pod that mounted the PVC for
+# a copy would all slip past. The PVC-mount signal is what we
+# actually care about, so inspect it directly.
+#
+# NOTE on the jsonpath shape. The naive form
+#   {range .items[?(@.spec.volumes[*].persistentVolumeClaim.claimName=="websitevolume")]}
+# expands an ARRAY on the left of ==; the behavior of that
+# comparison is inconsistent across kubectl versions and jsonpath
+# implementations. Use the robust form: print `<podName>
+# <claimName1> ...` for every pod, then awk-filter rows whose
+# second-or-later column equals websitevolume. Whole-field match,
+# no substring collisions.
+#
+# COVERAGE note. This probe catches pods mounting the websitevolume
+# PVC in this namespace. It does NOT catch pods with direct NFS
+# volumeMounts bypassing the PVC, pods in other namespaces that
+# mount the same NFS share via their own PVCs, or external NFS
+# clients from outside the cluster. If your topology is non-standard
+# on any of those axes, verify quiescence from THAT side before
+# proceeding — a live writer anywhere would race the rsync-in step
+# and corrupt the migration.
+#
+# Capture stderr separately so a kubectl API-call failure does not
+# fold onto stdout and get misread as a pod name.
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+err_file=$(mktemp)
+if ! probe=$(kubectl get pods \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.volumes[*].persistentVolumeClaim.claimName}{"\n"}{end}' \
+    2>"$err_file"); then
+  echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
+  cat "$err_file"
+  rm -f "$err_file"
+  exit 1
+fi
+rm -f "$err_file"
+remaining=$(printf '%s\n' "$probe" | awk '
+  NF >= 2 { for (i = 2; i <= NF; i++) if ($i == "websitevolume") { print $1; next } }
+')
+if [ -n "$remaining" ]; then
+  echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting:"
+  echo "$remaining"
+  exit 1
+fi
 
 # 2. Create the LUKS passphrase Secret. In production, replace this with
 #    an ESO-managed ExternalSecret.
 #    EDIT the passphrase in luks-passphrase-secret.yaml FIRST.
-kubectl apply -f luks-passphrase-secret.yaml
+#
+# Apply the manifest ONLY when the Secret does not already exist in
+# the target namespace — an unconditional `kubectl apply` would
+# overwrite an ESO-managed Secret with the public placeholder, and the
+# format Job would then refuse to run against it (its guard rejects
+# the placeholder value). If ESO manages this Secret, do NOT apply
+# the local manifest at all; let ESO own the lifecycle.
+#
+# The lookup distinguishes three outcomes:
+#   * exists         → NOT applying; surface placeholder warning;
+#   * confirmed-absent → create (not apply) so a concurrent ESO
+#                      creation between our check and our create loses
+#                      cleanly with AlreadyExists rather than racing
+#                      an overwrite;
+#   * other API error → ABORT (RBAC denied, API server unreachable,
+#                      network blip). The bare `>/dev/null 2>&1` arm
+#                      swallowed all of these as "does not exist" and
+#                      proceeded to apply the placeholder on top of
+#                      whatever state the cluster was actually in.
+secret_err=$(mktemp)
+if kubectl get secret luks-passphrase -o name >/dev/null 2>"$secret_err"; then
+  echo "Secret 'luks-passphrase' already exists — NOT applying the local manifest."
+  existing=$(kubectl get secret luks-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+             | base64 -d 2>/dev/null || true)
+  if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+    echo "WARNING: existing Secret still carries the published placeholder"
+    echo "passphrase. The format Job will refuse to run against it."
+  fi
+elif grep -qi 'NotFound\|not found' "$secret_err"; then
+  # Confirmed not found — create. `kubectl create` fails with
+  # AlreadyExists on a concurrent ESO creation, which is the
+  # correct outcome: we'd rather lose the race than overwrite.
+  if ! kubectl create -f luks-passphrase-secret.yaml 2>"$secret_err"; then
+    if grep -qi 'AlreadyExists\|already exists' "$secret_err"; then
+      echo "Secret 'luks-passphrase' was created concurrently (likely by ESO) — NOT overwriting."
+      existing=$(kubectl get secret luks-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+                 | base64 -d 2>/dev/null || true)
+      if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+        echo "WARNING: concurrently-created Secret still carries the published"
+        echo "placeholder passphrase. The format Job will refuse to run against it."
+      fi
+    else
+      echo "ERROR: kubectl create secret luks-passphrase failed:"
+      cat "$secret_err" >&2
+      rm -f "$secret_err"
+      exit 1
+    fi
+  fi
+else
+  echo "ERROR: kubectl get secret luks-passphrase returned an API error that is NOT NotFound:"
+  cat "$secret_err" >&2
+  echo "       Refusing to proceed — the cluster state is indeterminate."
+  rm -f "$secret_err"
+  exit 1
+fi
+rm -f "$secret_err"
+
+# Post-adoption shape re-validation. Whichever branch ran above (adopted
+# an ESO-managed Secret, created from the local manifest, or lost the
+# AlreadyExists race), the Secret must now carry a non-empty passphrase
+# before the format Job runs. A Secret created with a stringData key
+# that whitespace-trims to zero, or an ESO template that materialized
+# without a value yet, would ride through the branch above and only
+# surface inside the format Job — after it has already started its
+# privileged luksFormat. Re-read and fail fast here.
+#
+# The placeholder value is caught by the pre-scale gate above AND by the
+# format Job's own guard; the earlier gate already prevents an operator
+# from reaching this point with the placeholder in place. This gate adds
+# the orthogonal "shape is wrong" axis (missing key, empty value, pure
+# whitespace) that the placeholder check does not cover.
+passphrase_b64=$(kubectl get secret luks-passphrase \
+                 -o jsonpath='{.data.passphrase}' 2>/dev/null || true)
+if [ -z "$passphrase_b64" ]; then
+  echo "ERROR: Secret 'luks-passphrase' has no 'passphrase' key after the adoption step."
+  echo "       Refusing to run the format Job — fix the Secret shape first."
+  exit 1
+fi
+decoded_len=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null \
+              | tr -d '[:space:]' | wc -c | tr -d ' ')
+if [ "$decoded_len" = "0" ]; then
+  echo "ERROR: Secret 'luks-passphrase' 'passphrase' key decodes to empty/whitespace."
+  echo "       Refusing to run the format Job — fix the Secret value first."
+  exit 1
+fi
 
 # 3. Run the one-shot format Job. This creates the LUKS container file
 #    inside websitevolume. It takes a few minutes.
@@ -236,14 +516,734 @@ VALIDATE_FULL=1 ./validate-encryption.sh
 > migration and confirm that only `.openemr-sites.luks` remains at
 > the top level.
 
+### Greenfield adoption (no plaintext first-boot)
+
+Use this path when you need `sqlconf.php` (which carries the DB password) and the initial GACL seed to ONLY ever exist inside the LUKS filesystem — never as a plaintext file on `websitevolume`. The migration path above lets openemr first-boot land on plaintext NFS and then moves it under encryption afterwards; this path formats the LUKS container BEFORE openemr first-boot ever runs.
+
+The sequence relies on racing kubelet: `kub-up` creates the default openemr Deployment, and a pod is scheduled immediately. You must delete the Deployment (and let the pod terminate) before its startup script writes `sqlconf.php`. In practice first-boot takes minutes to complete (leader-election + schema install + demo seed), so there is comfortable headroom, but you still need to act promptly and check that no pod has advanced past the swarm-ready marker.
+
+```bash
+# All commands run from the repository root unless noted otherwise.
+# The one exception is step 3 onwards (manifests local to this
+# example), which assume you have `cd`'d into the example directory
+# first — that transition is marked inline below.
+cd /path/to/openemr-devops   # replace with the clone's actual path
+
+# 0. Bring up the default stack. This creates the mysql, redis,
+#    ganesha-nfs, phpmyadmin, and openemr Deployments. openemr pods
+#    begin first-boot immediately. Run from the repo root.
+./kubernetes/kub-up
+
+# 1. IMMEDIATELY delete the openemr Deployment before its pods
+#    advance through first-boot. The `--ignore-not-found` allows
+#    this to be idempotent if it ran during a kubelet gap.
+kubectl delete deployment openemr --ignore-not-found
+# Fail the setup if any old openemr writer pod survives the delete
+# wait — proceeding past that point could race a still-finishing
+# first-boot and land plaintext on NFS between the precheck and the
+# LUKS format step.
+#
+# Fail closed if the `kubectl get pods` probe itself errors. A
+# command-not-found, auth failure, or apiserver outage returns a
+# non-zero exit AND an empty stdout — `[ -z "" ]` would then pass
+# vacuously and let the pipeline proceed with no idea whether pods
+# remain. Capture the two signals (stdout + exit) separately.
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+if ! probe=$(kubectl get pods -l name=openemr -o name 2>&1); then
+  echo "ERROR: could not list openemr pods to verify delete: $probe"
+  exit 1
+fi
+if [ -n "$probe" ]; then
+  echo "ERROR: openemr pods remained after delete wait — aborting:"
+  echo "$probe"
+  exit 1
+fi
+
+# 2. Defensive check: confirm no plaintext openemr state exists on
+#    websitevolume. The greenfield guarantee is "no plaintext data on
+#    NFS", which means the volume must be empty before the LUKS
+#    container is formatted. Scoping the check to sqlconf.php alone
+#    would miss uploaded documents, cert material, or any other
+#    partially-landed state from a prior aborted first-boot (e.g. a
+#    pod that wrote documents before being killed). Insist on an
+#    empty volume, with a narrow carve-out for the LUKS init artifact
+#    (.openemr-sites.luks) in case format already succeeded on a
+#    prior attempt.
+#
+#    Clean up any stale precheck pod from a prior attempt BEFORE the
+#    apply. `kubectl apply` on an existing pod with a different spec
+#    is a no-op (the Pod kind rejects most spec mutations) and would
+#    leave us reading stale state from the old pod. --wait=true
+#    ensures the old pod is fully gone before we recreate.
+if ! kubectl delete pod greenfield-precheck --ignore-not-found --wait=true; then
+  echo "ERROR: failed to remove stale greenfield-precheck pod from a prior attempt."
+  exit 1
+fi
+cat <<'EOF' | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: greenfield-precheck
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  containers:
+  # Container name is load-bearing: the `kubectl wait` below filters
+  # on containerStatuses[?(@.name=="precheck")], so renaming here
+  # requires updating the wait expression too.
+  - name: precheck
+    image: alpine:3.24
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        # Four distinct outcomes:
+        #  - mount unreachable (dir missing or unlistable): exit 2
+        #    (PRECHECK_UNKNOWN) — the operator must diagnose, not
+        #    mistake a broken check for a passing one.
+        #  - any entry besides the .openemr-sites.luks carve-out:
+        #    exit 1 (EXISTING_DATA_PRESENT) — the greenfield
+        #    guarantee is lost. Fall back to the migration path.
+        #  - exactly the carve-out entry (.openemr-sites.luks alone,
+        #    from a prior successful format): exit 0 — the greenfield
+        #    sequence can resume from the Deployment-apply step.
+        #  - truly empty: exit 0 — proceed with the full greenfield
+        #    sequence.
+        if [ ! -d /mnt/websitevolume ]; then
+          echo "PRECHECK_UNKNOWN: /mnt/websitevolume is not accessible as a directory"
+          exit 2
+        fi
+        # Probe the directory itself before trusting the entry listing.
+        # `ls` failing on the mountpoint indicates a permissions or
+        # NFS-visibility problem distinct from "volume is empty"; we
+        # must not treat that as PRECHECK_OK.
+        if ! ls /mnt/websitevolume >/dev/null 2>&1; then
+          echo "PRECHECK_UNKNOWN: cannot list /mnt/websitevolume"
+          exit 2
+        fi
+        # Enumerate top-level entries into a tempfile so we can
+        # iterate without an inline heredoc (which would collide with
+        # the outer YAML block scalar's indentation rules). `ls -A`
+        # includes dotfiles but omits . and ..; iterate line-by-line
+        # and match each against the allowlist. Use a semicolon-
+        # separated accumulator so the diagnostic list stays on one
+        # line (embedded newlines in a shell variable would complicate
+        # the YAML-embedded block scalar further down, and we do not
+        # need line breaks in the message).
+        ls_out=$(mktemp)
+        if ! ls -A /mnt/websitevolume >"$ls_out" 2>/dev/null; then
+          echo "PRECHECK_UNKNOWN: ls -A failed on /mnt/websitevolume"
+          rm -f "$ls_out"
+          exit 2
+        fi
+        unexpected=""
+        saw_luks=0
+        while IFS= read -r entry; do
+          [ -z "$entry" ] && continue
+          case "$entry" in
+            # Carve-out: the LUKS format Job's artifact. If format
+            # already ran (prior-attempt resume), the container file
+            # is permitted at the top level — BUT its shape must match
+            # what `cryptsetup luksFormat` produces and nothing else
+            # (see the LUKS-header verification below).
+            .openemr-sites.luks) saw_luks=1 ;;
+            *)
+              if [ -z "$unexpected" ]; then
+                unexpected="$entry"
+              else
+                unexpected="$unexpected; $entry"
+              fi
+              ;;
+          esac
+        done <"$ls_out"
+        rm -f "$ls_out"
+        if [ -n "$unexpected" ]; then
+          echo "EXISTING_DATA_PRESENT: /mnt/websitevolume holds entries beyond the allowlist: $unexpected"
+          echo "The greenfield guarantee requires an empty volume (or only"
+          echo ".openemr-sites.luks from a prior-attempt format). Fall back"
+          echo "to the migration path, or wipe websitevolume and retry."
+          exit 1
+        fi
+        # Resume-path header check. The top-level allowlist let
+        # .openemr-sites.luks through as a "prior format artifact",
+        # but mere file existence is not enough: an OOM-killed format
+        # Job, a half-written fallocate, a truncated restore from
+        # backup, or an unrelated 8 GiB file plonked at that path
+        # would all present as "file exists". `cryptsetup isLuks`
+        # validates the on-disk LUKS header signature + version +
+        # internal structure; it needs only read access and no
+        # privileges. Any deviation means the format state is not
+        # trustworthy and manual inspection is required BEFORE the
+        # second format attempt reuses the file (which the format Job
+        # refuses — leaving the operator wedged if the file is
+        # invalid).
+        #
+        # NOTE: `isLuks` validates HEADER STRUCTURE only. It does NOT
+        # verify the configured passphrase actually opens the
+        # container. A valid LUKS header whose only keyslot wraps a
+        # different passphrase will pass this check and fail at
+        # `luksOpen` time inside the sidecar. If you are resuming
+        # against a container formatted in a prior attempt and want
+        # that stronger assurance before swapping the Deployment, run
+        # the operator-side verify in the note immediately below.
+        if [ "$saw_luks" = "1" ]; then
+          if ! apk add --no-cache cryptsetup >/dev/null 2>&1; then
+            echo "PRECHECK_UNKNOWN: failed to install cryptsetup for header check"
+            exit 2
+          fi
+          if ! cryptsetup isLuks /mnt/websitevolume/.openemr-sites.luks; then
+            echo "EXISTING_DATA_PRESENT: /mnt/websitevolume/.openemr-sites.luks is NOT a valid LUKS container."
+            echo "A clean 'cryptsetup luksFormat' leaves a header that passes"
+            echo "'cryptsetup isLuks'. This file does not — either the prior"
+            echo "format Job did not complete (truncated / half-written), or"
+            echo "the file is unrelated data at the same path. DO NOT resume"
+            echo "— inspect manually. Typical recovery: if the file was"
+            echo "written by a prior failed format attempt and no encrypted"
+            echo "data has been committed yet, delete it (kubectl exec into"
+            echo "any pod mounting websitevolume: rm /mnt/websitevolume/"
+            echo ".openemr-sites.luks) and rerun the format Job."
+            exit 1
+          fi
+          echo "PRECHECK_OK: RESUME — /mnt/websitevolume holds a well-formed LUKS container from a prior format; skip the format Job and proceed to Deployment apply"
+          exit 0
+        fi
+        echo "PRECHECK_OK: EMPTY — /mnt/websitevolume is empty; proceed with the full greenfield sequence (format Job, then Deployment apply)"
+    volumeMounts:
+      - name: websitevolume
+        mountPath: /mnt/websitevolume
+        readOnly: true
+  volumes:
+    - name: websitevolume
+      persistentVolumeClaim:
+        claimName: websitevolume
+EOF
+# The pod exits:
+#   0 — PRECHECK_OK (volume empty or only .openemr-sites.luks; proceed with greenfield)
+#   1 — EXISTING_DATA_PRESENT (plaintext entries present; MUST fall back to migration path)
+#   2 — PRECHECK_UNKNOWN (couldn't inspect — mountpoint missing, ls failed, etc.; DIAGNOSE, don't blindly migrate)
+#
+# Wait on the NAMED container's termination, not pod phase. A pod
+# with multiple containers could be Pending/Running while the probe
+# container has already terminated with an exit code — pod-phase
+# wait would miss that.
+#
+# Poll for the precheck container's terminated state via
+# `go-template` rather than `kubectl wait --for=jsonpath=` with a
+# filter expression. `kubectl wait --for=jsonpath` landed in 1.23
+# but filter expressions INSIDE that jsonpath against an array
+# (containerStatuses[?(@.name=="precheck")]) were not reliably
+# supported until kubectl 1.29; on 1.28 the expression either
+# returns "no matches" immediately or times out silently. The
+# go-template form below works on every supported kubectl release
+# because it runs client-side after the get completes.
+EXIT_CODE=""
+for attempt in $(seq 1 60); do
+  EXIT_CODE=$(kubectl get pod greenfield-precheck \
+    -o go-template='{{range .status.containerStatuses}}{{if eq .name "precheck"}}{{if .state.terminated}}{{.state.terminated.exitCode}}{{end}}{{end}}{{end}}' \
+    2>/dev/null || echo "")
+  if [ -n "$EXIT_CODE" ]; then
+    break
+  fi
+  sleep 1
+done
+
+if [ "$EXIT_CODE" = "0" ]; then
+  # Precheck exit 0 covers two sub-cases that take different downstream
+  # paths: EMPTY (run the format Job) vs RESUME (a prior format already
+  # produced a valid LUKS container at .openemr-sites.luks — the format
+  # Job is at best redundant, and its own guard refuses to format on
+  # top of an existing container). The precheck container's final log
+  # line distinguishes the two (PRECHECK_OK: EMPTY vs PRECHECK_OK:
+  # RESUME); capture the logs here BEFORE deleting the pod so the
+  # signal survives.
+  #
+  # Fail-closed classification. The precheck container exited 0, but
+  # exit 0 alone does not tell us WHICH of the two safe outcomes it
+  # saw — only its log line does. `kubectl logs` can fail independently
+  # of container exit (API glitch, pod GC race, authz on logs subresource)
+  # and return an empty string under `|| true`. Branching on "RESUME
+  # marker present → RESUME, everything else → EMPTY" would silently
+  # route a log-read failure OR an unclassified marker through the
+  # EMPTY arm — which runs the format Job, and the format Job's own
+  # guard refuses to format on top of an existing container, so the
+  # symptom would be a failed Job on a resume attempt. Classify three
+  # ways explicitly: RESUME marker, EMPTY marker, or ABORT.
+  PRECHECK_LOG_ERR=$(mktemp)
+  PRECHECK_LOG=$(kubectl logs pod/greenfield-precheck 2>"$PRECHECK_LOG_ERR") || PRECHECK_LOG_FAILED=yes
+  if [ "${PRECHECK_LOG_FAILED:-no}" = "yes" ]; then
+    echo "ERROR: kubectl logs pod/greenfield-precheck failed — cannot classify precheck outcome."
+    echo "       The container exited 0, but without its log line we cannot tell"
+    echo "       EMPTY (run format Job) from RESUME (skip format Job). ABORTING."
+    cat "$PRECHECK_LOG_ERR" >&2
+    rm -f "$PRECHECK_LOG_ERR"
+    kubectl delete pod greenfield-precheck --ignore-not-found
+    exit 2
+  fi
+  rm -f "$PRECHECK_LOG_ERR"
+  if printf '%s\n' "$PRECHECK_LOG" | grep -q '^PRECHECK_OK: RESUME'; then
+    RESUME=yes
+    echo "Greenfield precheck PASSED (RESUME) — websitevolume already holds a well-formed LUKS container from a prior format. The format Job will be SKIPPED below."
+  elif printf '%s\n' "$PRECHECK_LOG" | grep -q '^PRECHECK_OK: EMPTY'; then
+    RESUME=no
+    echo "Greenfield precheck PASSED (EMPTY) — websitevolume is empty. The format Job will run below."
+  else
+    echo "ERROR: greenfield-precheck exited 0 but its log contains neither"
+    echo "       'PRECHECK_OK: RESUME' nor 'PRECHECK_OK: EMPTY'. Something"
+    echo "       truncated the log or changed the precheck script without"
+    echo "       updating the classifier. ABORTING — do NOT guess at the"
+    echo "       downstream path."
+    echo ""
+    echo "--- captured log ---"
+    printf '%s\n' "$PRECHECK_LOG"
+    echo "--- end captured log ---"
+    kubectl delete pod greenfield-precheck --ignore-not-found
+    exit 2
+  fi
+  kubectl delete pod greenfield-precheck
+else
+  # Precheck container exited non-zero OR did not terminate within
+  # the poll window. Capture diagnostics BEFORE deleting the pod
+  # (describing a missing resource produces no useful output).
+  echo ""
+  echo "--- diagnostics for greenfield-precheck (captured pre-delete) ---"
+  kubectl describe pod/greenfield-precheck 2>/dev/null || echo "(describe failed)"
+  echo ""
+  echo "--- logs for greenfield-precheck ---"
+  kubectl logs pod/greenfield-precheck 2>/dev/null || echo "(logs failed)"
+  echo "--- end diagnostics ---"
+  echo ""
+  case "$EXIT_CODE" in
+    1)
+      echo "Greenfield precheck result: EXISTING_DATA on websitevolume."
+      echo "Greenfield guarantee is lost. Fall back to the Migration path"
+      echo "(§ 'Migration from a running default-stack deployment' above)."
+      echo "BEFORE doing so, clean up partial greenfield artifacts:"
+      echo "  - kubectl delete pod greenfield-precheck --ignore-not-found"
+      echo "  - kubectl delete job luks-format-websitevolume --ignore-not-found"
+      echo "  - If the luks-passphrase Secret came from this attempt"
+      echo "    (i.e. you applied luks-passphrase-secret.yaml directly"
+      echo "    in step 3 below): kubectl delete secret luks-passphrase"
+      echo "    If it came from External Secrets Operator (ESO) or any other"
+      echo "    controller-managed source: DO NOT delete it — let the"
+      echo "    controller reconcile. Check for ESO ownership first:"
+      echo "      kubectl get secret luks-passphrase -o jsonpath='{.metadata.ownerReferences}'"
+      echo "    Non-empty ownerReferences (or an annotation like"
+      echo "    'external-secrets.io/managed') means another controller owns it."
+      echo "  - do NOT wipe websitevolume; migration needs the plaintext data"
+      kubectl delete pod greenfield-precheck --ignore-not-found
+      exit 1
+      ;;
+    2|"")
+      echo "Greenfield precheck result: UNKNOWN (container exit: '${EXIT_CODE:-timeout}')."
+      echo "DIAGNOSE AND RETRY. Do NOT fall back to the migration path"
+      echo "without first confirming the plaintext state of websitevolume."
+      echo "The diagnostics above are the starting point; also check:"
+      echo "  kubectl get pvc websitevolume"
+      kubectl delete pod greenfield-precheck --ignore-not-found
+      exit 2
+      ;;
+    *)
+      echo "Greenfield precheck: unexpected container exit code '${EXIT_CODE}' — DIAGNOSE."
+      kubectl delete pod greenfield-precheck --ignore-not-found
+      exit 2
+      ;;
+  esac
+fi
+
+# Switch into the example directory for the manifests that follow.
+# The remaining `kubectl apply -f <local-file>` references are
+# resolved relative to THIS directory, not the repo root.
+cd kubernetes/examples/encryption-at-rest-luks
+
+# 3. Create the LUKS passphrase Secret.
+#    EDIT the passphrase in luks-passphrase-secret.yaml FIRST before
+#    applying. The committed value is a public placeholder and the
+#    format Job below WILL REFUSE to run against it — leaving the
+#    placeholder in the Secret is not a safety net, it's a dead end.
+#    In production, provision this Secret via External Secrets
+#    Operator (ESO) instead of applying the placeholder manifest at
+#    all; see § Key management above.
+#
+#    RESUME WARNING. If the precheck accepted a pre-existing
+#    .openemr-sites.luks (prior-attempt resume path), the passphrase
+#    you put in this Secret MUST match the one used for the original
+#    `cryptsetup luksFormat`. Each LUKS keyslot wraps the master key
+#    with a specific passphrase; a new passphrase cannot open the
+#    existing container, and applying a Secret with a rotated value
+#    locks you out of anything already written through this
+#    container. If you have lost the original passphrase, do NOT
+#    resume — delete /mnt/websitevolume/.openemr-sites.luks on the
+#    volume and start the format fresh (only safe when no encrypted
+#    application data has been written through this container yet;
+#    on a true greenfield that is always the case). Passphrase
+#    ROTATION of an existing LUKS container is `cryptsetup
+#    luksAddKey` + `cryptsetup luksRemoveKey` against the container
+#    file, not a Secret edit — see § Secret rotation in the
+#    operational notes.
+#
+#    OPTIONAL — operator-side luksOpen verify (resume path only).
+#    The precheck above validated the LUKS HEADER with `isLuks`, but
+#    did NOT verify the configured passphrase actually opens the
+#    container (that would require a privileged pod + the Secret).
+#    If this is a resume and you want end-to-end proof that the
+#    Secret you are about to apply matches the container, run one
+#    temporary privileged pod to perform a dry `luksOpen --test-
+#    passphrase`:
+#
+#      kubectl apply -f luks-passphrase-secret.yaml
+#      kubectl run luks-passphrase-verify --rm -i --restart=Never --image=alpine:3.24 --overrides='{"spec":{"containers":[{"name":"verify","image":"alpine:3.24","command":["sh","-c"],"args":["apk add --no-cache cryptsetup >/dev/null && cryptsetup luksOpen --test-passphrase --key-file /etc/luks/passphrase /mnt/websitevolume/.openemr-sites.luks && echo VERIFY_OK"],"securityContext":{"privileged":true},"volumeMounts":[{"name":"websitevolume","mountPath":"/mnt/websitevolume","readOnly":true},{"name":"luks-passphrase","mountPath":"/etc/luks","readOnly":true}]}],"volumes":[{"name":"websitevolume","persistentVolumeClaim":{"claimName":"websitevolume"}},{"name":"luks-passphrase","secret":{"secretName":"luks-passphrase"}}]}}'
+#
+#    The `--overrides=` JSON is kept on a single line because
+#    JSON string literals do not allow the shell-style
+#    "\<newline>" continuation that the earlier multi-line form
+#    used (that would make the payload invalid JSON — kubectl
+#    would reject the overrides at parse time).
+#
+#    VERIFY_OK ⇒ the Secret opens the container; safe to proceed.
+#    Any other output ⇒ passphrase mismatch; STOP. Rotating a Secret
+#    whose value does not match the existing container header is
+#    silent data loss waiting for the next pod restart.
+#
+# Apply the manifest ONLY when the Secret does not already exist in
+# the target namespace. An unconditional `kubectl apply` would:
+#   - overwrite an ESO-managed Secret with the public placeholder
+#     (ESO will reconcile it back, but between those two events the
+#     format Job may read the placeholder and refuse — or worse,
+#     another pod may consume it);
+#   - on the resume path, clobber the operator-set passphrase that
+#     matches the existing on-disk LUKS header, which is silent data
+#     loss waiting for the next pod restart.
+# If ESO manages this Secret, do NOT apply the local manifest at all —
+# let ESO own the lifecycle (see § Key management).
+#
+# Three-way classification (matches the migration path above):
+#   * exists         → NOT applying; surface placeholder warning;
+#   * confirmed-absent → create (not apply) so a concurrent ESO
+#                      creation between our check and our create loses
+#                      cleanly with AlreadyExists rather than racing
+#                      an overwrite — especially critical on the resume
+#                      path where overwrite = silent data loss;
+#   * other API error → ABORT.
+secret_err=$(mktemp)
+if kubectl get secret luks-passphrase -o name >/dev/null 2>"$secret_err"; then
+  echo "Secret 'luks-passphrase' already exists — NOT applying the local manifest."
+  echo "If it is ESO-managed, this is the intended state. If it was left"
+  echo "over from a prior run, verify its value matches the existing LUKS"
+  echo "header (see the OPTIONAL luksOpen verify above) before continuing."
+  # Sanity: if the existing Secret still carries the public placeholder,
+  # surface that early — the format Job's guard will refuse to run, and
+  # the operator should know BEFORE waiting on it to crash out.
+  existing=$(kubectl get secret luks-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+             | base64 -d 2>/dev/null || true)
+  if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+    # Rotation guidance differs between resume and fresh-init:
+    #   RESUME=yes: the container was formatted with a specific
+    #     passphrase, and each LUKS keyslot wraps the master key with
+    #     THAT passphrase. Editing this Secret alone does NOT re-wrap
+    #     any on-disk keyslot. The correct sequence is
+    #     `cryptsetup luksAddKey` (new) → update the Secret → VERIFY
+    #     the new Secret actually opens the container (roll one pod
+    #     and confirm sidecar startup) → ONLY THEN `luksRemoveKey`
+    #     (old). Swapping the order (remove-before-verify) locks the
+    #     operator out on any Secret-update failure.
+    #   RESUME=no (fresh format): the format Job has not yet created a
+    #     LUKS container, so there is no master key to protect. Editing
+    #     the Secret BEFORE running the format Job is the correct move.
+    if [ "${RESUME:-no}" = "yes" ]; then
+      # ABORT on RESUME + placeholder. The existing container's LUKS
+      # keyslots wrap the master key with whatever passphrase was used
+      # at format; that passphrase may or may not be the placeholder,
+      # and the right recovery sequence depends on which. Letting the
+      # setup continue (as a mere warning) would apply the LUKS-enabled
+      # Deployment; if the placeholder doesn't open any slot the sidecar
+      # crashloops at every pod start, and if it does, pods come up
+      # using the published placeholder as the real key — both outcomes
+      # are wrong. Operator must test the placeholder, then rotate in a
+      # new passphrase (luksAddKey → update Secret → VERIFY via
+      # `luksOpen --test-passphrase` from the SAME helper pod → only
+      # then luksRemoveKey the old slot), or recover via a second slot
+      # / header backup. See § Key management.
+      echo "ERROR: existing Secret still carries the published placeholder"
+      echo "       passphrase, AND the precheck selected the RESUME path."
+      echo "       Refusing to continue — recovery requires operator judgment."
+      echo ""
+      echo "       The existing container's LUKS keyslots wrap the master key"
+      echo "       with whatever passphrase was used at format. That may or"
+      echo "       may not be the current placeholder value — DO NOT ASSUME."
+      echo ""
+      echo "       From a privileged helper pod that mounts websitevolume,"
+      echo "       first test whether the placeholder actually opens a slot."
+      echo "       Define PLACEHOLDER with the published literal (do NOT"
+      echo "       rely on an ambient shell var — the published value is"
+      echo "       the one the format Job's guard rejects):"
+      echo "         PLACEHOLDER='example-development-passphrase-REPLACE-ME'"
+      echo "         printf '%s' \"\$PLACEHOLDER\" | cryptsetup open --test-passphrase \\"
+      echo "           --key-file=- /mnt/websitevolume/.openemr-sites.luks"
+      echo ""
+      echo "       Interpret the exit code CAREFULLY — a non-zero return"
+      echo "       means EITHER a wrong passphrase (Case B below) OR a"
+      echo "       cryptsetup/device error (file missing, permission"
+      echo "       denied, I/O error, invalid LUKS header). Inspect the"
+      echo "       stderr/stdout of the probe before concluding Case B:"
+      echo "       if cryptsetup printed an error that isn't about the"
+      echo "       passphrase, resolve that first (fix the mount, fix"
+      echo "       permissions, confirm the file exists as a LUKS2"
+      echo "       container via \`cryptsetup isLuks\`) and re-run the probe."
+      echo ""
+      echo "       CASE A — placeholder opens (exit 0):"
+      echo "         The container was formatted with the placeholder (a prior"
+      echo "         format Job ran before this guard was in place, or the"
+      echo "         placeholder was pinned into the Secret at some point)."
+      echo "         Adopt a real passphrase WITHOUT losing access:"
+      echo "           1. \`cryptsetup luksAddKey\` to add the NEW real"
+      echo "              passphrase into a free slot (placeholder"
+      echo "              authenticates the add)."
+      echo "           2. Update this Secret to the NEW passphrase."
+      echo "           3. VERIFY from the SAME privileged helper pod"
+      echo "              (this guard runs BEFORE the Deployment apply,"
+      echo "              so no openemr replica exists yet to roll):"
+      echo "                NEW=\"\$(cat /path/to/new-passphrase)\""
+      echo "                printf '%s' \"\$NEW\" | cryptsetup open \\"
+      echo "                  --test-passphrase --key-file=- \\"
+      echo "                  /mnt/websitevolume/.openemr-sites.luks"
+      echo "              Do NOT skip this step — a mistyped Secret or a"
+      echo "              failed ESO reconcile will lock you out once step"
+      echo "              4 retires the placeholder."
+      echo "           4. ONLY AFTER step 3 returns exit 0:"
+      echo "              \`cryptsetup luksRemoveKey\` to retire the"
+      echo "              placeholder slot."
+      echo "           NOTE — \`luksRemoveKey\` does NOT revoke access via"
+      echo "           any header backup taken before this rotation; see"
+      echo "           § Key management's old-header-backup caveat. If the"
+      echo "           backup chain of custody is unclear, follow step 4"
+      echo "           with \`cryptsetup reencrypt\` to rotate the master"
+      echo "           key itself before writes resume."
+      echo ""
+      echo "       CASE B — placeholder does NOT open (non-zero exit, with"
+      echo "       passphrase mismatch confirmed and cryptsetup errors ruled"
+      echo "       out above):"
+      echo "         The container was formatted with a passphrase that is"
+      echo "         not the current Secret value. Recovery requires ONE of:"
+      echo "           (a) the original format-time passphrase, OR"
+      echo "           (b) a second slot's passphrase added prior to loss, OR"
+      echo "           (c) an escrowed LUKS header backup PLUS the passphrase"
+      echo "               of at least one slot CARRIED IN THAT BACKUP (the"
+      echo "               header wraps the master key under slot passphrases"
+      echo "               — a header alone unlocks nothing)."
+      echo "         Then:"
+      echo "           1. If recovering via (c): \`cryptsetup luksHeaderRestore\`"
+      echo "              the backup onto the live container first. NOTE: this"
+      echo "              clobbers any post-backup slot state — see § Key"
+      echo "              management."
+      echo "           2. \`cryptsetup luksAddKey\` with the recovered"
+      echo "              passphrase authenticating, adding the NEW real"
+      echo "              passphrase into a free slot."
+      echo "           3. Update this Secret to the NEW passphrase."
+      echo "           4. VERIFY from the helper pod (same \`cryptsetup open"
+      echo "              --test-passphrase\` form as Case A step 3). Do NOT"
+      echo "              proceed until this returns exit 0."
+      echo "           5. Optionally \`luksRemoveKey\` the stale slot(s)."
+      echo "         See § Key management for the multi-slot / header-backup"
+      echo "         recovery procedures and their liability caveats."
+      exit 1
+    else
+      echo "WARNING: existing Secret still carries the published placeholder"
+      echo "passphrase. The format Job will refuse to run against it. Replace"
+      echo "the value BEFORE running the format Job (direct edit, or let ESO"
+      echo "reconcile a real one)."
+    fi
+  fi
+elif grep -qi 'NotFound\|not found' "$secret_err"; then
+  if ! kubectl create -f luks-passphrase-secret.yaml 2>"$secret_err"; then
+    if grep -qi 'AlreadyExists\|already exists' "$secret_err"; then
+      echo "Secret 'luks-passphrase' was created concurrently (likely by ESO) — NOT overwriting."
+      existing=$(kubectl get secret luks-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+                 | base64 -d 2>/dev/null || true)
+      if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+        if [ "${RESUME:-no}" = "yes" ]; then
+          # ABORT on RESUME + placeholder (same reasoning as the
+          # existing-Secret branch above). Recovery requires operator
+          # judgment — the existing container may or may not open with
+          # the placeholder, and the right sequence depends on which.
+          echo "ERROR: concurrently-created Secret still carries the published"
+          echo "       placeholder, AND the precheck selected the RESUME path."
+          echo "       Refusing to continue — see the existing-Secret branch"
+          echo "       above for the test-then-recover procedure (do NOT assume"
+          echo "       the placeholder cannot open a slot; test first, then"
+          echo "       add the new key, update this Secret, VERIFY from the"
+          echo "       helper pod via \`luksOpen --test-passphrase\` with the"
+          echo "       new Secret value, and only afterwards luksRemoveKey"
+          echo "       the stale slot)."
+          rm -f "$secret_err"
+          exit 1
+        else
+          echo "WARNING: concurrently-created Secret still carries the published"
+          echo "placeholder passphrase. The format Job will refuse to run against it."
+        fi
+      fi
+    else
+      echo "ERROR: kubectl create secret luks-passphrase failed:"
+      cat "$secret_err" >&2
+      rm -f "$secret_err"
+      exit 1
+    fi
+  fi
+else
+  echo "ERROR: kubectl get secret luks-passphrase returned an API error that is NOT NotFound:"
+  cat "$secret_err" >&2
+  echo "       Refusing to proceed — the cluster state is indeterminate."
+  rm -f "$secret_err"
+  exit 1
+fi
+rm -f "$secret_err"
+
+# Post-adoption shape re-validation. Whichever branch ran above (adopted
+# an ESO-managed Secret, created from the local manifest, or lost the
+# AlreadyExists race), the Secret must now carry a non-empty passphrase
+# before anything consumes it — on the non-RESUME path that is the
+# format Job's privileged luksFormat; on the RESUME path it is the
+# Deployment apply below, where the luks-opener sidecar would then fail
+# at pod start. Either way, a missing key / empty value / whitespace-
+# only value surfaces as a hard-to-diagnose luksOpen failure instead of
+# a clean error here.
+#
+# The placeholder value is caught by the branch above and (for
+# non-RESUME) by the format Job's own guard. This gate adds the
+# orthogonal "shape is wrong" axis that the placeholder check does not
+# cover.
+passphrase_b64=$(kubectl get secret luks-passphrase \
+                 -o jsonpath='{.data.passphrase}' 2>/dev/null || true)
+if [ -z "$passphrase_b64" ]; then
+  echo "ERROR: Secret 'luks-passphrase' has no 'passphrase' key after the adoption step."
+  echo "       Refusing to proceed — fix the Secret shape first."
+  exit 1
+fi
+decoded_len=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null \
+              | tr -d '[:space:]' | wc -c | tr -d ' ')
+if [ "$decoded_len" = "0" ]; then
+  echo "ERROR: Secret 'luks-passphrase' 'passphrase' key decodes to empty/whitespace."
+  echo "       Refusing to proceed — fix the Secret value first."
+  exit 1
+fi
+
+# 4. Run the one-shot format Job against the (empty) websitevolume.
+#    This creates the LUKS container file WITHOUT any plaintext
+#    content ever landing beside it.
+#
+#    RESUME path: if the precheck above set RESUME=yes, the volume
+#    already holds a well-formed .openemr-sites.luks from a prior
+#    format and re-running the format Job is at best a no-op — its own
+#    guard refuses to format on top of an existing container (defense
+#    in depth it already carries), but even with that guard this step
+#    wastes a Pod, a Job slot, and operator time. Skip it and proceed
+#    straight to the Deployment apply below.
+if [ "${RESUME:-no}" = "yes" ]; then
+  echo "RESUME path — skipping format Job (container already present and validated by precheck)."
+else
+  kubectl apply -f luks-format-job.yaml
+  kubectl wait --for=condition=complete job/luks-format-websitevolume --timeout=600s
+  kubectl logs job/luks-format-websitevolume
+fi
+
+# 5. Apply the LUKS-enabled openemr Deployment. The first boot of the
+#    pod performs leader-election and writes sqlconf.php, the admin
+#    user, and GACL rows INSIDE the decrypted LUKS filesystem.
+#    Nothing ever lands on the backing NFS as plaintext.
+kubectl apply -f openemr-deployment-luks.yaml
+
+# 6. Wait for first-boot to complete inside the encrypted mount.
+#    Same two-phase readiness pattern as the migration path — Pod
+#    Ready alone can fire while setup is still underway; verify
+#    $config = 1 is committed before considering the deployment
+#    seeded.
+#
+#    First wait for the Deployment's rollout to progress to the point
+#    where its pods exist. `kubectl wait -l name=openemr pod` with
+#    `--for=condition=Ready` snapshots the Pod set at invocation time
+#    and returns immediately with "no matching resources found" if the
+#    Deployment has not yet created a pod (the kube-controller-manager
+#    may lag the `kubectl apply` by a second or two on a loaded
+#    cluster). `rollout status` blocks on the Deployment's own status,
+#    so it does not race pod creation.
+kubectl rollout status deployment/openemr --timeout=1200s
+kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
+kubectl exec deploy/openemr -c openemr -- \
+  sh -c 'grep -q "^\$config *= *1" /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php'
+
+# 7. (Optional) validate.
+./validate-encryption.sh
+```
+
+**Known limitation.** This path is racy against very fast kubelet scheduling. If your cluster brings up openemr pods in milliseconds AND first-boot happens to not block on ganesha or mysql wait, step 1's `kubectl delete deployment` could arrive after the pod has already written sqlconf.php. The step 2 defensive check catches that case and tells you to switch to the migration path. In practice on the #910 stack, the mysql/redis init-container waits (plus ganesha mTLS handshake) give you minutes of headroom, so the race is comfortable — but DO rely on the precheck rather than assuming.
+
 ## What about rolling back?
 
 Downgrading from this example back to the default stack means moving data out of the LUKS container file onto the plaintext NFS filesystem.
 
 ```bash
-# 1. Scale the LUKS-enabled openemr to 0.
-kubectl scale deployment openemr --replicas=0
-kubectl wait --for=delete pod -l name=openemr --timeout=120s
+# 1. Scale the LUKS-enabled openemr to 0, then verify quiescence.
+#    Same two-step pattern as adoption: `kubectl wait --for=delete`
+#    returns on the first termination event per snapshotted Pod; a
+#    slow-terminating Pod can still be present when the wait returns.
+#    If ANY pod still holds `websitevolume` (stuck in Terminating on
+#    a lingering mount, or a debug pod unrelated to the Deployment),
+#    the rollback MUST abort — a running writer would race the
+#    rsync-out step and we would stage a stale view.
+#
+#    PVC-mount probe (not a label probe): enumerate ALL pods and
+#    filter by `.spec.volumes[*].persistentVolumeClaim.claimName`.
+#    Label-scoped probes miss pods whose labels were rotated. See
+#    the migration-path probe comment above for the jsonpath-vs-awk
+#    shape rationale.
+#
+#    COVERAGE note. This probe catches pods mounting the
+#    websitevolume PVC in this namespace. It does NOT catch pods
+#    with direct NFS volumeMounts bypassing the PVC, pods in other
+#    namespaces that mount the same NFS share via their own PVCs,
+#    or external NFS clients from outside the cluster. If your
+#    topology is non-standard on any of those axes, verify
+#    quiescence from THAT side before proceeding.
+#
+#    Capture stderr separately so a kubectl API-call failure does
+#    not fold onto stdout and get misread as a pod name.
+#
+#    Gate the quiescence probe on scale-to-0 SUCCESS. A `kubectl
+#    scale` that errors out (API 4xx/5xx, insufficient RBAC,
+#    Deployment-not-found) would otherwise let the probe run
+#    unchanged — and the probe would vacuously report "no pods
+#    mounting websitevolume" when the real state is "the Deployment
+#    still has 1 replica but we failed to scale it, OR the
+#    Deployment doesn't exist in this namespace and there never
+#    were any pods to see." Either way, trusting the probe
+#    post-scale-failure would advance the rollback against stale
+#    knowledge of writer state. Abort immediately on scale failure.
+if ! kubectl scale deployment openemr --replicas=0; then
+  echo "ERROR: kubectl scale deployment/openemr --replicas=0 failed — aborting rollback."
+  echo "The quiescence probe cannot run because we have not confirmed"
+  echo "the Deployment's replica count went to 0. Investigate: did the"
+  echo "Deployment ever exist (kubectl get deploy openemr)? Does the"
+  echo "current context have RBAC for scale? Rerun this script once"
+  echo "the scale command returns success."
+  exit 1
+fi
+kubectl wait --for=delete pod -l name=openemr --timeout=120s || true
+err_file=$(mktemp)
+if ! probe=$(kubectl get pods \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.volumes[*].persistentVolumeClaim.claimName}{"\n"}{end}' \
+    2>"$err_file"); then
+  echo "ERROR: kubectl get pods failed — cannot verify websitevolume is quiescent."
+  cat "$err_file"
+  rm -f "$err_file"
+  exit 1
+fi
+rm -f "$err_file"
+remaining=$(printf '%s\n' "$probe" | awk '
+  NF >= 2 { for (i = 2; i <= NF; i++) if ($i == "websitevolume") { print $1; next } }
+')
+if [ -n "$remaining" ]; then
+  echo "ERROR: pods still hold websitevolume after scale-to-0 + delete wait — aborting rollback:"
+  echo "$remaining"
+  exit 1
+fi
 
 # 2. Launch a privileged helper pod that opens the LUKS file, mounts it,
 #    and copies the contents OUT to a plaintext location. This is a
