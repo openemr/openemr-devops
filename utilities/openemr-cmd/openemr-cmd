@@ -18,7 +18,7 @@ set -euo pipefail
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.52"
+VERSION="1.0.53"
 
 # ============================================================================
 # WORKTREE STATE MANAGEMENT
@@ -2625,6 +2625,16 @@ case "${FIRST_ARG}" in
         # binary), and run pre-commit against that copy via --config. Host
         # invocation of pre-commit/prek is unaffected; it reads the unmodified
         # .pre-commit-config.yaml as before.
+        #
+        # Same copy drops 'php bin/console' hook entries to the apache user.
+        # bin/console has RootCliGuard::assertNotRoot(), which fatals as root
+        # (our docker exec runs as root by default). Host invocation runs as
+        # the developer's uid, which is not root and passes the guard — no
+        # rewrite needed there. The in-container 'run_php_as_apache' helper
+        # in /root/devtoolsLibrary.source is the canonical wrapper for this
+        # and is literally 'su-exec apache "$@"' — but prek hook entries are
+        # command strings, not shell functions, so we inline the same
+        # su-exec apache prefix directly.
         # See wt_resolve_container_from_cwd for the tab-separated
         # output contract. Capture into a here-string first (rather
         # than process-substituting the function call directly into
@@ -2669,13 +2679,14 @@ case "${FIRST_ARG}" in
         fi
         docker exec -w /var/www/localhost/htdocs/openemr -i "${prek_target_id}" \
             sh -c '
-                # Substitute actionlint-docker -> actionlint-system ONLY for the
-                # subcommands that actually consume .pre-commit-config.yaml to
-                # execute hooks: run + install-hooks. For everything else
-                # (--version, --help, autoupdate, clean, sample-config, etc.)
-                # pass through without touching the config -- those either
-                # don ot read the config at all, or modify it in place (where
-                # operating on a temp copy would be wrong).
+                # Substitute actionlint-docker -> actionlint-system, and drop
+                # any `php bin/console` hook entry to apache via su-exec, ONLY
+                # for the subcommands that actually consume
+                # .pre-commit-config.yaml to execute hooks: run + install-hooks.
+                # For everything else (--version, --help, autoupdate, clean,
+                # sample-config, etc.) pass through without touching the config
+                # -- those either do not read the config at all, or modify it
+                # in place (where operating on a temp copy would be wrong).
                 #
                 # In Python pre-commit, --config is a *per-subcommand* option
                 # (e.g. `pre-commit run --config FILE`), NOT a top-level one.
@@ -2691,7 +2702,9 @@ case "${FIRST_ARG}" in
                             cfg=$(mktemp /tmp/openemr-cmd-pre-commit-config.XXXXXX) \
                                 || { echo "prek: failed to create temp config" >&2 ; exit 1 ; }
                             trap "rm -f \"${cfg}\"" EXIT INT TERM
-                            sed "s/actionlint-docker/actionlint-system/g" .pre-commit-config.yaml > "${cfg}"
+                            sed -e "s/actionlint-docker/actionlint-system/g" \
+                                -e "s|entry: php bin/console |entry: su-exec apache php bin/console |g" \
+                                .pre-commit-config.yaml > "${cfg}"
                             subcmd="$1"; shift
                             pre-commit "$subcmd" --config "${cfg}" "$@"
                         else

@@ -105,6 +105,21 @@ oc_run() {
         || { cat "${STUB_DIR}/docker.log"; fail "inline script missing 'sed' substitution command"; }
 }
 
+@test "prek dispatch: inline script rewrites 'php bin/console' entries to drop to apache" {
+    # bin/console has RootCliGuard::assertNotRoot(); the in-container prek
+    # dispatch runs as root by default, so any hook whose entry is
+    # `php bin/console ...` (currently license-headers from openemr#15088)
+    # would fatal. The inline sed drops those entries to apache via su-exec
+    # so the guard passes. Host-direct prek is not affected: that runs as
+    # the developer's uid, which already passes the guard without a rewrite.
+    run oc_run prek run
+    assert_success
+    grep -Fq "entry: php bin/console" "${STUB_DIR}/docker.log" \
+        || { cat "${STUB_DIR}/docker.log"; fail "inline script missing 'entry: php bin/console' source pattern"; }
+    grep -Fq "entry: su-exec apache php bin/console" "${STUB_DIR}/docker.log" \
+        || { cat "${STUB_DIR}/docker.log"; fail "inline script missing 'entry: su-exec apache php bin/console' replacement"; }
+}
+
 @test "prek dispatch: inline script handles run + install-hooks vs the pass-through default" {
     # The script's case body should mention 'run' and 'install-hooks'
     # explicitly (the substitution subjects) AND `exec pre-commit "$@"`
