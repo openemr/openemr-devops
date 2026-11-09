@@ -433,13 +433,16 @@ spec:
           exit 2
         fi
         unexpected=""
+        saw_luks=0
         while IFS= read -r entry; do
           [ -z "$entry" ] && continue
           case "$entry" in
             # Carve-out: the LUKS format Job's artifact. If format
             # already ran (prior-attempt resume), the container file
-            # is permitted at the top level.
-            .openemr-sites.luks) ;;
+            # is permitted at the top level — BUT its shape must match
+            # what `cryptsetup luksFormat` produces and nothing else
+            # (see the LUKS-header verification below).
+            .openemr-sites.luks) saw_luks=1 ;;
             *)
               if [ -z "$unexpected" ]; then
                 unexpected="$entry"
@@ -457,7 +460,48 @@ spec:
           echo "to the migration path, or wipe websitevolume and retry."
           exit 1
         fi
-        echo "PRECHECK_OK: /mnt/websitevolume is empty (or only holds the LUKS container file); greenfield path is viable"
+        # Resume-path header check. The top-level allowlist let
+        # .openemr-sites.luks through as a "prior format artifact",
+        # but mere file existence is not enough: an OOM-killed format
+        # Job, a half-written fallocate, a truncated restore from
+        # backup, or an unrelated 8 GiB file plonked at that path
+        # would all present as "file exists". `cryptsetup isLuks`
+        # validates the on-disk LUKS header signature + version +
+        # internal structure; it needs only read access and no
+        # privileges. Any deviation means the format state is not
+        # trustworthy and manual inspection is required BEFORE the
+        # second format attempt reuses the file (which the format Job
+        # refuses — leaving the operator wedged if the file is
+        # invalid).
+        #
+        # NOTE: `isLuks` validates HEADER STRUCTURE only. It does NOT
+        # verify the configured passphrase actually opens the
+        # container. A valid LUKS header whose only keyslot wraps a
+        # different passphrase will pass this check and fail at
+        # `luksOpen` time inside the sidecar. If you are resuming
+        # against a container formatted in a prior attempt and want
+        # that stronger assurance before swapping the Deployment, run
+        # the operator-side verify in the note immediately below.
+        if [ "$saw_luks" = "1" ]; then
+          if ! apk add --no-cache cryptsetup >/dev/null 2>&1; then
+            echo "PRECHECK_UNKNOWN: failed to install cryptsetup for header check"
+            exit 2
+          fi
+          if ! cryptsetup isLuks /mnt/websitevolume/.openemr-sites.luks; then
+            echo "EXISTING_DATA_PRESENT: /mnt/websitevolume/.openemr-sites.luks is NOT a valid LUKS container."
+            echo "A clean 'cryptsetup luksFormat' leaves a header that passes"
+            echo "'cryptsetup isLuks'. This file does not — either the prior"
+            echo "format Job did not complete (truncated / half-written), or"
+            echo "the file is unrelated data at the same path. DO NOT resume"
+            echo "— inspect manually. Typical recovery: if the file was"
+            echo "written by a prior failed format attempt and no encrypted"
+            echo "data has been committed yet, delete it (kubectl exec into"
+            echo "any pod mounting websitevolume: rm /mnt/websitevolume/"
+            echo ".openemr-sites.luks) and rerun the format Job."
+            exit 1
+          fi
+        fi
+        echo "PRECHECK_OK: /mnt/websitevolume is empty (or holds a well-formed LUKS container from a prior format); greenfield path is viable"
     volumeMounts:
       - name: websitevolume
         mountPath: /mnt/websitevolume
@@ -548,6 +592,52 @@ cd kubernetes/examples/encryption-at-rest-luks
 #    In production, provision this Secret via External Secrets
 #    Operator (ESO) instead of applying the placeholder manifest at
 #    all; see § Key management above.
+#
+#    RESUME WARNING. If the precheck accepted a pre-existing
+#    .openemr-sites.luks (prior-attempt resume path), the passphrase
+#    you put in this Secret MUST match the one used for the original
+#    `cryptsetup luksFormat`. Each LUKS keyslot wraps the master key
+#    with a specific passphrase; a new passphrase cannot open the
+#    existing container, and applying a Secret with a rotated value
+#    locks you out of anything already written through this
+#    container. If you have lost the original passphrase, do NOT
+#    resume — delete /mnt/websitevolume/.openemr-sites.luks on the
+#    volume and start the format fresh (only safe when no encrypted
+#    application data has been written through this container yet;
+#    on a true greenfield that is always the case). Passphrase
+#    ROTATION of an existing LUKS container is `cryptsetup
+#    luksAddKey` + `cryptsetup luksRemoveKey` against the container
+#    file, not a Secret edit — see § Secret rotation in the
+#    operational notes.
+#
+#    OPTIONAL — operator-side luksOpen verify (resume path only).
+#    The precheck above validated the LUKS HEADER with `isLuks`, but
+#    did NOT verify the configured passphrase actually opens the
+#    container (that would require a privileged pod + the Secret).
+#    If this is a resume and you want end-to-end proof that the
+#    Secret you are about to apply matches the container, run one
+#    temporary privileged pod to perform a dry `luksOpen --test-
+#    passphrase`:
+#
+#      kubectl apply -f luks-passphrase-secret.yaml
+#      kubectl run luks-passphrase-verify --rm -i --restart=Never \
+#        --image=alpine:3.24 --overrides='{"spec":{"containers":[{
+#          "name":"verify","image":"alpine:3.24","command":["sh","-c"],
+#          "args":["apk add --no-cache cryptsetup >/dev/null && \
+#            cryptsetup luksOpen --test-passphrase \
+#              --key-file /etc/luks/passphrase \
+#              /mnt/websitevolume/.openemr-sites.luks && \
+#            echo VERIFY_OK"],
+#          "securityContext":{"privileged":true},
+#          "volumeMounts":[{"name":"websitevolume","mountPath":"/mnt/websitevolume","readOnly":true},
+#                          {"name":"luks-passphrase","mountPath":"/etc/luks","readOnly":true}]}],
+#          "volumes":[{"name":"websitevolume","persistentVolumeClaim":{"claimName":"websitevolume"}},
+#                     {"name":"luks-passphrase","secret":{"secretName":"luks-passphrase"}}]}}'
+#
+#    VERIFY_OK ⇒ the Secret opens the container; safe to proceed.
+#    Any other output ⇒ passphrase mismatch; STOP. Rotating a Secret
+#    whose value does not match the existing container header is
+#    silent data loss waiting for the next pod restart.
 kubectl apply -f luks-passphrase-secret.yaml
 
 # 4. Run the one-shot format Job against the (empty) websitevolume.

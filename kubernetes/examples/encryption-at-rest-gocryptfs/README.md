@@ -502,13 +502,16 @@ spec:
           exit 2
         fi
         unexpected=""
+        saw_backing=0
         while IFS= read -r entry; do
           [ -z "$entry" ] && continue
           case "$entry" in
             # Carve-outs: the gocryptfs init Job's artifacts. If init
             # already ran (prior-attempt resume), the backing dir is
-            # permitted at the top level.
-            gocryptfs-backing) ;;
+            # permitted at the top level — BUT its contents must match
+            # what `gocryptfs -init` creates and nothing else (see the
+            # backing-dir shape verification below).
+            gocryptfs-backing) saw_backing=1 ;;
             *)
               if [ -z "$unexpected" ]; then
                 unexpected="$entry"
@@ -526,7 +529,65 @@ spec:
           echo "the migration path, or wipe websitevolume and retry."
           exit 1
         fi
-        echo "PRECHECK_OK: /mnt/websitevolume is empty (or only holds gocryptfs init artifacts); greenfield path is viable"
+        # Resume-path shape check. The top-level allowlist let
+        # gocryptfs-backing/ through as a "prior init artifact", but
+        # mere directory existence is not enough: a half-written init
+        # (OOM-killed, node crash during gocryptfs -init), a corrupted
+        # backing dir, or plaintext dumped inside gocryptfs-backing/ by
+        # a misconfigured migration helper would all present as
+        # "directory exists". `gocryptfs -init` creates exactly two
+        # files at the top level of the backing dir — gocryptfs.conf
+        # and gocryptfs.diriv — nothing else. Verify that invariant
+        # before telling the operator to resume; any deviation means
+        # the init state is not trustworthy and manual inspection is
+        # required.
+        if [ "$saw_backing" = "1" ]; then
+          if [ ! -d /mnt/websitevolume/gocryptfs-backing ]; then
+            echo "PRECHECK_UNKNOWN: /mnt/websitevolume/gocryptfs-backing is listed but not a directory"
+            exit 2
+          fi
+          backing_ls=$(mktemp)
+          if ! ls -A /mnt/websitevolume/gocryptfs-backing >"$backing_ls" 2>/dev/null; then
+            echo "PRECHECK_UNKNOWN: cannot list /mnt/websitevolume/gocryptfs-backing"
+            rm -f "$backing_ls"
+            exit 2
+          fi
+          backing_unexpected=""
+          saw_conf=0
+          saw_diriv=0
+          while IFS= read -r bentry; do
+            [ -z "$bentry" ] && continue
+            case "$bentry" in
+              gocryptfs.conf)  saw_conf=1 ;;
+              gocryptfs.diriv) saw_diriv=1 ;;
+              *)
+                if [ -z "$backing_unexpected" ]; then
+                  backing_unexpected="$bentry"
+                else
+                  backing_unexpected="$backing_unexpected; $bentry"
+                fi
+                ;;
+            esac
+          done <"$backing_ls"
+          rm -f "$backing_ls"
+          if [ -n "$backing_unexpected" ] || [ "$saw_conf" != "1" ] || [ "$saw_diriv" != "1" ]; then
+            echo "EXISTING_DATA_PRESENT: /mnt/websitevolume/gocryptfs-backing has an unexpected shape."
+            echo "  saw gocryptfs.conf:  $saw_conf (expected 1)"
+            echo "  saw gocryptfs.diriv: $saw_diriv (expected 1)"
+            echo "  unexpected entries:  ${backing_unexpected:-<none>}"
+            echo "A clean 'gocryptfs -init' leaves EXACTLY gocryptfs.conf +"
+            echo "gocryptfs.diriv. Anything else (missing file, extra file,"
+            echo "plaintext remnants, half-written state) means the prior"
+            echo "init did not complete cleanly, or something has written"
+            echo "into the backing dir out-of-band. DO NOT resume — inspect"
+            echo "manually. Typical recovery: delete /mnt/websitevolume/"
+            echo "gocryptfs-backing entirely and run the init Job fresh"
+            echo "(only safe if you also confirm no encrypted data was"
+            echo "written yet)."
+            exit 1
+          fi
+        fi
+        echo "PRECHECK_OK: /mnt/websitevolume is empty (or only holds a well-formed gocryptfs-backing/ from a prior init); greenfield path is viable"
     volumeMounts:
       - name: websitevolume
         mountPath: /mnt/websitevolume
@@ -617,6 +678,21 @@ fi
 #    end. In production, provision this Secret via External Secrets
 #    Operator (ESO) instead of applying the placeholder manifest at
 #    all; see § Key management above.
+#
+#    RESUME WARNING. If the precheck accepted a pre-existing
+#    gocryptfs-backing/ (prior-attempt resume path), the passphrase
+#    you put in this Secret MUST match the one used for the original
+#    `gocryptfs -init`. The backing dir's `gocryptfs.conf` wraps the
+#    master key with THAT passphrase; a new passphrase cannot open
+#    the existing backing, and applying a Secret with a rotated value
+#    locks you out of anything already written through this backing.
+#    If you have lost the original passphrase, do NOT resume — delete
+#    /mnt/websitevolume/gocryptfs-backing on the volume and start the
+#    init fresh (only safe when no encrypted application data has
+#    been written through this backing yet; on a true greenfield that
+#    is always the case). Passphrase ROTATION of an existing backing
+#    is `gocryptfs -passwd` against the backing dir, not a Secret
+#    edit — see § Secret rotation in the operational notes.
 kubectl apply -f gocryptfs-passphrase-secret.yaml
 
 # 4. Run the one-shot init Job against the (empty) websitevolume.
