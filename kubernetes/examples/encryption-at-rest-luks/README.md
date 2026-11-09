@@ -520,8 +520,10 @@ spec:
             echo ".openemr-sites.luks) and rerun the format Job."
             exit 1
           fi
+          echo "PRECHECK_OK: RESUME — /mnt/websitevolume holds a well-formed LUKS container from a prior format; skip the format Job and proceed to Deployment apply"
+          exit 0
         fi
-        echo "PRECHECK_OK: /mnt/websitevolume is empty (or holds a well-formed LUKS container from a prior format); greenfield path is viable"
+        echo "PRECHECK_OK: EMPTY — /mnt/websitevolume is empty; proceed with the full greenfield sequence (format Job, then Deployment apply)"
     volumeMounts:
       - name: websitevolume
         mountPath: /mnt/websitevolume
@@ -562,7 +564,22 @@ for attempt in $(seq 1 60); do
 done
 
 if [ "$EXIT_CODE" = "0" ]; then
-  echo "Greenfield precheck PASSED — websitevolume is empty (or only .openemr-sites.luks)."
+  # Precheck exit 0 covers two sub-cases that take different downstream
+  # paths: EMPTY (run the format Job) vs RESUME (a prior format already
+  # produced a valid LUKS container at .openemr-sites.luks — the format
+  # Job is at best redundant, and its own guard refuses to format on
+  # top of an existing container). The precheck container's final log
+  # line distinguishes the two (PRECHECK_OK: EMPTY vs PRECHECK_OK:
+  # RESUME); capture the logs here BEFORE deleting the pod so the
+  # signal survives.
+  PRECHECK_LOG=$(kubectl logs pod/greenfield-precheck 2>/dev/null || true)
+  if printf '%s\n' "$PRECHECK_LOG" | grep -q '^PRECHECK_OK: RESUME'; then
+    RESUME=yes
+    echo "Greenfield precheck PASSED (RESUME) — websitevolume already holds a well-formed LUKS container from a prior format. The format Job will be SKIPPED below."
+  else
+    RESUME=no
+    echo "Greenfield precheck PASSED (EMPTY) — websitevolume is empty. The format Job will run below."
+  fi
   kubectl delete pod greenfield-precheck
 else
   # Precheck container exited non-zero OR did not terminate within
@@ -678,9 +695,21 @@ kubectl apply -f luks-passphrase-secret.yaml
 # 4. Run the one-shot format Job against the (empty) websitevolume.
 #    This creates the LUKS container file WITHOUT any plaintext
 #    content ever landing beside it.
-kubectl apply -f luks-format-job.yaml
-kubectl wait --for=condition=complete job/luks-format-websitevolume --timeout=600s
-kubectl logs job/luks-format-websitevolume
+#
+#    RESUME path: if the precheck above set RESUME=yes, the volume
+#    already holds a well-formed .openemr-sites.luks from a prior
+#    format and re-running the format Job is at best a no-op — its own
+#    guard refuses to format on top of an existing container (defense
+#    in depth it already carries), but even with that guard this step
+#    wastes a Pod, a Job slot, and operator time. Skip it and proceed
+#    straight to the Deployment apply below.
+if [ "${RESUME:-no}" = "yes" ]; then
+  echo "RESUME path — skipping format Job (container already present and validated by precheck)."
+else
+  kubectl apply -f luks-format-job.yaml
+  kubectl wait --for=condition=complete job/luks-format-websitevolume --timeout=600s
+  kubectl logs job/luks-format-websitevolume
+fi
 
 # 5. Apply the LUKS-enabled openemr Deployment. The first boot of the
 #    pod performs leader-election and writes sqlconf.php, the admin

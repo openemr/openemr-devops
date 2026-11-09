@@ -611,8 +611,42 @@ spec:
             echo "written yet)."
             exit 1
           fi
+          # Shape check accepted gocryptfs.conf by name, but that file
+          # could be empty, truncated by an OOM-killed init, or
+          # overwritten with non-JSON. A corrupted gocryptfs.conf would
+          # sail past the name-only check here and detonate at mount
+          # time (gocryptfs-mounter crash-loops with a cryptic parse
+          # error). Validate the config JSON here — before telling the
+          # operator "resume is safe" — by parsing it as JSON and
+          # requiring the fields `gocryptfs -init` always writes
+          # (Creator, EncryptedKey, FeatureFlags).
+          #
+          # Alpine does not ship jq by default and py3 is overkill for
+          # this; `apk add jq` is <400 KB and matches the install
+          # pattern the LUKS precheck uses for cryptsetup.
+          if ! apk add --no-cache jq >/dev/null 2>&1; then
+            echo "PRECHECK_UNKNOWN: failed to install jq for gocryptfs.conf validation"
+            exit 2
+          fi
+          conf_path=/mnt/websitevolume/gocryptfs-backing/gocryptfs.conf
+          if ! jq -e 'has("Creator") and has("EncryptedKey") and has("FeatureFlags")' \
+               "$conf_path" >/dev/null 2>&1; then
+            echo "EXISTING_DATA_PRESENT: $conf_path is malformed."
+            echo "The file is not parseable as JSON, or is missing one of the"
+            echo "required fields that 'gocryptfs -init' always writes:"
+            echo "Creator, EncryptedKey, FeatureFlags. An empty / truncated /"
+            echo "non-JSON gocryptfs.conf would pass the name-only check but"
+            echo "then fail at mount time with a cryptic parse error. DO NOT"
+            echo "resume — inspect manually. Typical recovery: delete /mnt/"
+            echo "websitevolume/gocryptfs-backing entirely and run the init"
+            echo "Job fresh (only safe if you also confirm no encrypted data"
+            echo "was written yet)."
+            exit 1
+          fi
+          echo "PRECHECK_OK: RESUME — /mnt/websitevolume holds a well-formed gocryptfs-backing/ from a prior init; skip the init Job and proceed to Deployment apply"
+          exit 0
         fi
-        echo "PRECHECK_OK: /mnt/websitevolume is empty (or only holds a well-formed gocryptfs-backing/ from a prior init); greenfield path is viable"
+        echo "PRECHECK_OK: EMPTY — /mnt/websitevolume is empty; proceed with the full greenfield sequence (init Job, then Deployment apply)"
     volumeMounts:
       - name: websitevolume
         mountPath: /mnt/websitevolume
@@ -653,7 +687,21 @@ for attempt in $(seq 1 60); do
 done
 
 if [ "$EXIT_CODE" = "0" ]; then
-  echo "Greenfield precheck PASSED — websitevolume is empty (or only gocryptfs-backing/)."
+  # Precheck exit 0 covers two sub-cases that take different downstream
+  # paths: EMPTY (run the init Job) vs RESUME (a prior init already
+  # created a well-formed gocryptfs-backing/ — the init Job is at best
+  # redundant, and its own guard would refuse to re-init on top of it).
+  # The precheck container's final log line distinguishes the two
+  # (PRECHECK_OK: EMPTY vs PRECHECK_OK: RESUME); capture the logs here
+  # BEFORE deleting the pod so the signal survives.
+  PRECHECK_LOG=$(kubectl logs pod/greenfield-precheck 2>/dev/null || true)
+  if printf '%s\n' "$PRECHECK_LOG" | grep -q '^PRECHECK_OK: RESUME'; then
+    RESUME=yes
+    echo "Greenfield precheck PASSED (RESUME) — websitevolume already holds a well-formed gocryptfs-backing/ from a prior init. The init Job will be SKIPPED below."
+  else
+    RESUME=no
+    echo "Greenfield precheck PASSED (EMPTY) — websitevolume is empty. The init Job will run below."
+  fi
   kubectl delete pod greenfield-precheck
 else
   # Precheck container exited non-zero OR did not terminate within
@@ -734,9 +782,21 @@ kubectl apply -f gocryptfs-passphrase-secret.yaml
 # 4. Run the one-shot init Job against the (empty) websitevolume.
 #    This creates gocryptfs.conf + gocryptfs-backing/ WITHOUT any
 #    plaintext content ever landing at the top level.
-kubectl apply -f gocryptfs-init-job.yaml
-kubectl wait --for=condition=complete job/gocryptfs-init-websitevolume --timeout=120s
-kubectl logs job/gocryptfs-init-websitevolume
+#
+#    RESUME path: if the precheck above set RESUME=yes, the volume
+#    already holds a well-formed gocryptfs-backing/ from a prior init
+#    and re-running the init Job is at best a no-op — its own guard
+#    refuses to re-init on top of an existing backing (defense in depth
+#    it already carries), but even with that guard this step wastes a
+#    Pod, a Job slot, and operator time. Skip it and proceed straight
+#    to the Deployment apply below.
+if [ "${RESUME:-no}" = "yes" ]; then
+  echo "RESUME path — skipping init Job (backing already present and validated by precheck)."
+else
+  kubectl apply -f gocryptfs-init-job.yaml
+  kubectl wait --for=condition=complete job/gocryptfs-init-websitevolume --timeout=120s
+  kubectl logs job/gocryptfs-init-websitevolume
+fi
 
 # 5. Apply the gocryptfs-enabled openemr Deployment. The first boot
 #    of the first replica performs leader-election and writes
