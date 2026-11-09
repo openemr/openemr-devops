@@ -807,10 +807,37 @@ if kubectl get secret luks-passphrase -o name >/dev/null 2>"$secret_err"; then
   existing=$(kubectl get secret luks-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
              | base64 -d 2>/dev/null || true)
   if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
-    echo "WARNING: existing Secret still carries the published placeholder"
-    echo "passphrase. The format Job will refuse to run against it. Replace"
-    echo "the value (direct edit, or let ESO reconcile a real one) before"
-    echo "proceeding."
+    # Rotation guidance differs between resume and fresh-init:
+    #   RESUME=yes: the container was formatted with a specific
+    #     passphrase, and each LUKS keyslot wraps the master key with
+    #     THAT passphrase. Editing this Secret to a new value will NOT
+    #     re-wrap any on-disk keyslot — it locks the operator out of
+    #     everything already written through the container. The correct
+    #     rotation is `cryptsetup luksAddKey` (new) + `luksRemoveKey`
+    #     (old) against the container file first, then update the
+    #     Secret to match.
+    #   RESUME=no (fresh format): the format Job has not yet created a
+    #     LUKS container, so there is no master key to protect. Editing
+    #     the Secret BEFORE running the format Job is the correct move.
+    if [ "${RESUME:-no}" = "yes" ]; then
+      echo "WARNING: existing Secret still carries the published placeholder"
+      echo "passphrase, AND the precheck selected the RESUME path."
+      echo "DO NOT edit this Secret in place — the existing container's"
+      echo "keyslots wrap the master key with whatever passphrase was"
+      echo "used at format, and a new Secret value cannot open any slot."
+      echo "Rotate the container FIRST:"
+      echo "  * run \`cryptsetup luksAddKey\` (new passphrase) then"
+      echo "    \`cryptsetup luksRemoveKey\` (old passphrase) against"
+      echo "    /mnt/websitevolume/.openemr-sites.luks from a privileged"
+      echo "    helper pod; THEN"
+      echo "  * update this Secret to the new passphrase."
+      echo "If the old passphrase is lost, the container is unrecoverable."
+    else
+      echo "WARNING: existing Secret still carries the published placeholder"
+      echo "passphrase. The format Job will refuse to run against it. Replace"
+      echo "the value BEFORE running the format Job (direct edit, or let ESO"
+      echo "reconcile a real one)."
+    fi
   fi
 elif grep -qi 'NotFound\|not found' "$secret_err"; then
   if ! kubectl create -f luks-passphrase-secret.yaml 2>"$secret_err"; then
@@ -819,8 +846,15 @@ elif grep -qi 'NotFound\|not found' "$secret_err"; then
       existing=$(kubectl get secret luks-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
                  | base64 -d 2>/dev/null || true)
       if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
-        echo "WARNING: concurrently-created Secret still carries the published"
-        echo "placeholder passphrase. The format Job will refuse to run against it."
+        if [ "${RESUME:-no}" = "yes" ]; then
+          echo "WARNING: concurrently-created Secret still carries the published"
+          echo "placeholder, AND the precheck selected the RESUME path. DO NOT"
+          echo "edit this Secret — rotate the container via \`cryptsetup"
+          echo "luksAddKey\` + \`luksRemoveKey\` first (see above)."
+        else
+          echo "WARNING: concurrently-created Secret still carries the published"
+          echo "placeholder passphrase. The format Job will refuse to run against it."
+        fi
       fi
     else
       echo "ERROR: kubectl create secret luks-passphrase failed:"

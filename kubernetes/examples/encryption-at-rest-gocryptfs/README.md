@@ -959,10 +959,35 @@ if kubectl get secret gocryptfs-passphrase -o name >/dev/null 2>"$secret_err"; t
   existing=$(kubectl get secret gocryptfs-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
              | base64 -d 2>/dev/null || true)
   if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
-    echo "WARNING: existing Secret still carries the published placeholder"
-    echo "passphrase. The init Job will refuse to run against it. Replace"
-    echo "the value (direct edit, or let ESO reconcile a real one) before"
-    echo "proceeding."
+    # Rotation guidance differs between resume and fresh-init:
+    #   RESUME=yes: the backing was initialized with a specific
+    #     passphrase, and gocryptfs.conf wraps the master key with
+    #     THAT passphrase. Editing this Secret to a new value will NOT
+    #     re-wrap the on-disk master key — it locks the operator out
+    #     of everything already written through the backing. The
+    #     correct rotation is `gocryptfs -passwd` against the backing
+    #     dir first, then update the Secret to match.
+    #   RESUME=no (fresh init): the init Job has not yet created a
+    #     backing, so there is no master key to protect. Editing the
+    #     Secret BEFORE running the init Job is the correct move.
+    if [ "${RESUME:-no}" = "yes" ]; then
+      echo "WARNING: existing Secret still carries the published placeholder"
+      echo "passphrase, AND the precheck selected the RESUME path."
+      echo "DO NOT edit this Secret in place — the existing backing's"
+      echo "gocryptfs.conf wraps the master key with whatever passphrase"
+      echo "was used at init, and a new Secret value cannot decrypt it."
+      echo "Rotate the backing FIRST:"
+      echo "  * run \`gocryptfs -passwd /mnt/websitevolume/gocryptfs-backing\`"
+      echo "    from a privileged helper pod with the old passphrase file"
+      echo "    mounted; THEN"
+      echo "  * update this Secret to the new passphrase."
+      echo "If the old passphrase is lost, the backing is unrecoverable."
+    else
+      echo "WARNING: existing Secret still carries the published placeholder"
+      echo "passphrase. The init Job will refuse to run against it. Replace"
+      echo "the value BEFORE running the init Job (direct edit, or let ESO"
+      echo "reconcile a real one)."
+    fi
   fi
 elif grep -qi 'NotFound\|not found' "$secret_err"; then
   if ! kubectl create -f gocryptfs-passphrase-secret.yaml 2>"$secret_err"; then
@@ -971,8 +996,15 @@ elif grep -qi 'NotFound\|not found' "$secret_err"; then
       existing=$(kubectl get secret gocryptfs-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
                  | base64 -d 2>/dev/null || true)
       if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
-        echo "WARNING: concurrently-created Secret still carries the published"
-        echo "placeholder passphrase. The init Job will refuse to run against it."
+        if [ "${RESUME:-no}" = "yes" ]; then
+          echo "WARNING: concurrently-created Secret still carries the published"
+          echo "placeholder, AND the precheck selected the RESUME path. DO NOT"
+          echo "edit this Secret — rotate the backing via \`gocryptfs -passwd\`"
+          echo "first (see above)."
+        else
+          echo "WARNING: concurrently-created Secret still carries the published"
+          echo "placeholder passphrase. The init Job will refuse to run against it."
+        fi
       fi
     else
       echo "ERROR: kubectl create secret gocryptfs-passphrase failed:"
