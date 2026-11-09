@@ -182,6 +182,12 @@ kubectl get pvc websitevolume sslvolume letsencryptvolume
 #     error on the probe the same way the adoption gate does:
 #     an indeterminate cluster state must not proceed to the
 #     destructive scale-down.
+# The published placeholder value (from gocryptfs-passphrase-secret.yaml).
+# Treated as an unusable sentinel at every gate: the init Job refuses to
+# run against it, and the destructive gates (pre-scale here, pre-adopt,
+# pre-init, pre-resume) refuse to advance with it in place. Keep this in
+# sync with the value shipped in the placeholder manifest.
+GOCRYPTFS_PLACEHOLDER_PASSPHRASE='example-development-passphrase-REPLACE-ME'
 secret_probe_err=$(mktemp)
 if kubectl get secret gocryptfs-passphrase -o name >/dev/null 2>"$secret_probe_err"; then
   passphrase_b64=$(kubectl get secret gocryptfs-passphrase \
@@ -192,11 +198,25 @@ if kubectl get secret gocryptfs-passphrase -o name >/dev/null 2>"$secret_probe_e
     rm -f "$secret_probe_err"
     exit 1
   fi
-  decoded_len=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null \
-                | tr -d '[:space:]' | wc -c | tr -d ' ')
+  decoded=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null || true)
+  decoded_len=$(printf '%s' "$decoded" | tr -d '[:space:]' | wc -c | tr -d ' ')
   if [ "$decoded_len" = "0" ]; then
     echo "ERROR: Secret 'gocryptfs-passphrase' 'passphrase' key decodes to empty/whitespace."
     echo "       Refusing to scale openemr to 0 — fix the Secret value first."
+    rm -f "$secret_probe_err"
+    exit 1
+  fi
+  # Placeholder-rejection at the pre-scale gate. The init Job would
+  # refuse against this value at mount time, but by then the deployment
+  # has already been scaled to 0 and the migration is half-committed
+  # (the running openemr is gone; the encrypted backing never came up).
+  # Catching it here keeps the stack intact — the operator fixes the
+  # Secret, re-runs this script, and the destructive scale-down only
+  # ever happens against a Secret that will actually unlock the mount.
+  if [ "$decoded" = "$GOCRYPTFS_PLACEHOLDER_PASSPHRASE" ]; then
+    echo "ERROR: Secret 'gocryptfs-passphrase' still carries the published placeholder value."
+    echo "       Refusing to scale openemr to 0 — replace the placeholder first"
+    echo "       (direct edit of the manifest, or let ESO materialize a real one)."
     rm -f "$secret_probe_err"
     exit 1
   fi

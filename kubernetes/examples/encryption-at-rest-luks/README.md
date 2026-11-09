@@ -180,6 +180,12 @@ kubectl get pvc websitevolume sslvolume letsencryptvolume
 #     error on the probe the same way the adoption gate does:
 #     an indeterminate cluster state must not proceed to the
 #     destructive scale-down.
+# The published placeholder value (from luks-passphrase-secret.yaml).
+# Treated as an unusable sentinel at every gate: the format Job refuses
+# to run against it, and the destructive gates (pre-scale here, pre-
+# adopt, pre-format, pre-resume) refuse to advance with it in place.
+# Keep this in sync with the value shipped in the placeholder manifest.
+LUKS_PLACEHOLDER_PASSPHRASE='example-development-passphrase-REPLACE-ME'
 secret_probe_err=$(mktemp)
 if kubectl get secret luks-passphrase -o name >/dev/null 2>"$secret_probe_err"; then
   passphrase_b64=$(kubectl get secret luks-passphrase \
@@ -190,11 +196,26 @@ if kubectl get secret luks-passphrase -o name >/dev/null 2>"$secret_probe_err"; 
     rm -f "$secret_probe_err"
     exit 1
   fi
-  decoded_len=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null \
-                | tr -d '[:space:]' | wc -c | tr -d ' ')
+  decoded=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null || true)
+  decoded_len=$(printf '%s' "$decoded" | tr -d '[:space:]' | wc -c | tr -d ' ')
   if [ "$decoded_len" = "0" ]; then
     echo "ERROR: Secret 'luks-passphrase' 'passphrase' key decodes to empty/whitespace."
     echo "       Refusing to scale openemr to 0 — fix the Secret value first."
+    rm -f "$secret_probe_err"
+    exit 1
+  fi
+  # Placeholder-rejection at the pre-scale gate. The format Job would
+  # refuse against this value at luksFormat time, but by then the
+  # deployment has already been scaled to 0 and the migration is half-
+  # committed (the running openemr is gone; the LUKS container was never
+  # formatted). Catching it here keeps the stack intact — the operator
+  # fixes the Secret, re-runs this script, and the destructive scale-
+  # down only ever happens against a Secret that will actually open the
+  # container once formatted.
+  if [ "$decoded" = "$LUKS_PLACEHOLDER_PASSPHRASE" ]; then
+    echo "ERROR: Secret 'luks-passphrase' still carries the published placeholder value."
+    echo "       Refusing to scale openemr to 0 — replace the placeholder first"
+    echo "       (direct edit of the manifest, or let ESO materialize a real one)."
     rm -f "$secret_probe_err"
     exit 1
   fi
