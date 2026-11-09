@@ -660,6 +660,68 @@ spec:
             echo "was written yet)."
             exit 1
           fi
+          # Field-presence is cheap but shallow — a truncated EncryptedKey
+          # (invalid base64) or a Version field for a format the running
+          # gocryptfs cannot speak will both pass `has()` and then fail
+          # at `gocryptfs -info` / mount time. Tighten here with two
+          # content checks the init emits deterministically:
+          #
+          #   * EncryptedKey must base64-decode cleanly. gocryptfs writes
+          #     the wrapped master key as base64; a corrupted write would
+          #     be caught by `gocryptfs -info` but only after we've told
+          #     the operator "resume is safe". Validate up front.
+          #
+          #   * Version, if present, must be an integer in the supported
+          #     range (format v2 is current; v1 has been the only other
+          #     widely-shipped value). A non-integer or out-of-range
+          #     value signals a format gocryptfs cannot speak, and we
+          #     must not route it through the RESUME path. Missing
+          #     Version is tolerated (very old configs predate it).
+          enc_key=$(jq -r '.EncryptedKey // empty' "$conf_path")
+          if [ -z "$enc_key" ] || ! printf '%s' "$enc_key" | base64 -d >/dev/null 2>&1; then
+            echo "EXISTING_DATA_PRESENT: $conf_path has an EncryptedKey that does not base64-decode."
+            echo "gocryptfs writes the wrapped master key as base64; a value"
+            echo "that fails to decode means the file was truncated / corrupted"
+            echo "/ hand-edited. DO NOT resume — inspect manually."
+            exit 1
+          fi
+          version=$(jq -r '.Version // empty' "$conf_path")
+          if [ -n "$version" ]; then
+            case "$version" in
+              1|2) ;;
+              *)
+                echo "EXISTING_DATA_PRESENT: $conf_path declares Version='$version'."
+                echo "gocryptfs config format Version must be 1 or 2. An unknown"
+                echo "value means the file is from a future gocryptfs or is"
+                echo "corrupted. DO NOT resume — inspect manually."
+                exit 1
+                ;;
+            esac
+          fi
+          # gocryptfs.diriv is the directory-level IV file; in the
+          # current on-disk format it is exactly 16 bytes. The shape
+          # check above accepted it by name — accept it by size next.
+          # An empty file would pass the name-only check and fail at
+          # mount time with "gocryptfs.diriv: file is 0 bytes long".
+          # At minimum, require non-empty (-s); the exact-16-byte check
+          # follows for operator diagnostics on the odd case.
+          diriv_path=/mnt/websitevolume/gocryptfs-backing/gocryptfs.diriv
+          if [ ! -s "$diriv_path" ]; then
+            echo "EXISTING_DATA_PRESENT: $diriv_path is empty."
+            echo "A clean 'gocryptfs -init' writes exactly 16 bytes of random"
+            echo "directory IV. An empty file would pass the name-only check"
+            echo "but fail at mount time. DO NOT resume — inspect manually."
+            exit 1
+          fi
+          diriv_size=$(wc -c <"$diriv_path" | tr -d ' ')
+          if [ "$diriv_size" != "16" ]; then
+            echo "EXISTING_DATA_PRESENT: $diriv_path is $diriv_size bytes (expected 16)."
+            echo "The current gocryptfs on-disk format stores the directory IV"
+            echo "as exactly 16 bytes. A different size means the file was"
+            echo "truncated, extended, or is from a format this precheck has"
+            echo "not been updated to recognize. DO NOT resume — inspect manually."
+            exit 1
+          fi
           echo "PRECHECK_OK: RESUME — /mnt/websitevolume holds a well-formed gocryptfs-backing/ from a prior init; skip the init Job and proceed to Deployment apply"
           exit 0
         fi
