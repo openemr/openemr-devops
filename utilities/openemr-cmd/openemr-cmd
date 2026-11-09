@@ -804,7 +804,7 @@ cmd_worktree_add() {
         esac
     done
     if [[ -z "${branch}" ]]; then wt_die "Usage: openemr-cmd worktree add <branch> [-b] [--base <ref>] [--env easy|easy-light|easy-redis] [--start]"; fi
-    if [[ -n "${base}" && ! "${new_branch}" == true ]]; then wt_die "--base only applies with -b (it picks the base for a new branch)"; fi
+    if [[ -n "${base}" && "${new_branch}" != true ]]; then wt_die "--base only applies with -b (it picks the base for a new branch)"; fi
 
     wt_require_cmd git docker jq realpath
     wt_validate_env "${env}"
