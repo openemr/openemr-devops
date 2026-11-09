@@ -144,7 +144,7 @@ The correct rotation sequence is:
 
 LUKS has two documented recovery axes that do not exist for gocryptfs:
 
-- **Multiple key slots (up to 8).** LUKS2 headers carry up to 8 independent key slots, each wrapping the same master key under its own passphrase. If a SECOND passphrase was added to a free slot via `cryptsetup luksAddKey` BEFORE the primary was lost, that second passphrase still opens the container — any one slot's passphrase is sufficient to unlock. For production, provision at least one escrow slot (operator-held) in addition to the operational slot (Kubernetes Secret / ESO):
+- **Multiple key slots (up to 32).** LUKS2 headers carry up to 32 independent key slots, each wrapping the same master key under its own passphrase. The practical ceiling is lower — the on-disk key-slot area and the master-key size both constrain how many slots actually fit (defaults give you ample headroom; `cryptsetup luksDump` reports allocated vs. free slots for the specific container). If a SECOND passphrase was added to a free slot via `cryptsetup luksAddKey` BEFORE the primary was lost, that second passphrase still opens the container — any one slot's passphrase is sufficient to unlock. For production, provision at least one escrow slot (operator-held) in addition to the operational slot (Kubernetes Secret / ESO):
 
   ```bash
   # from a privileged helper pod that mounts websitevolume,
@@ -169,6 +169,11 @@ LUKS has two documented recovery axes that do not exist for gocryptfs:
   If the on-disk header is later corrupted but the ciphertext body is intact, `cryptsetup luksHeaderRestore` plus the escrowed slot passphrase recovers access. The header backup is useless without AT LEAST ONE of the slot passphrases it carries — treat the two as a pair.
 
 **Caveat — header-backup restore clobbers any newer slot state.** `luksHeaderRestore` overwrites the current on-disk header, so if slots were rotated since the backup was taken (new slot added, old slot retired), those changes are lost on restore. Refresh the header backup after every key rotation, not just at format time.
+
+**Caveat — old header backups bypass passphrase retirement.** `luksRemoveKey` retires a passphrase from the current on-disk header only; it does NOT reach into any header backup that was taken before the retirement. Anyone who holds BOTH an old header backup AND the retired slot's passphrase can `luksHeaderRestore` onto the container (or run `cryptsetup luksOpen --header /path/to/old-backup` against the live ciphertext body) and regain access, even though the retired slot no longer exists in the on-disk header. Rotating a passphrase does not revoke it if an old backup survived the rotation. Mitigations:
+
+- **Treat header backups like keys.** Store them under the same access controls, audit, and destruction policy as the slot passphrases themselves. When a passphrase is retired, destroy every header backup taken while that passphrase was live, same day.
+- **If the backup chain of custody is broken, the master key must be rotated — not just the passphrase.** A passphrase-only rotation (`luksAddKey` + `luksRemoveKey`) cannot revoke a leaked old backup, because that old backup wraps the SAME master key. Full revocation requires `cryptsetup reencrypt` (which rewrites every ciphertext block under a new master key), followed by a fresh header backup and destruction of all prior backups.
 
 Treat multiple keyslots + header backup as the LUKS equivalent of "master key escrow" in gocryptfs. Passphrase loss with no escrow slot AND no header backup — and with no second operator who has their own copy of a slot passphrase — means the container is unrecoverable.
 
@@ -933,44 +938,72 @@ if kubectl get secret luks-passphrase -o name >/dev/null 2>"$secret_err"; then
     # Rotation guidance differs between resume and fresh-init:
     #   RESUME=yes: the container was formatted with a specific
     #     passphrase, and each LUKS keyslot wraps the master key with
-    #     THAT passphrase. Editing this Secret to a new value will NOT
-    #     re-wrap any on-disk keyslot — it locks the operator out of
-    #     everything already written through the container. The correct
-    #     rotation is `cryptsetup luksAddKey` (new) + `luksRemoveKey`
-    #     (old) against the container file first, then update the
-    #     Secret to match.
+    #     THAT passphrase. Editing this Secret alone does NOT re-wrap
+    #     any on-disk keyslot. The correct sequence is
+    #     `cryptsetup luksAddKey` (new) → update the Secret → VERIFY
+    #     the new Secret actually opens the container (roll one pod
+    #     and confirm sidecar startup) → ONLY THEN `luksRemoveKey`
+    #     (old). Swapping the order (remove-before-verify) locks the
+    #     operator out on any Secret-update failure.
     #   RESUME=no (fresh format): the format Job has not yet created a
     #     LUKS container, so there is no master key to protect. Editing
     #     the Secret BEFORE running the format Job is the correct move.
     if [ "${RESUME:-no}" = "yes" ]; then
-      # ABORT on RESUME + placeholder. There is no safe forward path:
-      # the existing container's LUKS keyslots wrap the master key with
-      # whatever passphrase was used at format, and the placeholder
-      # does not match any slot. Letting the setup continue (as a mere
-      # warning) would apply the LUKS-enabled Deployment and the
-      # sidecar would crashloop at every pod start against a Secret
-      # that cannot open any keyslot. The operator must either add a
-      # new passphrase to a free keyslot using the OLD passphrase
-      # (`cryptsetup luksAddKey` + `luksRemoveKey`) and then update
-      # the Secret — or, if the old passphrase is lost, see the
-      # multi-slot / header-backup recovery notes in § Key management.
+      # ABORT on RESUME + placeholder. The existing container's LUKS
+      # keyslots wrap the master key with whatever passphrase was used
+      # at format; that passphrase may or may not be the placeholder,
+      # and the right recovery sequence depends on which. Letting the
+      # setup continue (as a mere warning) would apply the LUKS-enabled
+      # Deployment; if the placeholder doesn't open any slot the sidecar
+      # crashloops at every pod start, and if it does, pods come up
+      # using the published placeholder as the real key — both outcomes
+      # are wrong. Operator must test the placeholder, then rotate in a
+      # new passphrase (luksAddKey → update Secret → VERIFY on a rolled
+      # replica → luksRemoveKey the old slot), or recover via a second
+      # slot / header backup. See § Key management.
       echo "ERROR: existing Secret still carries the published placeholder"
       echo "       passphrase, AND the precheck selected the RESUME path."
-      echo "       There is no safe recovery from here — refusing to continue."
+      echo "       Refusing to continue — recovery requires operator judgment."
       echo ""
       echo "       The existing container's LUKS keyslots wrap the master key"
-      echo "       with whatever passphrase was used at format; the placeholder"
-      echo "       does not match any slot, and a new Secret value cannot open"
-      echo "       any slot without that old passphrase."
+      echo "       with whatever passphrase was used at format. That may or"
+      echo "       may not be the current placeholder value — DO NOT ASSUME."
       echo ""
-      echo "       To recover, rotate the container FIRST:"
-      echo "         * run \`cryptsetup luksAddKey\` (new passphrase) then"
-      echo "           \`cryptsetup luksRemoveKey\` (old passphrase) against"
-      echo "           /mnt/websitevolume/.openemr-sites.luks from a privileged"
-      echo "           helper pod; THEN"
-      echo "         * update this Secret to the new passphrase."
-      echo "       See § Key management for the multi-slot / header-backup"
-      echo "       recovery path if the old passphrase is lost."
+      echo "       From a privileged helper pod that mounts websitevolume,"
+      echo "       first test whether the placeholder actually opens a slot:"
+      echo "         printf '%s' \"\$PLACEHOLDER\" | cryptsetup open --test-passphrase \\\\"
+      echo "           /mnt/websitevolume/.openemr-sites.luks --key-file=-"
+      echo ""
+      echo "       CASE A — placeholder opens (exit 0):"
+      echo "         The container was formatted with the placeholder (a prior"
+      echo "         format Job ran before this guard was in place, or the"
+      echo "         placeholder was pinned into the Secret at some point)."
+      echo "         Adopt a real passphrase WITHOUT losing access:"
+      echo "           1. \`cryptsetup luksAddKey\` to add the NEW real"
+      echo "              passphrase into a free slot (placeholder"
+      echo "              authenticates the add)."
+      echo "           2. Update this Secret to the NEW passphrase."
+      echo "           3. VERIFY: roll a single replica and confirm its"
+      echo "              sidecar opens the container with the new Secret."
+      echo "              Do NOT skip this step — a mistyped Secret or a"
+      echo "              failed ESO reconcile will lock you out."
+      echo "           4. ONLY AFTER verification: \`cryptsetup luksRemoveKey\`"
+      echo "              to retire the placeholder slot."
+      echo ""
+      echo "       CASE B — placeholder does NOT open (exit != 0):"
+      echo "         The container was formatted with a passphrase that is"
+      echo "         not the current Secret value. Recovery requires that"
+      echo "         original passphrase, OR a second slot's passphrase"
+      echo "         added prior, OR an escrowed LUKS header backup."
+      echo "         If one of those is available:"
+      echo "           1. \`cryptsetup luksAddKey\` with the recovered"
+      echo "              passphrase authenticating, adding the NEW real"
+      echo "              passphrase into a free slot."
+      echo "           2. Update this Secret to the NEW passphrase."
+      echo "           3. VERIFY on a rolled replica (same as Case A)."
+      echo "           4. Optionally \`luksRemoveKey\` the stale slot(s)."
+      echo "         See § Key management for the multi-slot / header-backup"
+      echo "         recovery procedures and their liability caveats."
       exit 1
     else
       echo "WARNING: existing Secret still carries the published placeholder"
@@ -988,13 +1021,16 @@ elif grep -qi 'NotFound\|not found' "$secret_err"; then
       if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
         if [ "${RESUME:-no}" = "yes" ]; then
           # ABORT on RESUME + placeholder (same reasoning as the
-          # existing-Secret branch above). No safe forward path.
+          # existing-Secret branch above). Recovery requires operator
+          # judgment — the existing container may or may not open with
+          # the placeholder, and the right sequence depends on which.
           echo "ERROR: concurrently-created Secret still carries the published"
           echo "       placeholder, AND the precheck selected the RESUME path."
-          echo "       There is no safe recovery from here — refusing to continue."
-          echo "       Rotate the container via \`cryptsetup luksAddKey\` +"
-          echo "       \`luksRemoveKey\` first (see the existing-Secret branch"
-          echo "       above for the full sequence)."
+          echo "       Refusing to continue — see the existing-Secret branch"
+          echo "       above for the test-then-recover procedure (do NOT assume"
+          echo "       the placeholder cannot open a slot; test first, then"
+          echo "       add the new key, update this Secret, VERIFY on a rolled"
+          echo "       replica, and only afterwards luksRemoveKey the stale slot)."
           rm -f "$secret_err"
           exit 1
         else

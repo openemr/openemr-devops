@@ -147,14 +147,25 @@ If the threat model requires rotating the master key itself (e.g. known or suspe
 There is one documented recovery path: if the raw master key was exported at init time (via `gocryptfs-xray -dumpmasterkey` against `gocryptfs.conf` with the OLD passphrase) and stored separately in the KMS, the backing can be recovered via
 
 ```bash
-gocryptfs -passwd -masterkey=<hex> /mnt/websitevolume/gocryptfs-backing
-# prompts for a NEW passphrase twice; rewraps the on-disk master
-# key under the new passphrase without needing the old one
+# Feed the hex master key on stdin, NOT as a command argument.
+# Putting the key in argv exposes it to anyone with ps / process
+# accounting / shell history / session-recording visibility on
+# the recovery host or pod. Materialize the escrowed hex into a
+# 0400 tmpfs file (operator-only), stream it, then shred it:
+printf '%s' "$(cat /tmp/escrowed-masterkey)" | \
+  gocryptfs -passwd -masterkey=stdin \
+  /mnt/websitevolume/gocryptfs-backing
+# gocryptfs then prompts for a NEW passphrase twice on the TTY
+# and rewraps the on-disk master key under that new passphrase
+# without ever asking for the old one.
+shred -u /tmp/escrowed-masterkey
 ```
 
-which resets the wrapped passphrase in `gocryptfs.conf` without needing the old passphrase. This is the only reason to escrow the master key alongside the passphrase. The recovery flow is: run `-passwd -masterkey` to set a new passphrase, update the Kubernetes Secret to match, then roll the pods.
+which resets the wrapped passphrase in `gocryptfs.conf` without needing the old passphrase. This is the only reason to escrow the master key alongside the passphrase. The recovery flow is: feed the escrowed hex to `-passwd -masterkey=stdin` to set a new passphrase, update the Kubernetes Secret to match, then roll the pods.
 
-**Caveat — master-key correctness is not verified before the rewrap.** `gocryptfs -passwd -masterkey` does NOT check whether the supplied master key matches the one `gocryptfs.conf` was initialized with: it blindly rewraps the supplied key under the new passphrase and overwrites `gocryptfs.conf`. If the supplied value is wrong (wrong backup entry, transposed hex, wrong backing directory), the recovery silently bricks the backing — the new config describes a different master key than the one the ciphertext was written under, and no future mount will succeed. Before running the recovery, make a byte-for-byte backup copy of `gocryptfs.conf` from the backing directory, and keep it until a mount with the new passphrase has been proven to work end-to-end.
+**Caveat — master-key correctness is not verified before the rewrap, and mount success is not proof of correctness.** `gocryptfs -passwd -masterkey=stdin` does NOT check whether the supplied master key matches the one `gocryptfs.conf` was initialized with: it blindly rewraps the supplied key under the new passphrase and overwrites `gocryptfs.conf`. A later mount with the new passphrase will ALSO succeed even if the master key is wrong — the mount path only verifies that the passphrase unwraps the master key stored in `gocryptfs.conf`, not that that master key matches the one the backing ciphertext was actually written under. The mismatch surfaces only when reading encrypted file contents: AES-GCM authentication fails on each block and the read returns `EIO` (filename decryption can also fail, making directory listings return garbled names or errors).
+
+Before running the recovery, make a byte-for-byte backup copy of `gocryptfs.conf` from the backing directory. Keep that backup until you have proven the recovery end-to-end by actually READING several existing files through a fresh mount — the mount-succeeds-but-reads-EIO pattern is the signature of a wrong master key. If reads fail, restore the backed-up `gocryptfs.conf` and retry with a different escrow value.
 
 Treat master-key escrow as a defence-in-depth measure, not a routine recovery mechanism. Passphrase loss with no master-key escrow — and with no second operator who has their own copy of the passphrase — means the backing is unrecoverable.
 
@@ -1077,33 +1088,65 @@ if kubectl get secret gocryptfs-passphrase -o name >/dev/null 2>"$secret_err"; t
     #     backing, so there is no master key to protect. Editing the
     #     Secret BEFORE running the init Job is the correct move.
     if [ "${RESUME:-no}" = "yes" ]; then
-      # ABORT on RESUME + placeholder. There is no safe forward path:
-      # the existing backing's gocryptfs.conf wraps the master key with
-      # whatever passphrase was used at init, and the placeholder
-      # cannot decrypt it. Letting the setup continue (as a mere
-      # warning) would apply the gocryptfs-enabled Deployment and the
-      # sidecar would crashloop at every pod start against a Secret
-      # that cannot open the backing. The operator must either rotate
-      # the backing with the OLD passphrase (via `gocryptfs -passwd`)
-      # and then update the Secret to a new value — or, if the old
-      # passphrase is lost, treat the backing as unrecoverable (see
-      # the master-key recovery note in § Key management).
+      # ABORT on RESUME + placeholder. The existing backing's
+      # gocryptfs.conf wraps the master key with whatever passphrase
+      # was used at init; that passphrase may or may not be the
+      # placeholder, and the right recovery sequence depends on which.
+      # Letting the setup continue (as a mere warning) would apply the
+      # gocryptfs-enabled Deployment; if the placeholder doesn't open
+      # the backing the sidecar crashloops at every pod start, and if
+      # it does, pods come up using the published placeholder as the
+      # real key — both outcomes are wrong. Operator must test the
+      # placeholder, then rotate (gocryptfs -passwd → update Secret →
+      # VERIFY on a rolled replica → keep the gocryptfs.conf backup
+      # until proven), or recover via an escrowed master key. See
+      # § Key management.
       echo "ERROR: existing Secret still carries the published placeholder"
       echo "       passphrase, AND the precheck selected the RESUME path."
-      echo "       There is no safe recovery from here — refusing to continue."
+      echo "       Refusing to continue — recovery requires operator judgment."
       echo ""
       echo "       The existing backing's gocryptfs.conf wraps the master key"
-      echo "       with whatever passphrase was used at init; the placeholder"
-      echo "       cannot decrypt it, and a new Secret value cannot re-wrap"
-      echo "       the on-disk master key without that old passphrase."
+      echo "       with whatever passphrase was used at init. That may or may"
+      echo "       not be the current placeholder value — DO NOT ASSUME."
       echo ""
-      echo "       To recover, rotate the backing FIRST:"
-      echo "         * run \`gocryptfs -passwd /mnt/websitevolume/gocryptfs-backing\`"
-      echo "           from a privileged helper pod with the OLD passphrase"
-      echo "           file mounted; THEN"
-      echo "         * update this Secret to the new passphrase."
-      echo "       See § Key management for the master-key escrow / recovery"
-      echo "       path if the old passphrase is lost."
+      echo "       From a privileged helper pod that mounts websitevolume,"
+      echo "       first test whether the placeholder actually opens the"
+      echo "       backing. gocryptfs has no --test-passphrase flag; attempt"
+      echo "       a mount to a tmpfs mountpoint and inspect the exit:"
+      echo "         mkdir -p /tmp/probe"
+      echo "         printf '%s' \"\$PLACEHOLDER\" | gocryptfs -passfile /dev/stdin \\\\"
+      echo "           -ro /mnt/websitevolume/gocryptfs-backing /tmp/probe"
+      echo "         # exit 0 = placeholder unwraps the master key; unmount"
+      echo "         #         immediately with fusermount -u /tmp/probe"
+      echo "         # non-0  = placeholder does not unwrap; see CASE B"
+      echo ""
+      echo "       CASE A — placeholder opens (exit 0):"
+      echo "         The backing was initialized with the placeholder (a prior"
+      echo "         init Job ran before this guard was in place, or the"
+      echo "         placeholder was pinned into the Secret at some point)."
+      echo "         Adopt a real passphrase WITHOUT losing access:"
+      echo "           1. Back up gocryptfs.conf (byte-for-byte copy to a"
+      echo "              safe location)."
+      echo "           2. \`gocryptfs -passwd\` with the placeholder as the"
+      echo "              OLD passphrase and a fresh real value as NEW."
+      echo "           3. Update this Secret to the NEW passphrase."
+      echo "           4. VERIFY: roll a single replica and confirm its"
+      echo "              sidecar opens the backing with the new Secret"
+      echo "              AND existing files decrypt (read a known file —"
+      echo "              success is proof against the mount-OK-but-read-EIO"
+      echo "              master-key-mismatch failure mode)."
+      echo "           5. ONLY AFTER verification: discard the gocryptfs.conf"
+      echo "              backup from step 1."
+      echo ""
+      echo "       CASE B — placeholder does NOT open (non-zero exit):"
+      echo "         The backing was initialized with a passphrase that is"
+      echo "         not the current Secret value. Recovery requires that"
+      echo "         original passphrase OR an escrowed master key."
+      echo "         If one of those is available: follow § Key management"
+      echo "         (\`gocryptfs -passwd\` with the old passphrase, OR"
+      echo "         \`gocryptfs -passwd -masterkey=stdin\` with the escrowed"
+      echo "         hex), then update this Secret, then VERIFY on a rolled"
+      echo "         replica, then discard the gocryptfs.conf backup."
       exit 1
     else
       echo "WARNING: existing Secret still carries the published placeholder"
@@ -1121,12 +1164,18 @@ elif grep -qi 'NotFound\|not found' "$secret_err"; then
       if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
         if [ "${RESUME:-no}" = "yes" ]; then
           # ABORT on RESUME + placeholder (same reasoning as the
-          # existing-Secret branch above). No safe forward path.
+          # existing-Secret branch above). Recovery requires operator
+          # judgment — test whether the placeholder opens the backing
+          # before choosing between rotate-in-place and master-key
+          # recovery.
           echo "ERROR: concurrently-created Secret still carries the published"
           echo "       placeholder, AND the precheck selected the RESUME path."
-          echo "       There is no safe recovery from here — refusing to continue."
-          echo "       Rotate the backing via \`gocryptfs -passwd\` first (see the"
-          echo "       existing-Secret branch above for the full sequence)."
+          echo "       Refusing to continue — see the existing-Secret branch"
+          echo "       above for the test-then-recover procedure (do NOT"
+          echo "       assume the placeholder cannot open the backing; test"
+          echo "       first with a read-only probe mount, then rotate via"
+          echo "       \`gocryptfs -passwd\`, update this Secret, and VERIFY"
+          echo "       on a rolled replica before discarding the config backup)."
           rm -f "$secret_err"
           exit 1
         else
