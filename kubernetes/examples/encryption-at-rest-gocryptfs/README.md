@@ -399,6 +399,35 @@ else
 fi
 rm -f "$secret_err"
 
+# Post-adoption shape re-validation. Whichever branch ran above (adopted
+# an ESO-managed Secret, created from the local manifest, or lost the
+# AlreadyExists race), the Secret must now carry a non-empty passphrase
+# before the init Job runs. A Secret created with a stringData key that
+# whitespace-trims to zero, or an ESO template that materialized without
+# a value yet, would ride through the branch above and only surface
+# inside the init Job — after it has already started its privileged
+# mount. Re-read and fail fast here.
+#
+# The placeholder value is caught by the pre-scale gate above AND by the
+# init Job's own guard; the earlier gate already prevents an operator
+# from reaching this point with the placeholder in place. This gate adds
+# the orthogonal "shape is wrong" axis (missing key, empty value, pure
+# whitespace) that the placeholder check does not cover.
+passphrase_b64=$(kubectl get secret gocryptfs-passphrase \
+                 -o jsonpath='{.data.passphrase}' 2>/dev/null || true)
+if [ -z "$passphrase_b64" ]; then
+  echo "ERROR: Secret 'gocryptfs-passphrase' has no 'passphrase' key after the adoption step."
+  echo "       Refusing to run the init Job — fix the Secret shape first."
+  exit 1
+fi
+decoded_len=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null \
+              | tr -d '[:space:]' | wc -c | tr -d ' ')
+if [ "$decoded_len" = "0" ]; then
+  echo "ERROR: Secret 'gocryptfs-passphrase' 'passphrase' key decodes to empty/whitespace."
+  echo "       Refusing to run the init Job — fix the Secret value first."
+  exit 1
+fi
+
 # 3. Run the one-shot init Job. This initializes the gocryptfs backing
 #    directory (gocryptfs.conf + gocryptfs.diriv) inside websitevolume.
 #    Near-instant.
@@ -1084,6 +1113,34 @@ else
   exit 1
 fi
 rm -f "$secret_err"
+
+# Post-adoption shape re-validation. Whichever branch ran above (adopted
+# an ESO-managed Secret, created from the local manifest, or lost the
+# AlreadyExists race), the Secret must now carry a non-empty passphrase
+# before anything consumes it — on the non-RESUME path that is the init
+# Job's privileged mount; on the RESUME path it is the Deployment apply
+# below, where the gocryptfs-mounter sidecar would then fail at pod
+# start. Either way, a missing key / empty value / whitespace-only value
+# surfaces as a hard-to-diagnose mount failure instead of a clean error
+# here.
+#
+# The placeholder value is caught by the branch above and (for
+# non-RESUME) by the init Job's own guard. This gate adds the orthogonal
+# "shape is wrong" axis that the placeholder check does not cover.
+passphrase_b64=$(kubectl get secret gocryptfs-passphrase \
+                 -o jsonpath='{.data.passphrase}' 2>/dev/null || true)
+if [ -z "$passphrase_b64" ]; then
+  echo "ERROR: Secret 'gocryptfs-passphrase' has no 'passphrase' key after the adoption step."
+  echo "       Refusing to proceed — fix the Secret shape first."
+  exit 1
+fi
+decoded_len=$(printf '%s' "$passphrase_b64" | base64 -d 2>/dev/null \
+              | tr -d '[:space:]' | wc -c | tr -d ' ')
+if [ "$decoded_len" = "0" ]; then
+  echo "ERROR: Secret 'gocryptfs-passphrase' 'passphrase' key decodes to empty/whitespace."
+  echo "       Refusing to proceed — fix the Secret value first."
+  exit 1
+fi
 
 # 4. Run the one-shot init Job against the (empty) websitevolume.
 #    This creates gocryptfs.conf + gocryptfs-backing/ WITHOUT any
