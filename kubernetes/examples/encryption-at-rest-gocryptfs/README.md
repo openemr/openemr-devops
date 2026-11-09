@@ -279,7 +279,24 @@ fi
 # 2. Create the gocryptfs passphrase Secret. In production, replace this
 #    with an ESO-managed ExternalSecret.
 #    EDIT the passphrase in gocryptfs-passphrase-secret.yaml FIRST.
-kubectl apply -f gocryptfs-passphrase-secret.yaml
+#
+# Apply the manifest ONLY when the Secret does not already exist in
+# the target namespace — an unconditional `kubectl apply` would
+# overwrite an ESO-managed Secret with the public placeholder, and the
+# init Job would then refuse to run against it (its guard rejects the
+# placeholder value). If ESO manages this Secret, do NOT apply the
+# local manifest at all; let ESO own the lifecycle.
+if kubectl get secret gocryptfs-passphrase >/dev/null 2>&1; then
+  echo "Secret 'gocryptfs-passphrase' already exists — NOT applying the local manifest."
+  existing=$(kubectl get secret gocryptfs-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+             | base64 -d 2>/dev/null || true)
+  if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+    echo "WARNING: existing Secret still carries the published placeholder"
+    echo "passphrase. The init Job will refuse to run against it."
+  fi
+else
+  kubectl apply -f gocryptfs-passphrase-secret.yaml
+fi
 
 # 3. Run the one-shot init Job. This initializes the gocryptfs backing
 #    directory (gocryptfs.conf + gocryptfs.diriv) inside websitevolume.
@@ -777,7 +794,34 @@ fi
 #    is always the case). Passphrase ROTATION of an existing backing
 #    is `gocryptfs -passwd` against the backing dir, not a Secret
 #    edit — see § Secret rotation in the operational notes.
-kubectl apply -f gocryptfs-passphrase-secret.yaml
+#
+# Apply the manifest ONLY when the Secret does not already exist in
+# the target namespace. An unconditional `kubectl apply` would:
+#   - overwrite an ESO-managed Secret with the public placeholder
+#     (ESO will reconcile it back, but between those two events the
+#     init Job may read the placeholder and refuse);
+#   - on the resume path, clobber the operator-set passphrase that
+#     wraps the existing gocryptfs.conf master key, which locks out
+#     every subsequent mount of this backing — effectively silent
+#     data loss waiting for the next pod restart.
+# If ESO manages this Secret, do NOT apply the local manifest at all —
+# let ESO own the lifecycle (see § Key management).
+if kubectl get secret gocryptfs-passphrase >/dev/null 2>&1; then
+  echo "Secret 'gocryptfs-passphrase' already exists — NOT applying the local manifest."
+  echo "If it is ESO-managed, this is the intended state. If it was left"
+  echo "over from a prior run, verify its value is the passphrase used to"
+  echo "initialize the existing backing dir before continuing."
+  existing=$(kubectl get secret gocryptfs-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+             | base64 -d 2>/dev/null || true)
+  if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+    echo "WARNING: existing Secret still carries the published placeholder"
+    echo "passphrase. The init Job will refuse to run against it. Replace"
+    echo "the value (direct edit, or let ESO reconcile a real one) before"
+    echo "proceeding."
+  fi
+else
+  kubectl apply -f gocryptfs-passphrase-secret.yaml
+fi
 
 # 4. Run the one-shot init Job against the (empty) websitevolume.
 #    This creates gocryptfs.conf + gocryptfs-backing/ WITHOUT any

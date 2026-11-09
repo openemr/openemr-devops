@@ -261,7 +261,24 @@ fi
 # 2. Create the LUKS passphrase Secret. In production, replace this with
 #    an ESO-managed ExternalSecret.
 #    EDIT the passphrase in luks-passphrase-secret.yaml FIRST.
-kubectl apply -f luks-passphrase-secret.yaml
+#
+# Apply the manifest ONLY when the Secret does not already exist in
+# the target namespace — an unconditional `kubectl apply` would
+# overwrite an ESO-managed Secret with the public placeholder, and the
+# format Job would then refuse to run against it (its guard rejects
+# the placeholder value). If ESO manages this Secret, do NOT apply
+# the local manifest at all; let ESO own the lifecycle.
+if kubectl get secret luks-passphrase >/dev/null 2>&1; then
+  echo "Secret 'luks-passphrase' already exists — NOT applying the local manifest."
+  existing=$(kubectl get secret luks-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+             | base64 -d 2>/dev/null || true)
+  if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+    echo "WARNING: existing Secret still carries the published placeholder"
+    echo "passphrase. The format Job will refuse to run against it."
+  fi
+else
+  kubectl apply -f luks-passphrase-secret.yaml
+fi
 
 # 3. Run the one-shot format Job. This creates the LUKS container file
 #    inside websitevolume. It takes a few minutes.
@@ -690,7 +707,37 @@ cd kubernetes/examples/encryption-at-rest-luks
 #    Any other output ⇒ passphrase mismatch; STOP. Rotating a Secret
 #    whose value does not match the existing container header is
 #    silent data loss waiting for the next pod restart.
-kubectl apply -f luks-passphrase-secret.yaml
+#
+# Apply the manifest ONLY when the Secret does not already exist in
+# the target namespace. An unconditional `kubectl apply` would:
+#   - overwrite an ESO-managed Secret with the public placeholder
+#     (ESO will reconcile it back, but between those two events the
+#     format Job may read the placeholder and refuse — or worse,
+#     another pod may consume it);
+#   - on the resume path, clobber the operator-set passphrase that
+#     matches the existing on-disk LUKS header, which is silent data
+#     loss waiting for the next pod restart.
+# If ESO manages this Secret, do NOT apply the local manifest at all —
+# let ESO own the lifecycle (see § Key management).
+if kubectl get secret luks-passphrase >/dev/null 2>&1; then
+  echo "Secret 'luks-passphrase' already exists — NOT applying the local manifest."
+  echo "If it is ESO-managed, this is the intended state. If it was left"
+  echo "over from a prior run, verify its value matches the existing LUKS"
+  echo "header (see the OPTIONAL luksOpen verify above) before continuing."
+  # Sanity: if the existing Secret still carries the public placeholder,
+  # surface that early — the format Job's guard will refuse to run, and
+  # the operator should know BEFORE waiting on it to crash out.
+  existing=$(kubectl get secret luks-passphrase -o jsonpath='{.data.passphrase}' 2>/dev/null \
+             | base64 -d 2>/dev/null || true)
+  if [ "$existing" = 'example-development-passphrase-REPLACE-ME' ]; then
+    echo "WARNING: existing Secret still carries the published placeholder"
+    echo "passphrase. The format Job will refuse to run against it. Replace"
+    echo "the value (direct edit, or let ESO reconcile a real one) before"
+    echo "proceeding."
+  fi
+else
+  kubectl apply -f luks-passphrase-secret.yaml
+fi
 
 # 4. Run the one-shot format Job against the (empty) websitevolume.
 #    This creates the LUKS container file WITHOUT any plaintext
