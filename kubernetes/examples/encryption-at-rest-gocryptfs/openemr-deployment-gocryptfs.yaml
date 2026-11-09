@@ -432,7 +432,7 @@ spec:
           value: "yes"
         - name: FORCE_DATABASE_X509_CONNECT
           value: "1"
-        image: openemr/openemr:8.5.0@sha256:62ded377e5055231b24e6a59a5d2351dae02a2132002a77bc7d9e6299749ee1f
+        image: openemr/openemr:8.6.0@sha256:0dfe76faac2da819a4989273f89692a378c9f8e0c842e03e8f9dddfbdea0e2b8
         name: openemr
         ports:
         - containerPort: 80
