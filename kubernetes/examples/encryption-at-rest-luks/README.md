@@ -689,19 +689,13 @@ cd kubernetes/examples/encryption-at-rest-luks
 #    passphrase`:
 #
 #      kubectl apply -f luks-passphrase-secret.yaml
-#      kubectl run luks-passphrase-verify --rm -i --restart=Never \
-#        --image=alpine:3.24 --overrides='{"spec":{"containers":[{
-#          "name":"verify","image":"alpine:3.24","command":["sh","-c"],
-#          "args":["apk add --no-cache cryptsetup >/dev/null && \
-#            cryptsetup luksOpen --test-passphrase \
-#              --key-file /etc/luks/passphrase \
-#              /mnt/websitevolume/.openemr-sites.luks && \
-#            echo VERIFY_OK"],
-#          "securityContext":{"privileged":true},
-#          "volumeMounts":[{"name":"websitevolume","mountPath":"/mnt/websitevolume","readOnly":true},
-#                          {"name":"luks-passphrase","mountPath":"/etc/luks","readOnly":true}]}],
-#          "volumes":[{"name":"websitevolume","persistentVolumeClaim":{"claimName":"websitevolume"}},
-#                     {"name":"luks-passphrase","secret":{"secretName":"luks-passphrase"}}]}}'
+#      kubectl run luks-passphrase-verify --rm -i --restart=Never --image=alpine:3.24 --overrides='{"spec":{"containers":[{"name":"verify","image":"alpine:3.24","command":["sh","-c"],"args":["apk add --no-cache cryptsetup >/dev/null && cryptsetup luksOpen --test-passphrase --key-file /etc/luks/passphrase /mnt/websitevolume/.openemr-sites.luks && echo VERIFY_OK"],"securityContext":{"privileged":true},"volumeMounts":[{"name":"websitevolume","mountPath":"/mnt/websitevolume","readOnly":true},{"name":"luks-passphrase","mountPath":"/etc/luks","readOnly":true}]}],"volumes":[{"name":"websitevolume","persistentVolumeClaim":{"claimName":"websitevolume"}},{"name":"luks-passphrase","secret":{"secretName":"luks-passphrase"}}]}}'
+#
+#    The `--overrides=` JSON is kept on a single line because
+#    JSON string literals do not allow the shell-style
+#    "\<newline>" continuation that the earlier multi-line form
+#    used (that would make the payload invalid JSON — kubectl
+#    would reject the overrides at parse time).
 #
 #    VERIFY_OK ⇒ the Secret opens the container; safe to proceed.
 #    Any other output ⇒ passphrase mismatch; STOP. Rotating a Secret
