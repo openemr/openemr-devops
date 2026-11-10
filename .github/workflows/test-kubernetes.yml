@@ -405,10 +405,17 @@ jobs:
             exit 1
           fi
           echo "PASS: mysql StatefulSet rolled (gen $OLD_GEN -> $NEW_GEN)"
-          kubectl rollout status statefulset/mysql --timeout=300s
+          # Skip `kubectl rollout status statefulset/mysql` — the
+          # operator uses updateStrategy: OnDelete on its managed
+          # StatefulSet (primary failover needs operator
+          # orchestration, not k8s-driven RollingUpdate), and
+          # `rollout status` only accepts RollingUpdate. The
+          # operator's own Ready condition below is the right signal
+          # anyway: covers all pods Ready + replication re-
+          # established + semi-sync re-connected post-rotation.
 
           echo "--- wait for operator to report Ready after rotation ---"
-          kubectl wait --for=condition=Ready mariadb/mysql --timeout=120s
+          kubectl wait --for=condition=Ready mariadb/mysql --timeout=300s
           echo "PASS: operator reports Ready post-rotation (replication re-established)"
 
           echo "--- stop probe + evaluate data-plane availability ---"
