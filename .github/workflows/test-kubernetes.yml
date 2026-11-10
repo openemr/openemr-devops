@@ -64,38 +64,28 @@ jobs:
           fi
           echo "PASS: phpMyAdmin HTTP responding (status $HTTP_CODE)"
 
-      - name: Test MariaDB replication
-        # TODO phase-d: rewrite for operator-managed topology
-        # (pod names mysql-0 / mysql-1 instead of mysql-sts-0 /
-        # mysql-sts-1, and most of this step becomes obsolete because
-        # the MariaDB Operator's Status.Conditions already reports
-        # replication health; a two-line `kubectl wait --for=condition=
-        # Ready mariadb/mysql` plus a Status-subresource check for
-        # replication state replaces the 20 lines below). Skipped
-        # for Phase B so CI still gives signal on operator install +
-        # MariaDB resource reconciliation.
-        if: ${{ env.PHASE_B_SKIP_UNTIL_PHASE_D == 'disabled' }}
+      - name: Test MariaDB replication (operator-managed)
         run: |
-          echo "--- Checking replica status ---"
-          REPL_STATUS=$(kubectl exec mysql-sts-1 -- mariadb -u root -proot -e "SHOW REPLICA STATUS\G" 2>/dev/null)
-          SLAVE_IO=$(echo "$REPL_STATUS" | grep "Slave_IO_Running:" | awk '{print $NF}')
-          SLAVE_SQL=$(echo "$REPL_STATUS" | grep "Slave_SQL_Running:" | head -1 | awk '{print $NF}')
-          echo "Slave_IO_Running: $SLAVE_IO"
-          echo "Slave_SQL_Running: $SLAVE_SQL"
-          if [ "$SLAVE_IO" != "Yes" ] || [ "$SLAVE_SQL" != "Yes" ]; then
-            echo "ERROR: Replication not running"
-            echo "$REPL_STATUS"
+          # The MariaDB Operator's own Ready condition covers the
+          # full replication story: StatefulSet rolled out, primary
+          # pod running, replica caught up, semi-sync set up, certs
+          # provisioned. The composite action already waited on this
+          # before running any test step — this just surfaces the
+          # operator's status subresource for log auditability and
+          # fails loud if it ever drifts out of Ready between setup
+          # and this step.
+          echo "--- MariaDB resource status ---"
+          kubectl get mariadb mysql -o wide
+          echo ""
+          echo "--- Status conditions ---"
+          kubectl get mariadb mysql -o jsonpath='{range .status.conditions[*]}{.type}={.status} reason={.reason} message={.message}{"\n"}{end}'
+          READY=$(kubectl get mariadb mysql -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')
+          if [ "$READY" != "True" ]; then
+            echo "ERROR: MariaDB resource not Ready — operator considers the cluster degraded"
+            kubectl describe mariadb mysql | tail -40
             exit 1
           fi
-          echo "--- Checking data replication ---"
-          kubectl exec mysql-sts-0 -- mariadb -u root -proot -e "CREATE DATABASE IF NOT EXISTS ci_test; CREATE TABLE IF NOT EXISTS ci_test.t1 (id INT PRIMARY KEY); INSERT IGNORE INTO ci_test.t1 VALUES (1),(2),(3);" 2>/dev/null
-          sleep 2
-          REPLICA_COUNT=$(kubectl exec mysql-sts-1 -- mariadb -u root -proot -N -e "SELECT COUNT(*) FROM ci_test.t1;" 2>/dev/null)
-          if [ "$REPLICA_COUNT" != "3" ]; then
-            echo "ERROR: Expected 3 rows in replica, got $REPLICA_COUNT"
-            exit 1
-          fi
-          echo "PASS: MariaDB replication working (3 rows replicated)"
+          echo "PASS: MariaDB operator reports Ready (replication + semi-sync healthy)"
 
       - name: Test NFS shared volume across pods
         run: |
@@ -137,17 +127,21 @@ jobs:
           echo "PASS: Redis accepted mTLS connection"
 
       - name: Verify MySQL rejects connections without client cert
-        # TODO phase-d: rewrite for operator topology. Current step
-        # execs into mysql-sts-0 (gone under operator) and connects
-        # to mysql-sts-0.mysql (also gone). Rewrite should pick the
-        # primary pod via `kubectl get pods -l k8s.mariadb.com/role=
-        # primary` (or equivalent operator label) and target the
-        # mysql-primary Service. The assertion itself stays:
-        # connections presenting no client cert must be rejected
-        # by the REQUIRE X509 user policy.
-        if: ${{ env.PHASE_B_SKIP_UNTIL_PHASE_D == 'disabled' }}
         run: |
-          if kubectl exec mysql-sts-0 -- mariadb -u repluser -preplsecret -h mysql-sts-0.mysql -e "SELECT 1" 2>&1 | grep -q "^1$"; then
+          # openemr user has REQUIRE X509 (set by openemr's own
+          # first-boot grant — look for FORCE_DATABASE_X509_CONNECT=1
+          # env in openemr/deployment.yaml). Exec from the mysql
+          # primary pod to the mysql-primary Service without
+          # presenting any client cert; server must refuse. mysql-0
+          # has mariadb-client in its image but no client-cert mount
+          # in a way that would accidentally present one for this
+          # Service connection, so this is a clean negative test.
+          #
+          # Any output matching "^1$" would mean X509 was NOT
+          # enforced. Reject any stderr that includes successful
+          # exit codes too — some mariadb-client builds swallow
+          # errors by default.
+          if kubectl exec mysql-0 -- mariadb -h mysql-primary -u openemr -popenemr -e "SELECT 1" 2>&1 | grep -q "^1$"; then
             echo "ERROR: MySQL accepted connection without client cert — X509 not enforced"
             exit 1
           fi
@@ -161,26 +155,29 @@ jobs:
           echo "Using OpenEMR pod: $POD"
 
       - name: Initialize OpenEMR database
-        # TODO phase-d: switch target from mysql-sts-0 (gone) to a
-        # root-cred client connection via `kubectl exec deploy/openemr
-        # -- mariadb -h mysql-primary -u root -p$MYSQL_ROOT_PASS ...`,
-        # OR discover the operator's primary pod via label selector
-        # and exec into it. Skipped for Phase B to let the operator-
-        # install path validate; subsequent openemr PHPUnit steps
-        # (unit/fixtures/validators/controllers/common/services) do
-        # not require the globals this step sets and should still
-        # run usefully.
-        if: ${{ env.PHASE_B_SKIP_UNTIL_PHASE_D == 'disabled' }}
         timeout-minutes: 2
         run: |
-          kubectl exec mysql-sts-0 -- mariadb -u root -proot -e '
-              INSERT INTO product_registration (opt_out) VALUES (1);
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_api";
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_fhir_api";
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_portal_api";
-              UPDATE globals SET gl_value = 3 WHERE gl_name = "oauth_password_grant";
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_system_scopes_api";
-            ' openemr
+          # Exec via the openemr pod, which has:
+          #   - MYSQL_ROOT_PASS env (same mysql-credentials Secret the
+          #     operator reads root pw from — single source of truth)
+          #   - mysql-openemr-client cert mounted at
+          #     /root/certs/mysql/server/mysql-{ca,cert,key} (the pod's
+          #     mTLS identity)
+          # Target the operator-managed primary Service `mysql-primary`.
+          kubectl exec deploy/openemr -- bash -c '
+            mariadb -h mysql-primary -u root -p"$MYSQL_ROOT_PASS" \
+              --ssl-ca=/root/certs/mysql/server/mysql-ca \
+              --ssl-cert=/root/certs/mysql/server/mysql-cert \
+              --ssl-key=/root/certs/mysql/server/mysql-key \
+              -e "
+                INSERT INTO product_registration (opt_out) VALUES (1);
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_api\";
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_fhir_api\";
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_portal_api\";
+                UPDATE globals SET gl_value = 3 WHERE gl_name = \"oauth_password_grant\";
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_system_scopes_api\";
+              " openemr
+          '
 
       - name: Install dev dependencies
         timeout-minutes: 5

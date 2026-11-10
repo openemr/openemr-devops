@@ -206,21 +206,24 @@ jobs:
           echo "Using OpenEMR pod: $POD"
 
       - name: Initialize OpenEMR database
-        # TODO phase-d: switch target from mysql-sts-0 (gone under
-        # the MariaDB Operator) to mysql-primary via the openemr
-        # pod. See the same step in test-kubernetes.yml for the
-        # full note.
-        if: ${{ env.PHASE_B_SKIP_UNTIL_PHASE_D == 'disabled' }}
         timeout-minutes: 2
         run: |
-          kubectl exec mysql-sts-0 -- mariadb -u root -proot -e '
-              INSERT INTO product_registration (opt_out) VALUES (1);
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_api";
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_fhir_api";
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_portal_api";
-              UPDATE globals SET gl_value = 3 WHERE gl_name = "oauth_password_grant";
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_system_scopes_api";
-            ' openemr
+          # See test-kubernetes.yml for rationale — exec via openemr
+          # pod with its mysql-openemr-client cert, target mysql-primary.
+          kubectl exec deploy/openemr -- bash -c '
+            mariadb -h mysql-primary -u root -p"$MYSQL_ROOT_PASS" \
+              --ssl-ca=/root/certs/mysql/server/mysql-ca \
+              --ssl-cert=/root/certs/mysql/server/mysql-cert \
+              --ssl-key=/root/certs/mysql/server/mysql-key \
+              -e "
+                INSERT INTO product_registration (opt_out) VALUES (1);
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_api\";
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_fhir_api\";
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_portal_api\";
+                UPDATE globals SET gl_value = 3 WHERE gl_name = \"oauth_password_grant\";
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_system_scopes_api\";
+              " openemr
+          '
 
       - name: Install dev dependencies (atop LUKS)
         timeout-minutes: 5
