@@ -34,6 +34,17 @@ spec:
     name: mysql-credentials
     key: password
 
+  # Inject the `app: mysql` label onto the operator-generated pods so
+  # the existing `allow-mysql-ingress` NetworkPolicy (which matches on
+  # podSelector: matchLabels: app: mysql) continues to apply. Without
+  # this, the operator's own labels (app.kubernetes.io/name=mariadb,
+  # k8s.mariadb.com/mariadb=mysql, etc.) do not match the policy and
+  # default-deny-ingress blocks every peer from reaching mysql pods —
+  # observed as openemr init containers stuck in Init:0/2 forever.
+  podMetadata:
+    labels:
+      app: mysql
+
   replicas: 2
 
   storage:
