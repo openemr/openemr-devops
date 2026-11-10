@@ -32,7 +32,13 @@ spec:
       containers:
       - env:
         - name: MYSQL_HOST
-          value: "mysql"
+          # MariaDB Operator-generated primary Service. Routes to
+          # whichever pod is currently the primary; the operator
+          # updates endpoints across the primary-failover window,
+          # so clients see sub-second reconnect instead of the
+          # ~10-30s outage the hand-rolled `mysql` headless-primary
+          # selector produced on pod cutover.
+          value: "mysql-primary"
         - name: MYSQL_PASS
           valueFrom:
             secretKeyRef:

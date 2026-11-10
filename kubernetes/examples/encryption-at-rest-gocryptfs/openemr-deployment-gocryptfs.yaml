@@ -391,7 +391,8 @@ spec:
       containers:
       - env:
         - name: MYSQL_HOST
-          value: "mysql"
+          # See kubernetes/openemr/deployment.yaml for rationale.
+          value: "mysql-primary"
         - name: MYSQL_PASS
           valueFrom:
             secretKeyRef:

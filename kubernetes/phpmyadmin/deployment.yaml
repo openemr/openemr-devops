@@ -23,7 +23,9 @@ spec:
       containers:
       - env:
         - name: PMA_HOSTS
-          value: mysql
+          # See kubernetes/openemr/deployment.yaml for the rationale
+          # on mysql-primary vs the old `mysql` Service name.
+          value: mysql-primary
         image: phpmyadmin:5.2.3@sha256:f54a37b908b26caa7032c4eb0c7f3495fdd90208a06eed9c4b2c8e691dd1662c
         name: phpmyadmin
         command: ["/wrapper.sh"]

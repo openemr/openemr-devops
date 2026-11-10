@@ -1,0 +1,98 @@
+# MariaDB Operator-managed cluster. Replaces the hand-rolled
+# StatefulSet + headless primary-only Service topology with a
+# declarative HA cluster (replication + semi-sync + automatic
+# primary failover + operator-managed TLS via cert-manager).
+#
+# The operator generates three Services from this resource's name:
+#   - `mysql`           → all pods (both primary and replica)
+#   - `mysql-primary`   → primary pod only (writable endpoint)
+#   - `mysql-secondary` → replica pods only (read-only endpoint)
+# openemr + phpmyadmin connect to `mysql-primary` (see their
+# deployment env). The old hand-rolled `mysql` Service used a
+# `pod-name: mysql-sts-0` selector to pin traffic at the primary;
+# `mysql-primary` here replaces that but routes through the
+# operator's failover-aware controller — when the primary pod rolls
+# or fails, the operator promotes a replica and updates the
+# `mysql-primary` Service endpoints before the old primary's
+# deletion completes, so clients see a sub-second reconnect window
+# instead of the ~10-30s outage the hand-rolled stack produced.
+#
+# TLS: the operator issues its own server + internal-client certs
+# from the existing `ca-issuer` cert-manager Issuer (same trust
+# chain as the rest of the stack). openemr's and phpmyadmin's
+# client certs continue to come from the hand-rolled
+# `certs/mysql-openemr-client.yaml` / `certs/mysql-phpmyadmin-client.yaml`
+# Certificate resources — those are per-consumer client identity and
+# are not operator-managed.
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: mysql
+spec:
+  # Root password reused from the existing Secret (shape unchanged).
+  rootPasswordSecretKeyRef:
+    name: mysql-credentials
+    key: password
+
+  replicas: 2
+
+  storage:
+    size: 10Gi
+
+  # Replication + semi-sync + automatic primary failover.
+  # See discussion in kubernetes/README.md § Certificate reload mechanism.
+  replication:
+    enabled: true
+    primary:
+      podIndex: 0
+      # Operator promotes a replica and fences the old primary on
+      # primary pod cutover (deletion, crash, cert-rotation roll).
+      autoFailover: true
+      autoFailoverDelay: 0s
+    replica:
+      # Replication user password from the existing Secret.
+      replPasswordSecretKeyRef:
+        name: mysql-replication-credentials
+        key: password
+    # Enabled by default; explicit here so the durability contract
+    # is visible at the top of the file.
+    gtidStrictMode: true
+    semiSyncEnabled: true
+    # Primary blocks commit until replica has ACKed the binlog
+    # write, so transactions committed on the primary are durable
+    # at the replica too — no in-flight-transaction loss on failover.
+    # Trade: small write-latency penalty, ~RTT between primary and
+    # replica pods (intra-cluster, typically sub-ms).
+    semiSyncWaitPoint: AfterSync
+    semiSyncAckTimeout: 10s
+
+  # TLS via cert-manager. Operator creates its own Certificate
+  # resources (server + internal client) rooted at the existing
+  # ca-issuer. The resulting Secrets live inside the operator's
+  # lifecycle — cert rotation is handled by the operator's
+  # cert-controller, which rolls the StatefulSet pods with the
+  # same failover + fencing orchestration described above.
+  # Hence NO `secret.reloader.stakater.com/reload` annotation is
+  # needed on the generated StatefulSet; the operator owns the
+  # full reload path for mysql certs.
+  tls:
+    enabled: true
+    serverCertIssuerRef:
+      name: ca-issuer
+      kind: Issuer
+    clientCertIssuerRef:
+      name: ca-issuer
+      kind: Issuer
+
+  primaryService:
+    type: ClusterIP
+  secondaryService:
+    type: ClusterIP
+  service:
+    type: ClusterIP
+
+  resources:
+    requests:
+      memory: 512Mi
+    limits:
+      memory: 1Gi

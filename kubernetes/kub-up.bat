@@ -76,8 +76,6 @@ kubectl apply ^
     -f certs/selfsigned-issuer.yaml ^
     -f certs/ca-certificate.yaml ^
     -f certs/ca-issuer.yaml ^
-    -f certs/mysql.yaml ^
-    -f certs/mysql-replication.yaml ^
     -f certs/mysql-openemr-client.yaml ^
     -f certs/phpmyadmin.yaml ^
     -f certs/mysql-phpmyadmin-client.yaml ^
@@ -118,11 +116,9 @@ kubectl rollout status deployment/nfs-server --timeout=180s
 kubectl rollout status daemonset/nfs-stunnel-client --timeout=180s
 
 kubectl apply ^
-    -f mysql/configmap.yaml ^
     -f mysql/secret.yaml ^
     -f mysql/replication-secret.yaml ^
-    -f mysql/service.yaml ^
-    -f mysql/statefulset.yaml ^
+    -f mysql/mariadb.yaml ^
     -f redis/secret.yaml ^
     -f redis/configmap-main.yaml ^
     -f redis/configmap-acl.yaml ^
