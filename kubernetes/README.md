@@ -14,7 +14,7 @@ Which lens you read this through affects what's essential vs. defense-in-depth:
 
 OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis, and phpMyAdmin.
   - **OpenEMR** - 3 deployment replications of OpenEMR are created. Replications can be increased/decreased. Ports for both http and https.
-  - **MariaDB** - 2 statefulset replications of MariaDB (1 primary/master with 1 replica/slave) are created. Replications can be increased/decreased which will increase/decrease number of replica/slaves. Connections use mTLS (mutual TLS / X509 client certificate verification) by default, including replication traffic. See **Security Architecture → MariaDB connections** for what this protects and **Connection Security → MariaDB Connection Security** for how to downgrade to TLS-only or plain TCP.
+  - **MariaDB** - a 2-replica MariaDB cluster (1 primary with 1 replica) managed declaratively by the [MariaDB Operator](https://github.com/mariadb-operator/mariadb-operator). The operator owns the StatefulSet, Services (`mysql-primary` for writes, `mysql-secondary` for reads, `mysql` for all), replication (semi-synchronous with `waitPoint: AfterSync` for durability), automatic primary failover, and TLS (operator issues its own server cert via the shared `ca-issuer`). Connections use mTLS (mutual TLS / X509 client certificate verification) by default, including replication traffic. The operator orchestrates failover (promote replica → fence demoted primary → switch Service endpoints) so cert rotation and primary pod cutover produce only a sub-second reconnect window from the client's perspective — no committed transactions are lost. See **Security Architecture → MariaDB connections** for what mTLS protects, **Certificate reload mechanism** for the full rotation story, and **Connection Security → MariaDB Connection Security** for how to downgrade to TLS-only or plain TCP.
   - **Redis** - Configured to support failover. There is 1 master and 2 slaves (no read access on slaves) for a statefulset and 3 sentinels for another statefulset. OpenEMR connects directly to Redis with mTLS (mutual TLS / X509 client certificate verification) by default. The primary/slaves and sentinels would require script changes if wish to increase/decrease replicates for these since these are hard-coded several places in the scripts. There are 3 users/passwords (`default`, `replication`, `admin`) used in this redis scheme. All passwords are stored in the `redis-credentials` Kubernetes Secret (redis/secret.yaml) and should be changed for production use. The `default` is the typical worker/app/client user. See **Security Architecture → Redis connections** for details and **Connection Security → Redis Connection Security** for how to downgrade.
   - **phpMyAdmin** - There is 1 deployment instance of phpMyAdmin. Access is via `kubectl port-forward` only (not exposed externally).
 
@@ -46,30 +46,36 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
     ```
       - It will look something like this when completed:
           ```console
-          NAME                                   READY   STATUS    RESTARTS   AGE
-          pod/mysql-sts-0                        1/1     Running   0          111s
-          pod/mysql-sts-1                        1/1     Running   0          91s
-          pod/nfs-server-74f8d9c7b5-xxxxx        2/2     Running   0          3m
-          pod/nfs-stunnel-client-abcde           1/1     Running   0          3m
-          pod/openemr-7889cf48d8-9jdfl           1/1     Running   0          111s
-          pod/openemr-7889cf48d8-qphrw           1/1     Running   0          111s
-          pod/openemr-7889cf48d8-zlx9f           1/1     Running   0          111s
-          pod/phpmyadmin-f4d9bfc69-rx82d         1/1     Running   0          111s
-          pod/redis-0                            1/1     Running   0          111s
-          pod/redis-1                            1/1     Running   0          77s
-          pod/redis-2                            1/1     Running   0          55s
-          pod/sentinel-0                         1/1     Running   0          111s
-          pod/sentinel-1                         1/1     Running   0          34s
-          pod/sentinel-2                         1/1     Running   0          30s
+          NAME                                                READY   STATUS    RESTARTS   AGE
+          pod/mariadb-operator-xxxxxxxxxx-xxxxx                   1/1     Running   0          2m
+          pod/mariadb-operator-cert-controller-xxxxxxxxx-xxxxx    1/1     Running   0          2m
+          pod/mariadb-operator-webhook-xxxxxxxxx-xxxxx            1/1     Running   0          2m
+          pod/mysql-0                                             2/2     Running   0          111s
+          pod/mysql-1                                             2/2     Running   0          91s
+          pod/nfs-server-74f8d9c7b5-xxxxx                         2/2     Running   0          3m
+          pod/nfs-stunnel-client-abcde                            1/1     Running   0          3m
+          pod/openemr-7889cf48d8-9jdfl                            1/1     Running   0          111s
+          pod/openemr-7889cf48d8-qphrw                            1/1     Running   0          111s
+          pod/openemr-7889cf48d8-zlx9f                            1/1     Running   0          111s
+          pod/phpmyadmin-f4d9bfc69-rx82d                          1/1     Running   0          111s
+          pod/redis-0                                             1/1     Running   0          111s
+          pod/redis-1                                             1/1     Running   0          77s
+          pod/redis-2                                             1/1     Running   0          55s
+          pod/reloader-reloader-xxxxxxxxx-xxxxx                   1/1     Running   0          2m
+          pod/sentinel-0                                          1/1     Running   0          111s
+          pod/sentinel-1                                          1/1     Running   0          34s
+          pod/sentinel-2                                          1/1     Running   0          30s
 
-          NAME                 TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                        AGE
-          service/kubernetes   ClusterIP   10.96.0.1      <none>        443/TCP                        3m40s
-          service/mysql        ClusterIP   None           <none>        3306/TCP                       111s
-          service/nfs-server   ClusterIP   10.96.1.73     <none>        20490/TCP                      3m
-          service/openemr      NodePort    10.96.6.51     <none>        8080:30080/TCP,8090:30443/TCP   111s
-          service/phpmyadmin   ClusterIP   10.96.64.163   <none>        8081/TCP,8091/TCP              111s
-          service/redis        ClusterIP   None           <none>        6379/TCP                       111s
-          service/sentinel     ClusterIP   None           <none>        26379/TCP                      111s
+          NAME                       TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                        AGE
+          service/kubernetes         ClusterIP   10.96.0.1      <none>        443/TCP                        3m40s
+          service/mysql              ClusterIP   None           <none>        3306/TCP                       111s
+          service/mysql-primary      ClusterIP   10.96.5.10     <none>        3306/TCP                       111s
+          service/mysql-secondary    ClusterIP   10.96.5.11     <none>        3306/TCP                       111s
+          service/nfs-server         ClusterIP   10.96.1.73     <none>        20490/TCP                      3m
+          service/openemr            NodePort    10.96.6.51     <none>        8080:30080/TCP,8090:30443/TCP   111s
+          service/phpmyadmin         ClusterIP   10.96.64.163   <none>        8081/TCP,8091/TCP              111s
+          service/redis              ClusterIP   None           <none>        6379/TCP                       111s
+          service/sentinel           ClusterIP   None           <none>        26379/TCP                      111s
 
           NAME                         READY   UP-TO-DATE   AVAILABLE   AGE
           deployment.apps/nfs-server   1/1     1            1           3m
@@ -85,9 +91,12 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
           replicaset.apps/phpmyadmin-f4d9bfc69    1         1         1       111s
 
           NAME                         READY   AGE
-          statefulset.apps/mysql-sts   2/2     111s
+          statefulset.apps/mysql       2/2     111s
           statefulset.apps/redis       3/3     111s
           statefulset.apps/sentinel    3/3     111s
+
+          NAME                      READY   STATUS    PRIMARY   AGE
+          mariadb.k8s.mariadb.com/mysql   True    Running   mysql-0   111s
           ```
 
           Note: `csi-driver-nfs` controller + node daemonset pods run in
@@ -133,14 +142,14 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
             ```
         - Now, there are 5 replicas of OpenEMR instead of 10. Enter the `kubectl get rs` and `kubectl get pod` to see what happened.
     - This is just a quick overview of scaling. Note we just did manual scaling in the example above, but there are also options of automatic scaling for example depending on cpu use etc.
-7. Some cool replicas stuff with MariaDB. 2 statefulset replications of MariaDB (1 primary/master with 1 replica/slave) are created by default. The number of replicas can be increased or decreased.
-    - Increase replicas (after this command will have the 1 primary/master with 3 replicas/slaves).
+7. Some cool replicas stuff with MariaDB. 2 statefulset replications of MariaDB (1 primary with 1 replica) are created by default by the MariaDB Operator. Change the replica count by editing the `MariaDB` resource (NOT the generated StatefulSet directly — the operator will reconcile that back):
+    - Increase replicas (after this command will have the 1 primary with 3 replicas).
         ```bash
-        kubectl scale sts mysql-sts --replicas=4
+        kubectl patch mariadb mysql --type=merge -p '{"spec":{"replicas":4}}'
         ```
-    - Decrease replicas (after this command will have the 1 primary/master with 2 replicas/slaves).
+    - Decrease replicas (after this command will have the 1 primary with 2 replicas).
         ```bash
-        kubectl scale sts mysql-sts --replicas=3
+        kubectl patch mariadb mysql --type=merge -p '{"spec":{"replicas":3}}'
         ```
 8. Testing Redis Sentinel failover. Redis is configured with automatic failover via Sentinel. To test it:
     - First, check which Redis pod is the current master:
@@ -221,40 +230,49 @@ All passwords (Redis, MariaDB replication, MariaDB root) are stored in Kubernete
 
 ## Certificate reload mechanism
 
-Every leaf certificate in this stack (`certs/mysql.yaml`, `certs/redis.yaml`, `certs/sentinel.yaml`, `certs/nfs-server.yaml`, `certs/nfs-client.yaml`, `certs/phpmyadmin.yaml`, and the four `*-client.yaml` certs) is issued with `duration: 168h` (7 days) and `renewBefore: 48h` (2 days). cert-manager picks each one up for renewal 48h before expiry, re-issues under the same `ca-issuer` (which keeps its 10-year lifetime — rotating a CA is a separate choreography that requires trust-chain overlap and is out of scope for auto-reload), and UPDATEs the existing Kubernetes Secret with the new `tls.crt` / `tls.key` payload.
+Every leaf certificate in this stack is issued with `duration: 168h` (7 days) and `renewBefore: 48h` (2 days). cert-manager picks each one up for renewal 48h before expiry, re-issues under the same `ca-issuer` (which keeps its 10-year lifetime — rotating a CA is a separate choreography that requires trust-chain overlap and is out of scope for auto-reload), and UPDATEs the existing Kubernetes Secret with the new `tls.crt` / `tls.key` payload. The resulting cadence is roughly **every 5 days** per certificate (duration − renewBefore).
 
-Cert-manager's rotation updates the Secret but does **not** reload the running pods — mysqld, redis-server, stunnel, and the apache/openemr PHP process all parse their cert files once at startup and keep using the parsed values until the process restarts. Bridging that gap is the job of a small controller: **[stakater/reloader](https://github.com/stakater/Reloader)** (installed by `kub-up` from `v1.4.23` pinned at `raw.githubusercontent.com/stakater/Reloader/v1.4.23/deployments/kubernetes/reloader.yaml`, with the same 5-attempt linear-backoff retry as the cert-manager install above).
+Cert-manager's rotation updates the Secret but does **not** reload the running pods — mysqld, redis-server, stunnel, and the apache/openemr PHP process all parse their cert files once at startup and keep using the parsed values until the process restarts. Bridging that gap takes two separate mechanisms depending on the workload:
 
-Each cert-consuming workload carries a `secret.reloader.stakater.com/reload` annotation naming the Secret(s) it watches:
+- **MariaDB cluster**: the [MariaDB Operator](https://github.com/mariadb-operator/mariadb-operator) (installed by `kub-up` from `mariadb-operator-26.10.2/manifests.min.yaml`, same 5-attempt linear-backoff retry as cert-manager) owns the full cluster lifecycle — StatefulSet, Services, replication, TLS, and crucially the **cert-triggered rolling restart with primary-failover orchestration**. When the server Certificate rotates, the operator's cert-controller sees the Secret UPDATE and rolls pods with: promote replica → fence the demoted primary → switch the `mysql-primary` Service endpoints → bring the replaced pod back as the new replica. Semi-sync `AfterSync` on the MariaDB resource (`kubernetes/mysql/mariadb.yaml`) means transactions committed on the old primary are durable at the replica before the switchover, so there is no in-flight-transaction loss window.
+- **Everything else**: [stakater/reloader](https://github.com/stakater/Reloader) (installed by `kub-up` from `v1.4.23`, same retry shape) watches the Secrets each cert-consuming workload names in a `secret.reloader.stakater.com/reload` annotation and issues `kubectl rollout restart` on UPDATE.
 
-| Workload | Secret(s) watched |
-|---|---|
-| `mysql-sts` StatefulSet | `mysql-server-certs`, `mysql-replication-certs` |
-| `redis` StatefulSet | `redis-certs` |
-| `sentinel` StatefulSet | `sentinel-certs` |
-| `openemr` Deployment (default + both encryption-at-rest examples) | `mysql-openemr-client-certs`, `redis-openemr-client-certs` |
-| `phpmyadmin` Deployment | `phpmyadmin-server-certs`, `mysql-phpmyadmin-client-certs` |
-| `nfs-server` Deployment | `nfs-server-certs` |
-| `nfs-stunnel-client` DaemonSet | `nfs-client-certs` |
+Per-workload reload path:
 
-On any UPDATE to a listed Secret, reloader issues a `kubectl rollout restart` on the referencing workload. The resulting rolling restart (Recreate for the single-replica Deployments like openemr-default + nfs-server; RollingUpdate for the StatefulSets and gocryptfs-variant openemr) picks up the new cert on pod start.
+| Workload | Reload mechanism | Secret(s) watched |
+|---|---|---|
+| `mysql` MariaDB cluster | **MariaDB Operator cert-controller** (not reloader) | operator-managed (`mysql-server-cert`) |
+| `redis` StatefulSet | stakater/reloader | `redis-certs` |
+| `sentinel` StatefulSet | stakater/reloader | `sentinel-certs` |
+| `openemr` Deployment (default + both encryption-at-rest examples) | stakater/reloader | `mysql-openemr-client-certs`, `redis-openemr-client-certs` |
+| `phpmyadmin` Deployment | stakater/reloader | `phpmyadmin-server-certs`, `mysql-phpmyadmin-client-certs` |
+| `nfs-server` Deployment | stakater/reloader | `nfs-server-certs` |
+| `nfs-stunnel-client` DaemonSet | stakater/reloader | `nfs-client-certs` |
 
-**The 168h duration + 48h renewBefore shape produces a rotation cycle every ~5 days per certificate.** Each rotation produces real, measurable downtime on multiple workloads — zero-downtime cert rotation is not achievable on the current architecture without further changes (see *HA follow-up* note at the end of this subsection).
+### Data-plane impact during rotation, by workload
 
-Data-plane impact during rotation, by workload:
-
-- **mysql-sts** (StatefulSet, replicas: 2, RollingUpdate). The `mysql` Service is **headless and selects only `mysql-sts-0`** (the primary — see `kubernetes/mysql/service.yaml` for the `statefulset.kubernetes.io/pod-name: mysql-sts-0` selector and its explanatory comment: the replica exists solely to serve mariadb replication, not client traffic). When mysql-sts-0 rolls during cert rotation there is no backend for the mysql Service — **both reads and writes fail for the ~10-30s primary pod cutover** (Terminating until new pod is Ready). Standard MariaDB replication does not auto-promote the replica. The CI rotation test (`.github/workflows/test-kubernetes.yml` — "Verify cert rotation triggers workload reload") runs a 1 Hz mTLS probe through this Service across the rotation window and reports the observed outage; it does not fail on the outage (the outage is a known trade-off of this architecture, not a regression).
+- **MariaDB cluster**. The operator orchestrates failover: the `mysql-primary` Service endpoints track the current primary pod, and endpoint propagation to kube-proxy is bounded by the operator's promotion-before-termination sequence. Sub-second reconnect window from the client's perspective; zero in-flight-transaction loss thanks to semi-sync `AfterSync`. Validated end-to-end by the CI rotation test (`.github/workflows/test-kubernetes.yml` — "Verify cert rotation triggers workload reload and preserves data plane"), which runs a 1 Hz mTLS probe from openemr through `mysql-primary` across the rotation window and asserts **zero FAIL iterations**.
 - **redis + sentinel** StatefulSets. Sentinel's `down-after-milliseconds: 5000` means a failing primary takes up to 5 s to be marked down before Sentinel re-elects, plus the failover-and-reconnect window itself. Sessions **can be lost** when the current master rolls — Redis replication is asynchronous, so writes accepted by the retiring master but not yet replicated to the promoted replica do not survive the failover. Operators should assume rotation may drop in-flight session state and plan for user re-login where it matters (openemr tolerates this; the user sees a login screen).
 - **nfs-server** Deployment (single replica, Recreate). The csi-driver-nfs mounts on each node reconnect automatically through the stunnel-client DaemonSet. Pod I/O waiting on an NFS read during the cutover blocks for ~5-10s then resumes.
 - **nfs-stunnel-client** DaemonSet. One pod per node; rolling restart replaces them one node at a time by default. During a node's stunnel-client cutover, that node's openemr pods see the same ~5-10s NFS blip as above.
 - **phpmyadmin** Deployment (single replica). Admin-only tool; cert rotation causes a few seconds of 503 for users currently in the UI.
-- **openemr** default Deployment (`openemr/deployment.yaml`). Uses `strategy: Recreate` because of first-boot leader election via the shared sites volume. Cert rotation causes all openemr pods to go down before new ones come up — a few seconds of user-visible outage per rotation cycle. Operators past first-boot can flip this Deployment specifically to `strategy: RollingUpdate` to eliminate the user-visible outage; the first-boot concern no longer applies once a cluster has completed its initial seeding.
-- **openemr LUKS example** (`kubernetes/examples/encryption-at-rest-luks/openemr-deployment-luks.yaml`). **Must stay `strategy: Recreate`** — the LUKS container file is a single-writer resource (one pod holds the dm-crypt mapping at a time) and a rolling update would attempt to open the mapping from a second pod before the first released it, causing an opaque mount failure. *Caveat on single-writer safety:* `strategy: Recreate` is a scheduling-time hint, not a guarantee — it prevents the scheduler from creating a new pod until the previous one reports terminated, but it does NOT fence a pod that has been partitioned off the network, hung mid-SIGTERM, or force-deleted with `--grace-period=0 --force`. In those edge cases the old pod can still hold the dm-crypt mapping while k8s schedules a new pod that attempts to open it — the same outcome a rolling update would produce. Operators who need stronger-than-Recreate single-writer semantics should pair this with a fencing mechanism (e.g. a storage-level lease the sidecar acquires before `cryptsetup luksOpen`, enforced by the storage backend). Cert rotation outage here is unavoidable at the Deployment layer; operators who need zero-downtime cert rotation on openemr should prefer the default or gocryptfs examples.
-- **openemr gocryptfs example** (`kubernetes/examples/encryption-at-rest-gocryptfs/openemr-deployment-gocryptfs.yaml`). Already `strategy: RollingUpdate` (gocryptfs's `-sharedstorage` mode supports concurrent mounts). Cert rotation produces no user-visible openemr outage; the mysql cutout below applies.
+- **openemr** default Deployment (`openemr/deployment.yaml`). Uses `strategy: RollingUpdate` (`maxSurge: 1, maxUnavailable: 0`), so cert rotation rolls pods one at a time with at least `replicas-1` Ready throughout — no user-visible outage. openemr's own SWARM_MODE leader-election handles concurrent-boot safely (exercised continuously by the gocryptfs example which has shipped the same strategy since day one).
+- **openemr LUKS example** (`kubernetes/examples/encryption-at-rest-luks/openemr-deployment-luks.yaml`). **Must stay `strategy: Recreate`** — the LUKS container file is a single-writer resource (one pod holds the dm-crypt mapping at a time) and a rolling update would attempt to open the mapping from a second pod before the first released it, causing an opaque mount failure. *Caveat on single-writer safety:* `strategy: Recreate` is a scheduling-time hint, not a guarantee — it prevents the scheduler from creating a new pod until the previous one reports terminated, but it does NOT fence a pod that has been partitioned off the network, hung mid-SIGTERM, or force-deleted with `--grace-period=0 --force`. In those edge cases the old pod can still hold the dm-crypt mapping while k8s schedules a new pod that attempts to open it. Operators who need stronger-than-Recreate single-writer semantics should pair this with a storage-level lease the sidecar acquires before `cryptsetup luksOpen`. Cert rotation outage here is a brief single-pod blip; operators who want zero-downtime openemr cert rotation should prefer the default or gocryptfs examples.
+- **openemr gocryptfs example** (`kubernetes/examples/encryption-at-rest-gocryptfs/openemr-deployment-gocryptfs.yaml`). `strategy: RollingUpdate` (gocryptfs's `-sharedstorage` mode supports concurrent mounts). Cert rotation produces no user-visible openemr outage.
 
-**HA follow-up**: eliminating the mysql ~10-30s outage requires introducing a MariaDB auto-failover layer. Any workable approach needs THREE parts: (1) automatic promotion of the replica to primary when the current primary rolls, (2) fencing of the old primary so split-brain is impossible when the old pod resumes after its roll completes, and (3) a durability story for the replication-lag gap. On (3): standard MariaDB replication is asynchronous, so transactions that committed on the old primary but had not yet replicated to the replica at promotion time are lost on failover. Options are semi-synchronous replication (bounded lag, cost: write latency), MariaDB Galera (synchronous multi-master, cost: operational complexity and write-throughput ceiling), or explicitly accepting the loss window (cost: typically seconds of writes per failover). Workable combinations for all three parts include orchestrator-style supervisors (e.g. [Orchestrator](https://github.com/openark/orchestrator), [MariaDB Operator](https://github.com/mariadb-operator/mariadb-operator)) or a session-aware proxy in front (e.g. MaxScale, ProxySQL) that owns primary resolution AND fencing of the demoted pod. Routing the Service to both pods WITHOUT promotion + fencing is not an HA solution — MariaDB replicas default to `read_only=OFF`, so a client that happens to land on the replica would get its write accepted by a server that is not the current primary, causing write-divergence (worse than a rejected write; the data silently never reaches the real primary and is lost at the next failover). That's a separate architectural change, tracked separately. The current PR wires in the reload mechanism and documents the outage honestly.
+### MariaDB HA architecture details
 
-**CA rotation is a separate concern.** The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certificate.yaml`) is NOT annotated for reload: rotating the CA invalidates every issued cert and every trusted-CA list downstream peers hold, which requires an overlap period where both the old and new CA are trusted simultaneously. cert-manager supports CA rotation via `trust-manager` or manual two-phase rollout; neither is wired here. Plan for CA rotation as a scheduled maintenance activity, not an automated event.
+The MariaDB Operator approach implements the three-part HA contract that makes zero-downtime rotation possible on an SQL backend:
+
+1. **Automatic promotion**: when the primary pod rolls, the operator promotes the replica to primary (sets `read_only=OFF` on the new primary, runs `CHANGE MASTER TO` on the old one when it comes back) before terminating the old pod.
+2. **Fencing**: the operator switches the `mysql-primary` Service endpoint off the old pod before the old pod stops accepting writes, and ensures the old pod rejoins as a replica (`read_only=ON`) when it returns. Split-brain is not possible because only one pod is ever addressable as `mysql-primary` at a time.
+3. **Durability**: semi-synchronous replication with `waitPoint: AfterSync` means the primary blocks commit until the replica has ACKed the binlog write. Transactions committed on the old primary are durable at the new primary before failover begins — no committed-but-not-replicated window.
+
+Alternative stacks that satisfy the same three-part contract would also work: MaxScale or ProxySQL in front of a hand-rolled StatefulSet, [Orchestrator](https://github.com/openark/orchestrator), Galera for synchronous multi-master. The Operator is this stack's choice because it manages the full cluster declaratively (StatefulSet, Services, TLS via cert-manager, backup wiring) rather than requiring multiple components to cooperate.
+
+### CA rotation is a separate concern
+
+The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certificate.yaml`) is NOT annotated for reload: rotating the CA invalidates every issued cert and every trusted-CA list downstream peers hold, which requires an overlap period where both the old and new CA are trusted simultaneously. cert-manager supports CA rotation via `trust-manager` or manual two-phase rollout; neither is wired here. Plan for CA rotation as a scheduled maintenance activity, not an automated event.
 
 # Connection Security
 
