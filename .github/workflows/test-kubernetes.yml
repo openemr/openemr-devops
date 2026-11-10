@@ -138,16 +138,20 @@ jobs:
           # Service connection, so this is a clean negative test.
           #
           # Strict assertion: capture both the client output AND the
-          # exit code. The only acceptable outcomes are:
-          #   * Non-zero exit AND stderr contains an access-denied-
-          #     like error (confirms server rejected on X509 grounds
-          #     or an auth-related rejection).
-          # Anything else — notably, "SELECT 1 returned `1` with
-          # exit 0" — is a hard fail: it means the connection
-          # succeeded without presenting a cert, which is the exact
-          # regression this test guards against.
-          OUTPUT=$(kubectl exec mysql-0 -- mariadb -h mysql-primary -u openemr -popenemr -e "SELECT 1" 2>&1 || true)
-          EXIT=$(kubectl exec mysql-0 -- sh -c 'mariadb -h mysql-primary -u openemr -popenemr -e "SELECT 1" >/dev/null 2>&1; echo $?')
+          # exit code from a SINGLE kubectl exec attempt (not two
+          # separate connections — each attempt is its own TCP
+          # handshake and a transient reject vs accept flip between
+          # them would race the test). The only acceptable outcome:
+          # non-zero exit AND stderr matches an X509-specific
+          # rejection shape. A plain "connection refused" (network
+          # error) would NOT satisfy the assertion — the point is
+          # to prove the SERVER rejected the connection on
+          # X509 grounds, not that the pod wasn't reachable.
+          set +e
+          OUTPUT=$(kubectl exec mysql-0 -- sh -c 'mariadb -h mysql-primary -u openemr -popenemr -e "SELECT 1" 2>&1; echo "---EXIT=$?---"')
+          set -e
+          EXIT=$(echo "$OUTPUT" | sed -n 's/^---EXIT=\([0-9]*\)---$/\1/p' | tail -1)
+          OUTPUT=$(echo "$OUTPUT" | grep -v '^---EXIT=')
           if echo "$OUTPUT" | grep -q "^1$"; then
             echo "FAIL: MySQL accepted the connection and returned '1' — X509 not enforced"
             echo "--- client output ---"
@@ -160,8 +164,15 @@ jobs:
             echo "$OUTPUT"
             exit 1
           fi
-          if ! echo "$OUTPUT" | grep -qiE 'access denied|permission denied|ssl|tls|x509|require|error'; then
-            echo "FAIL: client failed but stderr does not include an access-denied-like error — unexpected failure shape"
+          # X509-specific rejection patterns. MariaDB server returns
+          # "Access denied for user 'openemr'@'<host>'" when REQUIRE
+          # X509 is set and the client presents no cert. Newer
+          # MariaDB builds may also return a more specific error.
+          # Generic "error" is NOT an acceptable match — a network
+          # failure between the two pods would produce "error" in
+          # stderr without proving X509 enforcement.
+          if ! echo "$OUTPUT" | grep -qiE "access denied for user 'openemr'|x509|require.*(x509|cert)"; then
+            echo "FAIL: client failed but rejection shape is not X509-specific (saw generic error — could be network, not cert enforcement)"
             echo "--- client output ---"
             echo "$OUTPUT"
             exit 1
@@ -373,17 +384,29 @@ jobs:
           ) &
           PROBE_PID=$!
 
-          echo "--- wait for probe baseline (first OK) ---"
+          echo "--- wait for probe baseline (>=3 OK iterations) ---"
+          # Accumulate at least 3 successful probe iterations BEFORE
+          # triggering cert renewal. This guarantees the test has
+          # meaningful pre-cutover signal to compare against, so a
+          # "operator rolled too fast for the probe to notice" case
+          # (observed: operator failover completes in <2s, probe at
+          # 1 Hz catches it in a single iteration) still produces
+          # a TOTAL >=3 with at least 3 pre-cutover + some during/
+          # post-cutover iterations.
           for _ in $(seq 1 30); do
-            if grep -q ' OK$' /tmp/probe.log 2>/dev/null; then break; fi
+            OK_SO_FAR=$(grep -c ' OK$' /tmp/probe.log 2>/dev/null || true)
+            if [ "${OK_SO_FAR:-0}" -ge 3 ]; then break; fi
             sleep 1
           done
-          if ! grep -q ' OK$' /tmp/probe.log 2>/dev/null; then
-            echo "FAIL: probe never reached a successful baseline in 30s"
+          OK_SO_FAR=$(grep -c ' OK$' /tmp/probe.log 2>/dev/null || true)
+          if [ "${OK_SO_FAR:-0}" -lt 3 ]; then
+            echo "FAIL: probe never accumulated 3 OK iterations in 30s (pre-cutover baseline insufficient)"
             tail -20 /tmp/probe.log || true
             touch /tmp/probe.stop ; wait "$PROBE_PID" 2>/dev/null || true
             exit 1
           fi
+          BASELINE_TS=$(tail -1 /tmp/probe.log | awk '{print $1}')
+          echo "Baseline complete at ts=$BASELINE_TS ($OK_SO_FAR OK iterations)"
 
           echo "--- force cert-manager re-issue via cmctl renew ---"
           cmctl renew "$SERVER_CERT"
@@ -428,6 +451,7 @@ jobs:
             exit 1
           fi
           echo "PASS: mysql StatefulSet rolled (gen $OLD_GEN -> $NEW_GEN)"
+          GEN_CHANGE_TS=$(date +%s)
           # Skip `kubectl rollout status statefulset/mysql` — the
           # operator uses updateStrategy: OnDelete on its managed
           # StatefulSet (primary failover needs operator
@@ -440,6 +464,7 @@ jobs:
           echo "--- wait for operator to report Ready after rotation ---"
           kubectl wait --for=condition=Ready mariadb/mysql --timeout=300s
           echo "PASS: operator reports Ready post-rotation (replication re-established)"
+          ROTATION_COMPLETE_TS=$(date +%s)
 
           echo "--- stop probe + evaluate data-plane availability ---"
           touch /tmp/probe.stop
@@ -452,17 +477,24 @@ jobs:
           # populated throughout; the 3-retry probe absorbs kube-proxy
           # microjitter. Zero FAIL is the real target.
           #
-          # TOTAL is bounded below to make sure we have SOME signal
-          # (an operator that races past every probe iteration before
-          # any iteration completes would be a bug, not a pass). The
-          # floor is 3 rather than 10 because the operator's failover
-          # is fast: CI observed ~5s total rotation window (cert
-          # rotate + StatefulSet roll + replication catch-up), which
-          # at 1 Hz produces ~5 iterations. 3 is enough to prove the
-          # probe actually ran at least once pre-cutover, once during,
-          # and once post-cutover.
+          # Lower bound: the probe accumulated >=3 OK iterations
+          # BEFORE cmctl renew (enforced above), so TOTAL must be
+          # >=3 here. Operator failover is faster than the probe's
+          # 1 Hz cadence (CI observed ~2s rotation window end-to-end),
+          # so pre-cutover baseline samples dominate TOTAL.
           if [ "$TOTAL" -lt 3 ]; then
-            echo "FAIL: probe window too short — expected >=3 iterations, got $TOTAL (probe may not have started or operator rolled instantly)"
+            echo "FAIL: probe window too short — expected >=3 iterations, got $TOTAL (probe may not have started)"
+            exit 1
+          fi
+          # Liveness check: probe must still have been running at or
+          # after the StatefulSet generation change. If the probe
+          # died early (e.g., openemr pod crashed, kubectl exec
+          # permanently failing), we'd see probe-last-ts BEFORE
+          # gen-change and miss a real outage silently.
+          LAST_PROBE_TS=$(tail -1 /tmp/probe.log | awk '{print $1}')
+          if [ "${LAST_PROBE_TS:-0}" -lt "${GEN_CHANGE_TS:-0}" ]; then
+            echo "FAIL: probe stopped recording before the StatefulSet rolled (last_probe=$LAST_PROBE_TS gen_change=$GEN_CHANGE_TS) — probe died before it could observe the rotation window"
+            tail -20 /tmp/probe.log
             exit 1
           fi
           if [ "$FAIL_COUNT" -gt 0 ]; then
