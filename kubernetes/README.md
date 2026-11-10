@@ -321,20 +321,32 @@ By default, MariaDB connections use **mTLS (mutual TLS)** with X509 client certi
 
 Enforcement now lives on the `MariaDB` resource (`mysql/mariadb.yaml`), not on checked-in SQL files. The operator reads `spec.tls` and turns it into server-wide `require_secure_transport` / X509-required enforcement; the hand-rolled `mysql/configmap.yaml` with `primary.sql` / `secondary.sql` is gone — replication itself is now operator-managed. Replication cert material is likewise handled by the operator via `spec.replication` + `spec.tls`, so there is no `MASTER_SSL_*` wiring to edit.
 
+> **Pre-existing account caveat.** OpenEMR's container bootstrap creates the `openemr` DB account with a `REQUIRE X509` clause on first boot, driven by `FORCE_DATABASE_X509_CONNECT`. Because that clause is set at `CREATE USER` time and lives on the per-account GRANT, changing the deployment env var later does NOT alter the existing account — the user will still `REQUIRE X509` and reject client-cert-less connections even after a server-side downgrade. The downgrade steps below include an explicit `ALTER USER … REQUIRE …` as the FIRST step on an already-bootstrapped cluster. Fresh installs that have never booted OpenEMR before can skip that step; the bootstrap will pick up the new env var on first run.
+
 ### Downgrade to TLS (encrypted, no client certs)
-1. `mysql/mariadb.yaml`: Under `spec.tls`, remove `clientCertIssuerRef` (leave `enabled: true` and `serverCertIssuerRef` — the server still presents a cert, but no longer requires clients to present one). The operator will reconcile the `MariaDB` resource on apply.
-2. `openemr/deployment.yaml`: Change `FORCE_DATABASE_X509_CONNECT` to `FORCE_DATABASE_SSL_CONNECT` and remove the `tls.crt` (mysql-cert) and `tls.key` (mysql-key) items from the `mysql-openemr-client-certs` volume
-3. `phpmyadmin/configmap.yaml`: Comment out or remove the `ssl_cert` and `ssl_key` lines
-4. `phpmyadmin/deployment.yaml`: Remove the `tls.crt` and `tls.key` items from the `mysql-phpmyadmin-client-certs` volume
+1. **On an already-bootstrapped cluster**, connect to MariaDB as a privileged account and run:
+   ```sql
+   ALTER USER 'openemr'@'%' REQUIRE SSL;
+   -- If phpmyadmin's account was also created with REQUIRE X509, repeat for it.
+   ```
+2. `mysql/mariadb.yaml`: Under `spec.tls`, remove `clientCertIssuerRef` (leave `enabled: true` and `serverCertIssuerRef` — the server still presents a cert, but no longer requires clients to present one). The operator will reconcile the `MariaDB` resource on apply.
+3. `openemr/deployment.yaml`: Change `FORCE_DATABASE_X509_CONNECT` to `FORCE_DATABASE_SSL_CONNECT` and remove the `tls.crt` (mysql-cert) and `tls.key` (mysql-key) items from the `mysql-openemr-client-certs` volume
+4. `phpmyadmin/configmap.yaml`: Comment out or remove the `ssl_cert` and `ssl_key` lines
+5. `phpmyadmin/deployment.yaml`: Remove the `tls.crt` and `tls.key` items from the `mysql-phpmyadmin-client-certs` volume
 
 ### Downgrade to TCP (no encryption)
 Perform all the TLS downgrade steps above, then additionally:
-1. `mysql/mariadb.yaml`: Remove the entire `spec.tls` block (operator stops issuing server/client certs and stops requiring TLS at all). The server will accept plain TCP connections after the operator reconciles.
-2. `openemr/deployment.yaml`: Remove the `FORCE_DATABASE_SSL_CONNECT` environment variable and remove the entire `mysql-openemr-client-certs` volume and volumeMount
-3. `phpmyadmin/configmap.yaml`: Set `ssl` to `false`, remove `ssl_ca`, and remove `ssl_verify`
-4. `phpmyadmin/deployment.yaml`: Remove the entire `mysql-phpmyadmin-client-certs` volume and volumeMount
-5. `certs/mysql-openemr-client.yaml`, `certs/mysql-phpmyadmin-client.yaml`: These cert-manager Certificate resources can be removed entirely (operator-managed server/internal-client certs are already covered by step 1 above)
-6. `kub-up` and `kub-down` (and `.bat` variants): Remove the mysql client-cert references (operator-managed cert files no longer exist on the removed `spec.tls` path)
+1. **On an already-bootstrapped cluster**, connect to MariaDB as a privileged account and run:
+   ```sql
+   ALTER USER 'openemr'@'%' REQUIRE NONE;
+   -- If phpmyadmin's account was altered in the TLS step, repeat for it.
+   ```
+2. `mysql/mariadb.yaml`: Set `spec.tls.enabled: false` (explicit disable is clearer than removing the whole block — operator still reconciles and emits an event confirming TLS is off). Leave or remove the issuerRef fields; `enabled: false` is what the operator keys on.
+3. `openemr/deployment.yaml`: Remove the `FORCE_DATABASE_SSL_CONNECT` environment variable and remove the entire `mysql-openemr-client-certs` volume and volumeMount
+4. `phpmyadmin/configmap.yaml`: Set `ssl` to `false`, remove `ssl_ca`, and remove `ssl_verify`
+5. `phpmyadmin/deployment.yaml`: Remove the entire `mysql-phpmyadmin-client-certs` volume and volumeMount
+6. `certs/mysql-openemr-client.yaml`, `certs/mysql-phpmyadmin-client.yaml`: These cert-manager Certificate resources can be removed entirely (operator-managed server/internal-client certs are already covered by step 2 above)
+7. `kub-up` and `kub-down` (and `.bat` variants): Remove the mysql client-cert references (operator-managed cert files no longer exist on the `spec.tls.enabled: false` path)
 
 ## Redis Connection Security
 By default, Redis connections use **mTLS (mutual TLS)** with X509 client certificate verification. OpenEMR uses phpredis with Sentinel discovery for automatic failover (`SESSION_STORAGE_MODE=predis-sentinel`). All certificates are managed by cert-manager. To downgrade the connection security:
