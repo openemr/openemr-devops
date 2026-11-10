@@ -25,7 +25,11 @@ spec:
     - port: 443
 ---
 # MySQL: allow ingress from OpenEMR and phpMyAdmin on 3306,
-# and from other MySQL pods for replication
+# from other MySQL pods for replication, and from MariaDB Operator
+# pods (operator + cert-controller + webhook) for status probes +
+# reconciliation (the operator calls mysql-primary for health
+# checks and runs SQL commands like CHANGE MASTER TO / promotion
+# queries during failover).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -47,6 +51,9 @@ spec:
     - podSelector:
         matchLabels:
           app: mysql
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: mariadb-operator
     ports:
     - port: 3306
 ---

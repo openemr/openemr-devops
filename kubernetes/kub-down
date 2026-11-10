@@ -1,11 +1,16 @@
 #!/bin/sh
 
+# Teardown counterpart to kub-up. Deletes in reverse-dependency order:
+# workloads -> infra operators -> cluster-wide resources (cert-manager,
+# reloader, MariaDB Operator). The three operators are torn down here
+# because this stack installs them; operators who already run them
+# cluster-wide for other workloads should remove those delete calls
+# below so this teardown doesn't disturb their other stacks.
+
 kubectl delete \
     -f certs/selfsigned-issuer.yaml \
     -f certs/ca-certificate.yaml \
     -f certs/ca-issuer.yaml \
-    -f certs/mysql.yaml \
-    -f certs/mysql-replication.yaml \
     -f certs/mysql-openemr-client.yaml \
     -f certs/phpmyadmin.yaml \
     -f certs/mysql-phpmyadmin-client.yaml \
@@ -15,14 +20,23 @@ kubectl delete \
     -f certs/nfs-server.yaml \
     -f certs/nfs-client.yaml
 
+# MariaDB resource first (operator cleans up StatefulSet + Services +
+# its own cert-manager Certificates on resource deletion), then the
+# credential Secrets, then the operator itself.
+kubectl delete \
+    -f mysql/mariadb.yaml \
+    -f mysql/secret.yaml \
+    -f mysql/replication-secret.yaml
+
+kubectl delete -f https://github.com/mariadb-operator/mariadb-operator/releases/download/mariadb-operator-26.10.2/manifests.min.yaml
+
+# stakater/reloader (installed by kub-up).
+kubectl delete -f https://raw.githubusercontent.com/stakater/Reloader/v1.4.23/deployments/kubernetes/reloader.yaml
+
+# cert-manager (installed by kub-up).
 kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 kubectl delete \
-    -f mysql/configmap.yaml \
-    -f mysql/secret.yaml \
-    -f mysql/replication-secret.yaml \
-    -f mysql/service.yaml \
-    -f mysql/statefulset.yaml \
     -f redis/secret.yaml \
     -f redis/configmap-main.yaml \
     -f redis/configmap-acl.yaml \

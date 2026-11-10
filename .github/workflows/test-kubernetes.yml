@@ -137,15 +137,38 @@ jobs:
           # in a way that would accidentally present one for this
           # Service connection, so this is a clean negative test.
           #
-          # Any output matching "^1$" would mean X509 was NOT
-          # enforced. Reject any stderr that includes successful
-          # exit codes too — some mariadb-client builds swallow
-          # errors by default.
-          if kubectl exec mysql-0 -- mariadb -h mysql-primary -u openemr -popenemr -e "SELECT 1" 2>&1 | grep -q "^1$"; then
-            echo "ERROR: MySQL accepted connection without client cert — X509 not enforced"
+          # Strict assertion: capture both the client output AND the
+          # exit code. The only acceptable outcomes are:
+          #   * Non-zero exit AND stderr contains an access-denied-
+          #     like error (confirms server rejected on X509 grounds
+          #     or an auth-related rejection).
+          # Anything else — notably, "SELECT 1 returned `1` with
+          # exit 0" — is a hard fail: it means the connection
+          # succeeded without presenting a cert, which is the exact
+          # regression this test guards against.
+          OUTPUT=$(kubectl exec mysql-0 -- mariadb -h mysql-primary -u openemr -popenemr -e "SELECT 1" 2>&1 || true)
+          EXIT=$(kubectl exec mysql-0 -- sh -c 'mariadb -h mysql-primary -u openemr -popenemr -e "SELECT 1" >/dev/null 2>&1; echo $?')
+          if echo "$OUTPUT" | grep -q "^1$"; then
+            echo "FAIL: MySQL accepted the connection and returned '1' — X509 not enforced"
+            echo "--- client output ---"
+            echo "$OUTPUT"
+            exit 1
+          fi
+          if [ "$EXIT" = "0" ]; then
+            echo "FAIL: mariadb client exited 0 despite connection without cert — unexpected"
+            echo "--- client output ---"
+            echo "$OUTPUT"
+            exit 1
+          fi
+          if ! echo "$OUTPUT" | grep -qiE 'access denied|permission denied|ssl|tls|x509|require|error'; then
+            echo "FAIL: client failed but stderr does not include an access-denied-like error — unexpected failure shape"
+            echo "--- client output ---"
+            echo "$OUTPUT"
             exit 1
           fi
           echo "PASS: MySQL correctly rejected connection without client cert (X509 enforced)"
+          echo "--- rejection output (expected) ---"
+          echo "$OUTPUT"
 
       - name: Get OpenEMR pod name
         id: openemr-pod
@@ -428,8 +451,18 @@ jobs:
           # Operator failover keeps mysql-primary Service endpoints
           # populated throughout; the 3-retry probe absorbs kube-proxy
           # microjitter. Zero FAIL is the real target.
-          if [ "$TOTAL" -lt 10 ]; then
-            echo "FAIL: probe window too short — expected >=10 iterations, got $TOTAL"
+          #
+          # TOTAL is bounded below to make sure we have SOME signal
+          # (an operator that races past every probe iteration before
+          # any iteration completes would be a bug, not a pass). The
+          # floor is 3 rather than 10 because the operator's failover
+          # is fast: CI observed ~5s total rotation window (cert
+          # rotate + StatefulSet roll + replication catch-up), which
+          # at 1 Hz produces ~5 iterations. 3 is enough to prove the
+          # probe actually ran at least once pre-cutover, once during,
+          # and once post-cutover.
+          if [ "$TOTAL" -lt 3 ]; then
+            echo "FAIL: probe window too short — expected >=3 iterations, got $TOTAL (probe may not have started or operator rolled instantly)"
             exit 1
           fi
           if [ "$FAIL_COUNT" -gt 0 ]; then
@@ -490,16 +523,24 @@ jobs:
           kubectl get pods -o wide
           echo "=== Events ==="
           kubectl get events --sort-by='.lastTimestamp' | tail -30
+          echo "=== MariaDB resource status ==="
+          kubectl get mariadb mysql -o yaml 2>&1 | tail -80 || echo "(mariadb resource not found or get failed — printing raw error above for diagnosis)"
+          echo "=== mariadb-operator Deployment logs ==="
+          kubectl logs deployment/mariadb-operator --tail=60 2>&1 | tail -60 || echo "(mariadb-operator logs unavailable — printing raw error above)"
           echo "=== OpenEMR Logs ==="
-          kubectl logs -l name=openemr --tail=50 2>/dev/null || true
-          echo "=== MySQL-0 Logs ==="
-          kubectl logs mysql-sts-0 --tail=50 2>/dev/null || true
-          echo "=== MySQL-1 Logs ==="
-          kubectl logs mysql-sts-1 --tail=50 2>/dev/null || true
+          kubectl logs -l name=openemr --tail=50 2>&1 | tail -50 || echo "(openemr logs unavailable)"
+          echo "=== mysql-0 (main container) Logs ==="
+          # Operator pods have 2 containers: mariadb + agent. -c mariadb
+          # pins the one with mysqld's actual output. 2>&1 | tail (not
+          # 2>/dev/null) lets a kubectl-level error surface instead of
+          # silently printing nothing.
+          kubectl logs mysql-0 -c mariadb --tail=50 2>&1 | tail -50 || echo "(mysql-0 logs unavailable — pod may not exist or operator has not created it)"
+          echo "=== mysql-1 (main container) Logs ==="
+          kubectl logs mysql-1 -c mariadb --tail=50 2>&1 | tail -50 || echo "(mysql-1 logs unavailable)"
           echo "=== Redis-0 Logs ==="
-          kubectl logs redis-0 --tail=50 2>/dev/null || true
+          kubectl logs redis-0 --tail=50 2>&1 | tail -50 || echo "(redis-0 logs unavailable)"
           echo "=== Sentinel Logs ==="
-          kubectl logs sentinel-0 --tail=50 2>/dev/null || true
+          kubectl logs sentinel-0 --tail=50 2>&1 | tail -50 || echo "(sentinel-0 logs unavailable)"
           # kubectl logs -l selector drops the -c container flag silently
           # — need an explicit pod name. Fetch the nfs-server pod name
           # first, then both containers in turn.

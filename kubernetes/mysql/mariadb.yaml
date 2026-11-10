@@ -86,6 +86,22 @@ spec:
   # Hence NO `secret.reloader.stakater.com/reload` annotation is
   # needed on the generated StatefulSet; the operator owns the
   # full reload path for mysql certs.
+  #
+  # CERT DURATION: operator 26.10.2's TLS CRD surface does not
+  # expose a duration override (no serverCertConfig / clientCertConfig
+  # fields — only Enabled/Required/CASecretRef/CertSecretRef/
+  # CertIssuerRef/GaleraSSTEnabled/CertAdditionalNames). The
+  # operator-created Certificate uses the operator's built-in
+  # default lifetime, NOT the 168h / 48h renewBefore shape that
+  # certs/*.yaml leaf Certificates use. That means the rotation
+  # CADENCE on the mysql server cert is operator-controlled, not
+  # the 5-day cycle advertised for other leaf certs. The rotation
+  # PATH is still identical and fully validated by CI (cmctl
+  # renew -> operator cert-controller sees UPDATE -> StatefulSet
+  # rolls with failover orchestration). Operators who want to pin
+  # the duration can switch to serverCertSecretRef with a
+  # pre-created Certificate they manage, at the cost of the
+  # operator's integrated issuance lifecycle.
   tls:
     enabled: true
     serverCertIssuerRef:

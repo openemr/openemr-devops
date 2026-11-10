@@ -10,7 +10,7 @@ This directory is an **example**, not a default. It demonstrates Option 2 of the
 > [!IMPORTANT]
 > **This example downgrades openemr from 3 replicas to 1.**
 >
-> The default stack runs the openemr Deployment with `replicas: 3`. Adopting this example requires scaling that to `replicas: 1` for the duration — LUKS wraps a single ext4 filesystem that cannot be mounted read-write by two pods at once without corrupting it. If your availability model depends on multi-replica openemr, Option 1 (encrypted StorageClass) is the only in-tree answer today. See § **Multi-replica encryption-at-rest: what it would take** below for a fuller research treatment of why and what the alternatives look like.
+> The default stack runs the openemr Deployment with `replicas: 3`. Adopting this example requires scaling that to `replicas: 1` for the duration — LUKS wraps a single ext4 filesystem that cannot be mounted read-write by two pods at once without corrupting it. If your availability model depends on multi-replica openemr, the in-tree answers are the [gocryptfs sibling example](../encryption-at-rest-gocryptfs/README.md) (per-file FUSE encryption, safe for concurrent mounts via `-sharedstorage`) and Option 1 (encrypted StorageClass — see main `kubernetes/README.md`). See § **Multi-replica encryption-at-rest: what it would take** below for the full trade-off treatment.
 
 ## When to use this
 
@@ -62,7 +62,7 @@ Three possible resolutions, and why this example picks one of them:
 
 3. **Hybrid: encrypt only a non-shared subpath** (not chosen). Encrypt a leaf directory that genuinely doesn't need cross-pod sharing, leave the rest plaintext on NFS. OpenEMR's `sites/default/documents/` subtree is the obvious candidate — it holds PHI but is never written by multiple replicas simultaneously in normal operation. Rejected for the example because: (a) OpenEMR's upload code assumes POSIX semantics across the whole sites tree, so partitioning encrypted vs plaintext subpaths risks subtle write-visibility bugs; (b) "normal operation" is doing a lot of work — any admin batch job that walks `sites/` could race; (c) explaining which subpath is safe to encrypt vs not is more subtle than the manifests warrant for an example.
 
-**If your threat model requires both encryption-at-rest AND multi-replica openemr, use Option 1 (encrypted StorageClass).** Option 2 as presented here is single-replica. A per-pod LUKS pattern or a clustered-filesystem-inside-LUKS pattern is possible but out of scope for this example.
+**If your threat model requires both encryption-at-rest AND multi-replica openemr, two in-tree options cover it**: Option 1 (encrypted StorageClass — encrypts the NFS backing disk but not the NFS server pod's view) and the [gocryptfs sibling example](../encryption-at-rest-gocryptfs/README.md) (encrypts per-file inside the NFS server's view, safely mountable by multiple replicas via `-sharedstorage`). Pick the gocryptfs example if your threat model treats a compromised `nfs-server` pod as in-scope (same bar as this LUKS example); pick Option 1 if the in-cluster NFS pod is in your trust boundary and you only need protection against the backing storage itself.
 
 ## Multi-replica encryption-at-rest: what it would take
 
@@ -72,7 +72,7 @@ The single-replica constraint is a real downgrade from the default 3-replica ope
 |---|---|---|---|---|
 | **This example (LUKS + ext4)** | No | None beyond the sidecar | None | **Shipped** here |
 | **Clustered FS inside LUKS** (GFS2 or OCFS2) | Yes | DLM, STONITH fencing, cluster membership manager | None | Out of scope |
-| **FUSE transparent encryption** (`gocryptfs` shared-storage mode) | Yes | FUSE in-pod sidecar per replica | None | Candidate for a sibling example |
+| **FUSE transparent encryption** (`gocryptfs` shared-storage mode) | Yes | FUSE in-pod sidecar per replica | None | **Shipped** as [sibling example](../encryption-at-rest-gocryptfs/README.md) |
 | **Application-layer encryption** (OpenEMR encrypts PHI at write) | Yes | KMS integration (Vault / cloud KMS) | **Significant** OpenEMR code change | Belongs in an OpenEMR RFC, not devops |
 
 ### Approach details

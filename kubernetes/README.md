@@ -143,14 +143,17 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
         - Now, there are 5 replicas of OpenEMR instead of 10. Enter the `kubectl get rs` and `kubectl get pod` to see what happened.
     - This is just a quick overview of scaling. Note we just did manual scaling in the example above, but there are also options of automatic scaling for example depending on cpu use etc.
 7. Some cool replicas stuff with MariaDB. 2 statefulset replications of MariaDB (1 primary with 1 replica) are created by default by the MariaDB Operator. Change the replica count by editing the `MariaDB` resource (NOT the generated StatefulSet directly — the operator will reconcile that back):
-    - Increase replicas (after this command will have the 1 primary with 3 replicas).
+    - **Decreasing** replicas works out of the box: the operator removes the extra replica pod cleanly.
         ```bash
-        kubectl patch mariadb mysql --type=merge -p '{"spec":{"replicas":4}}'
+        # 3 -> 2 replicas total (1 primary + 1 replica)
+        kubectl patch mariadb mysql --type=merge -p '{"spec":{"replicas":2}}'
         ```
-    - Decrease replicas (after this command will have the 1 primary with 2 replicas).
+    - **Increasing** replicas requires a bootstrap path first — an operator-managed `PhysicalBackup` template that the new replica can hydrate from (otherwise the new mysqld starts empty and can't catch up on a running cluster). Configure `spec.storage.backupPolicyTemplate` + `spec.replication.replica.bootstrapFrom` on the `MariaDB` resource BEFORE patching replicas up, then:
         ```bash
+        # after bootstrapFrom is configured: 2 -> 3 replicas total
         kubectl patch mariadb mysql --type=merge -p '{"spec":{"replicas":3}}'
         ```
+      See the [MariaDB Operator scaling docs](https://github.com/mariadb-operator/mariadb-operator/blob/main/docs/replication.md) for the backup-template configuration; wiring it is operator-side setup, not something `kubectl patch` handles on its own. The default 2-replica topology (1 primary + 1 replica, bootstrapped at cluster-create time from the empty primary) works without any backup configuration — this scale-out step is only needed when going beyond that.
 8. Testing Redis Sentinel failover. Redis is configured with automatic failover via Sentinel. To test it:
     - First, check which Redis pod is the current master:
         ```bash
@@ -184,12 +187,12 @@ The default stance assumes components may be deployed across trust boundaries �
 
 ## In-transit: MariaDB connections
 
-OpenEMR ↔ MariaDB, phpMyAdmin ↔ MariaDB, and primary ↔ replica all use mTLS by default with X509 client certificate verification, plus `MASTER_SSL_VERIFY_SERVER_CERT=1` on replica connections. All certificates are managed by cert-manager.
+OpenEMR ↔ MariaDB, phpMyAdmin ↔ MariaDB, and primary ↔ replica all use mTLS by default with X509 client certificate verification. All certificates are managed by cert-manager.
 
 This provides three properties:
 
 - **Confidentiality** of database traffic regardless of whether the underlying network is trusted.
-- **Mutual authentication**: MariaDB refuses connections that don't present a valid client certificate (via `REQUIRE X509` on the GRANT statements in `mysql/configmap.yaml`). Knowing the password is not sufficient.
+- **Mutual authentication**: MariaDB refuses connections that don't present a valid client certificate. The `MariaDB` resource (`kubernetes/mysql/mariadb.yaml`) sets `spec.tls.enabled: true`, so the operator provisions the server cert via cert-manager and configures mariadb to require TLS on the server listener. OpenEMR's own first-boot creates the openemr user with `REQUIRE X509` (via `FORCE_DATABASE_X509_CONNECT=1` in `openemr/deployment.yaml`), so even an attacker with the password cannot connect without a client cert. The MariaDB Operator manages primary ↔ replica replication TLS internally with `clientCertIssuerRef`-provisioned certs, and configures replication with server-cert verification so a MITM primary is rejected.
 - **Server identity verification**: replicas refuse to follow a primary that doesn't present a cert chaining to the cluster CA, defeating man-in-the-middle replica swap attacks.
 
 In a single-cluster deployment on AWS Nitro or GCP, the confidentiality property is redundant with hypervisor-level wire encryption, but the authentication and server-identity properties are not — they have no equivalent below the application layer.
@@ -230,7 +233,9 @@ All passwords (Redis, MariaDB replication, MariaDB root) are stored in Kubernete
 
 ## Certificate reload mechanism
 
-Every leaf certificate in this stack is issued with `duration: 168h` (7 days) and `renewBefore: 48h` (2 days). cert-manager picks each one up for renewal 48h before expiry, re-issues under the same `ca-issuer` (which keeps its 10-year lifetime — rotating a CA is a separate choreography that requires trust-chain overlap and is out of scope for auto-reload), and UPDATEs the existing Kubernetes Secret with the new `tls.crt` / `tls.key` payload. The resulting cadence is roughly **every 5 days** per certificate (duration − renewBefore).
+**Explicitly-configured leaf certificates** in `kubernetes/certs/*.yaml` (the per-consumer client certs and server certs for Redis, Sentinel, NFS, phpMyAdmin) use `duration: 168h` (7 days) and `renewBefore: 48h` (2 days), producing a rotation cadence of roughly **every 5 days** per certificate (duration − renewBefore). cert-manager handles the lifecycle: 48h before expiry it re-issues the cert under the same `ca-issuer` and UPDATEs the referenced Secret's `tls.crt` / `tls.key` payload in place.
+
+**Operator-managed certificates** (the MariaDB server cert + replication-client cert, issued via `tls.serverCertIssuerRef` / `tls.clientCertIssuerRef` in `kubernetes/mysql/mariadb.yaml`) use the MariaDB Operator's own default lifetime, NOT the 168h / 48h shape above. Operator 26.10.2's TLS CRD surface doesn't expose a duration override, so the MariaDB server cert rotates on the operator's schedule rather than every 5 days. The rotation PATH is still identical (and fully validated by CI): the operator's cert-controller sees Secret UPDATE → rolls the StatefulSet with failover orchestration.
 
 Cert-manager's rotation updates the Secret but does **not** reload the running pods — mysqld, redis-server, stunnel, and the apache/openemr PHP process all parse their cert files once at startup and keep using the parsed values until the process restarts. Bridging that gap takes two separate mechanisms depending on the workload:
 
@@ -251,7 +256,7 @@ Per-workload reload path:
 
 ### Data-plane impact during rotation, by workload
 
-- **MariaDB cluster**. The operator orchestrates failover: the `mysql-primary` Service endpoints track the current primary pod, and endpoint propagation to kube-proxy is bounded by the operator's promotion-before-termination sequence. Sub-second reconnect window from the client's perspective; zero in-flight-transaction loss thanks to semi-sync `AfterSync`. Validated end-to-end by the CI rotation test (`.github/workflows/test-kubernetes.yml` — "Verify cert rotation triggers workload reload and preserves data plane"), which runs a 1 Hz mTLS probe from openemr through `mysql-primary` across the rotation window and asserts **zero FAIL iterations**.
+- **MariaDB cluster**. The operator orchestrates failover: the `mysql-primary` Service endpoints track the current primary pod, and endpoint propagation to kube-proxy is bounded by the operator's promotion-before-termination sequence. **Read availability** survives rotation with a sub-second reconnect window from the client's perspective — this is what the CI rotation test validates, via a 1 Hz `SELECT 1` mTLS probe from openemr through `mysql-primary` across the rotation window, asserting **zero FAIL iterations** (`.github/workflows/test-kubernetes.yml` — "Verify cert rotation triggers workload reload and preserves data plane"). **Write availability** during switchover is narrower: the operator locks the old primary against new writes before promoting the replica, so there is a brief write-unavailability window (typically seconds). **Durability** of committed writes depends on semi-sync `AfterSync` with `semiSyncAckTimeout: 10s` — within that budget, committed transactions are durable on the replica before failover. If the ACK timeout is reached before the replica responds, mariadb falls back to asynchronous replication for subsequent commits; writes committed during that fallback window can be lost if the primary fails before replication catches up.
 - **redis + sentinel** StatefulSets. Sentinel's `down-after-milliseconds: 5000` means a failing primary takes up to 5 s to be marked down before Sentinel re-elects, plus the failover-and-reconnect window itself. Sessions **can be lost** when the current master rolls — Redis replication is asynchronous, so writes accepted by the retiring master but not yet replicated to the promoted replica do not survive the failover. Operators should assume rotation may drop in-flight session state and plan for user re-login where it matters (openemr tolerates this; the user sees a login screen).
 - **nfs-server** Deployment (single replica, Recreate). The csi-driver-nfs mounts on each node reconnect automatically through the stunnel-client DaemonSet. Pod I/O waiting on an NFS read during the cutover blocks for ~5-10s then resumes.
 - **nfs-stunnel-client** DaemonSet. One pod per node; rolling restart replaces them one node at a time by default. During a node's stunnel-client cutover, that node's openemr pods see the same ~5-10s NFS blip as above.
@@ -265,14 +270,14 @@ Per-workload reload path:
 The MariaDB Operator approach implements the three-part HA contract that makes zero-downtime rotation possible on an SQL backend:
 
 1. **Automatic promotion**: when the primary pod rolls, the operator promotes the replica to primary (sets `read_only=OFF` on the new primary, runs `CHANGE MASTER TO` on the old one when it comes back) before terminating the old pod.
-2. **Fencing**: the operator switches the `mysql-primary` Service endpoint off the old pod before the old pod stops accepting writes, and ensures the old pod rejoins as a replica (`read_only=ON`) when it returns. Split-brain is not possible because only one pod is ever addressable as `mysql-primary` at a time.
-3. **Durability**: semi-synchronous replication with `waitPoint: AfterSync` means the primary blocks commit until the replica has ACKed the binlog write. Transactions committed on the old primary are durable at the new primary before failover begins — no committed-but-not-replicated window.
+2. **Fencing**: before promoting the replica, the operator locks the old primary into read-only mode (`SET GLOBAL read_only = ON` + revokes write capability), which is the actual fencing boundary — new transactions are refused at the server even if a client is still connected to the old primary. The operator then switches the `mysql-primary` Service endpoint off the old pod. Switching the Service endpoint alone would NOT be fencing (existing client connections persist across endpoint changes, and the old pod's TCP listener stays up until terminated); the read-only lock is what actually prevents divergent writes during the handoff. Split-brain requires a partitioned old primary whose read-only lock has been reverted by someone outside the operator's control — a scenario the single-primary architecture + operator-exclusive control of `read_only` state makes practically impossible.
+3. **Durability**: semi-synchronous replication with `waitPoint: AfterSync` means the primary blocks commit until the replica has ACKed the binlog write, so transactions committed on the old primary are durable at the new primary before failover begins. **Caveat**: `semiSyncAckTimeout: 10s` (configured in `mariadb.yaml`) bounds how long the primary will wait for the ACK. If the replica is unreachable past that budget, mariadb falls back to asynchronous replication for subsequent commits — writes committed during that fallback window can be lost if the primary fails before replication catches up. Operators with stricter durability requirements can tune the timeout higher (trading rare async-fallback for higher write latency during replica blips) or layer Galera for synchronous multi-master.
 
 Alternative stacks that satisfy the same three-part contract would also work: MaxScale or ProxySQL in front of a hand-rolled StatefulSet, [Orchestrator](https://github.com/openark/orchestrator), Galera for synchronous multi-master. The Operator is this stack's choice because it manages the full cluster declaratively (StatefulSet, Services, TLS via cert-manager, backup wiring) rather than requiring multiple components to cooperate.
 
 ### CA rotation is a separate concern
 
-The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certificate.yaml`) is NOT annotated for reload: rotating the CA invalidates every issued cert and every trusted-CA list downstream peers hold, which requires an overlap period where both the old and new CA are trusted simultaneously. cert-manager supports CA rotation via `trust-manager` or manual two-phase rollout; neither is wired here. Plan for CA rotation as a scheduled maintenance activity, not an automated event.
+The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certificate.yaml`) is NOT annotated for reload: rotating the CA invalidates every trusted-CA list downstream peers hold, which requires an overlap period where both the old and new CA are trusted simultaneously. **cert-manager 1.20 defaults**: the CA Certificate's `renewBefore` (defaulted to 15 days when unset) triggers cert-manager to re-issue 15 days before expiry, and cert-manager 1.20 rotates the CA private key by default on each renewal (`rotationPolicy: Always`) — which is what makes it a key rotation and not just a cert refresh. **What does NOT happen automatically**: existing leaf Certificates DO NOT get re-issued on a CA key rotation. They continue to be valid until their own `renewBefore` triggers, at which point cert-manager re-issues them against the new CA. During the overlap window, peers must trust BOTH CAs; the stack doesn't wire a trust-bundle manager (e.g. `trust-manager`) to automate that. Plan CA rotation as a scheduled maintenance activity: schedule it well before the CA's `renewBefore` hits, pre-stage both CAs in the trust bundles of every peer, and verify leaf certs re-issue cleanly on their next natural rotation.
 
 # Connection Security
 
