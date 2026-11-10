@@ -472,6 +472,7 @@ jobs:
           # iteration without masking a stuck probe. Catches the race
           # where rotation finished inside a probe-sleep window and
           # the next sample hasn't landed yet when we go to evaluate.
+          LAST_TS=0
           for _ in $(seq 1 15); do
             LAST_TS=$(tail -1 /tmp/probe.log | awk '{print $1}')
             if [ "${LAST_TS:-0}" -ge "${ROTATION_COMPLETE_TS:-0}" ]; then
@@ -479,6 +480,14 @@ jobs:
             fi
             sleep 1
           done
+          if [ "${LAST_TS:-0}" -lt "${ROTATION_COMPLETE_TS:-0}" ]; then
+            touch /tmp/probe.stop
+            wait "$PROBE_PID" 2>/dev/null || true
+            echo "FAIL: probe did not record any sample within 15s of rotation complete"
+            echo "      LAST_TS=${LAST_TS:-0} < ROTATION_COMPLETE_TS=${ROTATION_COMPLETE_TS:-0}"
+            echo "      probe may be stuck; data-plane evaluation would be against stale samples"
+            exit 1
+          fi
 
           echo "--- stop probe + evaluate data-plane availability ---"
           touch /tmp/probe.stop

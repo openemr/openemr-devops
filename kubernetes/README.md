@@ -147,8 +147,11 @@ OpenEMR Kubernetes orchestration. Orchestration includes OpenEMR, MariaDB, Redis
         ```bash
         # 3 -> 2 replicas total (1 primary + 1 replica)
         kubectl patch mariadb mysql --type=merge -p '{"spec":{"replicas":2}}'
-        # Later, before scaling back from 2 -> 3, inspect what PVCs exist:
-        kubectl get pvc -l app=mysql
+        # Later, before scaling back from 2 -> 3, inspect what PVCs exist.
+        # Operator-created PVCs carry its canonical selectors, not the
+        # app=mysql label we inject onto pods — name-match is the reliable
+        # way to find them:
+        kubectl get pvc | grep '^storage-mysql-'
         # If a stale PVC from the retired ordinal is present and you want
         # a fresh bootstrap (not reattach to stale data), delete it:
         #   kubectl delete pvc storage-mysql-2
@@ -296,7 +299,7 @@ The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certi
 **Operator procedure for CA rotation** (manual — the stack does not wire `trust-manager`, so steps 2 and 7 are the operator's responsibility):
 
 1. **Schedule well before `renewBefore` hits.** Budget at least 2-3 weeks ahead so there's room for the full choreography including verification.
-2. **Issue the replacement CA as an independent Certificate resource** (not by waiting for cert-manager to rotate `ca-key-pair` in place). Both CAs must exist side-by-side during the overlap window; distributing them through separate, independently-managed trust bundles avoids the trap below.
+2. **Issue the replacement CA as an independent Certificate resource** (not by waiting for cert-manager to rotate `ca-key-pair` in place). Both CAs must exist side-by-side during the overlap window; distributing them through separate, independently-managed trust bundles avoids the trap below. **Also update `certs/ca-certificate.yaml` and `certs/ca-issuer.yaml` (and anything else `kub-up` re-applies) to reference the new CA**, otherwise re-running `kub-up` at any later point will reconverge to the old `ca-key-pair` / `ca-issuer` state and undo the rotation. The checked-in manifests are the source of truth `kub-up` reapplies on every invocation.
 3. **Distribute BOTH old and new CA via peer trust bundles.** Do NOT use the `ca.crt` field inside any leaf cert Secret for staged dual-trust — cert-manager rewrites that field during every leaf renewal, so your carefully-staged dual-trust gets clobbered the next time any leaf renews. Trust bundles must be independent ConfigMaps/Secrets managed by the operator (or `trust-manager`).
 4. **Wait for every peer to have reloaded both CAs** into its trust list. Workloads that mount the trust bundle via subPath may need an explicit rollout restart — don't assume pod startup picked up the update.
 5. **Switch the `ca-issuer` Issuer to the new CA** so future leaf issuance is signed by the new CA.
@@ -316,20 +319,22 @@ The mTLS configuration above is the default. Both MariaDB and Redis connection s
 ## MariaDB Connection Security
 By default, MariaDB connections use **mTLS (mutual TLS)** with X509 client certificate verification for all connections (OpenEMR, phpMyAdmin, and replication). All certificates are managed by cert-manager. To downgrade the connection security:
 
+Enforcement now lives on the `MariaDB` resource (`mysql/mariadb.yaml`), not on checked-in SQL files. The operator reads `spec.tls` and turns it into server-wide `require_secure_transport` / X509-required enforcement; the hand-rolled `mysql/configmap.yaml` with `primary.sql` / `secondary.sql` is gone — replication itself is now operator-managed. Replication cert material is likewise handled by the operator via `spec.replication` + `spec.tls`, so there is no `MASTER_SSL_*` wiring to edit.
+
 ### Downgrade to TLS (encrypted, no client certs)
-1. `mysql/configmap.yaml`: In primary.sql, change `REQUIRE X509` to `REQUIRE SSL`. In secondary.sql, remove the `MASTER_SSL_CERT` and `MASTER_SSL_KEY` lines
+1. `mysql/mariadb.yaml`: Under `spec.tls`, remove `clientCertIssuerRef` (leave `enabled: true` and `serverCertIssuerRef` — the server still presents a cert, but no longer requires clients to present one). The operator will reconcile the `MariaDB` resource on apply.
 2. `openemr/deployment.yaml`: Change `FORCE_DATABASE_X509_CONNECT` to `FORCE_DATABASE_SSL_CONNECT` and remove the `tls.crt` (mysql-cert) and `tls.key` (mysql-key) items from the `mysql-openemr-client-certs` volume
 3. `phpmyadmin/configmap.yaml`: Comment out or remove the `ssl_cert` and `ssl_key` lines
 4. `phpmyadmin/deployment.yaml`: Remove the `tls.crt` and `tls.key` items from the `mysql-phpmyadmin-client-certs` volume
 
 ### Downgrade to TCP (no encryption)
 Perform all the TLS downgrade steps above, then additionally:
-1. `mysql/configmap.yaml`: Remove `ssl_ca`, `ssl_cert`, `ssl_key` lines from both primary.cnf and replica.cnf. In primary.sql, change `REQUIRE SSL` to nothing. In secondary.sql, remove `MASTER_SSL_CA`, `MASTER_SSL`, and `MASTER_SSL_VERIFY_SERVER_CERT` lines
+1. `mysql/mariadb.yaml`: Remove the entire `spec.tls` block (operator stops issuing server/client certs and stops requiring TLS at all). The server will accept plain TCP connections after the operator reconciles.
 2. `openemr/deployment.yaml`: Remove the `FORCE_DATABASE_SSL_CONNECT` environment variable and remove the entire `mysql-openemr-client-certs` volume and volumeMount
 3. `phpmyadmin/configmap.yaml`: Set `ssl` to `false`, remove `ssl_ca`, and remove `ssl_verify`
 4. `phpmyadmin/deployment.yaml`: Remove the entire `mysql-phpmyadmin-client-certs` volume and volumeMount
-5. `certs/mysql.yaml`, `certs/mysql-replication.yaml`, `certs/mysql-openemr-client.yaml`, `certs/mysql-phpmyadmin-client.yaml`: These cert-manager Certificate resources can be removed entirely
-6. `kub-up` and `kub-down` (and `.bat` variants): Remove the mysql cert references
+5. `certs/mysql-openemr-client.yaml`, `certs/mysql-phpmyadmin-client.yaml`: These cert-manager Certificate resources can be removed entirely (operator-managed server/internal-client certs are already covered by step 1 above)
+6. `kub-up` and `kub-down` (and `.bat` variants): Remove the mysql client-cert references (operator-managed cert files no longer exist on the removed `spec.tls` path)
 
 ## Redis Connection Security
 By default, Redis connections use **mTLS (mutual TLS)** with X509 client certificate verification. OpenEMR uses phpredis with Sentinel discovery for automatic failover (`SESSION_STORAGE_MODE=predis-sentinel`). All certificates are managed by cert-manager. To downgrade the connection security:
