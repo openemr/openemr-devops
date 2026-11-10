@@ -74,7 +74,7 @@ jobs:
         # replication state replaces the 20 lines below). Skipped
         # for Phase B so CI still gives signal on operator install +
         # MariaDB resource reconciliation.
-        if: false
+        if: ${{ false }}
         run: |
           echo "--- Checking replica status ---"
           REPL_STATUS=$(kubectl exec mysql-sts-1 -- mariadb -u root -proot -e "SHOW REPLICA STATUS\G" 2>/dev/null)
@@ -145,7 +145,7 @@ jobs:
         # mysql-primary Service. The assertion itself stays:
         # connections presenting no client cert must be rejected
         # by the REQUIRE X509 user policy.
-        if: false
+        if: ${{ false }}
         run: |
           if kubectl exec mysql-sts-0 -- mariadb -u repluser -preplsecret -h mysql-sts-0.mysql -e "SELECT 1" 2>&1 | grep -q "^1$"; then
             echo "ERROR: MySQL accepted connection without client cert — X509 not enforced"
@@ -170,7 +170,7 @@ jobs:
         # (unit/fixtures/validators/controllers/common/services) do
         # not require the globals this step sets and should still
         # run usefully.
-        if: false
+        if: ${{ false }}
         timeout-minutes: 2
         run: |
           kubectl exec mysql-sts-0 -- mariadb -u root -proot -e '
@@ -264,7 +264,7 @@ jobs:
         #     orchestrated failover does not produce the 10-30s
         #     Service-endpoint-empty window the hand-rolled stack
         #     did
-        if: false
+        if: ${{ false }}
         timeout-minutes: 10
         run: |
           # End-to-end proof of the certificate reload mechanism:
