@@ -49,6 +49,29 @@ goto reloader_retry
 :reloader_applied
 kubectl wait --for=condition=Available --timeout=120s deployment/reloader-reloader
 
+REM bring in MariaDB Operator (same shape as cert-manager / reloader retry).
+REM Manages the mysql StatefulSet + Services + replication + automatic
+REM failover via the MariaDB CRD — replaces the hand-rolled mysql
+REM topology with a properly HA one. See kubernetes/mysql/mariadb.yaml
+REM and kubernetes/README.md -> Certificate reload mechanism.
+set MARIADB_OP_ATTEMPTS=0
+:mariadb_op_retry
+set /a MARIADB_OP_ATTEMPTS+=1
+kubectl apply --server-side=true --force-conflicts -f https://github.com/mariadb-operator/mariadb-operator/releases/download/mariadb-operator-26.10.2/manifests.min.yaml
+if %errorlevel%==0 goto mariadb_op_applied
+if %MARIADB_OP_ATTEMPTS% geq 3 (
+    echo ERROR: MariaDB Operator apply failed after 3 attempts.
+    echo Check https://www.githubstatus.com and retry.
+    exit /b 1
+)
+echo ...MariaDB Operator apply attempt %MARIADB_OP_ATTEMPTS% failed; retrying...
+ping -n 21 127.0.0.1 >nul
+goto mariadb_op_retry
+:mariadb_op_applied
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator-cert-controller
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator-webhook
+
 kubectl apply ^
     -f certs/selfsigned-issuer.yaml ^
     -f certs/ca-certificate.yaml ^

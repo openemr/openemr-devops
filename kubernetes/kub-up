@@ -80,6 +80,46 @@ fi
 echo "...waiting for reloader deployment to be ready..."
 kubectl wait --for=condition=Available --timeout=120s deployment/reloader-reloader
 
+# bring in MariaDB Operator (mariadb-operator/mariadb-operator): manages
+# the mysql StatefulSet + Services + replication + automatic failover
+# declaratively via the MariaDB CRD. Replaces the hand-rolled mysql
+# topology (StatefulSet + headless primary-only Service) with a
+# properly HA one, so certificate rotation (and any other primary-pod
+# cutover) does not produce the ~10-30s read+write outage the hand-
+# rolled stack has. See kubernetes/README.md → Certificate reload
+# mechanism and kubernetes/mysql/mariadb.yaml for the specific
+# replication + semi-sync configuration.
+#
+# manifests.min.yaml bundles CRDs + operator Deployment + cert-controller
+# + webhook in a single apply. Same 5-attempt linear-backoff retry as
+# cert-manager / reloader above.
+MARIADB_OP_URL="https://github.com/mariadb-operator/mariadb-operator/releases/download/mariadb-operator-26.10.2/manifests.min.yaml"
+MARIADB_OP_MAX_ATTEMPTS=5
+MARIADB_OP_APPLIED=0
+attempt=1
+while [ "${attempt}" -le "${MARIADB_OP_MAX_ATTEMPTS}" ]; do
+    if kubectl apply --server-side=true --force-conflicts -f "${MARIADB_OP_URL}"; then
+        MARIADB_OP_APPLIED=1
+        break
+    fi
+    if [ "${attempt}" -lt "${MARIADB_OP_MAX_ATTEMPTS}" ]; then
+        backoff=$((attempt * 10))
+        echo "...MariaDB Operator apply attempt ${attempt} failed; retrying in ${backoff}s..."
+        sleep "${backoff}"
+    fi
+    attempt=$((attempt + 1))
+done
+if [ "${MARIADB_OP_APPLIED}" -eq 0 ]; then
+    echo "ERROR: MariaDB Operator apply failed after ${MARIADB_OP_MAX_ATTEMPTS} attempts."
+    echo "Check https://www.githubstatus.com and retry, or download the"
+    echo "manifest locally and re-point this script."
+    exit 1
+fi
+echo "...waiting for MariaDB Operator deployments to be ready..."
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator-cert-controller
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator-webhook
+
 # issue all certs, including nfs-server/nfs-client used for the NFS mTLS tunnel
 kubectl apply \
     -f certs/selfsigned-issuer.yaml \
