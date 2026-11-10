@@ -403,6 +403,36 @@ jobs:
           echo "OBSERVED: ~${OBSERVED_OUTAGE_SEC}s outage on mysql Service during rotation (${FAIL_COUNT}/${TOTAL} probe iterations)"
           echo "This matches the documented trade-off in kubernetes/README.md § Certificate reload mechanism."
 
+          echo "--- verify openemr -> mysql query succeeds on NEW cert post-rotation ---"
+          # The probe metrics above are informational — they include
+          # iterations that ran before rotation started AND during the
+          # primary-pod-cutover outage window. This post-rollout check
+          # is the assertion: once the rollout has settled, openemr
+          # must be able to query mysql on the new cert via mTLS, with
+          # a bounded retry to tolerate the final few seconds of
+          # endpoint propagation after the new mysql-sts-0 pod reports
+          # Ready. Fails the test if no attempt succeeds within 60s.
+          POST_OK=0
+          for _ in $(seq 1 30); do
+            if timeout 5s kubectl exec deploy/openemr -- \
+                mariadb -h mysql -u openemr -popenemr \
+                  --ssl-ca=/root/certs/mysql/server/mysql-ca \
+                  --ssl-cert=/root/certs/mysql/server/mysql-cert \
+                  --ssl-key=/root/certs/mysql/server/mysql-key \
+                  -e "SELECT 1" openemr >/dev/null 2>&1; then
+              POST_OK=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$POST_OK" != "1" ]; then
+            echo "FAIL: openemr -> mysql query never succeeded in 60s after rollout settled; reload path broke mTLS end-to-end"
+            kubectl get pods -l app=mysql -o wide
+            kubectl describe pod mysql-sts-0 | tail -40
+            exit 1
+          fi
+          echo "PASS: openemr -> mysql mTLS query succeeds on new cert post-rotation"
+
           echo "--- verify replication still healthy post-rotation (mTLS on new certs end-to-end) ---"
           # Poll SHOW REPLICA STATUS up to 60s instead of a fixed sleep:
           # the replica pod has just rolled and its I/O thread may take a
