@@ -15,7 +15,28 @@ spec:
     matchLabels:
       name: openemr
   strategy:
-    type: Recreate
+    # RollingUpdate so cert rotations + any pod roll stay zero-outage
+    # from the user's perspective: one pod at a time rotates, Service
+    # endpoints always include at least one Ready pod.
+    #
+    # Historical note: this used `strategy: Recreate` conservatively
+    # for first-boot concerns, but openemr's SWARM_MODE leader-election
+    # handles multi-replica concurrent boot safely on its own — the
+    # gocryptfs example has run `replicas: 3` + `strategy: RollingUpdate`
+    # since it shipped, exercising the same leader-election path over
+    # mTLS NFS, with CI validation every PR. The openemr container's
+    # own startupProbe has a 20-minute failure window specifically to
+    # absorb the leader-election race on concurrent boots.
+    #
+    # maxUnavailable: 0 guarantees at least `replicas - 1` pods stay
+    # Ready throughout the rollout — no user-visible dip in capacity.
+    # maxSurge: 1 adds one extra pod at a time rather than two, keeping
+    # memory pressure predictable on a resource-constrained node (GHA
+    # CI runner, small cloud nodes).
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:      
       labels:
