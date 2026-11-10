@@ -238,7 +238,7 @@ jobs:
         # the MariaDB Operator) to mysql-primary via the openemr
         # pod. See the same step in test-kubernetes.yml for the
         # full note.
-        if: ${{ false }}
+        if: ${{ env.PHASE_B_SKIP_UNTIL_PHASE_D == 'disabled' }}
         timeout-minutes: 2
         run: |
           kubectl exec mysql-sts-0 -- mariadb -u root -proot -e '
