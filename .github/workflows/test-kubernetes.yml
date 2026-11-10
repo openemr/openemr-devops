@@ -240,53 +240,36 @@ jobs:
           }
 
       - name: Verify cert rotation triggers workload reload and preserves data plane
-        # TODO phase-d: full rewrite. The current implementation
-        # drives `cmctl renew mysql` against a Certificate that no
-        # longer exists (deleted with the hand-rolled mysql stack
-        # in favor of operator-managed certs) and asserts behaviors
-        # of mysql-sts (also gone). Replacement will:
-        #   - force an operator-managed cert renewal (either via
-        #     cmctl against the operator-issued Certificate name --
-        #     discoverable via `kubectl get certificate -l k8s.
-        #     mariadb.com/mariadb=mysql`, OR by patching the
-        #     renewal annotation directly)
-        #   - assert the operator rolls its own StatefulSet with
-        #     primary-failover orchestration (promotion of the
-        #     replica, fencing of the old primary, Service endpoint
-        #     switch) -- this is where the "no downtime" claim gets
-        #     validated instead of merely measured
-        #   - probe mysql-primary from openemr through the rotation
-        #     window with retry-aware shape (unchanged conceptually),
-        #     now with a legit zero-FAIL target because operator-
-        #     orchestrated failover does not produce the 10-30s
-        #     Service-endpoint-empty window the hand-rolled stack
-        #     did
-        if: ${{ env.PHASE_B_SKIP_UNTIL_PHASE_D == 'disabled' }}
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
-          # End-to-end proof of the certificate reload mechanism:
-          #  (1) use cmctl to trigger cert-manager to RE-ISSUE the mysql
-          #      Certificate. We use cmctl (not `kubectl delete secret`)
-          #      because reloader fires on Secret UPDATE events, not on
-          #      DELETE+CREATE sequences. `cmctl renew` sets the renewal
-          #      annotation on the Certificate; cert-manager detects it
-          #      and UPDATEs the referenced Secret's tls.crt/tls.key
-          #      payload in place, which IS the production rotation path.
-          #  (2) assert the Secret fingerprint changed (cert-manager
+          # End-to-end proof of the certificate reload mechanism under
+          # the MariaDB Operator topology:
+          #  (1) force cert-manager to re-issue the operator-managed
+          #      server Certificate via cmctl renew -- updates the
+          #      Secret in place (not DELETE+CREATE), which is the
+          #      event shape the operator's cert-controller reacts to.
+          #  (2) assert the Secret fingerprint changes (cert-manager
           #      re-issue path succeeded end-to-end).
-          #  (3) assert reloader observed the UPDATE event and rolled
-          #      mysql-sts (observedGeneration advances + rollout
-          #      returns Ready).
-          #  (4) assert data-plane availability survives the rollout by
-          #      running a 1 Hz mTLS probe from openemr through the
-          #      mysql Service across the whole rotation window. mysql-
-          #      sts is replicas: 2 with OrderedReady + RollingUpdate,
-          #      so one pod is always Ready — probe success rate should
-          #      be high.
-          #  (5) assert post-rotation mTLS works via replication state —
-          #      Slave_IO_Running must still be Yes AFTER the roll (the
-          #      replica's cert was also re-issued; replication over
-          #      mTLS proves end-to-end cert-and-mount-works).
+          #  (3) assert the operator rolls its own StatefulSet. The
+          #      operator orchestrates: (a) promote replica to primary
+          #      BEFORE terminating the old primary, (b) update the
+          #      mysql-primary Service endpoints to point at the new
+          #      primary, (c) fence the demoted pod, (d) bring the
+          #      replaced pod back as the new replica. Semi-sync
+          #      AfterSync (configured on the MariaDB resource) means
+          #      transactions committed on the old primary are durable
+          #      at the new primary before the switchover -- no data
+          #      loss window.
+          #  (4) assert data-plane availability by probing mysql-primary
+          #      from openemr through the rotation window. With
+          #      operator-orchestrated failover the mysql-primary
+          #      Service endpoints stay populated throughout (unlike
+          #      the hand-rolled stack where mysql-sts-0 going
+          #      Terminating left the Service with no backend). Target
+          #      is zero FAIL iterations.
+          #  (5) assert the MariaDB resource stays Ready end-to-end
+          #      (operator's declarative signal for "replication +
+          #      TLS + semi-sync all healthy").
 
           echo "--- install cmctl (cert-manager CLI) ---"
           sudo curl -fL -o /usr/local/bin/cmctl \
@@ -294,42 +277,52 @@ jobs:
           sudo chmod +x /usr/local/bin/cmctl
           cmctl version --client || true
 
-          echo "--- reloader deployment readiness ---"
-          kubectl wait --for=condition=Available --timeout=60s deployment/reloader-reloader
+          echo "--- discover operator-managed server Certificate ---"
+          # MariaDB Operator with spec.tls.serverCertIssuerRef creates
+          # its own Certificate resource (name+Secret shape depends on
+          # operator version). Discover via label (operator typically
+          # sets app.kubernetes.io/instance or k8s.mariadb.com/mariadb)
+          # OR fall back to name pattern. Fail loud with a full dump
+          # if nothing matches, so a subsequent fix has empirical
+          # input.
+          echo "--- all cert-manager Certificates ---"
+          kubectl get certificates -o custom-columns='NAME:.metadata.name,SECRET:.spec.secretName,READY:.status.conditions[?(@.type=="Ready")].status,LABELS:.metadata.labels'
+          SERVER_CERT=$(
+            kubectl get certificates -o json \
+            | jq -r '.items[]
+                | select(
+                    ((.metadata.labels // {})["app.kubernetes.io/instance"] == "mysql")
+                    or ((.metadata.labels // {})["k8s.mariadb.com/mariadb"] == "mysql")
+                    or (.metadata.name | test("^mysql-")))
+                | select(.spec.secretName | test("server|tls|cert"; "i"))
+                | select(.spec.secretName | test("client|openemr|phpmyadmin"; "i") | not)
+                | .metadata.name' \
+            | head -1
+          )
+          if [ -z "$SERVER_CERT" ]; then
+            echo "FAIL: could not discover operator-managed mysql server Certificate."
+            echo "      Manual follow-up needed — inspect the cert list above and"
+            echo "      update the SERVER_CERT discovery query in this test."
+            exit 1
+          fi
+          SERVER_SECRET=$(kubectl get certificate "$SERVER_CERT" -o jsonpath='{.spec.secretName}')
+          echo "Server Certificate: $SERVER_CERT  (Secret: $SERVER_SECRET)"
 
           echo "--- record pre-rotation state ---"
-          OLD_SHA=$(kubectl get secret mysql-server-certs -o jsonpath='{.data.tls\.crt}' \
+          OLD_SHA=$(kubectl get secret "$SERVER_SECRET" -o jsonpath='{.data.tls\.crt}' \
             | base64 -d | openssl x509 -noout -fingerprint -sha256 | cut -d= -f2)
-          OLD_GEN=$(kubectl get statefulset mysql-sts -o jsonpath='{.status.observedGeneration}')
-          echo "old mysql-server-certs fp: $OLD_SHA"
-          echo "old mysql-sts observedGeneration: $OLD_GEN"
+          OLD_GEN=$(kubectl get statefulset mysql -o jsonpath='{.status.observedGeneration}')
+          echo "old $SERVER_SECRET fp: $OLD_SHA"
+          echo "old mysql StatefulSet observedGeneration: $OLD_GEN"
 
-          echo "--- start background data-plane probe (1 Hz, via Service, retry-aware) ---"
-          # Probe writes one line per iteration to /tmp/probe.log. Each
-          # line is 'OK' (one of up to 3 attempts succeeded) or 'FAIL'
-          # (3 attempts over ~3s all failed — a sustained outage, not
-          # a transient endpoint-update gap).
-          #
-          # Rationale for 3-attempt retry: StatefulSet rolling update
-          # on replicas:2 inherently produces brief Service-endpoint
-          # gaps as pods transition Ready -> Terminating -> Ready.
-          # kube-proxy's endpoint-sync lag is typically 1-3s per
-          # cutover; a single kubectl exec unlucky enough to land in
-          # that window would be counted as a data-plane failure
-          # under a single-shot probe, even though a well-behaved
-          # application-layer retry loop would see it as transient
-          # jitter. By retrying inside each probe iteration we only
-          # record FAIL for OUTAGES THAT LAST LONGER THAN THE RETRY
-          # WINDOW -- the shape of failure that would actually hurt
-          # an application. The target is zero FAIL iterations through
-          # a healthy rotation.
-          #
-          # Connection shape: mysql Service (SAN-listed hostname, not
-          # 127.0.0.1 which is NOT in any cert's dnsNames) + openemr
-          # client cert (the production mTLS client path, mounted at
-          # /root/certs/mysql/server/ per kubernetes/openemr/deployment.yaml).
-          # Each kubectl exec attempt wrapped in `timeout 5s` so a
-          # hung attempt cannot stall the probe loop.
+          echo "--- start background data-plane probe (1 Hz, via mysql-primary) ---"
+          # Probe each iteration retries internally up to 3 times
+          # (~3s total) before declaring FAIL -- absorbs kube-proxy
+          # endpoint-sync microjitter. With operator-orchestrated
+          # primary failover, the mysql-primary Service endpoints
+          # stay populated throughout cert rotation, so zero FAIL is
+          # the legitimate target (unlike the hand-rolled stack where
+          # mysql-sts-0 going Terminating left the Service empty).
           rm -f /tmp/probe.log /tmp/probe.stop
           (
             while [ ! -f /tmp/probe.stop ]; do
@@ -337,7 +330,7 @@ jobs:
               success=0
               for _ in 1 2 3; do
                 if timeout 5s kubectl exec deploy/openemr -- \
-                    mariadb -h mysql -u openemr -popenemr \
+                    mariadb -h mysql-primary -u openemr -popenemr \
                       --ssl-ca=/root/certs/mysql/server/mysql-ca \
                       --ssl-cert=/root/certs/mysql/server/mysql-cert \
                       --ssl-key=/root/certs/mysql/server/mysql-key \
@@ -357,15 +350,9 @@ jobs:
           ) &
           PROBE_PID=$!
 
-          echo "--- wait for probe to establish baseline (first OK) ---"
-          # Poll /tmp/probe.log instead of a fixed sleep. If the probe
-          # never gets a successful iteration within 30s, something is
-          # wrong with the pre-rotation stack state and the test should
-          # fail loud rather than entering rotation with no baseline.
+          echo "--- wait for probe baseline (first OK) ---"
           for _ in $(seq 1 30); do
-            if grep -q ' OK$' /tmp/probe.log 2>/dev/null; then
-              break
-            fi
+            if grep -q ' OK$' /tmp/probe.log 2>/dev/null; then break; fi
             sleep 1
           done
           if ! grep -q ' OK$' /tmp/probe.log 2>/dev/null; then
@@ -375,12 +362,12 @@ jobs:
             exit 1
           fi
 
-          echo "--- force cert-manager renew (updates Secret in place) ---"
-          cmctl renew mysql
+          echo "--- force cert-manager re-issue via cmctl renew ---"
+          cmctl renew "$SERVER_CERT"
 
           echo "--- wait for Secret UPDATE (new fingerprint) ---"
           for _ in $(seq 1 60); do
-            CUR=$(kubectl get secret mysql-server-certs -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
+            CUR=$(kubectl get secret "$SERVER_SECRET" -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
               | base64 -d 2>/dev/null \
               | openssl x509 -noout -fingerprint -sha256 2>/dev/null \
               | cut -d= -f2)
@@ -391,125 +378,72 @@ jobs:
             sleep 2
           done
           if [ -z "${NEW_SHA:-}" ]; then
-            echo "FAIL: cmctl renew did not update mysql-server-certs within 120s"
-            kubectl describe certificate mysql
-            kubectl get events --sort-by=.lastTimestamp | tail -30
+            echo "FAIL: cmctl renew did not update $SERVER_SECRET within 120s"
+            kubectl describe certificate "$SERVER_CERT"
             touch /tmp/probe.stop ; wait "$PROBE_PID" 2>/dev/null || true
             exit 1
           fi
           echo "PASS: cert rotated ($OLD_SHA -> $NEW_SHA)"
 
-          echo "--- wait for reloader to roll mysql-sts ---"
-          for _ in $(seq 1 60); do
-            NEW_GEN=$(kubectl get statefulset mysql-sts -o jsonpath='{.status.observedGeneration}')
+          echo "--- wait for operator to roll the StatefulSet ---"
+          # The operator's cert-controller sees the Secret UPDATE and
+          # triggers a rolling restart with primary-failover
+          # orchestration. StatefulSet observedGeneration advances
+          # when the operator mutates the pod template (annotation
+          # bump to force pod recreation).
+          for _ in $(seq 1 90); do
+            NEW_GEN=$(kubectl get statefulset mysql -o jsonpath='{.status.observedGeneration}')
             if [ "${NEW_GEN:-0}" -gt "${OLD_GEN:-0}" ]; then
               break
             fi
             sleep 2
           done
           if [ "${NEW_GEN:-0}" -le "${OLD_GEN:-0}" ]; then
-            echo "FAIL: reloader did not roll mysql-sts within 120s"
-            kubectl logs -n default deploy/reloader-reloader --tail=50
+            echo "FAIL: operator did not roll mysql StatefulSet within 180s"
+            kubectl logs -n default deployment/mariadb-operator --tail=100
             touch /tmp/probe.stop ; wait "$PROBE_PID" 2>/dev/null || true
             exit 1
           fi
-          echo "PASS: mysql-sts rolled (gen $OLD_GEN -> $NEW_GEN)"
-          kubectl rollout status statefulset/mysql-sts --timeout=300s
+          echo "PASS: mysql StatefulSet rolled (gen $OLD_GEN -> $NEW_GEN)"
+          kubectl rollout status statefulset/mysql --timeout=300s
 
-          echo "--- stop probe + REPORT observed outage window (informational) ---"
+          echo "--- wait for operator to report Ready after rotation ---"
+          kubectl wait --for=condition=Ready mariadb/mysql --timeout=120s
+          echo "PASS: operator reports Ready post-rotation (replication re-established)"
+
+          echo "--- stop probe + evaluate data-plane availability ---"
           touch /tmp/probe.stop
           wait "$PROBE_PID" 2>/dev/null || true
           OK_COUNT=$(grep -c ' OK$'   /tmp/probe.log || true)
           FAIL_COUNT=$(grep -c ' FAIL$' /tmp/probe.log || true)
           TOTAL=$((OK_COUNT + FAIL_COUNT))
           echo "probe: OK=$OK_COUNT FAIL=$FAIL_COUNT TOTAL=$TOTAL"
-          # The mysql Service is HEADLESS with selector
-          #   statefulset.kubernetes.io/pod-name: mysql-sts-0
-          # (see kubernetes/mysql/service.yaml -- directed at primary
-          # only; replica exists solely for mariadb replication, not
-          # client traffic). When mysql-sts-0 rolls during cert
-          # rotation there is NO backend to serve either reads or
-          # writes until the new pod is Ready -- a mandatory
-          # ~10-30s outage every rotation cycle (every ~5 days at
-          # the 168h / 48h renewBefore shape). The 3-attempt / ~3s
-          # retry inside each probe iteration absorbs kube-proxy
-          # endpoint-sync microjitter but DOES NOT absorb the full
-          # primary-pod-cutover window. FAIL iterations are therefore
-          # expected and informational -- they quantify the real
-          # outage budget rather than signaling test failure.
-          #
-          # Zero-downtime cert rotation on mysql would require
-          # introducing a MariaDB HA layer (orchestrator-style auto-
-          # failover, MaxScale/ProxySQL in front, or a Service that
-          # routes to both pods with application-level primary
-          # resolution). Tracked separately; out of scope for this PR.
+          # Operator failover keeps mysql-primary Service endpoints
+          # populated throughout; the 3-retry probe absorbs kube-proxy
+          # microjitter. Zero FAIL is the real target.
           if [ "$TOTAL" -lt 10 ]; then
             echo "FAIL: probe window too short — expected >=10 iterations, got $TOTAL"
             exit 1
           fi
-          OBSERVED_OUTAGE_SEC=$((FAIL_COUNT * 4))   # each FAIL ≈ 3s retry + 1s gap
-          echo "OBSERVED: ~${OBSERVED_OUTAGE_SEC}s outage on mysql Service during rotation (${FAIL_COUNT}/${TOTAL} probe iterations)"
-          echo "This matches the documented trade-off in kubernetes/README.md § Certificate reload mechanism."
-
-          echo "--- verify openemr -> mysql query succeeds on NEW cert post-rotation ---"
-          # The probe metrics above are informational — they include
-          # iterations that ran before rotation started AND during the
-          # primary-pod-cutover outage window. This post-rollout check
-          # is the assertion: once the rollout has settled, openemr
-          # must be able to query mysql on the new cert via mTLS, with
-          # a bounded retry to tolerate the final few seconds of
-          # endpoint propagation after the new mysql-sts-0 pod reports
-          # Ready. Fails the test if no attempt succeeds within 60s.
-          POST_OK=0
-          for _ in $(seq 1 30); do
-            if timeout 5s kubectl exec deploy/openemr -- \
-                mariadb -h mysql -u openemr -popenemr \
-                  --ssl-ca=/root/certs/mysql/server/mysql-ca \
-                  --ssl-cert=/root/certs/mysql/server/mysql-cert \
-                  --ssl-key=/root/certs/mysql/server/mysql-key \
-                  -e "SELECT 1" openemr >/dev/null 2>&1; then
-              POST_OK=1
-              break
-            fi
-            sleep 2
-          done
-          if [ "$POST_OK" != "1" ]; then
-            echo "FAIL: openemr -> mysql query never succeeded in 60s after rollout settled; reload path broke mTLS end-to-end"
-            kubectl get pods -l app=mysql -o wide
-            kubectl describe pod mysql-sts-0 | tail -40
+          if [ "$FAIL_COUNT" -gt 0 ]; then
+            echo "FAIL: data plane experienced sustained outage during rotation ($FAIL_COUNT/$TOTAL iterations)"
+            tail -40 /tmp/probe.log
             exit 1
           fi
-          echo "PASS: openemr -> mysql mTLS query succeeds on new cert post-rotation"
+          echo "PASS: data plane remained uninterrupted through rotation ($OK_COUNT/$TOTAL successes, 0 sustained outages)"
 
-          echo "--- verify replication still healthy post-rotation (mTLS on new certs end-to-end) ---"
-          # Poll SHOW REPLICA STATUS up to 60s instead of a fixed sleep:
-          # the replica pod has just rolled and its I/O thread may take a
-          # few seconds to reconnect to the primary on the new certs.
-          # Note: no `-N` flag on mariadb — in vertical (\G) mode -N
-          # suppresses the field-name prefix, breaking the grep below.
-          SLAVE_IO=""
-          SLAVE_SQL=""
-          for _ in $(seq 1 30); do
-            # Capture under `|| true` so a transient kubectl exec
-            # failure (replica pod briefly unavailable mid-restart)
-            # does not trip `set -e` and kill the whole step. We
-            # already have a bounded retry loop here to tolerate
-            # exactly those transient windows.
-            STATUS=$(kubectl exec mysql-sts-1 -- mariadb -u root -proot -e "SHOW REPLICA STATUS\G" 2>/dev/null || true)
-            SLAVE_IO=$(echo "$STATUS"  | grep "Slave_IO_Running:"  | head -1 | awk '{print $NF}' | tr -d '\r')
-            SLAVE_SQL=$(echo "$STATUS" | grep "Slave_SQL_Running:" | head -1 | awk '{print $NF}' | tr -d '\r')
-            if [ "$SLAVE_IO" = "Yes" ] && [ "$SLAVE_SQL" = "Yes" ]; then
-              break
-            fi
-            sleep 2
-          done
-          echo "Slave_IO_Running=$SLAVE_IO  Slave_SQL_Running=$SLAVE_SQL"
-          if [ "$SLAVE_IO" != "Yes" ] || [ "$SLAVE_SQL" != "Yes" ]; then
-            echo "FAIL: replication not recovered within 60s post-rotation (mTLS between primary and replica would be the first thing to break on a bad cert reload)"
-            kubectl exec mysql-sts-1 -- mariadb -u root -proot -e "SHOW REPLICA STATUS\G" 2>&1 | head -60
+          echo "--- post-rotation openemr -> mysql-primary mTLS smoke ---"
+          kubectl exec deploy/openemr -- bash -c '
+            mariadb -h mysql-primary -u openemr -popenemr \
+              --ssl-ca=/root/certs/mysql/server/mysql-ca \
+              --ssl-cert=/root/certs/mysql/server/mysql-cert \
+              --ssl-key=/root/certs/mysql/server/mysql-key \
+              -e "SHOW STATUS LIKE '\''Ssl_cipher'\''" openemr
+          ' | grep -i "TLS_\|ECDHE\|AES" || {
+            echo "FAIL: mariadb not answering on mTLS post-rotation"
             exit 1
-          fi
-          echo "PASS: cert rotation end-to-end verified (rotation + reload + data plane + mTLS replication)"
+          }
+          echo "PASS: cert rotation end-to-end verified (rotate + reload + zero-downtime failover + mTLS intact)"
 
       - name: Test Redis Sentinel failover
         run: |
