@@ -466,6 +466,20 @@ jobs:
           echo "PASS: operator reports Ready post-rotation (replication re-established)"
           ROTATION_COMPLETE_TS=$(date +%s)
 
+          echo "--- wait for probe to record a sample AFTER rotation complete ---"
+          # Bound the wait so the workflow can't hang on a stuck probe.
+          # Probe runs at 1 Hz; 15s gives plenty of headroom for a slow
+          # iteration without masking a stuck probe. Catches the race
+          # where rotation finished inside a probe-sleep window and
+          # the next sample hasn't landed yet when we go to evaluate.
+          for _ in $(seq 1 15); do
+            LAST_TS=$(tail -1 /tmp/probe.log | awk '{print $1}')
+            if [ "${LAST_TS:-0}" -ge "${ROTATION_COMPLETE_TS:-0}" ]; then
+              break
+            fi
+            sleep 1
+          done
+
           echo "--- stop probe + evaluate data-plane availability ---"
           touch /tmp/probe.stop
           wait "$PROBE_PID" 2>/dev/null || true
