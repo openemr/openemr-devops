@@ -2,6 +2,19 @@
 
 kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
+REM Pre-flight guard against upgrading an in-place pre-rel-860 site.
+REM Run FIRST so an old-layout site aborts before any cluster-wide
+REM installs. Same shape as the matching bash guard in kub-up; see
+REM kubernetes/README.md "Upgrading an existing site" for the
+REM documented dump+restore procedure.
+kubectl get statefulset/mysql-sts >nul 2>&1
+IF %ERRORLEVEL% EQU 0 (
+    echo ERROR: Existing 'mysql-sts' StatefulSet found - this layout uses the MariaDB Operator
+    echo        and cannot upgrade an existing hand-rolled cluster in place. See the README's
+    echo        'Upgrading an existing site' section for the dump+restore procedure. Aborting.
+    exit /b 1
+)
+
 REM bring in cert-manager (the NFS mTLS layer below requires it)
 REM
 REM github.com's release-download endpoint occasionally returns 504
@@ -133,19 +146,6 @@ REM Both have readinessProbes, so `rollout status` blocks on the
 REM probes actually succeeding — real wait, not a pod-count check.
 kubectl rollout status deployment/nfs-server --timeout=180s
 kubectl rollout status daemonset/nfs-stunnel-client --timeout=180s
-
-REM Pre-flight check: this layout uses the MariaDB Operator. Upgrading
-REM an existing site that still has the old hand-rolled mysql-sts
-REM StatefulSet is NOT supported from kub-up — see the README's
-REM "Upgrading an existing site" section for the dump+restore
-REM procedure. The same guard exists in kub-up (bash).
-kubectl get statefulset/mysql-sts >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
-    echo ERROR: Existing 'mysql-sts' StatefulSet found - this layout uses the MariaDB Operator
-    echo        and cannot upgrade an existing hand-rolled cluster in place. See the README's
-    echo        'Upgrading an existing site' section for the dump+restore procedure. Aborting.
-    exit /b 1
-)
 
 kubectl apply ^
     -f mysql/secret.yaml ^

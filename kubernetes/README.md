@@ -312,6 +312,8 @@ The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certi
 
 `trust-manager` is installed by `kub-up` into the `cert-manager` namespace (see `kubernetes/trust-manager/manifests.yaml` — vendored render of the upstream helm chart at v0.26.0). The install provides the `Bundle` CRD + controller; **no Bundles are shipped by default** because workloads in this stack currently consume CA material via each leaf cert's Secret-embedded `ca.crt`, which cert-manager refreshes as a side-effect of leaf-cert renewal. The Bundle resource becomes load-bearing specifically for the CA-rotation overlap: operators create a `Bundle` (cluster-scoped `trust.cert-manager.io/v1alpha1` resource) listing BOTH the old and new CAs as `sources`, with a target ConfigMap. trust-manager keeps that ConfigMap continuously in sync across every selected namespace, and rolls workloads via reloader annotations on the ConfigMap. This automates steps 3, 4, and 8 — the operator no longer has to hand-copy trust lists to every peer or coordinate the final old-CA removal across workloads. A worked example is in the [trust-manager Bundle docs](https://cert-manager.io/docs/trust/trust-manager/#bundles); the shape that fits this stack is a dual-source Bundle with an ingress-class namespaceSelector during overlap, trimmed to a single new-CA source after step 7's end-to-end verification.
 
+> **Bundle source namespace caveat.** trust-manager by default only resolves `Bundle.spec.sources.secret` entries from its own trust-namespace (the `cert-manager` namespace in this install, matching the helm chart's `app.trust.namespace` default). The existing `ca-key-pair` Secret in this stack lives in the `default` namespace (same place as `ca-certificate.yaml`), so a Bundle referencing it will fail with a `Secret not found` condition until either (a) the operator copies the current CA + the new CA into Secrets inside the `cert-manager` namespace before creating the Bundle — simplest for a one-off rotation, or (b) the trust-manager install is reconfigured to resolve sources from the `default` namespace via the `app.trust.namespace` value (requires re-rendering `trust-manager/manifests.yaml` with `--set app.trust.namespace=default` and re-applying). Option (a) is the right default for an occasional CA rotation; option (b) is right for operators who want Bundle-driven trust distribution in steady state.
+
 # Connection Security
 
 The mTLS configuration above is the default. Both MariaDB and Redis connection security can be relaxed when a more limited threat model permits — for example, when running entirely within a single cluster on a hyperscaler whose infrastructure already provides wire encryption, or for development environments.
@@ -374,22 +376,33 @@ The stack ships with sensible defaults for development on Kind. For production d
 
 This layout uses the MariaDB Operator (declarative cluster via `MariaDB` CRD) instead of the pre-rel-860 hand-rolled `mysql-sts` StatefulSet + headless Service. `kub-up` refuses to apply the operator manifests on a cluster that still has an old-layout `mysql-sts` StatefulSet, because a safe hot cutover requires three things kub-up can't automate reliably: writes quiesced on the application side, DB migrated to the new topology, and openemr clients repointed from the old `mysql` Service to the new `mysql-primary`. Attempting that in-script risks leaving the site unreachable mid-upgrade.
 
+**Fresh-cluster migration is strongly recommended** — not a namespace on the same cluster. This stack's cluster-wide resources (cert-manager, trust-manager, reloader, mariadb-operator, csi-driver-nfs, StorageClass `nfs`) are installed once per cluster by `kub-up`; a second namespace cannot run its own copies, and the existing NFS stack binds node-local stunnel-client sockets that a second namespace would collide with. If you MUST do namespace-coexistence, you'll need manual rewiring of the second namespace's NFS and port allocation outside the scope of this README.
+
 Supported upgrade procedure:
 
-1. **On the existing site**, quiesce writes:
+1. **On the existing site, quiesce writes:**
    ```bash
    kubectl scale deployment/openemr --replicas=0
    kubectl scale deployment/phpmyadmin --replicas=0
    ```
-   Wait for pods to terminate.
-2. **Dump the DB** from the old primary (`mysql-sts-0`) using `mysqldump` or `mariadb-backup` (whichever your operational workflow prefers for consistent snapshots). Save the dump off-cluster.
-3. **Spin up a fresh cluster or namespace** and run `kub-up` there. The operator-managed MariaDB will come up empty.
-4. **Restore the dump** into the new cluster (connect through `mysql-primary` as `root`, restore the schema and data).
-5. **Verify the new site** end-to-end (openemr login, patient operations, FHIR endpoints). Keep the old site up through this phase so you can roll back.
-6. **Cut traffic over to the new site's ingress** once verified.
-7. **Decommission the old site** (`kub-down` + remove volumes).
+   Wait for pods to terminate. Keep them at `replicas=0` through the entire migration — any running openemr pod could reconnect and write to the old DB, invalidating the snapshot you're about to take.
+2. **Back up ALL three shared volumes off-cluster**, not just the DB:
+   - **DB**: logical dump via `mysqldump --all-databases --single-transaction --routines --triggers > dump.sql` from inside a shell in `mysql-sts-0`. (The operator-managed destination accepts a `mysql` client restore through `mysql-primary`; `mariadb-backup` physical backups are NOT drop-in restorable this way and need a different workflow — operator-managed `MariadbBackup`/`MariadbRestore` CRs, or a bootstrapFrom configuration on the new MariaDB resource — so logical dump is the safer default here.)
+   - **websitevolume** (`/var/www/.../sites`): openemr-managed documents, encounter-attached files, OpenEMR module state. Snapshot the PVC to an off-cluster location via a short-lived busybox helper pod (same pattern as the CSI-NFS upgrade section below).
+   - **sslvolume** (`/etc/ssl`) and **letsencryptvolume** (`/etc/letsencrypt`) if the site has operator-provisioned TLS cert material worth keeping.
+3. **Spin up a fresh cluster** and run `kub-up` there. The operator-managed MariaDB will come up empty.
+4. **Keep the new site's `openemr` Deployment at `replicas=0`** before restoring (`kubectl scale deployment/openemr --replicas=0` on the new cluster). Letting openemr boot against an empty DB risks running `install_simple.php` and re-seeding tables you're about to restore over.
+5. **Restore the DB dump** into the new cluster:
+   ```bash
+   kubectl exec -i deploy/openemr -- mysql -h mysql-primary -u root -p < dump.sql
+   ```
+   (or similar — adjust for your off-cluster dump location). Verify tables populated via phpmyadmin on the new cluster.
+6. **Restore the backed-up websitevolume / sslvolume / letsencryptvolume contents** into the new cluster's PVCs (helper-pod `tar -x` into each mount, same reverse of step 2's snapshot).
+7. **Scale openemr back up** on the new cluster (`kubectl scale deployment/openemr --replicas=3`) and verify end-to-end: login, patient operations, FHIR endpoints, document retrieval from the restored websitevolume.
+8. **Cut traffic over to the new site's ingress** once verified (DNS flip, load-balancer repointing, or whatever your ingress layer uses).
+9. **Decommission the old site on its own cluster**. Do NOT run `kub-down` if you reused the same cluster — it would tear down cluster-wide operators (cert-manager, mariadb-operator, etc.) that the old site also depends on, and there isn't a namespace-only teardown path in this stack today. On a dedicated-cluster migration, the full `kub-down` on the old cluster is the right teardown.
 
-Doing it as fresh-cluster + dump/restore is slower than in-place but is the safe path on a schema that touches every workload (openemr, phpmyadmin, FHIR consumers). Operators comfortable with mariadb replication can also set up the new operator cluster as a replica of the old primary, promote it, and cut over — but that's bring-your-own-expertise territory; this README doesn't walk through it.
+Doing it as fresh-cluster + dump/restore is slower than in-place but is the safe path on a schema that touches every workload. Operators comfortable with mariadb replication can also set up the new operator cluster as a replica of the old primary, promote it, and cut over — but that's bring-your-own-expertise territory; this README doesn't walk through it.
 
 ## Upgrading an existing cluster to the CSI-based NFS stack
 
@@ -437,7 +450,7 @@ Attempting to apply the new manifests on top of an old cluster without a `kub-do
 
 The simplest path to encryption-at-rest is to back the persistent volumes with an encrypted StorageClass at the cloud or storage-layer. Two PVCs matter:
 
-- **MariaDB `datadir`** (RWO) — set `storageClassName` on the `volumeClaimTemplates` entry in `mysql/statefulset.yaml` to your encrypted StorageClass.
+- **MariaDB `datadir`** (RWO) — set `spec.storage.storageClassName` on the `MariaDB` resource in `mysql/mariadb.yaml` to your encrypted StorageClass. The operator renders this into the generated StatefulSet's `volumeClaimTemplates`.
 - **NFS server backing** (RWO) — set `storageClassName` on `nfs/nfs-server-pvc.yaml` to your encrypted StorageClass. The three RWX volumes (`websitevolume`, `sslvolume`, `letsencryptvolume`) consumed by openemr/phpmyadmin are provisioned as subdirs under this one backing PV by csi-driver-nfs, so they all inherit the backing disk's encryption; no changes to OpenEMR manifests are needed.
 
 | Cloud / Environment | StorageClass | Key management |
@@ -464,26 +477,29 @@ Both variants require a `privileged: true` sidecar (LUKS needs `dm-crypt` + loop
 
 For defense-in-depth beyond storage-layer encryption, MariaDB's built-in `file_key_management` plugin encrypts InnoDB tablespaces, redo logs, binary logs, and temp files at the application layer. The plugin ships in the stock `mariadb:11.8.6` image used by this stack — no custom image is required.
 
-Enabling TDE involves:
+Enabling TDE involves editing the `MariaDB` resource in `mysql/mariadb.yaml` (the operator-managed cluster — the pre-rel-860 hand-rolled StatefulSet + ConfigMap this section used to reference is gone):
 
 1. **A new Secret** containing the keyfile (one or more lines of `<key-id>;<32 hex chars = 16-byte AES key>`), optionally itself encrypted with a master password supplied via `file_key_management_filekey`.
-2. **A volume mount** on the MariaDB container at `/etc/mysql/encryption/`, sourcing the secret with `defaultMode: 0400`.
-3. **Configuration additions** to both `primary.cnf` and `replica.cnf` in `mysql/configmap.yaml`:
-   ```ini
-   plugin-load-add=file_key_management
-   file_key_management_filename=/etc/mysql/encryption/keyfile
-   file_key_management_encryption_algorithm=AES_CTR
-   innodb_encrypt_tables=ON
-   innodb_encrypt_log=ON
-   innodb_encrypt_temporary_tables=ON
-   innodb_encryption_threads=4
-   encrypt-tmp-disk-tables=1
-   encrypt-tmp-files=1
-   encrypt-binlog=1
-   aria-encrypt-tables=1
+2. **A pod-template volume mount** on the MariaDB pods at `/etc/mysql/encryption/`, added under `spec.podTemplate.spec.containers[?(@.name=="mariadb")].volumeMounts` and `spec.podTemplate.spec.volumes` on the `MariaDB` resource. Source the secret with `defaultMode: 0400`. The operator renders the podTemplate into both primary and replica pods, so the keyfile is automatically consistent across replication.
+3. **mysqld configuration additions** via `spec.myCnf` on the `MariaDB` resource — the operator writes this string into a managed ConfigMap that's mounted on both primary and replica pods. Keep the existing `spec.myCnf` content if any; append:
+   ```yaml
+   spec:
+     myCnf: |
+       # ... existing lines (if any) ...
+       plugin-load-add=file_key_management
+       file_key_management_filename=/etc/mysql/encryption/keyfile
+       file_key_management_encryption_algorithm=AES_CTR
+       innodb_encrypt_tables=ON
+       innodb_encrypt_log=ON
+       innodb_encrypt_temporary_tables=ON
+       innodb_encryption_threads=4
+       encrypt-tmp-disk-tables=1
+       encrypt-tmp-files=1
+       encrypt-binlog=1
+       aria-encrypt-tables=1
    ```
 
-Enable TDE at first boot so the system tablespace is born encrypted. Existing tables are encrypted in the background by `innodb_encryption_threads`. Both primary and replica pods consume the same Secret and ConfigMap, so the keyfile is automatically consistent across replication.
+Enable TDE at first boot so the system tablespace is born encrypted. Existing tables are encrypted in the background by `innodb_encryption_threads`.
 
 **Trust boundary:** TDE keys live in a Kubernetes Secret, so any principal with `kubectl get secret` access in the namespace can read both the keys and the data. TDE primarily protects against PV theft, snapshot exfiltration, and decommissioned-disk recovery — not in-cluster attackers. For a stricter trust boundary, replace `file_key_management` with the HashiCorp Vault or AWS KMS key-management plugins, which require a custom MariaDB image plus pod authentication to the external KMS.
 
