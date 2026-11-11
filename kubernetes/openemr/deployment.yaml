@@ -104,22 +104,42 @@ spec:
         # Synchronous Redis replication on every session write via the
         # Redis WAIT command. Requires openemr 8.6.0+ (shipped in
         # openemr/openemr#15220) — the 8.6.0 pin above enforces that.
-        # With waitReplicas=1 on a 1-primary+2-replica cluster, each
-        # session write blocks until at least 1 replica has ACKed
-        # before the request returns, reducing (not eliminating) the
-        # risk of losing an in-flight session on primary failover:
-        # the configured replica count has acknowledged the write,
-        # but Sentinel's election can still promote a different
-        # replica that did not acknowledge it, in which case the
-        # un-replicated write is lost on that replica's promotion.
+        #
+        # Value is set to 2 to match the replica count: every session
+        # write blocks until BOTH replicas have ACKed before the
+        # request returns. On Sentinel failover, whichever replica
+        # Sentinel elects to promote is guaranteed to have the write,
+        # so the session survives. waitReplicas=1 on this cluster
+        # would only reduce the loss risk (~50% depending on
+        # Sentinel's election), because Sentinel can still promote
+        # the replica that did not ACK.
+        #
+        # Tradeoffs vs waitReplicas=1:
+        #   * Write latency = max(replica RTTs) instead of min — a
+        #     few extra milliseconds per session write on an intra-
+        #     cluster pod-to-pod network. Session writes are
+        #     per-request, not per-operation, so this is in the
+        #     noise for openemr's workload.
+        #   * Degraded-cluster noise: during routine replica
+        #     maintenance (rolling restart, one pod temporarily
+        #     down), every session write logs a shortfall warning
+        #     because only 1 replica ACKs within the timeout. The
+        #     write still succeeds (shortfalls are non-fatal), but
+        #     operators who alert on those warnings will see
+        #     maintenance-window noise.
+        #
         # Shortfalls (fewer replicas ACK within the WAIT timeout)
-        # are logged but do not fail the request — WAIT is durability
-        # hardening, not a correctness gate. Timeout stays at the
-        # default 1000 ms (clamped at 2500 ms by SentinelUtil,
-        # strictly below the 3 s socket read timeout so WAIT's reply
-        # arrives before the socket tears down).
+        # are logged but do not fail the request — WAIT is
+        # durability hardening, not a correctness gate. Timeout
+        # stays at the default 1000 ms (clamped at 2500 ms by
+        # SentinelUtil, strictly below the 3 s socket read timeout
+        # so WAIT's reply arrives before the socket tears down).
+        #
+        # Operators who prefer lower noise over the full guarantee
+        # can set this to "1" — at the cost of ~50% durability on
+        # Sentinel-promoted failover.
         - name: REDIS_SESSION_WAIT_REPLICAS
-          value: "1"
+          value: "2"
         # To downgrade redis connection security:
         #   tls (no client certs): remove REDIS_X509 above and remove redis client cert/key volume items below
         #   tcp (no encryption): also remove REDIS_TLS and REDIS_TLS_CERT_KEY_PATH above and remove

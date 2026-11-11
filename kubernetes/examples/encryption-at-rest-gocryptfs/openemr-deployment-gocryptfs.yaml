@@ -437,10 +437,11 @@ spec:
         # Synchronous Redis replication on every session write via the
         # Redis WAIT command. Matches the default deployment —
         # see kubernetes/openemr/deployment.yaml for the rationale +
-        # caveats. Requires openemr 8.6.0+ (shipped in
-        # openemr/openemr#15220).
+        # tradeoffs (why "2" on a 2-replica cluster, vs "1" for
+        # lower noise at the cost of ~50% durability). Requires
+        # openemr 8.6.0+ (shipped in openemr/openemr#15220).
         - name: REDIS_SESSION_WAIT_REPLICAS
-          value: "1"
+          value: "2"
         - name: SWARM_MODE
           value: "yes"
         - name: FORCE_DATABASE_X509_CONNECT
