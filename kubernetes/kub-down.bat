@@ -29,6 +29,12 @@ kubectl delete -f https://github.com/mariadb-operator/mariadb-operator/releases/
 REM stakater/reloader (installed by kub-up.bat).
 kubectl delete -f https://raw.githubusercontent.com/stakater/Reloader/v1.4.23/deployments/kubernetes/reloader.yaml
 
+REM trust-manager (installed by kub-up.bat from vendored manifest).
+REM Deleted BEFORE cert-manager — its webhook depends on a
+REM cert-manager Certificate; deleting cert-manager first wedges
+REM Bundle finalizers.
+kubectl delete -f trust-manager/manifests.yaml
+
 REM cert-manager (installed by kub-up.bat).
 kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 

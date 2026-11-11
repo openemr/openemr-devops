@@ -30,6 +30,25 @@ goto cert_manager_retry
 kubectl wait --for=condition=Available --timeout=120s -n cert-manager deployment/cert-manager-webhook
 timeout 15
 
+REM bring in trust-manager (cert-manager sibling for Bundle-driven CA
+REM distribution during CA rotation). Vendored manifest — see
+REM kubernetes/trust-manager/manifests.yaml for provenance. Depends on
+REM cert-manager being up.
+set TRUST_MANAGER_ATTEMPTS=0
+:trust_manager_retry
+set /a TRUST_MANAGER_ATTEMPTS+=1
+kubectl apply --server-side=true --force-conflicts -f trust-manager/manifests.yaml
+if %errorlevel%==0 goto trust_manager_applied
+if %TRUST_MANAGER_ATTEMPTS% geq 3 (
+    echo ERROR: trust-manager apply failed after 3 attempts.
+    exit /b 1
+)
+echo ...trust-manager apply attempt %TRUST_MANAGER_ATTEMPTS% failed; retrying...
+ping -n 21 127.0.0.1 >nul
+goto trust_manager_retry
+:trust_manager_applied
+kubectl wait --for=condition=Available --timeout=180s -n cert-manager deployment/trust-manager
+
 REM bring in stakater/reloader (same shape as cert-manager retry above).
 REM Rolls cert-consuming workloads when cert-manager rotates their
 REM Secrets. See kubernetes/README.md -> Certificate reload mechanism.

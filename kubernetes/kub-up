@@ -43,6 +43,39 @@ kubectl wait --for=condition=Available --timeout=120s -n cert-manager deployment
 echo "...waiting 15 seconds for webhook to stabilize..."
 sleep 15
 
+# bring in trust-manager: cert-manager sibling that watches Bundle
+# resources and keeps target ConfigMaps/Secrets in sync when their
+# source CAs change. Primary use here is CA rotation: during the
+# dual-trust overlap window (both old and new CA valid), a Bundle
+# distributes both CAs via an auto-synced ConfigMap/Secret instead
+# of operators hand-copying trust lists to every peer. Depends on
+# cert-manager being up (shares the cert-manager namespace + uses
+# cert-manager to issue the trust-manager webhook's own TLS). The
+# manifest is a vendored render of the upstream helm chart — see
+# kubernetes/trust-manager/manifests.yaml for provenance + regen
+# procedure. Same 5-attempt retry shape as cert-manager above.
+TRUST_MANAGER_MAX_ATTEMPTS=5
+TRUST_MANAGER_APPLIED=0
+attempt=1
+while [ "${attempt}" -le "${TRUST_MANAGER_MAX_ATTEMPTS}" ]; do
+    if kubectl apply --server-side=true --force-conflicts -f trust-manager/manifests.yaml; then
+        TRUST_MANAGER_APPLIED=1
+        break
+    fi
+    if [ "${attempt}" -lt "${TRUST_MANAGER_MAX_ATTEMPTS}" ]; then
+        backoff=$((attempt * 10))
+        echo "...trust-manager apply attempt ${attempt} failed; retrying in ${backoff}s..."
+        sleep "${backoff}"
+    fi
+    attempt=$((attempt + 1))
+done
+if [ "${TRUST_MANAGER_APPLIED}" -eq 0 ]; then
+    echo "ERROR: trust-manager apply failed after ${TRUST_MANAGER_MAX_ATTEMPTS} attempts."
+    exit 1
+fi
+echo "...waiting for trust-manager deployment to be ready..."
+kubectl wait --for=condition=Available --timeout=180s -n cert-manager deployment/trust-manager
+
 # bring in stakater/reloader: watches Secrets referenced by each cert-
 # consuming workload's "secret.reloader.stakater.com/reload" annotation
 # and rolls the workload when any listed Secret UPDATE event fires.
