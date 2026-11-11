@@ -4,16 +4,31 @@ kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
 REM Pre-flight guard against upgrading an in-place pre-rel-860 site.
 REM Run FIRST so an old-layout site aborts before any cluster-wide
-REM installs. Same shape as the matching bash guard in kub-up; see
-REM kubernetes/README.md "Upgrading an existing site" for the
-REM documented dump+restore procedure.
-kubectl get statefulset/mysql-sts >nul 2>&1
-IF %ERRORLEVEL% EQU 0 (
+REM installs. Fail-closed: distinguish "StatefulSet not found" from
+REM other kubectl errors (API server unreachable, RBAC denial,
+REM wrong context). Treating all non-zero returns as "proceed" would
+REM silently install the operator stack even when the lookup never
+REM reached the cluster. See kubernetes/README.md "Upgrading an
+REM existing site" for the dump+restore procedure.
+kubectl get statefulset/mysql-sts > "%TEMP%\mysql-sts-lookup.out" 2>&1
+SET MYSQL_STS_LOOKUP_RC=%ERRORLEVEL%
+IF %MYSQL_STS_LOOKUP_RC% EQU 0 (
     echo ERROR: Existing 'mysql-sts' StatefulSet found - this layout uses the MariaDB Operator
     echo        and cannot upgrade an existing hand-rolled cluster in place. See the README's
     echo        'Upgrading an existing site' section for the dump+restore procedure. Aborting.
+    del "%TEMP%\mysql-sts-lookup.out" 2>nul
     exit /b 1
 )
+findstr /I /R "not.found NotFound" "%TEMP%\mysql-sts-lookup.out" >nul 2>&1
+IF NOT %ERRORLEVEL% EQU 0 (
+    echo ERROR: Pre-flight check failed - unable to query the cluster for an existing 'mysql-sts'
+    echo        StatefulSet. kubectl reported:
+    type "%TEMP%\mysql-sts-lookup.out"
+    echo        Resolve the API/RBAC/context issue and re-run kub-up. Aborting.
+    del "%TEMP%\mysql-sts-lookup.out" 2>nul
+    exit /b 1
+)
+del "%TEMP%\mysql-sts-lookup.out" 2>nul
 
 REM bring in cert-manager (the NFS mTLS layer below requires it)
 REM

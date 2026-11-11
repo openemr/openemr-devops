@@ -387,16 +387,25 @@ Supported upgrade procedure:
    ```
    Wait for pods to terminate. Keep them at `replicas=0` through the entire migration — any running openemr pod could reconnect and write to the old DB, invalidating the snapshot you're about to take.
 2. **Back up ALL three shared volumes off-cluster**, not just the DB:
-   - **DB**: logical dump via `mysqldump --all-databases --single-transaction --routines --triggers > dump.sql` from inside a shell in `mysql-sts-0`. (The operator-managed destination accepts a `mysql` client restore through `mysql-primary`; `mariadb-backup` physical backups are NOT drop-in restorable this way and need a different workflow — operator-managed `MariadbBackup`/`MariadbRestore` CRs, or a bootstrapFrom configuration on the new MariaDB resource — so logical dump is the safer default here.)
+   - **DB**: logical dump of the OpenEMR application database(s) ONLY — dumping `--all-databases` would pull in the source cluster's `mysql` system database (user accounts, grants, server-generated metadata), which must NOT be restored over the operator-managed destination because the operator manages its own system user accounts with its own passwords. From inside a shell in `mysql-sts-0`, dump the app DB explicitly (list names if the site has more than one):
+     ```bash
+     mysqldump --databases openemr --single-transaction --routines --triggers > dump.sql
+     ```
+     Document any application user accounts and grants that need recreation separately — on the restored cluster, recreate them against the operator-managed root account via `CREATE USER` / `GRANT` statements rather than dumping the source `mysql` DB. (The operator-managed destination accepts a `mysql` client restore through `mysql-primary`; `mariadb-backup` physical backups are NOT drop-in restorable this way and need a different workflow — operator-managed `MariadbBackup`/`MariadbRestore` CRs, or a bootstrapFrom configuration on the new MariaDB resource — so logical dump is the safer default here.)
    - **websitevolume** (`/var/www/.../sites`): openemr-managed documents, encounter-attached files, OpenEMR module state. Snapshot the PVC to an off-cluster location via a short-lived busybox helper pod (same pattern as the CSI-NFS upgrade section below).
    - **sslvolume** (`/etc/ssl`) and **letsencryptvolume** (`/etc/letsencrypt`) if the site has operator-provisioned TLS cert material worth keeping.
 3. **Spin up a fresh cluster** and run `kub-up` there. The operator-managed MariaDB will come up empty.
 4. **Keep the new site's `openemr` Deployment at `replicas=0`** before restoring (`kubectl scale deployment/openemr --replicas=0` on the new cluster). Letting openemr boot against an empty DB risks running `install_simple.php` and re-seeding tables you're about to restore over.
-5. **Restore the DB dump** into the new cluster:
+5. **Restore the DB dump** into the new cluster. `openemr` is scaled to 0, so exec through one of the running MariaDB pods (or spin up a short-lived `mariadb:11` client pod) — NOT through the openemr Deployment:
    ```bash
-   kubectl exec -i deploy/openemr -- mysql -h mysql-primary -u root -p < dump.sql
+   # option A: exec into the primary pod directly
+   kubectl exec -i mysql-0 -- mariadb -u root -p < dump.sql
+   # option B: run a short-lived client pod (better for an isolated restore session)
+   kubectl run mariadb-restore --rm -it --restart=Never --image=mariadb:11 \
+       --command -- mariadb -h mysql-primary -u root -p
+   # ... then \. /path/to/dump.sql inside the client session
    ```
-   (or similar — adjust for your off-cluster dump location). Verify tables populated via phpmyadmin on the new cluster.
+   Keep the new site's openemr Deployment at `replicas=0` until the restore completes. Verify tables populated via phpmyadmin on the new cluster.
 6. **Restore the backed-up websitevolume / sslvolume / letsencryptvolume contents** into the new cluster's PVCs (helper-pod `tar -x` into each mount, same reverse of step 2's snapshot).
 7. **Scale openemr back up** on the new cluster (`kubectl scale deployment/openemr --replicas=3`) and verify end-to-end: login, patient operations, FHIR endpoints, document retrieval from the restored websitevolume.
 8. **Cut traffic over to the new site's ingress** once verified (DNS flip, load-balancer repointing, or whatever your ingress layer uses).
@@ -480,11 +489,25 @@ For defense-in-depth beyond storage-layer encryption, MariaDB's built-in `file_k
 Enabling TDE involves editing the `MariaDB` resource in `mysql/mariadb.yaml` (the operator-managed cluster — the pre-rel-860 hand-rolled StatefulSet + ConfigMap this section used to reference is gone):
 
 1. **A new Secret** containing the keyfile (one or more lines of `<key-id>;<32 hex chars = 16-byte AES key>`), optionally itself encrypted with a master password supplied via `file_key_management_filekey`.
-2. **A pod-template volume mount** on the MariaDB pods at `/etc/mysql/encryption/`, added under `spec.podTemplate.spec.containers[?(@.name=="mariadb")].volumeMounts` and `spec.podTemplate.spec.volumes` on the `MariaDB` resource. Source the secret with `defaultMode: 0400`. The operator renders the podTemplate into both primary and replica pods, so the keyfile is automatically consistent across replication.
-3. **mysqld configuration additions** via `spec.myCnf` on the `MariaDB` resource — the operator writes this string into a managed ConfigMap that's mounted on both primary and replica pods. Keep the existing `spec.myCnf` content if any; append:
+2. **A volume mount** on the MariaDB pods at `/etc/mysql/encryption/`, added to the top-level `spec.volumes` and `spec.volumeMounts` fields on the `MariaDB` resource (the operator's supported mount surface — these propagate to both primary and replica pods, so the keyfile stays consistent across replication without manual sync). Source the secret with `defaultMode: 0400`:
+   ```yaml
+   spec:
+     volumes:
+     - name: mariadb-encryption
+       secret:
+         secretName: mariadb-tde-keyfile
+         defaultMode: 0400
+     volumeMounts:
+     - name: mariadb-encryption
+       mountPath: /etc/mysql/encryption
+       readOnly: true
+   ```
+   After applying the change, verify the rendered pod has the mount with `kubectl describe pod mysql-0 | grep -A2 encryption` or `kubectl get pod mysql-0 -o jsonpath='{.spec.containers[?(@.name=="mariadb")].volumeMounts}'`.
+3. **mysqld configuration additions** via `spec.myCnf` on the `MariaDB` resource — the operator writes this string into a managed ConfigMap that's mounted on both primary and replica pods. The `myCnf` body is an INI-format my.cnf fragment, so it must open with a `[mysqld]` section header (operator-managed init picks these up as mysqld options when the section is explicit). Keep the existing `spec.myCnf` content if any; append under the same `[mysqld]` block or add one:
    ```yaml
    spec:
      myCnf: |
+       [mysqld]
        # ... existing lines (if any) ...
        plugin-load-add=file_key_management
        file_key_management_filename=/etc/mysql/encryption/keyfile

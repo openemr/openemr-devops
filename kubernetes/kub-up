@@ -17,10 +17,24 @@ kubectl wait --for=condition=Ready nodes --all --timeout=120s
 # are changed, leaving the existing cluster untouched for the
 # operator to migrate manually. See kubernetes/README.md
 # "Upgrading an existing site" for the documented procedure.
-if kubectl get statefulset/mysql-sts >/dev/null 2>&1; then
+# Fail-closed: distinguish "StatefulSet not found" (the expected
+# case for a fresh install) from other kubectl errors (API server
+# unreachable, RBAC denial, context misconfigured). Treating all
+# non-zero exits as "proceed" would silently install the operator
+# stack when the lookup never actually succeeded against the
+# cluster, which is worse than aborting.
+MYSQL_STS_LOOKUP_STDERR=$(kubectl get statefulset/mysql-sts 2>&1 >/dev/null)
+MYSQL_STS_LOOKUP_RC=$?
+if [ "${MYSQL_STS_LOOKUP_RC}" -eq 0 ]; then
     echo "ERROR: Existing 'mysql-sts' StatefulSet found — this layout uses the MariaDB Operator"
     echo "       and cannot upgrade an existing hand-rolled cluster in place. See the README's"
     echo "       'Upgrading an existing site' section for the dump+restore procedure. Aborting."
+    exit 1
+elif ! echo "${MYSQL_STS_LOOKUP_STDERR}" | grep -qiE 'not.found|NotFound'; then
+    echo "ERROR: Pre-flight check failed — unable to query the cluster for an existing 'mysql-sts'"
+    echo "       StatefulSet. kubectl reported:"
+    echo "       ${MYSQL_STS_LOOKUP_STDERR}"
+    echo "       Resolve the API/RBAC/context issue and re-run kub-up. Aborting."
     exit 1
 fi
 
