@@ -392,7 +392,10 @@ Supported upgrade procedure:
      set -o pipefail
      # Collect the app-DB names from every site's sqlconf.php on the old site.
      # Adjust `$dbase` extraction if your site uses non-standard config files.
-     APP_DBS="openemr"   # replace with the space-separated list from your sites/
+     # Shell ARRAY (not space-delimited string) — each DB name is a separate
+     # element so names with special chars don't shell-expand when passed to
+     # the remote `sh -c`.
+     APP_DBS=("openemr")   # replace with the list of DB names from your sites/
      # Private staging dir so the dump cannot be read by other local users; 077
      # umask ensures the dump itself lands mode 0600. Fail if dump.sql already
      # exists so a prior attempt's output isn't silently overwritten.
@@ -400,12 +403,16 @@ Supported upgrade procedure:
      (
          umask 077
          [ ! -e ./migration-dump/dump.sql ] || { echo "dump.sql exists; refusing to overwrite"; exit 1; }
-         # shellcheck disable=SC2086  # intentional word-split on APP_DBS
+         # Pass APP_DBS as positional args to sh -c — the first arg after
+         # the script is $0 (we use the literal "sh" as a placeholder name),
+         # subsequent args fill $1, $2, ... which "$@" expands safely.
+         # This avoids shell-interpolating the array into the remote script
+         # string (where a DB name with a quote or semicolon would be fatal).
          kubectl exec -i mysql-sts-0 -- sh -c '
              MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mariadb-dump -u root \
-                 --databases '"${APP_DBS}"' \
+                 --databases "$@" \
                  --single-transaction --routines --triggers --events
-         ' > ./migration-dump/dump.sql
+         ' sh "${APP_DBS[@]}" > ./migration-dump/dump.sql
      )
      echo "dump exit: $?"              # must be 0; non-zero = partial dump, do not proceed
      ls -l ./migration-dump/dump.sql   # verify size is plausible, mode is -rw------- (0600)
@@ -421,7 +428,7 @@ Supported upgrade procedure:
    echo "restoring into primary pod: ${PRIMARY}"   # verify non-empty
    kubectl exec -i "${PRIMARY}" -- sh -c '
        MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -u root
-   ' < ./dump.sql
+   ' < ./migration-dump/dump.sql
    ```
    Same `MYSQL_PWD` env-var pattern as the dump step — avoids `-p PASS` on the command line (visible in `ps`) and inherits the password directly from the operator-managed Secret the pod already mounts.
 
