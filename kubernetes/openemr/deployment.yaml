@@ -106,15 +106,18 @@ spec:
         # openemr/openemr#15220) — the 8.6.0 pin above enforces that.
         # With waitReplicas=1 on a 1-primary+2-replica cluster, each
         # session write blocks until at least 1 replica has ACKed
-        # before the request returns, closing the Sentinel-failover
-        # window where an un-replicated in-flight session would be
-        # lost on primary promotion. Shortfalls (fewer replicas ACK
-        # within the timeout) are logged but do not fail the request
-        # — WAIT is durability hardening, not a correctness gate.
-        # Timeout stays at the default 1000 ms (clamped at 2500 ms
-        # by SentinelUtil, strictly below the 3 s socket read
-        # timeout so WAIT's reply arrives before the socket tears
-        # down).
+        # before the request returns, reducing (not eliminating) the
+        # risk of losing an in-flight session on primary failover:
+        # the configured replica count has acknowledged the write,
+        # but Sentinel's election can still promote a different
+        # replica that did not acknowledge it, in which case the
+        # un-replicated write is lost on that replica's promotion.
+        # Shortfalls (fewer replicas ACK within the WAIT timeout)
+        # are logged but do not fail the request — WAIT is durability
+        # hardening, not a correctness gate. Timeout stays at the
+        # default 1000 ms (clamped at 2500 ms by SentinelUtil,
+        # strictly below the 3 s socket read timeout so WAIT's reply
+        # arrives before the socket tears down).
         - name: REDIS_SESSION_WAIT_REPLICAS
           value: "1"
         # To downgrade redis connection security:

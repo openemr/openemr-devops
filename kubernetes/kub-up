@@ -177,6 +177,29 @@ echo "...waiting for nfs-server + nfs-stunnel-client to be listening..."
 kubectl rollout status deployment/nfs-server --timeout=180s
 kubectl rollout status daemonset/nfs-stunnel-client --timeout=180s
 
+# Pre-flight check: this layout uses the MariaDB Operator (declarative
+# cluster via MariaDB CRD, replaces the pre-rel-860 hand-rolled
+# StatefulSet + headless Service pair). Upgrading an existing site
+# from the old layout in-place is NOT supported from kub-up: the
+# cutover needs writes quiesced, DB migrated to the new topology,
+# and openemr clients repointed to `mysql-primary`. Instead of
+# attempting a half-safe hot migration here (where failure would
+# leave the site unreachable), kub-up refuses to apply the
+# operator manifests on a cluster that already has an old-layout
+# StatefulSet. Operators upgrading an existing site should:
+#   1. Spin up a fresh cluster or namespace and run kub-up there.
+#   2. Dump+restore the DB from the old site into the new operator-
+#      managed cluster (mysqldump / mariadb-backup workflow).
+#   3. Cut traffic over to the new site's ingress once verified.
+# See kubernetes/README.md "Upgrading an existing site" for the
+# documented procedure.
+if kubectl get statefulset/mysql-sts >/dev/null 2>&1; then
+    echo "ERROR: Existing 'mysql-sts' StatefulSet found — this layout uses the MariaDB Operator"
+    echo "       and cannot upgrade an existing hand-rolled cluster in place. See the README's"
+    echo "       'Upgrading an existing site' section for the dump+restore procedure. Aborting."
+    exit 1
+fi
+
 kubectl apply \
     -f mysql/secret.yaml \
     -f mysql/replication-secret.yaml \
