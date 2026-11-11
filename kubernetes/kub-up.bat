@@ -19,8 +19,16 @@ IF %MYSQL_STS_LOOKUP_RC% EQU 0 (
     del "%TEMP%\mysql-sts-lookup.out" 2>nul
     exit /b 1
 )
+REM Tighten the NotFound matcher: require both the NotFound token
+REM AND a reference to mysql-sts (or statefulsets) in the output.
+REM A bare "not found" would also match unrelated kubectl errors
+REM like a missing exec-plugin for cluster auth; those must abort
+REM here instead of silently proceeding into the install path.
+findstr /I /R "mysql-sts statefulset" "%TEMP%\mysql-sts-lookup.out" >nul 2>&1
+SET MYSQL_STS_NAME_FOUND=%ERRORLEVEL%
 findstr /I /R "not.found NotFound" "%TEMP%\mysql-sts-lookup.out" >nul 2>&1
-IF NOT %ERRORLEVEL% EQU 0 (
+SET MYSQL_STS_NF_FOUND=%ERRORLEVEL%
+IF NOT "%MYSQL_STS_NAME_FOUND%%MYSQL_STS_NF_FOUND%"=="00" (
     echo ERROR: Pre-flight check failed - unable to query the cluster for an existing 'mysql-sts'
     echo        StatefulSet. kubectl reported:
     type "%TEMP%\mysql-sts-lookup.out"

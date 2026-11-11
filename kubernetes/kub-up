@@ -30,7 +30,15 @@ if [ "${MYSQL_STS_LOOKUP_RC}" -eq 0 ]; then
     echo "       and cannot upgrade an existing hand-rolled cluster in place. See the README's"
     echo "       'Upgrading an existing site' section for the dump+restore procedure. Aborting."
     exit 1
-elif ! echo "${MYSQL_STS_LOOKUP_STDERR}" | grep -qiE 'not.found|NotFound'; then
+# Tighten the NotFound matcher: kubectl's canonical shape for a
+# missing StatefulSet is
+#   Error from server (NotFound): statefulsets.apps "mysql-sts" not found
+# A bare "not.found" grep would also match unrelated failures (e.g.
+# `error: exec plugin: ... not found` from a missing gke-gcloud-auth-plugin,
+# or any auth credential-plugin lookup). Require the resource name
+# to appear in the same line so we only enter the install path when
+# the error truly identifies mysql-sts as missing.
+elif ! echo "${MYSQL_STS_LOOKUP_STDERR}" | grep -qiE '(not.found|NotFound).*(statefulset|mysql-sts)|(statefulset|mysql-sts).*(not.found|NotFound)'; then
     echo "ERROR: Pre-flight check failed — unable to query the cluster for an existing 'mysql-sts'"
     echo "       StatefulSet. kubectl reported:"
     echo "       ${MYSQL_STS_LOOKUP_STDERR}"

@@ -387,29 +387,59 @@ Supported upgrade procedure:
    ```
    Wait for pods to terminate. Keep them at `replicas=0` through the entire migration — any running openemr pod could reconnect and write to the old DB, invalidating the snapshot you're about to take.
 2. **Back up ALL three shared volumes off-cluster**, not just the DB:
-   - **DB**: logical dump of the OpenEMR application database(s) ONLY — dumping `--all-databases` would pull in the source cluster's `mysql` system database (user accounts, grants, server-generated metadata), which must NOT be restored over the operator-managed destination because the operator manages its own system user accounts with its own passwords. From inside a shell in `mysql-sts-0`, dump the app DB explicitly (list names if the site has more than one):
+   - **DB**: logical dump of the OpenEMR application database(s) ONLY — dumping `--all-databases` would pull in the source cluster's `mysql` system database (user accounts, grants, server-generated metadata), which must NOT be restored over the operator-managed destination because the operator manages its own system user accounts with its own passwords. Stream the dump directly from `mysql-sts-0` to protected local storage — authenticate via the pod's own `MYSQL_ROOT_PASSWORD` env var (passed through `MYSQL_PWD`, which is not visible in `ps`) rather than `-p PASS` on the command line, and let `set -o pipefail` catch a failing `mariadb-dump`:
      ```bash
-     mysqldump --databases openemr --single-transaction --routines --triggers > dump.sql
+     set -o pipefail
+     kubectl exec -i mysql-sts-0 -- sh -c '
+         MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mariadb-dump -u root \
+             --databases openemr --single-transaction --routines --triggers
+     ' > ./dump.sql
+     echo "dump exit: $?"   # must be 0; non-zero = partial dump, do not proceed
+     ls -l ./dump.sql       # verify size is non-zero and plausible for the site
      ```
-     Document any application user accounts and grants that need recreation separately — on the restored cluster, recreate them against the operator-managed root account via `CREATE USER` / `GRANT` statements rather than dumping the source `mysql` DB. (The operator-managed destination accepts a `mysql` client restore through `mysql-primary`; `mariadb-backup` physical backups are NOT drop-in restorable this way and need a different workflow — operator-managed `MariadbBackup`/`MariadbRestore` CRs, or a bootstrapFrom configuration on the new MariaDB resource — so logical dump is the safer default here.)
+     Use `mariadb-dump` (modern name; `mysqldump` is the compatibility alias but is being deprecated in MariaDB 11+). Save `./dump.sql` to protected local storage outside the cluster before proceeding — the pod and the source cluster are about to be decommissioned. Document any application user accounts and grants that need recreation separately — on the restored cluster, recreate them against the operator-managed root account via `CREATE USER` / `GRANT` statements rather than dumping the source `mysql` DB. (The operator-managed destination accepts a `mariadb` client restore through `mysql-primary`; `mariadb-backup` physical backups are NOT drop-in restorable this way and need a different workflow — operator-managed `MariadbBackup`/`MariadbRestore` CRs, or a `bootstrapFrom` configuration on the new MariaDB resource — so logical dump is the safer default here.)
    - **websitevolume** (`/var/www/.../sites`): openemr-managed documents, encounter-attached files, OpenEMR module state. Snapshot the PVC to an off-cluster location via a short-lived busybox helper pod (same pattern as the CSI-NFS upgrade section below).
    - **sslvolume** (`/etc/ssl`) and **letsencryptvolume** (`/etc/letsencrypt`) if the site has operator-provisioned TLS cert material worth keeping.
 3. **Spin up a fresh cluster** and run `kub-up` there. The operator-managed MariaDB will come up empty.
 4. **Keep the new site's `openemr` Deployment at `replicas=0`** before restoring (`kubectl scale deployment/openemr --replicas=0` on the new cluster). Letting openemr boot against an empty DB risks running `install_simple.php` and re-seeding tables you're about to restore over.
-5. **Restore the DB dump** into the new cluster. `openemr` is scaled to 0, so exec through one of the running MariaDB pods (or spin up a short-lived `mariadb:11` client pod) — NOT through the openemr Deployment:
+5. **Restore the DB dump** into the new cluster. `openemr` is scaled to 0, so exec directly into the operator-managed primary pod — resolve its name from the MariaDB resource's status rather than assuming `mysql-0`, since the operator can promote `mysql-1` to primary after a failover and the hardcoded `mysql-0` assumption would silently restore into a replica:
    ```bash
-   # option A: exec into the primary pod directly
-   kubectl exec -i mysql-0 -- mariadb -u root -p < dump.sql
-   # option B: run a short-lived client pod (better for an isolated restore session)
-   kubectl run mariadb-restore --rm -it --restart=Never --image=mariadb:11 \
-       --command -- mariadb -h mysql-primary -u root -p
-   # ... then \. /path/to/dump.sql inside the client session
+   PRIMARY=$(kubectl get mariadb mysql -o jsonpath='{.status.currentPrimary}')
+   echo "restoring into primary pod: ${PRIMARY}"   # verify non-empty
+   kubectl exec -i "${PRIMARY}" -- sh -c '
+       MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -u root
+   ' < ./dump.sql
    ```
+   Same `MYSQL_PWD` env-var pattern as the dump step — avoids `-p PASS` on the command line (visible in `ps`) and inherits the password directly from the operator-managed Secret the pod already mounts.
+
+   Alternative: operators who want an isolated interactive restore session can spin up a short-lived `mariadb:11` client pod instead. This requires `kubectl cp`-ing the dump into the pod before `\.`-sourcing it, since the pod has no access to local files:
+   ```bash
+   # Create the client pod (labeled to pass the allow-mysql-ingress NetworkPolicy
+   # which requires one of: name=openemr, name=phpmyadmin, app=mysql, or
+   # app.kubernetes.io/name=mariadb-operator — the restore pod isn't any of
+   # those by default, so set a matching label explicitly).
+   kubectl run mariadb-restore --labels=name=openemr --restart=Never \
+       --image=mariadb:11 --command -- sleep 3600
+   kubectl cp ./dump.sql mariadb-restore:/tmp/dump.sql
+   kubectl exec -it mariadb-restore -- sh -c '
+       MYSQL_PWD="<root-pw>" mariadb -h mysql-primary -u root \
+           -e "source /tmp/dump.sql"
+   '
+   kubectl delete pod mariadb-restore
+   ```
+   (`name=openemr` is a defensible temporary label — the openemr NetworkPolicy already permits the required access shape, and the pod is deleted immediately after. Don't leave it labeled that way.)
+
    Keep the new site's openemr Deployment at `replicas=0` until the restore completes. Verify tables populated via phpmyadmin on the new cluster.
 6. **Restore the backed-up websitevolume / sslvolume / letsencryptvolume contents** into the new cluster's PVCs (helper-pod `tar -x` into each mount, same reverse of step 2's snapshot).
-7. **Scale openemr back up** on the new cluster (`kubectl scale deployment/openemr --replicas=3`) and verify end-to-end: login, patient operations, FHIR endpoints, document retrieval from the restored websitevolume.
-8. **Cut traffic over to the new site's ingress** once verified (DNS flip, load-balancer repointing, or whatever your ingress layer uses).
-9. **Decommission the old site on its own cluster**. Do NOT run `kub-down` if you reused the same cluster — it would tear down cluster-wide operators (cert-manager, mariadb-operator, etc.) that the old site also depends on, and there isn't a namespace-only teardown path in this stack today. On a dedicated-cluster migration, the full `kub-down` on the old cluster is the right teardown.
+7. **Update `sqlconf.php` in the restored websitevolume** to point at the new Service name. The old site had `$host = "mysql"` baked into `sites/default/sqlconf.php` (and any per-site `sqlconf.php` under `sites/*/sqlconf.php`); the new topology uses `mysql-primary`. OpenEMR reads this file to establish its DB connection, and env-var override of `MYSQL_HOST` does NOT replace it inside sqlconf.php — the file's value wins once bootstrap writes it. Fix before starting openemr:
+   ```bash
+   # Helper pod with websitevolume mounted:
+   kubectl exec <helper> -- find /sites -name sqlconf.php -exec sed -i 's/= "mysql";/= "mysql-primary";/g' {} +
+   ```
+   (Adjust the match to the actual quoting in the source file; verify with `grep -r 'host' sites/*/sqlconf.php` after.)
+8. **Scale openemr back up** on the new cluster (`kubectl scale deployment/openemr --replicas=3`) and verify end-to-end: login, patient operations, FHIR endpoints, document retrieval from the restored websitevolume.
+9. **Cut traffic over to the new site's ingress** once verified (DNS flip, load-balancer repointing, or whatever your ingress layer uses).
+10. **Decommission the old site on its own cluster**. Do NOT run `kub-down` if you reused the same cluster — it would tear down cluster-wide operators (cert-manager, mariadb-operator, etc.) that the old site also depends on, and there isn't a namespace-only teardown path in this stack today. On a dedicated-cluster migration, the full `kub-down` on the old cluster is the right teardown.
 
 Doing it as fresh-cluster + dump/restore is slower than in-place but is the safe path on a schema that touches every workload. Operators comfortable with mariadb replication can also set up the new operator cluster as a replica of the old primary, promote it, and cut over — but that's bring-your-own-expertise territory; this README doesn't walk through it.
 
