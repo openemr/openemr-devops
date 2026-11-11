@@ -101,6 +101,22 @@ spec:
           value: "yes"
         - name: REDIS_TLS_CERT_KEY_PATH
           value: "/redis-certs"
+        # Synchronous Redis replication on every session write via the
+        # Redis WAIT command. Requires openemr 8.6.0+ (shipped in
+        # openemr/openemr#15220) — the 8.6.0 pin above enforces that.
+        # With waitReplicas=1 on a 1-primary+2-replica cluster, each
+        # session write blocks until at least 1 replica has ACKed
+        # before the request returns, closing the Sentinel-failover
+        # window where an un-replicated in-flight session would be
+        # lost on primary promotion. Shortfalls (fewer replicas ACK
+        # within the timeout) are logged but do not fail the request
+        # — WAIT is durability hardening, not a correctness gate.
+        # Timeout stays at the default 1000 ms (clamped at 2500 ms
+        # by SentinelUtil, strictly below the 3 s socket read
+        # timeout so WAIT's reply arrives before the socket tears
+        # down).
+        - name: REDIS_SESSION_WAIT_REPLICAS
+          value: "1"
         # To downgrade redis connection security:
         #   tls (no client certs): remove REDIS_X509 above and remove redis client cert/key volume items below
         #   tcp (no encryption): also remove REDIS_TLS and REDIS_TLS_CERT_KEY_PATH above and remove

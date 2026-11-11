@@ -434,6 +434,13 @@ spec:
           value: "yes"
         - name: REDIS_TLS_CERT_KEY_PATH
           value: "/redis-certs"
+        # Synchronous Redis replication on every session write via the
+        # Redis WAIT command. Matches the default deployment —
+        # see kubernetes/openemr/deployment.yaml for the rationale +
+        # caveats. Requires openemr 8.6.0+ (shipped in
+        # openemr/openemr#15220).
+        - name: REDIS_SESSION_WAIT_REPLICAS
+          value: "1"
         - name: SWARM_MODE
           value: "yes"
         - name: FORCE_DATABASE_X509_CONNECT
