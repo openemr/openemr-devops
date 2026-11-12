@@ -32,8 +32,17 @@ spec:
         volumeMounts:
         - name: phpmyadmin-server-certs
           mountPath: /certs
+        # File by file with subPath: see the redis-certs mounts in
+        # openemr/deployment.yaml (PHP realpath cache vs live Secret update).
         - name: mysql-phpmyadmin-client-certs
-          mountPath: /etc/mysql
+          mountPath: /etc/mysql/ca.pem
+          subPath: ca.pem
+        - name: mysql-phpmyadmin-client-certs
+          mountPath: /etc/mysql/tls.crt
+          subPath: tls.crt
+        - name: mysql-phpmyadmin-client-certs
+          mountPath: /etc/mysql/tls.key
+          subPath: tls.key
         - name: phpmyadmin-config-map
           mountPath: /etc/phpmyadmin/config.user.inc.php
           subPath: config.user.inc.php

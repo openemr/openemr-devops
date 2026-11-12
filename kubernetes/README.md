@@ -280,23 +280,45 @@ Each of these is exercised in CI: `.github/workflows/test-kubernetes-cert-rotati
 
 ### Forcing a rotation
 
-Rotation is automatic: cert-manager renews each certificate 30 days before it expires, and reloader (or the MariaDB Operator, for the MariaDB certs) restarts whatever uses it. To rotate on demand, for example after a suspected key leak, renew the certificate with [cmctl](https://cert-manager.io/docs/reference/cmctl/):
+Rotation is automatic: cert-manager renews each certificate 30 days before it expires, and reloader (or the MariaDB Operator, for the MariaDB certs) restarts whatever uses it. To rotate one on demand, renew it with [cmctl](https://cert-manager.io/docs/reference/cmctl/) and confirm the new certificate by its `notBefore` time (`READY=True` does not prove a renewal happened; it stays `True` while the new certificate is still being issued):
 
 ```bash
-kubectl get certificates            # list certificate names
-cmctl renew redis                   # renew one certificate
-kubectl get certificate redis       # READY=True once re-issued
+kubectl get certificates                                         # list names
+kubectl get certificate redis -o jsonpath='{.status.notBefore}'  # note the current value
+cmctl renew redis
+kubectl get certificate redis -o jsonpath='{.status.notBefore}'  # renewed once this changes
 ```
 
-cert-manager re-issues the certificate immediately and the consuming workload restarts within a few seconds, with the impact described above for that workload. To renew every leaf certificate, renew them by name, one at a time:
+The consuming workload restarts within a few seconds of the renewal, with the impact described above for that workload.
+
+**Renewal does not revoke the old certificate.** This private CA has no CRL or OCSP, so after a suspected key leak the old certificate stays valid until it expires (up to 90 days) even though the workload no longer uses it. To stop trusting it sooner, rotate the CA (see [CA rotation is a separate concern](#ca-rotation-is-a-separate-concern)): once the old CA is removed from the trust bundles, every certificate it signed is rejected.
+
+To renew every leaf certificate, renew them one at a time and let each restart finish before starting the next, so Redis, Sentinel and NFS are never restarting at the same moment. Leaf certificates are the ones issued by `ca-issuer`; the CA itself (and any replacement CA created during a CA rotation) is not:
 
 ```bash
-for c in $(kubectl get certificates -o name | grep -v '/ca-certificate$'); do
-    cmctl renew "${c#*/}"
-done
+renew_all_leaves() {
+    local c before
+    for c in $(kubectl get certificates -o jsonpath='{range .items[?(@.spec.issuerRef.name=="ca-issuer")]}{.metadata.name}{" "}{end}'); do
+        before=$(kubectl get certificate "$c" -o jsonpath='{.status.notBefore}')
+        cmctl renew "$c" || return 1
+        for _ in $(seq 1 60); do
+            [ "$(kubectl get certificate "$c" -o jsonpath='{.status.notBefore}')" != "$before" ] && break
+            sleep 2
+        done
+        [ "$(kubectl get certificate "$c" -o jsonpath='{.status.notBefore}')" != "$before" ] \
+            || { echo "$c was not re-issued within 120s"; return 1; }
+        echo "$c re-issued; waiting for the restart to finish"
+        sleep 30   # reloader / the MariaDB Operator start the restart within seconds
+        for w in $(kubectl get deployments,daemonsets -o name) statefulset/redis statefulset/sentinel; do
+            kubectl rollout status "$w" --timeout=900s || return 1
+        done
+        kubectl wait --for=condition=Ready mariadb/mysql --timeout=900s || return 1
+    done
+}
+renew_all_leaves
 ```
 
-**Do not use `cmctl renew --all`**: it also renews `ca-certificate`, which rotates the CA key. Workloads then hold a mix of old-CA and new-CA certificates and trust bundles, and mTLS handshakes between them fail until every leaf has been re-issued and every workload restarted. Rotate the CA with the procedure in [CA rotation is a separate concern](#ca-rotation-is-a-separate-concern) instead. The MariaDB server and replication certificates are listed too (`mysql-server-cert`, `mysql-client-cert`); renewing them makes the operator roll the MariaDB StatefulSet with a primary switchover.
+**Do not use `cmctl renew --all`**: it also renews `ca-certificate`, and renews everything at once. The MariaDB server and replication certificates (`mysql-server-cert`, `mysql-client-cert`) are included in the loop; renewing them makes the operator roll the MariaDB StatefulSet with a primary switchover, which the `mariadb/mysql` wait covers.
 
 ### MariaDB HA architecture details
 
@@ -316,7 +338,7 @@ Alternative stacks that satisfy the same three-part contract would also work: Ma
 
 ### CA rotation is a separate concern
 
-The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certificate.yaml`) is NOT annotated for reload: rotating the CA invalidates every trusted-CA list downstream peers hold, which requires an overlap period where both the old and new CA are trusted simultaneously. **cert-manager behavior**: `certs/ca-certificate.yaml` sets `renewBefore: 2880h` (120 days) explicitly, longer than the 90-day leaf lifetime — if that field were unset, cert-manager's default is 2/3 of the certificate lifetime, which for a 10y CA would be ~3⅓ years before expiry. cert-manager 1.20 rotates the CA private key by default on each renewal (`rotationPolicy: Always`) — which is what makes it a key rotation and not just a cert refresh. **What does NOT happen automatically**: existing leaf Certificates DO NOT get re-issued on a CA key rotation. They continue to be valid until their own `renewBefore` triggers. **Danger**: a leaf cert that just renewed against the OLD CA shortly before the rotation could hold old-CA-signed material for its full duration (up to 90 days). If the old CA expired inside that window, those certs would become invalid, which is why the CA's `renewBefore` (120 days) must stay longer than the leaf `duration`.
+The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certificate.yaml`) is NOT annotated for reload: rotating the CA invalidates every trusted-CA list downstream peers hold, which requires an overlap period where both the old and new CA are trusted simultaneously. **cert-manager behavior**: `certs/ca-certificate.yaml` sets `renewBefore: 2880h` (120 days) explicitly, longer than the 90-day leaf lifetime — if that field were unset, cert-manager's default is 2/3 of the certificate lifetime, which for a 10y CA would be ~3⅓ years before expiry. `certs/ca-certificate.yaml` sets `privateKey.rotationPolicy: Never`, so cert-manager's automatic renewal re-issues the CA certificate with the same key and existing trust stays valid; rotating the CA key is always a deliberate operator action following the procedure below. (cert-manager's default is `rotationPolicy: Always`, which would replace the CA key on every automatic renewal and break trust between workloads until every leaf had been re-issued.) **What does NOT happen automatically**: existing leaf Certificates DO NOT get re-issued on a CA key rotation. They continue to be valid until their own `renewBefore` triggers. **Danger**: a leaf cert that just renewed against the OLD CA shortly before the rotation could hold old-CA-signed material for its full duration (up to 90 days). If the old CA expired inside that window, those certs would become invalid, which is why the CA's `renewBefore` (120 days) must stay longer than the leaf `duration`.
 
 **Operator procedure for CA rotation** (manual — the stack does not wire `trust-manager`, so steps 2 and 7 are the operator's responsibility):
 
@@ -356,7 +378,7 @@ Enforcement now lives on the `MariaDB` resource (`mysql/mariadb.yaml`), not on c
 2. `mysql/mariadb.yaml`: Under `spec.tls`, remove `clientCertIssuerRef` (leave `enabled: true` and `serverCertIssuerRef` — the server still presents a cert, but no longer requires clients to present one). The operator will reconcile the `MariaDB` resource on apply.
 3. `openemr/deployment.yaml`: Change `FORCE_DATABASE_X509_CONNECT` to `FORCE_DATABASE_SSL_CONNECT` and remove the `tls.crt` (mysql-cert) and `tls.key` (mysql-key) items from the `mysql-openemr-client-certs` volume
 4. `phpmyadmin/configmap.yaml`: Comment out or remove the `ssl_cert` and `ssl_key` lines
-5. `phpmyadmin/deployment.yaml`: Remove the `tls.crt` and `tls.key` items from the `mysql-phpmyadmin-client-certs` volume
+5. `phpmyadmin/deployment.yaml`: Remove the `tls.crt` and `tls.key` items from the `mysql-phpmyadmin-client-certs` volume, and the matching `/etc/mysql/tls.crt` and `/etc/mysql/tls.key` volumeMounts (they are mounted file by file with `subPath`, so a mount whose item is gone stops the pod from starting)
 6. **On an already-bootstrapped cluster, remove OpenEMR's copied client cert.** OpenEMR's entrypoint copies the mounted cert files into `sites/default/documents/certificates/` on the shared `websitevolume`, and it never deletes those copies when the mount goes away, so OpenEMR keeps presenting the old client cert. After the step 3 change has rolled out (no pod still mounts the old files, so none can copy them back), delete the copies and restart:
    ```bash
    kubectl rollout status deployment/openemr
@@ -376,7 +398,7 @@ Perform all the TLS downgrade steps above, then additionally:
 2. `mysql/mariadb.yaml`: Set `spec.tls.enabled: false` (explicit disable is clearer than removing the whole block — operator still reconciles and emits an event confirming TLS is off). Leave or remove the issuerRef fields; `enabled: false` is what the operator keys on.
 3. `openemr/deployment.yaml`: Remove the `FORCE_DATABASE_SSL_CONNECT` environment variable and remove the entire `mysql-openemr-client-certs` volume and volumeMount
 4. `phpmyadmin/configmap.yaml`: Set `ssl` to `false`, remove `ssl_ca`, and remove `ssl_verify`
-5. `phpmyadmin/deployment.yaml`: Remove the entire `mysql-phpmyadmin-client-certs` volume and volumeMount
+5. `phpmyadmin/deployment.yaml`: Remove the entire `mysql-phpmyadmin-client-certs` volume and its three `/etc/mysql/*` volumeMounts
 6. `certs/mysql-openemr-client.yaml`, `certs/mysql-phpmyadmin-client.yaml`: These cert-manager Certificate resources can be removed entirely (operator-managed server/internal-client certs are already covered by step 2 above)
 7. `kub-up` and `kub-down` (and `.bat` variants): Remove the mysql client-cert references (operator-managed cert files no longer exist on the `spec.tls.enabled: false` path)
 8. **Remove OpenEMR's copied CA too.** Same reason as TLS step 6: after the step 3 change has rolled out, delete `mysql-ca` (and `mysql-cert` / `mysql-key` if TLS step 6 was skipped) from `sites/default/documents/certificates/`, then `kubectl rollout restart deployment/openemr`. While `mysql-ca` is present there, OpenEMR keeps trying to connect with TLS.
@@ -398,14 +420,14 @@ By default, Redis connections use **mTLS (mutual TLS)** with X509 client certifi
 1. `redis/configmap-main.yaml`: Change `tls-auth-clients yes` to `tls-auth-clients no`
 2. `redis/statefulset-redis.yaml`: Change `REDISX509=true` to `REDISX509=false`
 3. `redis/statefulset-sentinel.yaml`: Change `REDISX509=true` to `REDISX509=false` (the sentinel config automatically sets `tls-auth-clients` based on this value)
-4. `openemr/deployment.yaml`: Remove the `REDIS_X509` environment variable and remove the client cert/key items (`redis-master-cert`, `redis-master-key`, `redis-sentinel-cert`, `redis-sentinel-key`) from the `redis-openemr-client-certs` volume
+4. `openemr/deployment.yaml`: Remove the `REDIS_X509` environment variable and remove the client cert/key items (`redis-master-cert`, `redis-master-key`, `redis-sentinel-cert`, `redis-sentinel-key`) from the `redis-openemr-client-certs` volume, and the matching `/redis-certs/*` volumeMounts (mounted file by file with `subPath`; a mount whose item is gone stops the pod from starting). Do the same in the encryption-at-rest example Deployments if you use them
 
 ### Downgrade to TCP (no encryption)
 Perform all the TLS downgrade steps above, then additionally:
 1. `redis/configmap-main.yaml`: Remove all `tls-*` lines, change `port 0` to `port 6379`, and remove `tls-port 6379`
 2. `redis/statefulset-redis.yaml`: Remove the `TLSPARAMETERS` variable and its usage in redis-cli commands, and remove the `redis-certs` volume and volumeMount
 3. `redis/statefulset-sentinel.yaml`: Remove the `TLSPARAMETERS` variable and its usage in redis-cli commands, remove the `sentinel-certs` volume and volumeMount, and remove all `tls-*` lines from the sentinel config generation
-4. `openemr/deployment.yaml`: Remove the `REDIS_TLS`, `REDIS_X509`, and `REDIS_TLS_CERT_KEY_PATH` environment variables and remove the entire `redis-openemr-client-certs` volume and volumeMount
+4. `openemr/deployment.yaml`: Remove the `REDIS_TLS`, `REDIS_X509`, and `REDIS_TLS_CERT_KEY_PATH` environment variables and remove the entire `redis-openemr-client-certs` volume and its six `/redis-certs/*` volumeMounts
 5. `certs/redis.yaml`, `certs/redis-openemr-client.yaml`, `certs/sentinel.yaml`: These cert-manager Certificate resources can be removed entirely
 6. `kub-up` and `kub-down` (and `.bat` variants): Remove the redis/sentinel cert references
 

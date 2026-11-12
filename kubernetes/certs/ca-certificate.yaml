@@ -17,6 +17,11 @@ spec:
     size: 2048
     algorithm: RSA
     encoding: PKCS1
+    # Keep the CA key on automatic renewal so existing leaves stay trusted.
+    # Rotating the CA key is a deliberate operator procedure (README:
+    # "CA rotation is a separate concern"); the default (Always) would
+    # replace the key on every renewal and break trust mid-cycle.
+    rotationPolicy: Never
   usages:
     - digital signature
     - key encipherment

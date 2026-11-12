@@ -63,7 +63,7 @@ jobs:
       # Outage budgets (--max-gap, longest gap between successful probe
       # samples) are about 2-3x what a local kind run measured, to absorb
       # slower CI runners. Default 6s means no visible outage. Measured
-      # locally on 2026-11-12: phpmyadmin certs 2-3s, openemr certs 2-8s, sentinel 2s,
+      # locally on 2026-11-12: openemr/phpmyadmin certs 2-3s, sentinel 2s,
       # nfs-client 5s, redis 6-9s, nfs-server 22-24s.
 
       - name: phpmyadmin server certificate
@@ -75,22 +75,28 @@ jobs:
         run: |
           bash tests/kubernetes/rotate-leaf.sh mysql-phpmyadmin-client deployment/phpmyadmin \
             --pod-file /etc/mysql/tls.crt
+          # Real mTLS connection with the renewed client certificate. The
+          # openemr account is REQUIRE X509, so MariaDB rejects the login
+          # unless it accepts the certificate.
+          # shellcheck disable=SC2016 # PHP code, expanded by php, not the shell
+          kubectl exec deployment/phpmyadmin -- timeout 10 php -r '
+            $m = mysqli_init();
+            mysqli_ssl_set($m, "/etc/mysql/tls.key", "/etc/mysql/tls.crt", "/etc/mysql/ca.pem", null, null);
+            $m->real_connect("mysql-primary", "openemr", "openemr", "openemr", 3306, null, MYSQLI_CLIENT_SSL);
+            echo "phpmyadmin -> MariaDB mTLS connection OK\n";'
 
       - name: openemr -> Redis client certificate
-        # 10s: an openemr roll occasionally has one slow (~5-8s) request
-        # at the pod handover (seen in about half of local runs, never in
-        # a plain rollout restart; cause under investigation).
         run: |
-          bash tests/kubernetes/rotate-leaf.sh redis-openemr-client deployment/openemr --max-gap 10 \
+          bash tests/kubernetes/rotate-leaf.sh redis-openemr-client deployment/openemr \
             --pod-file /redis-certs/redis-master-cert \
             --pod-file /redis-certs/redis-sentinel-cert
 
       - name: openemr -> MariaDB client certificate
         # Also checks the copy OpenEMR keeps in its sites volume, which is
         # the file it actually connects with (refreshed on boot since
-        # openemr/openemr#15238). 10s budget: see the step above.
+        # openemr/openemr#15238).
         run: |
-          bash tests/kubernetes/rotate-leaf.sh mysql-openemr-client deployment/openemr --max-gap 10 \
+          bash tests/kubernetes/rotate-leaf.sh mysql-openemr-client deployment/openemr \
             --pod-file /root/certs/mysql/server/mysql-cert \
             --openemr-file "${OPENEMR_CERTS}/mysql-cert"
 
@@ -102,7 +108,8 @@ jobs:
           bash tests/kubernetes/rotate-leaf.sh redis statefulset/redis --max-gap 30 \
             --served-via-openemr redis-0.redis:6379 \
             --served-via-openemr redis-1.redis:6379 \
-            --served-via-openemr redis-2.redis:6379
+            --served-via-openemr redis-2.redis:6379 \
+            --served-client-cert /redis-certs/redis-master-cert /redis-certs/redis-master-key /redis-certs/redis-master-ca
 
       - name: Sentinel server certificate
         # Runs after the Redis rotation on purpose: Sentinel restarts must
@@ -111,7 +118,13 @@ jobs:
           bash tests/kubernetes/rotate-leaf.sh sentinel statefulset/sentinel --max-gap 10 \
             --served-via-openemr sentinel-0.sentinel:26379 \
             --served-via-openemr sentinel-1.sentinel:26379 \
-            --served-via-openemr sentinel-2.sentinel:26379
+            --served-via-openemr sentinel-2.sentinel:26379 \
+            --served-client-cert /redis-certs/redis-sentinel-cert /redis-certs/redis-sentinel-key /redis-certs/redis-sentinel-ca
+
+      - name: Redis failover after the Redis and Sentinel rotations
+        # Both rotations restart every pod; this proves Sentinel can still
+        # elect a new master and the old master rejoins as a replica.
+        run: bash tests/kubernetes/redis-failover.sh
 
       - name: NFS stunnel client certificate
         run: |

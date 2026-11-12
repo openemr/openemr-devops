@@ -27,6 +27,14 @@
 #                                   must equal the new one, checked with
 #                                   openssl s_client from an openemr pod.
 #                                   Repeatable.
+#   --served-client-cert CERT KEY CA
+#                                   For --served-via-openemr: present this
+#                                   client certificate (paths inside the
+#                                   openemr pod), verify the server against
+#                                   CA, and require the server to answer a
+#                                   PING line over the session, so the check
+#                                   fails if the server rejects the client
+#                                   certificate.
 #   --served-in-pod PORT            Same check, run inside each pod of the
 #                                   workload against localhost:PORT.
 #   --pod-file PATH                 File inside each workload pod that
@@ -63,6 +71,9 @@ shift 2
 
 SERVED_VIA_OPENEMR=()
 SERVED_IN_POD=""
+CLIENT_CERT=""
+CLIENT_KEY=""
+CLIENT_CA=""
 POD_FILES=()
 OPENEMR_FILES=()
 MAX_GAP=6
@@ -71,6 +82,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --served-via-openemr) SERVED_VIA_OPENEMR+=("$2"); shift 2 ;;
         --served-in-pod) SERVED_IN_POD=$2; shift 2 ;;
+        --served-client-cert) CLIENT_CERT=$2; CLIENT_KEY=$3; CLIENT_CA=$4; shift 4 ;;
         --pod-file) POD_FILES+=("$2"); shift 2 ;;
         --openemr-file) OPENEMR_FILES+=("$2"); shift 2 ;;
         --max-gap) MAX_GAP=$2; shift 2 ;;
@@ -246,12 +258,24 @@ wait
 # The running processes use the new certificate.
 # ---------------------------------------------------------------------------
 served_fp_via_openemr() {
-    local pod=$1 endpoint=$2
-    # The client cert is presented where the server requires one; a server
-    # that rejects it still sends its own certificate first.
+    local pod=$1 endpoint=$2 tls_args=""
+    if [[ -n "${CLIENT_CERT}" ]]; then
+        tls_args="-cert ${CLIENT_CERT} -key ${CLIENT_KEY} -CAfile ${CLIENT_CA}"
+    fi
     kubectl exec "${pod}" -c openemr -- sh -c \
-        "openssl s_client -connect ${endpoint} -servername ${endpoint%%:*} </dev/null 2>/dev/null" \
+        "openssl s_client -connect ${endpoint} -servername ${endpoint%%:*} ${tls_args} </dev/null 2>/dev/null" \
         | fingerprint
+}
+# With --served-client-cert: a verified handshake with the client cert,
+# and the server answers a PING line over it (Redis/Sentinel reply
+# -NOAUTH or +PONG). A server that rejects the client cert closes the
+# session without a reply.
+served_session_answers() {
+    local pod=$1 endpoint=$2 reply
+    reply=$(kubectl exec "${pod}" -c openemr -- sh -c \
+        "printf 'PING\\r\\n' | timeout 5 openssl s_client -connect ${endpoint} -cert ${CLIENT_CERT} -key ${CLIENT_KEY} -CAfile ${CLIENT_CA} -verify_return_error -quiet -ign_eof 2>/dev/null; true") || return 1
+    reply=${reply//[$'\r\n']/}
+    [[ -n "${reply}" ]]
 }
 for endpoint in "${SERVED_VIA_OPENEMR[@]}"; do
     pod=$(openemr_pod)
@@ -262,7 +286,13 @@ for endpoint in "${SERVED_VIA_OPENEMR[@]}"; do
         sleep 3
     done
     [[ "${got}" = "${NEW_FP}" ]] || fail "${endpoint} presents ${got:-no certificate}, expected ${NEW_FP}"
-    log "PASS: ${endpoint} presents the new certificate"
+    if [[ -n "${CLIENT_CERT}" ]]; then
+        served_session_answers "${pod}" "${endpoint}" \
+            || fail "${endpoint} did not answer over a verified session with client cert ${CLIENT_CERT}"
+        log "PASS: ${endpoint} presents the new certificate and accepts the client certificate"
+    else
+        log "PASS: ${endpoint} presents the new certificate"
+    fi
 done
 
 if [[ -n "${SERVED_IN_POD}" ]]; then

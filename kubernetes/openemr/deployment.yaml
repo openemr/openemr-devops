@@ -183,6 +183,14 @@ spec:
             - /root/instance-swarm-ready
           initialDelaySeconds: 5
           periodSeconds: 30
+        # Keep serving for a few seconds after the pod is marked for
+        # deletion: endpoint removal reaches kube-proxy asynchronously, and
+        # without this Apache stops while requests are still routed to it
+        # (seen as ~8s client timeouts during cert-rotation rolls).
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "10"]
         livenessProbe:
           tcpSocket:
             port: 443
@@ -190,8 +198,30 @@ spec:
         volumeMounts:
         - mountPath: /root/certs/mysql/server
           name: mysql-openemr-client-certs
-        - mountPath: /redis-certs
+        # Mounted file by file with subPath so kubelet never rewrites these
+        # in a running pod. A live Secret update swaps the files under
+        # Apache, and PHP's realpath cache (120s) keeps resolving the
+        # deleted old paths, so every session start fails (HTTP 500) until
+        # the cache expires. Old pods keep the old (still valid) cert;
+        # reloader rolls new pods with the new one.
+        - mountPath: /redis-certs/redis-master-ca
           name: redis-openemr-client-certs
+          subPath: redis-master-ca
+        - mountPath: /redis-certs/redis-master-cert
+          name: redis-openemr-client-certs
+          subPath: redis-master-cert
+        - mountPath: /redis-certs/redis-master-key
+          name: redis-openemr-client-certs
+          subPath: redis-master-key
+        - mountPath: /redis-certs/redis-sentinel-ca
+          name: redis-openemr-client-certs
+          subPath: redis-sentinel-ca
+        - mountPath: /redis-certs/redis-sentinel-cert
+          name: redis-openemr-client-certs
+          subPath: redis-sentinel-cert
+        - mountPath: /redis-certs/redis-sentinel-key
+          name: redis-openemr-client-certs
+          subPath: redis-sentinel-key
         - mountPath: /var/www/localhost/htdocs/openemr/sites
           name: websitevolume
         - mountPath: /etc/ssl
