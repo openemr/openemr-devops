@@ -26,6 +26,10 @@ on:
       - 'kubernetes/examples/encryption-at-rest-gocryptfs/**'
       - 'kubernetes/openemr/deployment.yaml'
       - 'kubernetes/nfs/**'
+      - 'kubernetes/certs/**'
+      - 'kubernetes/redis/**'
+      - 'kubernetes/rotate-ca'
+      - 'kubernetes/trust-manager/**'
       - 'kubernetes/kub-up'
       - '.github/actions/kubernetes-stack-up/**'
       - '.github/workflows/test-kubernetes-gocryptfs.yml'
@@ -36,6 +40,10 @@ on:
       - 'kubernetes/examples/encryption-at-rest-gocryptfs/**'
       - 'kubernetes/openemr/deployment.yaml'
       - 'kubernetes/nfs/**'
+      - 'kubernetes/certs/**'
+      - 'kubernetes/redis/**'
+      - 'kubernetes/rotate-ca'
+      - 'kubernetes/trust-manager/**'
       - 'kubernetes/kub-up'
       - '.github/actions/kubernetes-stack-up/**'
       - '.github/workflows/test-kubernetes-gocryptfs.yml'
@@ -46,7 +54,7 @@ jobs:
   gocryptfs-example-test:
     name: gocryptfs example adoption + validation
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
 
@@ -430,6 +438,12 @@ jobs:
         run: |
           bash tests/kubernetes/rotate-leaf.sh nfs-server deployment/nfs-server --max-gap 60 \
             --served-via-openemr nfs-server:20490
+
+      - name: Rotate the CA key
+        # gocryptfs keeps the default stack's RollingUpdate, so this should
+        # look like the default stack's CA rotation (60s budget there,
+        # 16-22s measured); 90s allows for the FUSE layer over NFS.
+        run: bash tests/kubernetes/rotate-ca-test.sh --max-gap 90
 
       - name: Validate gocryptfs encryption effectiveness after the rotations
         run: bash kubernetes/examples/encryption-at-rest-gocryptfs/validate-encryption.sh

@@ -21,6 +21,10 @@ on:
       - 'kubernetes/examples/encryption-at-rest-luks/**'
       - 'kubernetes/openemr/deployment.yaml'
       - 'kubernetes/nfs/**'
+      - 'kubernetes/certs/**'
+      - 'kubernetes/redis/**'
+      - 'kubernetes/rotate-ca'
+      - 'kubernetes/trust-manager/**'
       - 'kubernetes/kub-up'
       - '.github/actions/kubernetes-stack-up/**'
       - '.github/workflows/test-kubernetes-luks.yml'
@@ -31,6 +35,10 @@ on:
       - 'kubernetes/examples/encryption-at-rest-luks/**'
       - 'kubernetes/openemr/deployment.yaml'
       - 'kubernetes/nfs/**'
+      - 'kubernetes/certs/**'
+      - 'kubernetes/redis/**'
+      - 'kubernetes/rotate-ca'
+      - 'kubernetes/trust-manager/**'
       - 'kubernetes/kub-up'
       - '.github/actions/kubernetes-stack-up/**'
       - '.github/workflows/test-kubernetes-luks.yml'
@@ -41,7 +49,7 @@ jobs:
   luks-example-test:
     name: LUKS example adoption + validation
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
 
@@ -272,6 +280,13 @@ jobs:
         run: |
           bash tests/kubernetes/rotate-leaf.sh nfs-server deployment/nfs-server --max-gap 60 \
             --served-via-openemr nfs-server:20490
+
+      - name: Rotate the CA key
+        # Every OpenEMR restart is a full outage here (one replica,
+        # Recreate), and rotate-ca restarts OpenEMR four times (steps 3 and
+        # 5, and its two client certificates in step 4). Measured locally
+        # on 2026-11-12: 648s, longest gap 44s (mysql/nfs), 32s (http).
+        run: bash tests/kubernetes/rotate-ca-test.sh --max-gap 120
 
       - name: Validate LUKS encryption effectiveness after the rotations
         run: bash kubernetes/examples/encryption-at-rest-luks/validate-encryption.sh
