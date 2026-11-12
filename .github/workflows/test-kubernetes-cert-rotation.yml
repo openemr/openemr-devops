@@ -1,0 +1,137 @@
+name: Kubernetes per-certificate rotation
+
+# Force-renews every reloader-managed leaf Certificate in the default
+# kubernetes/ stack, one at a time, and checks the full reload path for
+# each: Secret re-issued, consuming workload recreated, running server
+# presents the new certificate, and the data plane (OpenEMR HTTPS,
+# MariaDB over mTLS, NFS-backed sites volume) stays within its budget.
+# The operator-managed MariaDB server certificate is covered by
+# test-kubernetes.yml. See tests/kubernetes/rotate-leaf.sh.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/test-kubernetes-cert-rotation.yml'
+      - '.github/actions/kubernetes-stack-up/**'
+      - 'kubernetes/**'
+      - 'tests/kubernetes/**'
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/test-kubernetes-cert-rotation.yml'
+      - '.github/actions/kubernetes-stack-up/**'
+      - 'kubernetes/**'
+      - 'tests/kubernetes/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cert-rotation:
+    name: Kubernetes per-certificate rotation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      OPENEMR_CERTS: /var/www/localhost/htdocs/openemr/sites/default/documents/certificates
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Bring up OpenEMR default stack
+        uses: ./.github/actions/kubernetes-stack-up
+
+      - name: Install cmctl (cert-manager CLI)
+        run: |
+          sudo curl -fL -o /usr/local/bin/cmctl \
+            https://github.com/cert-manager/cmctl/releases/download/v2.6.2/cmctl_linux_amd64
+          sudo chmod +x /usr/local/bin/cmctl
+          cmctl version --client
+          echo "ROTATION_WORKDIR=${RUNNER_TEMP}/cert-rotation" >> "${GITHUB_ENV}"
+
+      # Outage budgets (--max-gap, longest gap between successful probe
+      # samples) are about 2-3x what a local kind run measured, to absorb
+      # slower CI runners. Default 6s means no visible outage. Measured
+      # locally on 2026-11-12: openemr/phpmyadmin certs 2-4s, sentinel 2s,
+      # nfs-client 5s, redis 6-9s, nfs-server 22-24s.
+
+      - name: phpmyadmin server certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh phpmyadmin deployment/phpmyadmin \
+            --served-in-pod 443 --pod-file /certs/tls.crt
+
+      - name: phpmyadmin -> MariaDB client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh mysql-phpmyadmin-client deployment/phpmyadmin \
+            --pod-file /etc/mysql/tls.crt
+
+      - name: openemr -> Redis client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh redis-openemr-client deployment/openemr \
+            --pod-file /redis-certs/redis-master-cert \
+            --pod-file /redis-certs/redis-sentinel-cert
+
+      - name: openemr -> MariaDB client certificate
+        # Also checks the copy OpenEMR keeps in its sites volume, which is
+        # the file it actually connects with (refreshed on boot since
+        # openemr/openemr#15238).
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh mysql-openemr-client deployment/openemr \
+            --pod-file /root/certs/mysql/server/mysql-cert \
+            --openemr-file "${OPENEMR_CERTS}/mysql-cert"
+
+      - name: Redis server certificate
+        # Rolling the Redis StatefulSet restarts the master; OpenEMR
+        # requests stall until Sentinel promotes a replica (5s detection
+        # + election).
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh redis statefulset/redis --max-gap 30 \
+            --served-via-openemr redis-0.redis:6379 \
+            --served-via-openemr redis-1.redis:6379 \
+            --served-via-openemr redis-2.redis:6379
+
+      - name: Sentinel server certificate
+        # Runs after the Redis rotation on purpose: Sentinel restarts must
+        # keep a working election (stable myid) so a later failover works.
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh sentinel statefulset/sentinel --max-gap 10 \
+            --served-via-openemr sentinel-0.sentinel:26379 \
+            --served-via-openemr sentinel-1.sentinel:26379 \
+            --served-via-openemr sentinel-2.sentinel:26379
+
+      - name: NFS stunnel client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh nfs-client daemonset/nfs-stunnel-client --max-gap 15 \
+            --pod-file /etc/stunnel/certs/tls.crt
+
+      - name: NFS server certificate
+        # Single-replica nfs-server with strategy Recreate: NFS I/O pauses
+        # while the pod restarts (accepted; see the README's cloud-managed
+        # NFS section for HA storage).
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh nfs-server deployment/nfs-server --max-gap 60 \
+            --served-via-openemr nfs-server:20490
+
+      - name: Probe logs
+        if: always()
+        run: |
+          for f in "${ROTATION_WORKDIR}"/*/*.log; do
+            [[ -f "${f}" ]] || continue
+            echo "=== ${f#"${ROTATION_WORKDIR}"/}"
+            cat "${f}"
+          done
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -o wide
+          kubectl get certificates
+          kubectl get events --sort-by='.lastTimestamp' | tail -40
+          kubectl logs deployment/reloader-reloader --tail=60 || true
+
+      - name: Cleanup
+        if: always()
+        working-directory: kubernetes
+        run: |
+          bash kub-down 2>/dev/null || true
+          kind delete cluster 2>/dev/null || true
