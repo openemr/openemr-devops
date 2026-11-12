@@ -4,6 +4,7 @@ REM Teardown counterpart to kub-up.bat. See kub-down for the full
 REM shape rationale.
 
 kubectl delete ^
+    -f certs/ca-bundle.yaml ^
     -f certs/selfsigned-issuer.yaml ^
     -f certs/ca-certificate.yaml ^
     -f certs/ca-issuer.yaml ^

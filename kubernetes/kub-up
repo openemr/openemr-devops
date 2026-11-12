@@ -86,11 +86,10 @@ echo "...waiting 15 seconds for webhook to stabilize..."
 sleep 15
 
 # bring in trust-manager: cert-manager sibling that watches Bundle
-# resources and keeps target ConfigMaps/Secrets in sync when their
-# source CAs change. Primary use here is CA rotation: during the
-# dual-trust overlap window (both old and new CA valid), a Bundle
-# distributes both CAs via an auto-synced ConfigMap/Secret instead
-# of operators hand-copying trust lists to every peer. Depends on
+# resources and keeps target Secrets in sync when their source CAs
+# change. It builds the openemr-ca-bundle Secret (certs/ca-bundle.yaml)
+# every workload reads its trust anchors from, which is what lets
+# rotate-ca trust the old and new CA at the same time. Depends on
 # cert-manager being up (shares the cert-manager namespace + uses
 # cert-manager to issue the trust-manager webhook's own TLS). The
 # manifest is a vendored render of the upstream helm chart — see
@@ -210,6 +209,14 @@ kubectl apply \
     -f certs/nfs-client.yaml
 echo "...waiting 15 seconds to ensure certs are created..."
 sleep 15
+
+# Trust bundle: trust-manager copies the CA into the openemr-ca-bundle
+# Secret, which every workload (and MariaDB) uses as its trust anchors.
+# It must exist before the workloads below mount it. See
+# certs/ca-bundle.yaml and kubernetes/README.md -> CA rotation.
+kubectl apply -f certs/ca-bundle.yaml
+echo "...waiting for the trust bundle to be synced..."
+kubectl wait --for=condition=Synced --timeout=180s bundle/openemr-ca-bundle
 
 # install csi-driver-nfs (the StorageClass provisioner for the NFS backing).
 # Standard upstream manifests, pinned to v4.13.6.

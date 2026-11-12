@@ -104,6 +104,17 @@ spec:
   # operator's integrated issuance lifecycle.
   tls:
     enabled: true
+    # Trust anchors come from the trust-manager Bundle target
+    # (certs/ca-bundle.yaml) rather than the ca.crt cert-manager puts in
+    # the operator's own cert Secrets. That lets a CA rotation make
+    # MariaDB trust the new CA before any certificate is signed with it.
+    # The operator adds these to its mysql-ca-bundle Secret and keeps
+    # every CA it has seen there until it expires, so removing the old
+    # CA means deleting mysql-ca-bundle (rotate-ca does this).
+    serverCASecretRef:
+      name: openemr-ca-bundle
+    clientCASecretRef:
+      name: openemr-ca-bundle
     serverCertIssuerRef:
       name: ca-issuer
       kind: Issuer

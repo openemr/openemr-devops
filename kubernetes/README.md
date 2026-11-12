@@ -257,13 +257,13 @@ Per-workload reload path:
 
 | Workload | Reload mechanism | Secret(s) watched |
 |---|---|---|
-| `mysql` MariaDB cluster | **MariaDB Operator cert-controller** (not reloader) | operator-managed (`mysql-server-cert`) |
-| `redis` StatefulSet | stakater/reloader | `redis-certs` |
-| `sentinel` StatefulSet | stakater/reloader | `sentinel-certs` |
-| `openemr` Deployment (default + both encryption-at-rest examples) | stakater/reloader | `mysql-openemr-client-certs`, `redis-openemr-client-certs` |
-| `phpmyadmin` Deployment | stakater/reloader | `phpmyadmin-server-certs`, `mysql-phpmyadmin-client-certs` |
-| `nfs-server` Deployment | stakater/reloader | `nfs-server-certs` |
-| `nfs-stunnel-client` DaemonSet | stakater/reloader | `nfs-client-certs` |
+| `mysql` MariaDB cluster | **MariaDB Operator cert-controller** (not reloader) | operator-managed (`mysql-server-cert`, `mysql-client-cert`), `openemr-ca-bundle` (`k8s.mariadb.com/watch` label) |
+| `redis` StatefulSet | stakater/reloader | `redis-certs`, `openemr-ca-bundle` |
+| `sentinel` StatefulSet | stakater/reloader | `sentinel-certs`, `openemr-ca-bundle` |
+| `openemr` Deployment (default + both encryption-at-rest examples) | stakater/reloader | `mysql-openemr-client-certs`, `redis-openemr-client-certs`, `openemr-ca-bundle` |
+| `phpmyadmin` Deployment | stakater/reloader | `phpmyadmin-server-certs`, `mysql-phpmyadmin-client-certs`, `openemr-ca-bundle` |
+| `nfs-server` Deployment | stakater/reloader | `nfs-server-certs`, `openemr-ca-bundle` |
+| `nfs-stunnel-client` DaemonSet | stakater/reloader | `nfs-client-certs`, `openemr-ca-bundle` |
 
 ### Data-plane impact during rotation, by workload
 
@@ -291,9 +291,9 @@ kubectl get certificate redis -o jsonpath='{.status.notBefore}'  # renewed once 
 
 The consuming workload restarts within a few seconds of the renewal, with the impact described above for that workload.
 
-**Renewal does not revoke the old certificate.** This private CA has no CRL or OCSP, so after a suspected key leak the old certificate stays valid until it expires (up to 90 days) even though the workload no longer uses it. To stop trusting it sooner, rotate the CA (see [CA rotation is a separate concern](#ca-rotation-is-a-separate-concern)): once the old CA is removed from the trust bundles, every certificate it signed is rejected.
+**Renewal does not revoke the old certificate.** This private CA has no CRL or OCSP, so after a suspected key leak the old certificate stays valid until it expires (up to 90 days) even though the workload no longer uses it. To stop trusting it sooner, rotate the CA key with `rotate-ca` (see [CA rotation](#ca-rotation)): once the old CA is removed from the trust bundle, every certificate it signed is rejected.
 
-To renew every leaf certificate, renew them one at a time and let each restart finish before starting the next, so Redis, Sentinel and NFS are never restarting at the same moment. Leaf certificates are the ones issued by `ca-issuer`; the CA itself (and any replacement CA created during a CA rotation) is not:
+To renew every leaf certificate, renew them one at a time and let each restart finish before starting the next, so Redis, Sentinel and NFS are never restarting at the same moment. Leaf certificates are the ones issued by `ca-issuer`; the CA itself is not:
 
 ```bash
 renew_all_leaves() {
@@ -342,27 +342,54 @@ The MariaDB Operator approach implements the three-part HA contract that makes z
 
 Alternative stacks that satisfy the same three-part contract would also work: MaxScale or ProxySQL in front of a hand-rolled StatefulSet, [Orchestrator](https://github.com/openark/orchestrator), Galera for synchronous multi-master. The Operator is this stack's choice because it manages the full cluster declaratively (StatefulSet, Services, TLS via cert-manager, backup wiring) rather than requiring multiple components to cooperate.
 
-### CA rotation is a separate concern
+### CA rotation
 
-The `ca-key-pair` Secret (CA cert + private key, 10y duration on `certs/ca-certificate.yaml`) is NOT annotated for reload: rotating the CA invalidates every trusted-CA list downstream peers hold, which requires an overlap period where both the old and new CA are trusted simultaneously. **cert-manager behavior**: `certs/ca-certificate.yaml` sets `renewBefore: 2880h` (120 days) explicitly, longer than the 90-day leaf lifetime — if that field were unset, cert-manager's default is 2/3 of the certificate lifetime, which for a 10y CA would be ~3⅓ years before expiry. `certs/ca-certificate.yaml` sets `privateKey.rotationPolicy: Never`, so cert-manager's automatic renewal re-issues the CA certificate with the same key and existing trust stays valid; rotating the CA key is always a deliberate operator action following the procedure below. (cert-manager's default is `rotationPolicy: Always`, which would replace the CA key on every automatic renewal and break trust between workloads until every leaf had been re-issued.) **What does NOT happen automatically**: existing leaf Certificates DO NOT get re-issued on a CA key rotation. They continue to be valid until their own `renewBefore` triggers. **Danger**: a leaf cert that just renewed against the OLD CA shortly before the rotation could hold old-CA-signed material for its full duration (up to 90 days). If the old CA expired inside that window, those certs would become invalid, which is why the CA's `renewBefore` (120 days) must stay longer than the leaf `duration`.
+All certificates chain to one private CA: `certs/ca-certificate.yaml` (Secret `ca-key-pair`, 10-year lifetime), used by the `ca-issuer` Issuer.
 
-**Operator procedure for CA rotation** (manual — the stack does not wire `trust-manager`, so steps 2 and 7 are the operator's responsibility):
+**Where workloads get their trust anchors.** Every workload reads the CA certificates it accepts from a single Secret, `openemr-ca-bundle`. [trust-manager](https://cert-manager.io/docs/trust/trust-manager/) (installed by `kub-up`, see `trust-manager/manifests.yaml`) builds it from the `Bundle` in `certs/ca-bundle.yaml`, whose only source is normally `ca-key-pair`. The `ca.crt` field cert-manager writes into each leaf Secret is not used for trust (phpMyAdmin's web server still sends it as its chain). Each workload mounts `openemr-ca-bundle` next to its own certificate through a projected volume, so the file paths are unchanged:
 
-1. **Schedule well before `renewBefore` hits.** Budget at least 2-3 weeks ahead so there's room for the full choreography including verification.
-2. **Issue the replacement CA as an independent Certificate resource** (not by waiting for cert-manager to rotate `ca-key-pair` in place). Both CAs must exist side-by-side during the overlap window; distributing them through separate, independently-managed trust bundles avoids the trap below. **Also update `certs/ca-certificate.yaml` and `certs/ca-issuer.yaml` (and anything else `kub-up` re-applies) to reference the new CA**, otherwise re-running `kub-up` at any later point will reconverge to the old `ca-key-pair` / `ca-issuer` state and undo the rotation. The checked-in manifests are the source of truth `kub-up` reapplies on every invocation.
-3. **Distribute BOTH old and new CA via peer trust bundles.** Do NOT use the `ca.crt` field inside any leaf cert Secret for staged dual-trust — cert-manager rewrites that field during every leaf renewal, so your carefully-staged dual-trust gets clobbered the next time any leaf renews. Trust bundles must be independent ConfigMaps/Secrets managed by the operator (or `trust-manager`).
-4. **Wait for every peer to have reloaded both CAs** into its trust list. Workloads that mount the trust bundle via subPath may need an explicit rollout restart — don't assume pod startup picked up the update.
-5. **Switch the `ca-issuer` Issuer to the new CA** so future leaf issuance is signed by the new CA.
-6. **Force-renew every leaf Certificate** (`cmctl renew <cert>` for each) so none of them are still holding old-CA-signed material. Don't rely on natural `renewBefore` cadence — the force-renew ensures every leaf is signed by the new CA before the old CA expires.
-7. **Verify the chain end-to-end before removing the old CA**, in this order:
-   - a. Leaf Secret `tls.crt` fingerprint changed (proves cert-manager re-issued).
-   - b. The workload that uses that cert has rolled (operator-managed workloads via the MariaDB Operator cert-controller; reloader-managed workloads via `kubectl rollout restart`'s event trail).
-   - c. The handshake actually uses the new cert — exercise each cert's consumer path (`openemr → mysql-primary`, `phpmyadmin → mysql`, `openemr → redis`, etc.) and verify the client-observed chain. Secret fingerprint alone is NOT proof that the running process has loaded the new material — a slow pod or a stuck reload could still be serving the old cert.
-8. **Only then** remove the old CA from trust bundles.
+| Workload | Trust file(s) from `openemr-ca-bundle` |
+|---|---|
+| `openemr` (default and both encryption-at-rest examples) | `/root/certs/mysql/server/mysql-ca`, `/redis-certs/redis-master-ca`, `/redis-certs/redis-sentinel-ca` |
+| `phpmyadmin` | `/etc/mysql/ca.pem` |
+| `redis`, `sentinel` | `/certs/ca.crt` |
+| `nfs-server` (stunnel), `nfs-stunnel-client` | `/etc/stunnel/certs/ca.crt` |
+| MariaDB | `spec.tls.serverCASecretRef` / `clientCASecretRef` in `mysql/mariadb.yaml`; the operator merges it into its own `mysql-ca-bundle` Secret |
 
-`trust-manager` is installed by `kub-up` into the `cert-manager` namespace (see `kubernetes/trust-manager/manifests.yaml` — vendored render of the upstream helm chart at v0.26.0). The install provides the `Bundle` CRD + controller; **no Bundles are shipped by default** because workloads in this stack currently consume CA material via each leaf cert's Secret-embedded `ca.crt`, which cert-manager refreshes as a side-effect of leaf-cert renewal. The Bundle resource becomes load-bearing specifically for the CA-rotation overlap: operators create a `Bundle` (cluster-scoped `trust.cert-manager.io/v1alpha1` resource) listing BOTH the old and new CAs as `sources`, with a target ConfigMap. trust-manager keeps that ConfigMap continuously in sync across every selected namespace, and rolls workloads via reloader annotations on the ConfigMap. This automates steps 3, 4, and 8 — the operator no longer has to hand-copy trust lists to every peer or coordinate the final old-CA removal across workloads. A worked example is in the [trust-manager Bundle docs](https://cert-manager.io/docs/trust/trust-manager/#bundles); the shape that fits this stack is a dual-source Bundle with an ingress-class namespaceSelector during overlap, trimmed to a single new-CA source after step 7's end-to-end verification.
+Every workload lists `openemr-ca-bundle` in its reloader annotation, and the Secret carries the `k8s.mariadb.com/watch` label, so a change to the bundle restarts every workload and rolls MariaDB. Because all of them restart at once, a bundle change has the combined data-plane impact of the per-workload rows above (dominated by the NFS server restart).
 
-> **Bundle source namespace caveat.** trust-manager by default only resolves `Bundle.spec.sources.secret` entries from its own trust-namespace (the `cert-manager` namespace in this install, matching the helm chart's `app.trust.namespace` default). The existing `ca-key-pair` Secret in this stack lives in the `default` namespace (same place as `ca-certificate.yaml`), so a Bundle referencing it will fail with a `Secret not found` condition until either (a) the operator copies the current CA + the new CA into Secrets inside the `cert-manager` namespace before creating the Bundle — simplest for a one-off rotation, or (b) the trust-manager install is reconfigured to resolve sources from the `default` namespace via the `app.trust.namespace` value (requires re-rendering `trust-manager/manifests.yaml` with `--set app.trust.namespace=default` and re-applying). Option (a) is the right default for an occasional CA rotation; option (b) is right for operators who want Bundle-driven trust distribution in steady state.
+**Automatic CA renewal keeps the key.** `certs/ca-certificate.yaml` sets `renewBefore: 2880h` (120 days), longer than the 90-day leaf lifetime, and `privateKey.rotationPolicy: Never`, so cert-manager's automatic renewal (once every ~10 years) re-issues the CA certificate with the same key. Existing leaves stay valid; the bundle content changes, so every workload restarts once. (cert-manager's default is `rotationPolicy: Always`, which would replace the CA key on every automatic renewal and break trust between workloads until every leaf had been re-issued.)
+
+**Rotating the CA key** (after a suspected CA key leak, or by policy) is done with `kubernetes/rotate-ca` (bash; needs `kubectl`, [`cmctl`](https://cert-manager.io/docs/reference/cmctl/) and `openssl`). It trusts the new CA everywhere before anything is signed with it, re-issues every leaf, then removes the old CA:
+
+1. Copy the current CA into the `ca-key-pair-previous` Secret and point `ca-issuer` at the copy, so leaves are still signed by the old CA.
+2. Add `ca-key-pair-previous` to the Bundle as a second source (no content change yet).
+3. Re-issue `ca-certificate` with a new key. The bundle now holds both CAs; every workload restarts and MariaDB rolls, so everything trusts both.
+4. Point `ca-issuer` back at `ca-key-pair` (the new CA) and re-issue every leaf, one at a time, waiting for each restart.
+5. Remove the old CA from the Bundle and delete MariaDB's `mysql-ca-bundle` Secret (the operator keeps every CA it has seen there until that CA expires; deleting the Secret makes it rebuild from the current bundle). Everything restarts again and trusts only the new CA, so any certificate the old CA signed is rejected from here on.
+6. Delete `ca-key-pair-previous`.
+
+```bash
+cd kubernetes
+./rotate-ca
+```
+
+On kind it takes about 9 minutes. The data plane sees the all-at-once restarts of steps 3 and 5 plus the per-leaf restarts of step 4: on kind the longest stretch without a successful OpenEMR, MariaDB or NFS request was 16-19s, at the steps 3 and 5 restarts and the nfs-server leaf (measured 2026-11-12). Plan it like an nfs-server certificate renewal, repeated three times over the run. `.github/workflows/test-kubernetes-cert-rotation.yml` runs it (via `tests/kubernetes/rotate-ca-test.sh`) and checks that OpenEMR HTTPS, MariaDB and NFS never go more than 60 seconds without a successful request, that every trust file holds only the new CA, and that Redis and MariaDB reject a client certificate signed by the old CA. The cluster ends in the state the checked-in manifests describe, so running `kub-up` afterwards is safe. **Do not run `kub-up` while `rotate-ca` is running**: it re-applies `ca-issuer` and the Bundle and would undo steps 1-2.
+
+#### If rotate-ca stops part way
+
+`rotate-ca` prints each step as it starts and refuses to start again while `ca-key-pair-previous` exists. Check what failed (`kubectl get pods`, `kubectl get certificates`), fix it, then finish from the step that stopped:
+
+- **Stopped in step 1 or 2** (the CA key has not changed): undo with `kubectl apply -f certs/ca-issuer.yaml -f certs/ca-bundle.yaml` and `kubectl delete secret ca-key-pair-previous`, then run `rotate-ca` again.
+- **Stopped in step 3 or later** (a new CA exists): do not go back. Make sure `ca-certificate` keeps its key on future renewals with `kubectl apply -f certs/ca-certificate.yaml`, wait until every workload has restarted and `kubectl get mariadb mysql` is `Ready`, then finish by hand:
+  ```bash
+  kubectl apply -f certs/ca-issuer.yaml       # step 4: sign with the new CA
+  renew_all_leaves                            # step 4: see "Forcing a rotation"
+  kubectl apply -f certs/ca-bundle.yaml       # step 5: drop the old CA
+  kubectl delete secret mysql-ca-bundle       # step 5: MariaDB drops it too
+  kubectl delete secret ca-key-pair-previous  # step 6
+  ```
+  Re-issue every leaf before re-applying `certs/ca-bundle.yaml` (or running `kub-up`): once the old CA leaves the bundle, any leaf it still signs is rejected.
 
 # Connection Security
 

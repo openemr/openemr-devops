@@ -18,8 +18,8 @@ spec:
     algorithm: RSA
     encoding: PKCS1
     # Keep the CA key on automatic renewal so existing leaves stay trusted.
-    # Rotating the CA key is a deliberate operator procedure (README:
-    # "CA rotation is a separate concern"); the default (Always) would
+    # Rotating the CA key is a deliberate operator action (kubernetes/
+    # rotate-ca; README: "CA rotation"); the default (Always) would
     # replace the key on every renewal and break trust mid-cycle.
     rotationPolicy: Never
   usages:

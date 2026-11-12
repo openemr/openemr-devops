@@ -1,12 +1,19 @@
-name: Kubernetes per-certificate rotation
+name: Kubernetes certificate rotation
 
-# Force-renews every reloader-managed leaf Certificate in the default
-# kubernetes/ stack, one at a time, and checks the full reload path for
-# each: Secret re-issued, consuming workload recreated, running server
-# presents the new certificate, and the data plane (OpenEMR HTTPS,
-# MariaDB over mTLS, NFS-backed sites volume) stays within its budget.
-# The operator-managed MariaDB server certificate is covered by
-# test-kubernetes.yml. See tests/kubernetes/rotate-leaf.sh.
+# Two jobs, each on its own kind cluster:
+#
+# cert-rotation: force-renews every reloader-managed leaf Certificate in
+# the default kubernetes/ stack, one at a time, and checks the full
+# reload path for each: Secret re-issued, consuming workload recreated,
+# running server presents the new certificate, and the data plane
+# (OpenEMR HTTPS, MariaDB over mTLS, NFS-backed sites volume) stays within
+# its budget. The operator-managed MariaDB server certificate is covered
+# by test-kubernetes.yml. See tests/kubernetes/rotate-leaf.sh.
+#
+# ca-rotation: rotates the CA key with kubernetes/rotate-ca and checks
+# that every trust anchor and leaf moved to the new CA, that Redis and
+# MariaDB reject a client certificate signed by the old CA, and that the
+# data plane stayed within budget. See tests/kubernetes/rotate-ca-test.sh.
 
 on:
   push:
@@ -155,6 +162,66 @@ jobs:
           kubectl get certificates
           kubectl get events --sort-by='.lastTimestamp' | tail -40
           kubectl logs deployment/reloader-reloader --tail=60 || true
+
+      - name: Cleanup
+        if: always()
+        working-directory: kubernetes
+        run: |
+          bash kub-down 2>/dev/null || true
+          kind delete cluster 2>/dev/null || true
+
+  ca-rotation:
+    name: Kubernetes CA rotation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Bring up OpenEMR default stack
+        uses: ./.github/actions/kubernetes-stack-up
+
+      - name: Make room for the openemr surge pod
+        # Same reason as in the cert-rotation job above.
+        run: |
+          kubectl set resources deployment/openemr -c openemr --requests=cpu=250m
+          kubectl rollout status deployment/openemr --timeout=1200s
+
+      - name: Install cmctl (cert-manager CLI)
+        run: |
+          sudo curl -fL -o /usr/local/bin/cmctl \
+            https://github.com/cert-manager/cmctl/releases/download/v2.6.2/cmctl_linux_amd64
+          sudo chmod +x /usr/local/bin/cmctl
+          cmctl version --client
+          echo "ROTATION_WORKDIR=${RUNNER_TEMP}/ca-rotation" >> "${GITHUB_ENV}"
+
+      - name: Rotate the CA key
+        # Steps 3 and 5 of rotate-ca restart every workload at once, and
+        # step 4 renews the nfs-server and Redis leaves; same 60s budget as
+        # the nfs-server leaf. Measured locally on 2026-11-12: 538s total,
+        # longest gap 16-19s (http, mysql, nfs).
+        run: bash tests/kubernetes/rotate-ca-test.sh --max-gap 60
+
+      - name: Redis failover after the CA rotation
+        run: bash tests/kubernetes/redis-failover.sh
+
+      - name: Probe logs
+        if: always()
+        run: |
+          for f in "${ROTATION_WORKDIR}"/*/*.log; do
+            [[ -f "${f}" ]] || continue
+            echo "=== ${f#"${ROTATION_WORKDIR}"/}"
+            cat "${f}"
+          done
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -o wide
+          kubectl get certificates
+          kubectl get bundle openemr-ca-bundle -o yaml || true
+          kubectl get events --sort-by='.lastTimestamp' | tail -40
+          kubectl logs deployment/reloader-reloader --tail=60 || true
+          kubectl logs -n cert-manager deployment/trust-manager --tail=60 || true
 
       - name: Cleanup
         if: always()

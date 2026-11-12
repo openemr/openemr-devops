@@ -8,6 +8,10 @@
 #   helm template trust-manager jetstack/trust-manager \
 #        --version v0.26.0 \
 #        --namespace cert-manager \
+#        --set app.trust.namespace=default \
+#        --set secretTargets.enabled=true \
+#        --set 'secretTargets.authorizedSecrets={openemr-ca-bundle}' \
+#        --set 'app.targetNamespaces={default}' \
 #        > kubernetes/trust-manager/manifests.yaml
 #   # Then re-prepend this header block to the file.
 #
@@ -22,6 +26,16 @@
 # we can distribute old+new CAs via an auto-synced trust bundle during
 # the rotation overlap window, instead of hand-copying trust lists to
 # every peer. See kubernetes/README.md → CA rotation.
+#
+# Values beyond the chart defaults (see the regen command above):
+# - app.trust.namespace=default: Bundle sources are read from the
+#   namespace the stack (and its ca-key-pair Secret) lives in.
+# - secretTargets: trust-manager may write only the openemr-ca-bundle
+#   Secret (certs/ca-bundle.yaml). A Secret rather than a ConfigMap
+#   because the MariaDB Operator's serverCASecretRef/clientCASecretRef
+#   only accept Secrets.
+# - app.targetNamespaces=default: trust-manager can read and write
+#   Secrets only in the default namespace (plus its own).
 #
 # Why vendored rather than installed via `helm template | kubectl apply`
 # from kub-up: matches the install pattern of cert-manager / reloader /
@@ -620,18 +634,6 @@ rules:
   resources:
   - "namespaces"
   verbs: ["get", "list", "watch"]
-- apiGroups:
-  - ""
-  resources:
-  - "configmaps"
-  verbs: ["get","list","create","patch","watch","delete"]
-
-- apiGroups:
-  - "" 
-  - "events.k8s.io"
-  resources:
-  - "events"
-  verbs: ["create","patch"]
 ---
 # Source: trust-manager/templates/clusterrolebinding.yaml
 kind: ClusterRoleBinding
@@ -653,12 +655,80 @@ subjects:
   name: trust-manager
   namespace: cert-manager
 ---
+# Source: trust-manager/templates/rbac-per-namespace.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: trust-manager-role
+  namespace: default
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - "configmaps"
+  verbs: ["get","list","create","patch","watch","delete"]
+
+- apiGroups:
+  - "" 
+  - "events.k8s.io"
+  resources:
+  - "events"
+  verbs: ["create","patch"]
+- apiGroups:
+  - ""
+  resources:
+  - "secrets"
+  verbs: ["get","list","watch"]
+
+- apiGroups:
+  - ""
+  resources:
+  - "secrets"
+  verbs: ["create","patch","delete"]
+  resourceNames:
+
+    - openemr-ca-bundle
+---
+# Source: trust-manager/templates/rbac-per-namespace.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: trust-manager-role
+  namespace: cert-manager
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - "configmaps"
+  verbs: ["get","list","create","patch","watch","delete"]
+
+- apiGroups:
+  - "" 
+  - "events.k8s.io"
+  resources:
+  - "events"
+  verbs: ["create","patch"]
+- apiGroups:
+  - ""
+  resources:
+  - "secrets"
+  verbs: ["get","list","watch"]
+
+- apiGroups:
+  - ""
+  resources:
+  - "secrets"
+  verbs: ["create","patch","delete"]
+  resourceNames:
+
+    - openemr-ca-bundle
+---
 # Source: trust-manager/templates/role.yaml
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: trust-manager
-  namespace: cert-manager
+  namespace: default
   labels:
     app.kubernetes.io/instance: trust-manager
     app.kubernetes.io/managed-by: Helm
@@ -699,12 +769,42 @@ rules:
   - "watch"
   - "list"
 ---
+# Source: trust-manager/templates/rbac-per-namespace.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: trust-manager-role-binding
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: trust-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: trust-manager
+    namespace: cert-manager
+---
+# Source: trust-manager/templates/rbac-per-namespace.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: trust-manager-role-binding
+  namespace: cert-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: trust-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: trust-manager
+    namespace: cert-manager
+---
 # Source: trust-manager/templates/rolebinding.yaml
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: trust-manager
-  namespace: cert-manager
+  namespace: default
   labels:
     app.kubernetes.io/instance: trust-manager
     app.kubernetes.io/managed-by: Helm
@@ -864,12 +964,14 @@ spec:
           - "--leader-election-lease-duration=15s"
           - "--leader-election-renew-deadline=10s"
             # trust
-          - "--trust-namespace=cert-manager"
+          - "--trust-namespace=default"
             # webhook
           - "--webhook-host=0.0.0.0"
           - "--webhook-port=6443"
           - "--webhook-certificate-dir=/tls"
           - "--default-package-location=/packages/cert-manager-package-debian.json"
+          - "--secret-targets-enabled=true"
+          - '--target-namespaces=default'
         volumeMounts:
         - mountPath: /tls
           name: tls

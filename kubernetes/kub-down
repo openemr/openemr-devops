@@ -8,6 +8,7 @@
 # below so this teardown doesn't disturb their other stacks.
 
 kubectl delete \
+    -f certs/ca-bundle.yaml \
     -f certs/selfsigned-issuer.yaml \
     -f certs/ca-certificate.yaml \
     -f certs/ca-issuer.yaml \

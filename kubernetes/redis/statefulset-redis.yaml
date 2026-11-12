@@ -7,7 +7,7 @@ metadata:
     # stakater/reloader: on any UPDATE to the listed Secret (cert-manager
     # rotation triggers one), roll this StatefulSet so the pods pick up
     # the new certs. See kubernetes/README.md -> Certificate reload mechanism.
-    secret.reloader.stakater.com/reload: "redis-certs"
+    secret.reloader.stakater.com/reload: "redis-certs,openemr-ca-bundle"
 spec:
   serviceName: redis
   replicas: 3
@@ -173,15 +173,24 @@ spec:
           mountPath: /conf/acl/
       volumes:
       - name: redis-certs
-        secret:
-          secretName: redis-certs
-          items:
-          - key: ca.crt
-            path: ca.crt
-          - key: tls.crt
-            path: tls.crt
-          - key: tls.key
-            path: tls.key
+        projected:
+          sources:
+          # ca.crt (trust anchors) comes from the trust-manager Bundle target
+          # (certs/ca-bundle.yaml), not the leaf Secret, so a CA rotation can
+          # trust the old and new CA at the same time. See kubernetes/README.md
+          # -> CA rotation.
+          - secret:
+              name: openemr-ca-bundle
+              items:
+              - key: ca.crt
+                path: ca.crt
+          - secret:
+              name: redis-certs
+              items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
       - name: redis-config
         emptyDir: {}
       - name: config

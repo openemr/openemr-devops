@@ -1,0 +1,35 @@
+# Trust bundle for every workload in the stack (trust-manager Bundle).
+#
+# trust-manager copies the CA certificate(s) listed under `sources` into
+# the `openemr-ca-bundle` Secret (key ca.crt). Every workload reads its
+# trust anchors from that Secret instead of the ca.crt inside its own
+# leaf Secret, and MariaDB reads it through spec.tls.serverCASecretRef /
+# clientCASecretRef in mysql/mariadb.yaml.
+#
+# In steady state the only source is the current CA. During a CA
+# rotation the `rotate-ca` script adds the previous CA as a second
+# source, so every workload trusts both CAs while the leaves are
+# re-issued, then removes it again. See kubernetes/README.md -> CA
+# rotation.
+#
+# Workloads list openemr-ca-bundle in their reloader annotation, so a
+# change to the bundle restarts them; the k8s.mariadb.com/watch label
+# makes the MariaDB Operator roll MariaDB when it changes.
+apiVersion: trust.cert-manager.io/v1alpha1
+kind: Bundle
+metadata:
+  name: openemr-ca-bundle
+spec:
+  sources:
+  - secret:
+      name: ca-key-pair
+      key: ca.crt
+  target:
+    secret:
+      key: ca.crt
+      metadata:
+        labels:
+          k8s.mariadb.com/watch: ""
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: default
