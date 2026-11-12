@@ -5,7 +5,9 @@ metadata:
 spec:
   secretName: ca-key-pair
   duration: 87660h # 10y
-  renewBefore: 360h # 15d
+  # Longer than the 90d leaf lifetime, so every leaf signed by the old CA
+  # expires before the old CA does.
+  renewBefore: 2880h # 120d
   subject:
     organizations:
       - OpenEMR admin

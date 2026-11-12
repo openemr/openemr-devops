@@ -122,8 +122,8 @@ kubectl wait --for=condition=Available --timeout=180s -n cert-manager deployment
 # consuming workload's "secret.reloader.stakater.com/reload" annotation
 # and rolls the workload when any listed Secret UPDATE event fires.
 # cert-manager's rotation path UPDATEs the tls.crt/tls.key payload on
-# the issued Secret ~48h before expiry (168h total duration, 48h
-# renewBefore on every leaf Certificate under certs/*.yaml), so reloader
+# the issued Secret ~30d before expiry (2160h / 90d total duration,
+# 720h renewBefore on every leaf Certificate under certs/*.yaml), so reloader
 # then rolls mysql/redis/sentinel/openemr/phpmyadmin/nfs-server/stunnel-
 # client as a cross-stack reload mechanism. See kubernetes/README.md
 # -> Certificate reload mechanism for the full flow.

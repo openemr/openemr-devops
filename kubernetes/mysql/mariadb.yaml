@@ -92,10 +92,10 @@ spec:
   # fields — only Enabled/Required/CASecretRef/CertSecretRef/
   # CertIssuerRef/GaleraSSTEnabled/CertAdditionalNames). The
   # operator-created Certificate uses the operator's built-in
-  # default lifetime, NOT the 168h / 48h renewBefore shape that
-  # certs/*.yaml leaf Certificates use. That means the rotation
-  # CADENCE on the mysql server cert is operator-controlled, not
-  # the 5-day cycle advertised for other leaf certs. The rotation
+  # default lifetime (2160h with ~712h renewBefore), not the
+  # explicit 2160h / 720h set on the certs/*.yaml leaf Certificates.
+  # The cadence is operator-controlled but comes out the same as the
+  # other leaf certs (about every 60 days). The rotation
   # PATH is still identical and fully validated by CI (cmctl
   # renew -> operator cert-controller sees UPDATE -> StatefulSet
   # rolls with failover orchestration). Operators who want to pin
