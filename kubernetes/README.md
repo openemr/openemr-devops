@@ -246,7 +246,7 @@ All passwords (Redis, MariaDB replication, MariaDB root) are stored in Kubernete
 
 **Explicitly-configured leaf certificates** in `kubernetes/certs/*.yaml` (the per-consumer client certs and server certs for Redis, Sentinel, NFS, phpMyAdmin) use `duration: 168h` (7 days) and `renewBefore: 48h` (2 days), producing a rotation cadence of roughly **every 5 days** per certificate (duration − renewBefore). cert-manager handles the lifecycle: 48h before expiry it re-issues the cert under the same `ca-issuer` and UPDATEs the referenced Secret's `tls.crt` / `tls.key` payload in place.
 
-**Operator-managed certificates** (the MariaDB server cert + replication-client cert, issued via `tls.serverCertIssuerRef` / `tls.clientCertIssuerRef` in `kubernetes/mysql/mariadb.yaml`) use the MariaDB Operator's own default lifetime, NOT the 168h / 48h shape above. Operator 26.10.2's TLS CRD surface doesn't expose a duration override, so the MariaDB server cert rotates on the operator's schedule rather than every 5 days. The rotation PATH is still identical (and fully validated by CI): the operator's cert-controller sees Secret UPDATE → rolls the StatefulSet with failover orchestration.
+**Operator-managed certificates** (the MariaDB server cert + replication-client cert, issued via `tls.serverCertIssuerRef` / `tls.clientCertIssuerRef` in `kubernetes/mysql/mariadb.yaml`) use the MariaDB Operator's own default lifetime, NOT the 168h / 48h shape above. Operator 26.10.2's community `k8s.mariadb.com/v1alpha1` TLS spec has no lifetime field (`serverCertConfig` / `certLifetime` exist only in the enterprise API; `kubectl explain mariadb.spec.tls` lists the available fields), so the operator issues these as `duration: 2160h` (90 days) with `renewBefore` of roughly 30 days. The MariaDB server cert therefore rotates about every 60 days rather than every 5. The rotation PATH is still identical (and fully validated by CI): the operator's cert-controller sees Secret UPDATE → rolls the StatefulSet with failover orchestration.
 
 Cert-manager's rotation updates the Secret but does **not** reload the running pods — mysqld, redis-server, stunnel, and the apache/openemr PHP process all parse their cert files once at startup and keep using the parsed values until the process restarts. Bridging that gap takes two separate mechanisms depending on the workload:
 
@@ -335,6 +335,14 @@ Enforcement now lives on the `MariaDB` resource (`mysql/mariadb.yaml`), not on c
 3. `openemr/deployment.yaml`: Change `FORCE_DATABASE_X509_CONNECT` to `FORCE_DATABASE_SSL_CONNECT` and remove the `tls.crt` (mysql-cert) and `tls.key` (mysql-key) items from the `mysql-openemr-client-certs` volume
 4. `phpmyadmin/configmap.yaml`: Comment out or remove the `ssl_cert` and `ssl_key` lines
 5. `phpmyadmin/deployment.yaml`: Remove the `tls.crt` and `tls.key` items from the `mysql-phpmyadmin-client-certs` volume
+6. **On an already-bootstrapped cluster, remove OpenEMR's copied client cert.** OpenEMR's entrypoint copies the mounted cert files into `sites/default/documents/certificates/` on the shared `websitevolume`, and it never deletes those copies when the mount goes away, so OpenEMR keeps presenting the old client cert. After the step 3 change has rolled out (no pod still mounts the old files, so none can copy them back), delete the copies and restart:
+   ```bash
+   kubectl rollout status deployment/openemr
+   kubectl exec deploy/openemr -c openemr -- rm -f \
+       /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert \
+       /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-key
+   kubectl rollout restart deployment/openemr
+   ```
 
 ### Downgrade to TCP (no encryption)
 Perform all the TLS downgrade steps above, then additionally:
@@ -349,6 +357,17 @@ Perform all the TLS downgrade steps above, then additionally:
 5. `phpmyadmin/deployment.yaml`: Remove the entire `mysql-phpmyadmin-client-certs` volume and volumeMount
 6. `certs/mysql-openemr-client.yaml`, `certs/mysql-phpmyadmin-client.yaml`: These cert-manager Certificate resources can be removed entirely (operator-managed server/internal-client certs are already covered by step 2 above)
 7. `kub-up` and `kub-down` (and `.bat` variants): Remove the mysql client-cert references (operator-managed cert files no longer exist on the `spec.tls.enabled: false` path)
+8. **Remove OpenEMR's copied CA too.** Same reason as TLS step 6: after the step 3 change has rolled out, delete `mysql-ca` (and `mysql-cert` / `mysql-key` if TLS step 6 was skipped) from `sites/default/documents/certificates/`, then `kubectl rollout restart deployment/openemr`. While `mysql-ca` is present there, OpenEMR keeps trying to connect with TLS.
+9. **Check replication after the operator reconciles.** An existing replica can keep its `MASTER_SSL` setting after its cert mount is removed, which stops replication. On each replica pod (any pod other than `kubectl get mariadb mysql -o jsonpath='{.status.currentPrimary}'`):
+   ```bash
+   kubectl exec mysql-1 -c mariadb -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -u root -e "SHOW REPLICA STATUS\G"' \
+       | grep -E 'Slave_IO_Running|Slave_SQL_Running|Master_SSL_Allowed|Last_IO_Error'
+   ```
+   Both `Running` fields must be `Yes`. If the IO thread is stopped with a TLS error, turn off replication TLS on that replica and restart it:
+   ```bash
+   kubectl exec mysql-1 -c mariadb -- sh -c 'MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb -u root -e "STOP REPLICA; CHANGE MASTER TO MASTER_SSL=0; START REPLICA;"'
+   ```
+   Then re-run the status check and confirm `kubectl get mariadb mysql` reports `Ready`.
 
 ## Redis Connection Security
 By default, Redis connections use **mTLS (mutual TLS)** with X509 client certificate verification. OpenEMR uses phpredis with Sentinel discovery for automatic failover (`SESSION_STORAGE_MODE=predis-sentinel`). All certificates are managed by cert-manager. To downgrade the connection security:
@@ -420,7 +439,7 @@ Supported upgrade procedure:
      ls -l ./migration-dump/dump.sql   # verify size is plausible, mode is -rw------- (0600)
      ```
      `--events` is required — stock OpenEMR defines no MariaDB scheduled events, but without this flag any site-added events silently disappear from the restored cluster. If step 1 found events, verify they exist after restore with `SHOW EVENTS FROM <db>`. Use `mariadb-dump` (modern name; `mysqldump` is the compatibility alias but is being deprecated in MariaDB 11+). Keep `./migration-dump/dump.sql` protected (restricted dir permissions + 0600 mode) through the whole migration — it contains every patient record in plaintext. Document any application user accounts and grants that need recreation separately — on the restored cluster, recreate them against the operator-managed root account via `CREATE USER` / `GRANT` statements rather than dumping the source `mysql` DB. (The operator-managed destination accepts a `mariadb` client restore through `mysql-primary`; `mariadb-backup` physical backups are NOT drop-in restorable this way and need a different workflow — operator-managed `MariadbBackup`/`MariadbRestore` CRs, or a `bootstrapFrom` configuration on the new MariaDB resource — so logical dump is the safer default here.)
-   - **websitevolume** (`/var/www/.../sites`): openemr-managed documents, encounter-attached files, OpenEMR module state. Snapshot the PVC to an off-cluster location via a short-lived busybox helper pod, copying into the same kind of private staging directory as the DB dump (same pattern as the CSI-NFS upgrade section below). This volume holds patient documents in plaintext.
+   - **websitevolume** (`/var/www/.../sites`): openemr-managed documents, encounter-attached files, OpenEMR module state. Snapshot the PVC to an off-cluster location as a tar archive streamed from a short-lived busybox helper pod into the same kind of private staging directory as the DB dump (same pattern as the CSI-NFS upgrade section below), so ownership, permissions and symlinks survive. This volume holds patient documents in plaintext.
    - **sslvolume** (`/etc/ssl`) and **letsencryptvolume** (`/etc/letsencrypt`) if the site has operator-provisioned TLS cert material worth keeping. These hold TLS private keys, so stage them in the same private directory.
 3. **Spin up a fresh cluster** and run `kub-up` there. The operator-managed MariaDB will come up empty.
 4. **Keep the new site's `openemr` Deployment at `replicas=0`** before restoring (`kubectl scale deployment/openemr --replicas=0` on the new cluster). Letting openemr boot against an empty DB risks running `install_simple.php` and re-seeding tables you're about to restore over.
@@ -510,15 +529,17 @@ This stack does not support in-place upgrades for the Kubernetes side — the st
      - { name: le,  persistentVolumeClaim: { claimName: letsencryptvolume } }
    ```
 
-   Then copy each volume into a private local staging directory. `websitevolume` holds patient documents and the TLS volumes hold private keys, so restrict the copies the same way as the DB dump:
+   Then stream each volume into a tar archive in a private local staging directory. Use tar rather than `kubectl cp`: `kubectl cp` drops ownership and permissions and skips symbolic links (certbot keeps its live certs under `/etc/letsencrypt/live` as symlinks), while the archive keeps all three for the restore. `websitevolume` holds patient documents and the TLS volumes hold private keys, so the archives get the same protection as the DB dump:
 
    ```bash
    install -d -m 700 ./volume-backups
    (
        umask 077
        for v in websitevolume sslvolume letsencryptvolume; do
-           [ ! -e "./volume-backups/${v}" ] || { echo "./volume-backups/${v} exists; refusing to overwrite"; exit 1; }
-           kubectl cp "backup-helper:/backup/${v}" "./volume-backups/${v}" || exit 1
+           [ ! -e "./volume-backups/${v}.tar" ] || { echo "./volume-backups/${v}.tar exists; refusing to overwrite"; exit 1; }
+           kubectl exec backup-helper -- tar cf - -C "/backup/${v}" . > "./volume-backups/${v}.tar" || exit 1
+           # Verify the archive reads back cleanly before anything is torn down.
+           tar tf "./volume-backups/${v}.tar" > /dev/null || { echo "${v}.tar failed verification"; exit 1; }
        done
    )
    ```
@@ -527,12 +548,12 @@ This stack does not support in-place upgrades for the Kubernetes side — the st
 3. **`bash kub-down`** on the old manifests — fully tears down the old nfs-provisioner Deployment, Service, and RBAC along with the rest of the stack, so no plaintext NFS provisioner is left behind.
 4. **Pull the updated manifests** (this branch / release).
 5. **`bash kub-up`** on the new manifests. The new `nfs-server` Deployment, csi-driver-nfs, stunnel pods, and mTLS certs come up from scratch.
-6. **Restore each volume into its newly-provisioned CSI subdirectory.** csi-driver-nfs auto-names each RWX volume's backing directory as `<pvc-name>-<uid>` under `/nfsshare` on the backing PV (or under the share root for cloud-managed NFS). Restore into any openemr replica — only openemr mounts these claims, and all replicas share them. Stream the backup directory's *contents* (not the directory itself, which `kubectl cp` would nest) with tar:
+6. **Restore each volume into its newly-provisioned CSI subdirectory.** csi-driver-nfs auto-names each RWX volume's backing directory as `<pvc-name>-<uid>` under `/nfsshare` on the backing PV (or under the share root for cloud-managed NFS). Restore into any openemr replica — only openemr mounts these claims, and all replicas share them. Extract each archive as root inside the pod so ownership, permissions and symlinks come back as they were:
 
    ```
-   tar cf - -C volume-backups/websitevolume . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /var/www/localhost/htdocs/openemr/sites
-   tar cf - -C volume-backups/sslvolume       . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /etc/ssl
-   tar cf - -C volume-backups/letsencryptvolume . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /etc/letsencrypt
+   kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xpf - -C /var/www/localhost/htdocs/openemr/sites < volume-backups/websitevolume.tar
+   kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xpf - -C /etc/ssl < volume-backups/sslvolume.tar
+   kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xpf - -C /etc/letsencrypt < volume-backups/letsencryptvolume.tar
    ```
 
    The kubelet routes writes through the mount transparently into the newly-provisioned CSI directory. (Advanced: pre-create static PVs with `persistentVolume.spec.nfs.path` pointing at the pre-existing backup directories and bind the PVCs to those, which skips the auto-provision step entirely. A static PV does *not* inherit the StorageClass's `mountOptions`, so each one must set `spec.nfs.server: 127.0.0.1` and `spec.mountOptions: [nfsvers=4.0, port=12049, noac, actimeo=0]` explicitly — otherwise the mount fails.)

@@ -158,3 +158,25 @@ spec:
   - ports:
     - port: 20490
       protocol: TCP
+---
+# MariaDB Operator admission webhook: the API server calls it on
+# every MariaDB CREATE/UPDATE (failurePolicy: Fail), so a re-run of
+# kub-up fails if this port is unreachable. Whether default-deny
+# applies to API-server traffic depends on the CNI, and the API
+# server's source address differs per distribution (host network on
+# kind, managed control plane on EKS/GKE/AKS), so there is no portable
+# peer selector; allow 9443 from any source. The webhook serves TLS
+# and only admits/validates objects, so this exposes no data path.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mariadb-operator-webhook-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mariadb-operator-webhook
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - port: 9443

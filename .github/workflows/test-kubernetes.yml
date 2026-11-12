@@ -348,6 +348,17 @@ jobs:
           OLD_GEN=$(kubectl get statefulset mysql -o jsonpath='{.status.observedGeneration}')
           echo "old $SERVER_SECRET fp: $OLD_SHA"
           echo "old mysql StatefulSet observedGeneration: $OLD_GEN"
+          # Pod UIDs + primary before rotation. The roll is complete only
+          # when every mysql pod has been recreated (new UID) and is Ready;
+          # the StatefulSet generation bump alone just means the template
+          # changed (updateStrategy is OnDelete, the operator deletes pods
+          # one at a time afterwards).
+          MYSQL_SELECTOR='app.kubernetes.io/instance=mysql,app.kubernetes.io/name=mariadb'
+          MYSQL_REPLICAS=$(kubectl get statefulset mysql -o jsonpath='{.spec.replicas}')
+          OLD_UIDS=$(kubectl get pods -l "$MYSQL_SELECTOR" -o jsonpath='{range .items[*]}{.metadata.uid}{"\n"}{end}')
+          OLD_PRIMARY=$(kubectl get mariadb mysql -o jsonpath='{.status.currentPrimary}')
+          echo "old mysql pod UIDs: $(echo "$OLD_UIDS" | tr '\n' ' ')"
+          echo "old primary: $OLD_PRIMARY"
 
           echo "--- start background data-plane probe (1 Hz, via mysql-primary) ---"
           # Probe each iteration retries internally up to 3 times
@@ -386,13 +397,10 @@ jobs:
 
           echo "--- wait for probe baseline (>=3 OK iterations) ---"
           # Accumulate at least 3 successful probe iterations BEFORE
-          # triggering cert renewal. This guarantees the test has
-          # meaningful pre-cutover signal to compare against, so a
-          # "operator rolled too fast for the probe to notice" case
-          # (observed: operator failover completes in <2s, probe at
-          # 1 Hz catches it in a single iteration) still produces
-          # a TOTAL >=3 with at least 3 pre-cutover + some during/
-          # post-cutover iterations.
+          # triggering cert renewal, so the test has a healthy
+          # pre-rotation signal to compare against. Coverage of the
+          # roll itself is enforced separately below (>=10 samples
+          # between the generation bump and the post-roll Ready).
           for _ in $(seq 1 30); do
             OK_SO_FAR=$(grep -c ' OK$' /tmp/probe.log 2>/dev/null || true)
             if [ "${OK_SO_FAR:-0}" -ge 3 ]; then break; fi
@@ -461,10 +469,49 @@ jobs:
           # anyway: covers all pods Ready + replication re-
           # established + semi-sync re-connected post-rotation.
 
+          echo "--- wait for every mysql pod to be recreated and Ready ---"
+          # Do NOT rely on `kubectl wait --for=condition=Ready mariadb/mysql`
+          # alone here: right after the generation bump the condition is
+          # still True (reason PendingUpdate) for a few seconds before the
+          # operator flips it to Updating, so the wait returns before any
+          # pod has rolled. Locally the full roll (replica recreated ->
+          # switchover -> old primary recreated -> Ready) takes ~65s.
+          ROLLED=0
+          for _ in $(seq 1 150); do
+            NEW_UIDS=$(kubectl get pods -l "$MYSQL_SELECTOR" -o jsonpath='{range .items[*]}{.metadata.uid}{"\n"}{end}')
+            READY_COUNT=$(kubectl get pods -l "$MYSQL_SELECTOR" -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' | grep -c '^True$' || true)
+            REPLACED=0
+            for uid in $NEW_UIDS; do
+              echo "$OLD_UIDS" | grep -qx "$uid" || REPLACED=$((REPLACED + 1))
+            done
+            if [ "$REPLACED" -eq "$MYSQL_REPLICAS" ] && [ "${READY_COUNT:-0}" -eq "$MYSQL_REPLICAS" ]; then
+              ROLLED=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ROLLED" != "1" ]; then
+            echo "FAIL: mysql pods were not all recreated and Ready within 300s (replaced=$REPLACED/$MYSQL_REPLICAS ready=${READY_COUNT:-0})"
+            kubectl get pods -l "$MYSQL_SELECTOR" -o wide
+            kubectl get mariadb mysql -o yaml | sed -n '/^status:/,$p'
+            touch /tmp/probe.stop ; wait "$PROBE_PID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "PASS: all $MYSQL_REPLICAS mysql pods recreated and Ready"
+
           echo "--- wait for operator to report Ready after rotation ---"
           kubectl wait --for=condition=Ready mariadb/mysql --timeout=300s
           echo "PASS: operator reports Ready post-rotation (replication re-established)"
           ROTATION_COMPLETE_TS=$(date +%s)
+          echo "rotation window: $((ROTATION_COMPLETE_TS - GEN_CHANGE_TS))s"
+
+          NEW_PRIMARY=$(kubectl get mariadb mysql -o jsonpath='{.status.currentPrimary}')
+          if [ "$NEW_PRIMARY" = "$OLD_PRIMARY" ]; then
+            echo "FAIL: primary did not move during the roll ($OLD_PRIMARY -> $NEW_PRIMARY); the switchover path was not exercised"
+            touch /tmp/probe.stop ; wait "$PROBE_PID" 2>/dev/null || true
+            exit 1
+          fi
+          echo "PASS: operator switched primary before recreating it ($OLD_PRIMARY -> $NEW_PRIMARY)"
 
           echo "--- wait for probe to record a sample AFTER rotation complete ---"
           # Bound the wait so the workflow can't hang on a stuck probe.
@@ -502,11 +549,19 @@ jobs:
           #
           # Lower bound: the probe accumulated >=3 OK iterations
           # BEFORE cmctl renew (enforced above), so TOTAL must be
-          # >=3 here. Operator failover is faster than the probe's
-          # 1 Hz cadence (CI observed ~2s rotation window end-to-end),
-          # so pre-cutover baseline samples dominate TOTAL.
+          # >=3 here.
           if [ "$TOTAL" -lt 3 ]; then
             echo "FAIL: probe window too short — expected >=3 iterations, got $TOTAL (probe may not have started)"
+            exit 1
+          fi
+          # Coverage: the probe must have sampled throughout the roll,
+          # not just before and after it. The roll takes tens of
+          # seconds and the probe runs at ~1 Hz (longer when retrying),
+          # so require at least 10 samples inside the window.
+          IN_WINDOW=$(awk -v a="$GEN_CHANGE_TS" -v b="$ROTATION_COMPLETE_TS" '$1 >= a && $1 <= b' /tmp/probe.log | wc -l)
+          echo "probe samples during the roll: $IN_WINDOW"
+          if [ "$IN_WINDOW" -lt 10 ]; then
+            echo "FAIL: only $IN_WINDOW probe samples during the roll window (gen_change=$GEN_CHANGE_TS complete=$ROTATION_COMPLETE_TS); the probe did not cover the rotation"
             exit 1
           fi
           # Liveness check: probe must still have been running at or
