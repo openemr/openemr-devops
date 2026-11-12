@@ -386,6 +386,8 @@ Supported upgrade procedure:
    kubectl scale deployment/phpmyadmin --replicas=0
    ```
    Wait for pods to terminate. Keep them at `replicas=0` through the entire migration — any running openemr pod could reconnect and write to the old DB, invalidating the snapshot you're about to take.
+
+   Scaling the Deployments down does not stop writers that live inside or outside the database server. Stock OpenEMR defines no MariaDB scheduled events, but check for site-added ones (`SHOW EVENTS FROM <db>` on `mysql-sts-0`) and stop the scheduler for the duration of the migration if any exist (`SET GLOBAL event_scheduler = OFF`). Also pause any external writers that connect to the DB directly (host cron jobs, integrations, reporting tools). The new cluster's scheduler setting is independent of the old one; if the site depends on events, confirm it is on there (`SELECT @@event_scheduler`) after cutover.
 2. **Back up ALL three shared volumes off-cluster**, not just the DB:
    - **DB**: logical dump of the OpenEMR application database(s) ONLY — dumping `--all-databases` would pull in the source cluster's `mysql` system database (user accounts, grants, server-generated metadata), which must NOT be restored over the operator-managed destination because the operator manages its own system user accounts with its own passwords. First enumerate every application DB this site uses — most installs have a single `openemr` DB, but sites with addon modules or per-tenant namespacing can have more (check `sites/*/sqlconf.php` → `$dbase` for the canonical list). Then stream the dump directly from `mysql-sts-0` into a private, restricted-permission file — authenticate via the pod's own `MYSQL_ROOT_PASSWORD` env var (passed through `MYSQL_PWD`, which is not visible in `ps`) rather than `-p PASS` on the command line, and let `set -o pipefail` catch a failing `mariadb-dump`:
      ```bash
@@ -417,9 +419,9 @@ Supported upgrade procedure:
      echo "dump exit: $?"              # must be 0; non-zero = partial dump, do not proceed
      ls -l ./migration-dump/dump.sql   # verify size is plausible, mode is -rw------- (0600)
      ```
-     `--events` is required — without it any MariaDB scheduled events (openemr's cron-replacement feature uses these for background tasks) silently disappear from the restored cluster. Verify events exist after restore with `SHOW EVENTS FROM <db>`. Use `mariadb-dump` (modern name; `mysqldump` is the compatibility alias but is being deprecated in MariaDB 11+). Keep `./migration-dump/dump.sql` protected (restricted dir permissions + 0600 mode) through the whole migration — it contains every patient record in plaintext. Document any application user accounts and grants that need recreation separately — on the restored cluster, recreate them against the operator-managed root account via `CREATE USER` / `GRANT` statements rather than dumping the source `mysql` DB. (The operator-managed destination accepts a `mariadb` client restore through `mysql-primary`; `mariadb-backup` physical backups are NOT drop-in restorable this way and need a different workflow — operator-managed `MariadbBackup`/`MariadbRestore` CRs, or a `bootstrapFrom` configuration on the new MariaDB resource — so logical dump is the safer default here.)
-   - **websitevolume** (`/var/www/.../sites`): openemr-managed documents, encounter-attached files, OpenEMR module state. Snapshot the PVC to an off-cluster location via a short-lived busybox helper pod (same pattern as the CSI-NFS upgrade section below).
-   - **sslvolume** (`/etc/ssl`) and **letsencryptvolume** (`/etc/letsencrypt`) if the site has operator-provisioned TLS cert material worth keeping.
+     `--events` is required — stock OpenEMR defines no MariaDB scheduled events, but without this flag any site-added events silently disappear from the restored cluster. If step 1 found events, verify they exist after restore with `SHOW EVENTS FROM <db>`. Use `mariadb-dump` (modern name; `mysqldump` is the compatibility alias but is being deprecated in MariaDB 11+). Keep `./migration-dump/dump.sql` protected (restricted dir permissions + 0600 mode) through the whole migration — it contains every patient record in plaintext. Document any application user accounts and grants that need recreation separately — on the restored cluster, recreate them against the operator-managed root account via `CREATE USER` / `GRANT` statements rather than dumping the source `mysql` DB. (The operator-managed destination accepts a `mariadb` client restore through `mysql-primary`; `mariadb-backup` physical backups are NOT drop-in restorable this way and need a different workflow — operator-managed `MariadbBackup`/`MariadbRestore` CRs, or a `bootstrapFrom` configuration on the new MariaDB resource — so logical dump is the safer default here.)
+   - **websitevolume** (`/var/www/.../sites`): openemr-managed documents, encounter-attached files, OpenEMR module state. Snapshot the PVC to an off-cluster location via a short-lived busybox helper pod, copying into the same kind of private staging directory as the DB dump (same pattern as the CSI-NFS upgrade section below). This volume holds patient documents in plaintext.
+   - **sslvolume** (`/etc/ssl`) and **letsencryptvolume** (`/etc/letsencrypt`) if the site has operator-provisioned TLS cert material worth keeping. These hold TLS private keys, so stage them in the same private directory.
 3. **Spin up a fresh cluster** and run `kub-up` there. The operator-managed MariaDB will come up empty.
 4. **Keep the new site's `openemr` Deployment at `replicas=0`** before restoring (`kubectl scale deployment/openemr --replicas=0` on the new cluster). Letting openemr boot against an empty DB risks running `install_simple.php` and re-seeding tables you're about to restore over.
 5. **Restore the DB dump** into the new cluster. `openemr` is scaled to 0, so exec directly into the operator-managed primary pod — resolve its name from the MariaDB resource's status rather than assuming `mysql-0`, since the operator can promote `mysql-1` to primary after a failover and the hardcoded `mysql-0` assumption would silently restore into a replica:
@@ -466,12 +468,16 @@ Supported upgrade procedure:
 
    Keep the new site's openemr Deployment at `replicas=0` until the restore completes. Verify tables populated via phpmyadmin on the new cluster.
 6. **Restore the backed-up websitevolume / sslvolume / letsencryptvolume contents** into the new cluster's PVCs (helper-pod `tar -x` into each mount, same reverse of step 2's snapshot).
-7. **Update `sqlconf.php` in the restored websitevolume** to point at the new Service name. The old site had `$host = "mysql"` baked into `sites/default/sqlconf.php` (and any per-site `sqlconf.php` under `sites/*/sqlconf.php`); the new topology uses `mysql-primary`. OpenEMR reads this file to establish its DB connection, and env-var override of `MYSQL_HOST` does NOT replace it inside sqlconf.php — the file's value wins once bootstrap writes it. Fix before starting openemr:
+7. **Update `sqlconf.php` in the restored websitevolume** to point at the new Service name. The old site had `$host = 'mysql';` baked into `sites/default/sqlconf.php` (and any per-site `sqlconf.php` under `sites/*/sqlconf.php`); the new topology uses `mysql-primary`. OpenEMR reads this file to establish its DB connection, and env-var override of `MYSQL_HOST` does NOT replace it inside sqlconf.php — the file's value wins once bootstrap writes it. Fix before starting openemr:
    ```bash
    # Helper pod with websitevolume mounted:
-   kubectl exec <helper> -- find /sites -name sqlconf.php -exec sed -i 's/= "mysql";/= "mysql-primary";/g' {} +
+   # Matches only the `$host` assignment as the installer writes it
+   # ($host<TAB>= 'mysql';), so $login / $dbase values of 'mysql' are untouched.
+   kubectl exec <helper> -- find /sites -name sqlconf.php -exec \
+       sed -i -E "s/^([\$]host[[:space:]]*=[[:space:]]*)'mysql';/\1'mysql-primary';/" {} +
+   # Verify every site now points at mysql-primary:
+   kubectl exec <helper> -- find /sites -name sqlconf.php -exec grep -H '^\$host' {} +
    ```
-   (Adjust the match to the actual quoting in the source file; verify with `grep -r 'host' sites/*/sqlconf.php` after.)
 8. **Scale openemr back up** on the new cluster (`kubectl scale deployment/openemr --replicas=3`) and verify end-to-end: login, patient operations, FHIR endpoints, document retrieval from the restored websitevolume.
 9. **Cut traffic over to the new site's ingress** once verified (DNS flip, load-balancer repointing, or whatever your ingress layer uses).
 10. **Decommission the old site on its own cluster**. Do NOT run `kub-down` if you reused the same cluster — it would tear down cluster-wide operators (cert-manager, mariadb-operator, etc.) that the old site also depends on, and there isn't a namespace-only teardown path in this stack today. On a dedicated-cluster migration, the full `kub-down` on the old cluster is the right teardown.
@@ -504,16 +510,29 @@ This stack does not support in-place upgrades for the Kubernetes side — the st
      - { name: le,  persistentVolumeClaim: { claimName: letsencryptvolume } }
    ```
 
-   Then `kubectl cp backup-helper:/backup/websitevolume ./websitevolume-backup` (and likewise for `sslvolume`, `letsencryptvolume`). Delete the helper (`kubectl delete pod backup-helper`) before step 3 so it does not hold the claims open against `kub-down`.
+   Then copy each volume into a private local staging directory. `websitevolume` holds patient documents and the TLS volumes hold private keys, so restrict the copies the same way as the DB dump:
+
+   ```bash
+   install -d -m 700 ./volume-backups
+   (
+       umask 077
+       for v in websitevolume sslvolume letsencryptvolume; do
+           [ ! -e "./volume-backups/${v}" ] || { echo "./volume-backups/${v} exists; refusing to overwrite"; exit 1; }
+           kubectl cp "backup-helper:/backup/${v}" "./volume-backups/${v}" || exit 1
+       done
+   )
+   ```
+
+   Delete the helper (`kubectl delete pod backup-helper`) before step 3 so it does not hold the claims open against `kub-down`.
 3. **`bash kub-down`** on the old manifests — fully tears down the old nfs-provisioner Deployment, Service, and RBAC along with the rest of the stack, so no plaintext NFS provisioner is left behind.
 4. **Pull the updated manifests** (this branch / release).
 5. **`bash kub-up`** on the new manifests. The new `nfs-server` Deployment, csi-driver-nfs, stunnel pods, and mTLS certs come up from scratch.
 6. **Restore each volume into its newly-provisioned CSI subdirectory.** csi-driver-nfs auto-names each RWX volume's backing directory as `<pvc-name>-<uid>` under `/nfsshare` on the backing PV (or under the share root for cloud-managed NFS). Restore into any openemr replica — only openemr mounts these claims, and all replicas share them. Stream the backup directory's *contents* (not the directory itself, which `kubectl cp` would nest) with tar:
 
    ```
-   tar cf - -C websitevolume-backup . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /var/www/localhost/htdocs/openemr/sites
-   tar cf - -C sslvolume-backup       . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /etc/ssl
-   tar cf - -C letsencryptvolume-backup . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /etc/letsencrypt
+   tar cf - -C volume-backups/websitevolume . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /var/www/localhost/htdocs/openemr/sites
+   tar cf - -C volume-backups/sslvolume       . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /etc/ssl
+   tar cf - -C volume-backups/letsencryptvolume . | kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xf - -C /etc/letsencrypt
    ```
 
    The kubelet routes writes through the mount transparently into the newly-provisioned CSI directory. (Advanced: pre-create static PVs with `persistentVolume.spec.nfs.path` pointing at the pre-existing backup directories and bind the PVCs to those, which skips the auto-provision step entirely. A static PV does *not* inherit the StorageClass's `mountOptions`, so each one must set `spec.nfs.server: 127.0.0.1` and `spec.mountOptions: [nfsvers=4.0, port=12049, noac, actimeo=0]` explicitly — otherwise the mount fails.)
