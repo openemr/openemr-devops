@@ -4,7 +4,7 @@ This directory is an **example**, not a default. It demonstrates a variant of Op
 
 - **Option 1 (default stack recommendation):** back the NFS server's PVC with an encrypted StorageClass (cloud KMS, Longhorn, Rook/Ceph). Simple, transparent, zero application change. Keys live with the storage layer / cloud KMS.
 - **Option 2a — LUKS (`examples/encryption-at-rest-luks/`):** the openemr pod wraps `websitevolume` in a LUKS container file. Strongest metadata hiding (NFS sees one opaque blob). **Single-replica only** — LUKS wraps a single ext4 filesystem that cannot be multi-writer.
-- **Option 2b — gocryptfs, this example:** the openemr pod transparently encrypts each file individually via gocryptfs in `-sharedstorage` mode. **Multi-replica (default `replicas: 3`) retained, rollout strategy upgraded from the default stack's `Recreate` to `RollingUpdate`.** Trade-off: NFS sees per-file ciphertext blobs with encrypted filenames, not one monolithic opaque blob — directory structure cardinality leaks (number of files, their rough sizes) even though filenames and contents are encrypted.
+- **Option 2b — gocryptfs, this example:** the openemr pod transparently encrypts each file individually via gocryptfs in `-sharedstorage` mode. **Multi-replica (default `replicas: 3`) and the default stack's `RollingUpdate` strategy retained.** Trade-off: NFS sees per-file ciphertext blobs with encrypted filenames, not one monolithic opaque blob — directory structure cardinality leaks (number of files, their rough sizes) even though filenames and contents are encrypted.
 
 **Do not adopt this example unless you have a specific threat model that requires it.** Option 1 covers the overwhelming majority of HIPAA at-rest requirements with far less operational complexity. This example exists for users whose threat model treats the NFS server pod (or the storage layer under it) as untrusted AND who cannot accept the single-replica downgrade that the LUKS sibling example imposes.
 
@@ -34,7 +34,7 @@ Pick **Option 1 (encrypted StorageClass)** when:
 | **Where encryption happens** | Storage layer (below NFS server pod) | Application pod (inside LUKS container file) | Application pod (FUSE, per-file) |
 | **NFS server pod sees** | Plaintext | One opaque LUKS container file | Per-file ciphertext + encrypted filenames |
 | **Replicas supported** | Any | **1** | **Any** (default 3; `-sharedstorage` mode) |
-| **Rolling updates** | Yes | No (Recreate) | **Yes** (RollingUpdate; upgraded from the default stack's Recreate) |
+| **Rolling updates** | Yes | No (Recreate) | **Yes** (RollingUpdate, same as the default stack) |
 | **Metadata leaked to NFS** | File tree, names, sizes, access times | None (single opaque file) | File count, per-file ciphertext sizes (filenames are encrypted) |
 | **Privilege required** | None beyond default | Privileged sidecar | Privileged sidecar (FUSE needs `/dev/fuse` + `CAP_SYS_ADMIN`) |
 | **Operational complexity** | Low | Medium | Medium |
@@ -1522,5 +1522,5 @@ The reverse (plaintext NFS → gocryptfs) is the step-by-step adoption sequence 
 | `README.md` | This document. |
 | `gocryptfs-passphrase-secret.yaml` | Example Secret with a placeholder passphrase. Replace before use. |
 | `gocryptfs-init-job.yaml` | One-shot Job that initializes the gocryptfs backing directory. Run once. Unprivileged. |
-| `openemr-deployment-gocryptfs.yaml` | Modified openemr Deployment with privileged `gocryptfs-mounter` sidecar. 3 replicas retained; rollout strategy upgraded from the default's `Recreate` to `RollingUpdate`. |
+| `openemr-deployment-gocryptfs.yaml` | Modified openemr Deployment with privileged `gocryptfs-mounter` sidecar. 3 replicas and `RollingUpdate` retained. |
 | `validate-encryption.sh` | End-to-end validation script. Writes a plaintext marker through openemr's `/sites`, verifies `gocryptfs.conf` cipher + filename encryption, confirms no plaintext filenames leak into the raw backing, and head-samples every backing file for marker leakage. Set `VALIDATE_FULL=1` to additionally scan the full contents of every backing file. |
