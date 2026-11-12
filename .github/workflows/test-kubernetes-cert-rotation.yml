@@ -197,7 +197,7 @@ jobs:
       - name: Rotate the CA key
         # Steps 3 and 5 of rotate-ca restart every workload at once, and
         # step 4 renews the nfs-server and Redis leaves; same 60s budget as
-        # the nfs-server leaf. Measured locally on 2026-11-12: 538s total,
+        # the nfs-server leaf. Measured locally on 2026-11-12: 538-549s total,
         # longest gap 16-19s (http, mysql, nfs).
         run: bash tests/kubernetes/rotate-ca-test.sh --max-gap 60
 

@@ -84,6 +84,20 @@ bundle_fps() {
     for f in "${TMP}"/split.*; do fingerprint < "${f}"; done
     rm -f "${TMP}"/split.*
 }
+# Point ca-issuer at a Secret and wait until cert-manager has observed
+# that change (a Ready condition from before the patch does not count).
+point_issuer_at() {
+    local gen observed deadline=$(( SECONDS + TIMEOUT ))
+    gen=$(kubectl patch issuer "${ISSUER}" --type merge -o jsonpath='{.metadata.generation}' \
+        -p "{\"spec\":{\"ca\":{\"secretName\":\"$1\"}}}") || fail "could not patch Issuer ${ISSUER}"
+    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+        observed=$(kubectl get issuer "${ISSUER}" \
+            -o jsonpath='{.status.conditions[?(@.type=="Ready")].observedGeneration} {.status.conditions[?(@.type=="Ready")].status}')
+        [[ "${observed}" = "${gen} True" ]] && return 0
+        sleep 2
+    done
+    fail "Issuer ${ISSUER} did not become Ready on $1 (generation ${gen})"
+}
 wait_bundle_synced() {
     kubectl wait --for=condition=Synced "bundle/${BUNDLE}" --timeout="${TIMEOUT}s" >/dev/null \
         || fail "Bundle ${BUNDLE} did not sync"
@@ -210,9 +224,7 @@ secret_field "${CA_SECRET}" tls.crt > "${TMP}/old-ca.crt"
 secret_field "${CA_SECRET}" tls.key > "${TMP}/old-ca.key"
 kubectl create secret tls "${PREV_SECRET}" --cert="${TMP}/old-ca.crt" --key="${TMP}/old-ca.key"
 rm -f "${TMP}/old-ca.key"
-kubectl patch issuer "${ISSUER}" --type merge -p "{\"spec\":{\"ca\":{\"secretName\":\"${PREV_SECRET}\"}}}"
-kubectl wait --for=condition=Ready "issuer/${ISSUER}" --timeout="${TIMEOUT}s" >/dev/null \
-    || fail "Issuer ${ISSUER} is not Ready on ${PREV_SECRET}"
+point_issuer_at "${PREV_SECRET}"
 
 # ---------------------------------------------------------------------------
 step "2/6 add ${PREV_SECRET} to the Bundle"
@@ -228,13 +240,14 @@ pod_uids "${WORKLOADS[@]}" > "${TMP}/uids"
 kubectl patch certificate "${CA_CERT}" --type merge -p '{"spec":{"privateKey":{"rotationPolicy":"Always"}}}'
 cmctl renew "${CA_CERT}"
 NEW_FP=""
-for _ in $(seq 1 60); do
+deadline=$(( SECONDS + TIMEOUT ))
+while [[ "${SECONDS}" -lt "${deadline}" ]]; do
     cur=$(secret_field "${CA_SECRET}" tls.crt 2>/dev/null | fingerprint || true)
     if [[ -n "${cur}" ]] && [[ "${cur}" != "${OLD_FP}" ]]; then NEW_FP=${cur}; break; fi
     sleep 2
 done
 kubectl patch certificate "${CA_CERT}" --type merge -p '{"spec":{"privateKey":{"rotationPolicy":"Never"}}}'
-[[ -n "${NEW_FP}" ]] || fail "${CA_SECRET} was not re-issued within 120s"
+[[ -n "${NEW_FP}" ]] || fail "${CA_SECRET} was not re-issued within ${TIMEOUT}s (the CA key has not changed)"
 secret_field "${CA_SECRET}" tls.crt > "${TMP}/new-ca.crt"
 old_pub=$(openssl x509 -noout -pubkey < "${TMP}/old-ca.crt")
 new_pub=$(openssl x509 -noout -pubkey < "${TMP}/new-ca.crt")
@@ -251,9 +264,7 @@ log "every workload and MariaDB trusts both CAs"
 
 # ---------------------------------------------------------------------------
 step "4/6 sign with the new CA; re-issue every leaf"
-kubectl patch issuer "${ISSUER}" --type merge -p "{\"spec\":{\"ca\":{\"secretName\":\"${CA_SECRET}\"}}}"
-kubectl wait --for=condition=Ready "issuer/${ISSUER}" --timeout="${TIMEOUT}s" >/dev/null \
-    || fail "Issuer ${ISSUER} is not Ready on ${CA_SECRET}"
+point_issuer_at "${CA_SECRET}"
 for c in "${LEAVES[@]}"; do
     secret=$(kubectl get certificate "${c}" -o jsonpath='{.spec.secretName}')
     # Workloads that reload on this Secret; MariaDB's own certificates are
@@ -268,7 +279,8 @@ for c in "${LEAVES[@]}"; do
     before=$(secret_field "${secret}" tls.crt | fingerprint)
     cmctl renew "${c}"
     reissued=0
-    for _ in $(seq 1 60); do
+    deadline=$(( SECONDS + TIMEOUT ))
+    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
         secret_field "${secret}" tls.crt > "${TMP}/leaf.crt" 2>/dev/null || true
         cur=$(fingerprint < "${TMP}/leaf.crt" 2>/dev/null || true)
         if [[ -n "${cur}" ]] && [[ "${cur}" != "${before}" ]] \
@@ -278,7 +290,7 @@ for c in "${LEAVES[@]}"; do
         fi
         sleep 2
     done
-    [[ "${reissued}" = 1 ]] || fail "${c} was not re-issued by the new CA within 120s"
+    [[ "${reissued}" = 1 ]] || fail "${c} was not re-issued by the new CA within ${TIMEOUT}s"
     log "${c} re-issued by the new CA; waiting for ${users[*]}"
     wait_restarted "${TMP}/uids" "${users[@]}"
 done

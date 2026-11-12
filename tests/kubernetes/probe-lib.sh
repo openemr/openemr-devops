@@ -55,6 +55,7 @@ probe_mysql() {
     pod=$(openemr_pod) && [[ -n "${pod}" ]] || return 1
     timeout 8s kubectl exec "${pod}" -c openemr -- \
         mariadb -h mysql-primary -u openemr -popenemr \
+            --ssl-verify-server-cert \
             --ssl-ca=/root/certs/mysql/server/mysql-ca \
             --ssl-cert=/root/certs/mysql/server/mysql-cert \
             --ssl-key=/root/certs/mysql/server/mysql-key \
@@ -73,12 +74,14 @@ run_probe() {
     local name=$1 logf="${PROBE_DIR}/$1.log" ts ok
     : > "${logf}"
     while [[ ! -f "${STOP_FILE}" ]]; do
-        ts=$(date +%s)
         ok=0
         for _ in 1 2 3; do
             if "probe_${name}"; then ok=1; break; fi
             sleep 1
         done
+        # Timestamp the result, not the start of the attempts, so a sample
+        # that hangs and then succeeds still shows up as a gap.
+        ts=$(date +%s)
         if [[ "${ok}" = 1 ]]; then echo "${ts} OK" >> "${logf}"; else echo "${ts} FAIL" >> "${logf}"; fi
         sleep 1
     done

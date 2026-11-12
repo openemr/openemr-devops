@@ -214,9 +214,16 @@ sleep 15
 # Secret, which every workload (and MariaDB) uses as its trust anchors.
 # It must exist before the workloads below mount it. See
 # certs/ca-bundle.yaml and kubernetes/README.md -> CA rotation.
-kubectl apply -f certs/ca-bundle.yaml
+if ! kubectl apply -f certs/ca-bundle.yaml; then
+    echo "ERROR: could not apply certs/ca-bundle.yaml."
+    exit 1
+fi
 echo "...waiting for the trust bundle to be synced..."
-kubectl wait --for=condition=Synced --timeout=180s bundle/openemr-ca-bundle
+if ! kubectl wait --for=condition=Synced --timeout=180s bundle/openemr-ca-bundle; then
+    echo "ERROR: trust-manager did not sync the openemr-ca-bundle Secret; every workload needs it."
+    echo "Check: kubectl describe bundle openemr-ca-bundle; kubectl logs -n cert-manager deployment/trust-manager"
+    exit 1
+fi
 
 # install csi-driver-nfs (the StorageClass provisioner for the NFS backing).
 # Standard upstream manifests, pinned to v4.13.6.

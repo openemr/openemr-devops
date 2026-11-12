@@ -29,6 +29,12 @@ spec:
         image: phpmyadmin:5.2.3@sha256:f54a37b908b26caa7032c4eb0c7f3495fdd90208a06eed9c4b2c8e691dd1662c
         name: phpmyadmin
         command: ["/wrapper.sh"]
+        # Keep serving while the Service drops this pod during a
+        # certificate roll (same reason as openemr/deployment.yaml).
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "10"]
         volumeMounts:
         - name: phpmyadmin-server-certs
           mountPath: /certs

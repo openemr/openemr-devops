@@ -144,7 +144,15 @@ timeout 15
 REM Trust bundle (certs/ca-bundle.yaml): every workload and MariaDB
 REM reads its trust anchors from the openemr-ca-bundle Secret.
 kubectl apply -f certs/ca-bundle.yaml
+if errorlevel 1 (
+    echo ERROR: could not apply certs/ca-bundle.yaml.
+    exit /b 1
+)
 kubectl wait --for=condition=Synced --timeout=180s bundle/openemr-ca-bundle
+if errorlevel 1 (
+    echo ERROR: trust-manager did not sync the openemr-ca-bundle Secret; every workload needs it.
+    exit /b 1
+)
 
 REM install csi-driver-nfs (StorageClass provisioner; upstream v4.13.6)
 kubectl apply ^

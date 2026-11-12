@@ -374,22 +374,32 @@ cd kubernetes
 ./rotate-ca
 ```
 
-On kind it takes about 9 minutes. The data plane sees the all-at-once restarts of steps 3 and 5 plus the per-leaf restarts of step 4: on kind the longest stretch without a successful OpenEMR, MariaDB or NFS request was 16-19s, at the steps 3 and 5 restarts and the nfs-server leaf (measured 2026-11-12). Plan it like an nfs-server certificate renewal, repeated three times over the run. `.github/workflows/test-kubernetes-cert-rotation.yml` runs it (via `tests/kubernetes/rotate-ca-test.sh`) and checks that OpenEMR HTTPS, MariaDB and NFS never go more than 60 seconds without a successful request, that every trust file holds only the new CA, and that Redis and MariaDB reject a client certificate signed by the old CA. The cluster ends in the state the checked-in manifests describe, so running `kub-up` afterwards is safe. **Do not run `kub-up` while `rotate-ca` is running**: it re-applies `ca-issuer` and the Bundle and would undo steps 1-2.
+On kind it takes about 9 minutes. The data plane sees the all-at-once restarts of steps 3 and 5 plus the per-leaf restarts of step 4: on kind the longest stretch without a successful OpenEMR, MariaDB or NFS request was 16-22s, at the steps 3 and 5 restarts and the nfs-server leaf (measured 2026-11-12). Plan it like an nfs-server certificate renewal, repeated three times over the run. `.github/workflows/test-kubernetes-cert-rotation.yml` runs it (via `tests/kubernetes/rotate-ca-test.sh`) and checks that OpenEMR HTTPS, MariaDB and NFS never go more than 60 seconds without a successful request, that every trust file holds only the new CA, and that Redis and MariaDB reject a client certificate signed by the old CA. The cluster ends in the state the checked-in manifests describe, so running `kub-up` afterwards is safe. **Do not run `kub-up` while `rotate-ca` is running**: it re-applies `ca-issuer` and the Bundle and would undo steps 1-2.
 
 #### If rotate-ca stops part way
 
 `rotate-ca` prints each step as it starts and refuses to start again while `ca-key-pair-previous` exists. Check what failed (`kubectl get pods`, `kubectl get certificates`), fix it, then finish from the step that stopped:
 
-- **Stopped in step 1 or 2** (the CA key has not changed): undo with `kubectl apply -f certs/ca-issuer.yaml -f certs/ca-bundle.yaml` and `kubectl delete secret ca-key-pair-previous`, then run `rotate-ca` again.
-- **Stopped in step 3 or later** (a new CA exists): do not go back. Make sure `ca-certificate` keeps its key on future renewals with `kubectl apply -f certs/ca-certificate.yaml`, wait until every workload has restarted and `kubectl get mariadb mysql` is `Ready`, then finish by hand:
+First check whether the CA key changed. The two commands print the same fingerprint if it did not:
+
+```bash
+kubectl get secret ca-key-pair -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -fingerprint -sha256
+kubectl get secret ca-key-pair-previous -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -fingerprint -sha256
+```
+
+- **Same fingerprint** (stopped in steps 1-3 before the new key was issued): undo with `kubectl apply -f certs/ca-certificate.yaml -f certs/ca-issuer.yaml -f certs/ca-bundle.yaml` and `kubectl delete secret ca-key-pair-previous`, then run `rotate-ca` again.
+- **Different fingerprint** (a new CA exists): do not go back. Make sure `ca-certificate` keeps its key on future renewals with `kubectl apply -f certs/ca-certificate.yaml`, wait until every workload has restarted and `kubectl get mariadb mysql` is `Ready`, then finish by hand:
   ```bash
   kubectl apply -f certs/ca-issuer.yaml       # step 4: sign with the new CA
   renew_all_leaves                            # step 4: see "Forcing a rotation"
   kubectl apply -f certs/ca-bundle.yaml       # step 5: drop the old CA
-  kubectl delete secret mysql-ca-bundle       # step 5: MariaDB drops it too
+  # step 5: wait until the bundle holds one certificate (trust-manager is asynchronous),
+  # otherwise MariaDB rebuilds its bundle with the old CA still in it
+  until [ "$(kubectl get secret openemr-ca-bundle -o jsonpath='{.data.ca\.crt}' | base64 -d | grep -c 'BEGIN CERTIFICATE')" = 1 ]; do sleep 2; done
+  kubectl delete secret mysql-ca-bundle       # step 5: MariaDB drops the old CA too
   kubectl delete secret ca-key-pair-previous  # step 6
   ```
-  Re-issue every leaf before re-applying `certs/ca-bundle.yaml` (or running `kub-up`): once the old CA leaves the bundle, any leaf it still signs is rejected.
+  Re-issue every leaf before re-applying `certs/ca-bundle.yaml` (or running `kub-up`): once the old CA leaves the bundle, any leaf it still signs is rejected. Afterwards, once MariaDB has rolled, `kubectl get secret mysql-ca-bundle -o jsonpath='{.data.ca\.crt}' | base64 -d | grep -c 'BEGIN CERTIFICATE'` should print `1`.
 
 # Connection Security
 
