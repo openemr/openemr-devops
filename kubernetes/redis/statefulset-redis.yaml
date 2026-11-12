@@ -83,9 +83,57 @@ spec:
               fi
             else
               echo "Sentinel found, finding master"
-              MASTER="$(redis-cli $TLSPARAMETERS -h sentinel -p 26379 sentinel get-master-addr-by-name mymaster | grep -E '(^redis-\d{1,})|([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})')"
-              echo "Master got: $MASTER, updating this in redis.conf"
-              echo "REPLICAOF $MASTER 6379" >> /etc/redis/redis.conf
+              get_master() {
+                redis-cli $TLSPARAMETERS -h sentinel -p 26379 sentinel get-master-addr-by-name mymaster | grep -E '(^redis-\d{1,})|([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})'
+              }
+              # Sentinel may report this pod by its short (redis-N.redis) or
+              # full (redis-N.redis.<ns>.svc.cluster.local) name.
+              is_self() {
+                case "$1" in
+                  "$(hostname)"|"$(hostname)".*) return 0 ;;
+                  *) return 1 ;;
+                esac
+              }
+              MASTER="$(get_master)"
+              if is_self "$MASTER"; then
+                # Sentinel still names this pod as master: this pod WAS the
+                # master and has just been restarted (cert reload, node drain,
+                # crash) before Sentinel noticed. Redis has no persistence
+                # here, so this pod is empty. Replicating from itself leaves a
+                # replica that never syncs (and OpenEMR's session WAIT for 2
+                # replicas then stalls every request); starting as master
+                # would make the surviving replicas resync to an empty
+                # dataset. If another Redis pod is up, wait for Sentinel to
+                # fail over to it. If none is up, this is a cold start of the
+                # whole cluster and this pod starts as master.
+                PEER_UP=false
+                for peer in redis-0 redis-1 redis-2; do
+                  [ "$peer" == "$(hostname)" ] && continue
+                  if [ "$(redis-cli $TLSPARAMETERS -h "$peer.redis" ping 2>/dev/null)" == "PONG" ]; then
+                    PEER_UP=true
+                  fi
+                done
+                if $PEER_UP; then
+                  echo "Sentinel still names this pod as master; waiting for failover"
+                  i=0
+                  while is_self "$MASTER" && [ $i -lt 30 ]; do
+                    sleep 2
+                    i=$((i + 1))
+                    MASTER="$(get_master)"
+                  done
+                  if is_self "$MASTER" || [ -z "$MASTER" ]; then
+                    echo "ERROR: Sentinel did not fail over within 60s; exiting so the init container is retried" >&2
+                    exit 1
+                  fi
+                else
+                  echo "No other Redis pod is up (cold start); starting as master"
+                  MASTER=""
+                fi
+              fi
+              if [ -n "$MASTER" ]; then
+                echo "Master got: $MASTER, updating this in redis.conf"
+                echo "REPLICAOF $MASTER 6379" >> /etc/redis/redis.conf
+              fi
             fi
         volumeMounts:
         - name: redis-certs

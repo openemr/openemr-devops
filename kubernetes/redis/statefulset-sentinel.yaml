@@ -90,6 +90,17 @@ spec:
                 SENTINEL_CONF="$SENTINEL_CONF
             tls-auth-clients no"
             fi
+            # Stable Sentinel ID per pod. sentinel.conf is regenerated on
+            # every start, so without this each restart (cert reload, node
+            # drain) gets a new random ID and the other Sentinels keep the
+            # old one as a dead peer. Dead peers still count toward the
+            # failover-election majority, so after a few restarts no
+            # Sentinel can win an election and Redis stops failing over.
+            # With a stable ID, peers just pick up the restarted pod's new
+            # address.
+            MYID=$(printf '%s' "openemr-sentinel-$(hostname)" | sha1sum | cut -c1-40)
+            SENTINEL_CONF="$SENTINEL_CONF
+            sentinel myid $MYID"
             echo "$SENTINEL_CONF" > /etc/redis/sentinel.conf
             echo "Sentinel configuration written"
         volumeMounts:
