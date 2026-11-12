@@ -32,6 +32,9 @@
 #      attacker who can read the NFS backing already has cluster-adjacent
 #      access and TLS cert exfiltration is a separate concern addressed by
 #      the stack's mTLS layers and cert-manager rotation.
+#   6. openemr startupProbe every 2s (failureThreshold 300, same 10 min)
+#      and readinessProbe every 5s, instead of 10s / 30s: with one replica
+#      the probe delay is outage on every restart.
 #
 # Prerequisites:
 #   - The #910 default stack is applied (kub-up).
@@ -312,18 +315,21 @@ spec:
             command:
             - cat
             - /root/instance-swarm-ready
-          periodSeconds: 10
+          # Short periods: with one replica and Recreate, every second
+          # between the container being ready and the probe noticing is
+          # outage on each restart (a certificate rotation, for example).
+          # 10s/30s periods added ~35s to each restart on kind.
+          periodSeconds: 2
           # Single-replica deployment, so no leader-election race. 10 min
           # is more than enough for first-boot. (Default stack uses 20
           # min to accommodate 3-way leader election.)
-          failureThreshold: 60
+          failureThreshold: 300
         readinessProbe:
           exec:
             command:
             - cat
             - /root/instance-swarm-ready
-          initialDelaySeconds: 5
-          periodSeconds: 30
+          periodSeconds: 5
         livenessProbe:
           tcpSocket:
             port: 443

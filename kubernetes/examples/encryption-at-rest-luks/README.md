@@ -1283,6 +1283,7 @@ Push it to your own registry, pin by digest, and point BOTH the `luks-opener` si
 - **Native-sidecar termination order** (the sidecar stops AFTER the main container on pod shutdown) is critical. This requires Kubernetes 1.29+ for the `restartPolicy: Always` initContainer semantics to be GA. On older clusters, the pattern needs adjustment (a true sidecar container plus a shutdown hook, or an external PreStop hook).
 - **Not tested with cluster upgrades that change the kernel major version.** `dm-crypt` is stable kernel surface but if an upgrade removes the module from the node image, the sidecar fails on `luksOpen`. Confirm `dm_crypt` availability on your node image before adopting.
 - **Secret rotation requires a pod restart.** `cryptsetup luksAddKey` / `luksRemoveKey` must run against the LUKS header on the NFS file; the sidecar re-reads the Secret only on pod start. Plan a maintenance window for passphrase rotation — the openemr Deployment is already single-replica, so this is downtime, not a rolling update.
+- **Certificate rotation is downtime too.** cert-manager renews OpenEMR's client certificates (`mysql-openemr-client`, `redis-openemr-client`) about every 60 days, and reloader restarts the single openemr pod for each one: about 20s without OpenEMR per restart on kind, possibly twice in a row because both certificates renew together. Plan a window, or renew both by hand at a quiet time first. Details: `kubernetes/README.md`, "Data-plane impact during rotation".
 
 ## File manifest
 

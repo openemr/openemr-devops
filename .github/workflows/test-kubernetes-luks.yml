@@ -24,6 +24,7 @@ on:
       - 'kubernetes/kub-up'
       - '.github/actions/kubernetes-stack-up/**'
       - '.github/workflows/test-kubernetes-luks.yml'
+      - 'tests/kubernetes/**'
   pull_request:
     branches: [master]
     paths:
@@ -33,6 +34,7 @@ on:
       - 'kubernetes/kub-up'
       - '.github/actions/kubernetes-stack-up/**'
       - '.github/workflows/test-kubernetes-luks.yml'
+      - 'tests/kubernetes/**'
   workflow_dispatch:
 
 jobs:
@@ -240,6 +242,48 @@ jobs:
 
       - name: Validate LUKS encryption effectiveness
         run: bash kubernetes/examples/encryption-at-rest-luks/validate-encryption.sh
+
+      - name: Install cmctl (cert-manager CLI)
+        run: |
+          sudo curl -fL -o /usr/local/bin/cmctl \
+            https://github.com/cert-manager/cmctl/releases/download/v2.6.2/cmctl_linux_amd64
+          sudo chmod +x /usr/local/bin/cmctl
+          cmctl version --client
+          echo "ROTATION_WORKDIR=${RUNNER_TEMP}/cert-rotation" >> "${GITHUB_ENV}"
+
+      # Certificate rotation with the encrypted sites volume: OpenEMR's own
+      # client certificates (restart the openemr pods) and the NFS server
+      # certificate (pauses NFS I/O under the encrypted layer). The other
+      # leaves behave as in the default stack (test-kubernetes-cert-rotation.yml).
+      # Budgets: see the README's data-plane impact list.
+      - name: Rotate openemr -> MariaDB client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh mysql-openemr-client deployment/openemr --max-gap 60 \
+            --pod-file /root/certs/mysql/server/mysql-cert \
+            --openemr-file /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
+
+      - name: Rotate openemr -> Redis client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh redis-openemr-client deployment/openemr --max-gap 60 \
+            --pod-file /redis-certs/redis-master-cert \
+            --pod-file /redis-certs/redis-sentinel-cert
+
+      - name: Rotate NFS server certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh nfs-server deployment/nfs-server --max-gap 60 \
+            --served-via-openemr nfs-server:20490
+
+      - name: Validate LUKS encryption effectiveness after the rotations
+        run: bash kubernetes/examples/encryption-at-rest-luks/validate-encryption.sh
+
+      - name: Probe logs
+        if: always()
+        run: |
+          for f in "${ROTATION_WORKDIR:-/nonexistent}"/*/*.log; do
+            [[ -f "${f}" ]] || continue
+            echo "=== ${f#"${ROTATION_WORKDIR}"/}"
+            cat "${f}"
+          done
 
       - name: Collect debug info on failure
         if: failure()
