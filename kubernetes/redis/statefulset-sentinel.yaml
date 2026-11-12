@@ -100,6 +100,12 @@ spec:
                 fi
                 echo "no master for 30 seconds; promoting $CAND (highest replication offset)"
                 redis-cli $TLSPARAMETERS -h "$CAND" --user admin replicaof no one
+                # Check the result rather than the exit status (redis-cli can exit
+                # 0 on an error reply); on failure, exit so the init is retried.
+                if [ "$(field "$(rinfo "$CAND")" role)" != "master" ]; then
+                    echo "ERROR: promoting $CAND failed; exiting so the init container is retried" >&2
+                    exit 1
+                fi
                 MASTER=$CAND
                 break
             done
@@ -113,6 +119,11 @@ spec:
                 if [ "${mh%%.*}" != "${MASTER%%.*}" ]; then
                     echo "$i replicates from $mh; pointing it at $MASTER"
                     redis-cli $TLSPARAMETERS -h "$i" --user admin replicaof "$MASTER" 6379
+                    mh=$(field "$(rinfo "$i")" master_host)
+                    if [ "${mh%%.*}" != "${MASTER%%.*}" ]; then
+                        echo "ERROR: $i still replicates from $mh; exiting so the init container is retried" >&2
+                        exit 1
+                    fi
                 fi
             done
             echo "Creating Sentinel configuration file"
