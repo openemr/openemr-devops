@@ -297,16 +297,22 @@ To renew every leaf certificate, renew them one at a time and let each restart f
 
 ```bash
 renew_all_leaves() {
-    local c before
-    for c in $(kubectl get certificates -o jsonpath='{range .items[?(@.spec.issuerRef.name=="ca-issuer")]}{.metadata.name}{" "}{end}'); do
-        before=$(kubectl get certificate "$c" -o jsonpath='{.status.notBefore}')
+    local c before now list
+    list=$(kubectl get certificates -o jsonpath='{range .items[?(@.spec.issuerRef.name=="ca-issuer")]}{.metadata.name}{" "}{end}') || return 1
+    [ -n "$list" ] || { echo "no ca-issuer certificates found"; return 1; }
+    for c in $list; do
+        before=$(kubectl get certificate "$c" -o jsonpath='{.status.notBefore}') || return 1
         cmctl renew "$c" || return 1
+        now=$before
         for _ in $(seq 1 60); do
-            [ "$(kubectl get certificate "$c" -o jsonpath='{.status.notBefore}')" != "$before" ] && break
+            # A failed read keeps the previous value instead of looking like a change
+            now=$(kubectl get certificate "$c" -o jsonpath='{.status.notBefore}') || now=$before
+            [ -n "$now" ] && [ "$now" != "$before" ] && break
             sleep 2
         done
-        [ "$(kubectl get certificate "$c" -o jsonpath='{.status.notBefore}')" != "$before" ] \
-            || { echo "$c was not re-issued within 120s"; return 1; }
+        if [ -z "$now" ] || [ "$now" = "$before" ]; then
+            echo "$c was not re-issued within 120s"; return 1
+        fi
         echo "$c re-issued; waiting for the restart to finish"
         sleep 30   # reloader / the MariaDB Operator start the restart within seconds
         for w in $(kubectl get deployments,daemonsets -o name) statefulset/redis statefulset/sentinel; do
@@ -427,7 +433,7 @@ Perform all the TLS downgrade steps above, then additionally:
 1. `redis/configmap-main.yaml`: Remove all `tls-*` lines, change `port 0` to `port 6379`, and remove `tls-port 6379`
 2. `redis/statefulset-redis.yaml`: Remove the `TLSPARAMETERS` variable and its usage in redis-cli commands, and remove the `redis-certs` volume and volumeMount
 3. `redis/statefulset-sentinel.yaml`: Remove the `TLSPARAMETERS` variable and its usage in redis-cli commands, remove the `sentinel-certs` volume and volumeMount, and remove all `tls-*` lines from the sentinel config generation
-4. `openemr/deployment.yaml`: Remove the `REDIS_TLS`, `REDIS_X509`, and `REDIS_TLS_CERT_KEY_PATH` environment variables and remove the entire `redis-openemr-client-certs` volume and its six `/redis-certs/*` volumeMounts
+4. `openemr/deployment.yaml`: Remove the `REDIS_TLS`, `REDIS_X509`, and `REDIS_TLS_CERT_KEY_PATH` environment variables and remove the entire `redis-openemr-client-certs` volume and its six `/redis-certs/*` volumeMounts. Do the same in the encryption-at-rest example Deployments if you use them
 5. `certs/redis.yaml`, `certs/redis-openemr-client.yaml`, `certs/sentinel.yaml`: These cert-manager Certificate resources can be removed entirely
 6. `kub-up` and `kub-down` (and `.bat` variants): Remove the redis/sentinel cert references
 

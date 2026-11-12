@@ -85,14 +85,35 @@ if [[ "${rejoined}" != 1 ]]; then
 fi
 log "PASS: ${OLD_MASTER} rejoined as a replica of ${NEW_MASTER}"
 
+# Sentinels learn of the promotion asynchronously, so poll until they agree.
+sentinel_state() {
+    local i m peers out=""
+    for ((i = 0; i < SENTINELS; i++)); do
+        m=$(sentinel_master "${i}" || true)
+        peers=$(kubectl exec "sentinel-${i}" -c sentinel -- env REDISCLI_AUTH="${DEFAULT_PW}" \
+            redis-cli -p 26379 "${TLS[@]}" SENTINEL sentinels mymaster 2>/dev/null | grep -cx 'runid' || true)
+        out+="sentinel-${i}: master=${m:-?} peers=${peers:-?}"$'\n'
+    done
+    printf '%s' "${out}"
+}
+expected=""
 for ((i = 0; i < SENTINELS; i++)); do
-    m=$(sentinel_master "${i}" || true)
-    [[ "${m}" = "${NEW_MASTER}" ]] || fail "sentinel-${i} names '${m}' as master, expected ${NEW_MASTER}"
-    peers=$(kubectl exec "sentinel-${i}" -c sentinel -- env REDISCLI_AUTH="${DEFAULT_PW}" \
-        redis-cli -p 26379 "${TLS[@]}" SENTINEL sentinels mymaster 2>/dev/null | grep -cx 'runid' || true)
-    [[ "${peers}" -eq $((SENTINELS - 1)) ]] \
-        || fail "sentinel-${i} knows ${peers} peer Sentinels, expected $((SENTINELS - 1)) (stale peers block elections)"
+    expected+="sentinel-${i}: master=${NEW_MASTER} peers=$((SENTINELS - 1))"$'\n'
 done
+deadline=$(( SECONDS + FAILOVER_TIMEOUT ))
+converged=0
+while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+    state=$(sentinel_state)$'\n'
+    if [[ "${state}" = "${expected}" ]]; then
+        converged=1
+        break
+    fi
+    sleep 2
+done
+if [[ "${converged}" != 1 ]]; then
+    printf '%s' "${state:-}"
+    fail "Sentinels did not all agree on ${NEW_MASTER} with $((SENTINELS - 1)) peers each within ${FAILOVER_TIMEOUT}s (stale peers block elections)"
+fi
 log "PASS: all ${SENTINELS} Sentinels agree on ${NEW_MASTER} and know exactly $((SENTINELS - 1)) peers"
 
 code=$(curl -sk -o /dev/null --max-time 10 -w '%{http_code}' "${OPENEMR_HTTPS_URL}" || true)
