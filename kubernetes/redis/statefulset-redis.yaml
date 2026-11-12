@@ -72,8 +72,43 @@ spec:
             contents="${contents//__DEFAULT_PASSWORD__/$REDIS_DEFAULT_PASSWORD}"
             printf '%s\n' "$contents" > /conf/acl/users.acl
             export REDISCLI_AUTH="$REDIS_DEFAULT_PASSWORD"
-            if [ "$(redis-cli $TLSPARAMETERS -h sentinel -p 26379 ping)" != "PONG" ]; then
-              echo "Sentinel not found to get the master info, defaulting to redis-0"
+            # Without a Sentinel (all of them restarting at once, as on a
+            # trust-bundle change), do not guess: ask the other Redis pods. Use
+            # a pod that answers as master. If the others answer only as
+            # replicas, their master is gone and this pod must not start as an
+            # empty master beside them; wait for a Sentinel to pick one (the
+            # Sentinel init promotes a replica after 30 seconds). Only when no
+            # other pod answers at all is this a cold start, where redis-0 is
+            # the master.
+            SENTINEL_UP=false
+            PEER_MASTER=""
+            PEERS_UP=false
+            i=0
+            while [ $i -lt 60 ]; do
+              if [ "$(redis-cli $TLSPARAMETERS -h sentinel -p 26379 ping 2>/dev/null)" == "PONG" ]; then
+                SENTINEL_UP=true
+                break
+              fi
+              PEER_MASTER=""
+              PEERS_UP=false
+              for peer in redis-0 redis-1 redis-2; do
+                [ "$peer" == "$(hostname)" ] && continue
+                role=$(REDISCLI_AUTH="$REDIS_ADMIN_PASSWORD" redis-cli $TLSPARAMETERS --raw -h "$peer.redis" --user admin info replication 2>/dev/null | tr -d '\r' | sed -n 's/^role://p')
+                [ -n "$role" ] && PEERS_UP=true
+                [ "$role" == "master" ] && PEER_MASTER="$peer.redis"
+              done
+              if [ -n "$PEER_MASTER" ] || ! $PEERS_UP; then
+                break
+              fi
+              echo "No Sentinel answers and no Redis pod is master; waiting for a Sentinel to pick one"
+              sleep 2
+              i=$((i + 1))
+            done
+            if ! $SENTINEL_UP && [ -n "$PEER_MASTER" ]; then
+              echo "Sentinel not found; $PEER_MASTER is master, replicating from it"
+              echo "REPLICAOF $PEER_MASTER 6379" >> /etc/redis/redis.conf
+            elif ! $SENTINEL_UP && ! $PEERS_UP; then
+              echo "Sentinel not found and no other Redis pod answers (cold start), defaulting to redis-0"
               if [ "$(hostname)" == "redis-0" ]; then
                 echo "This is redis-0, No need to update config."
               else
@@ -81,6 +116,9 @@ spec:
                 MASTER_FDQN=`hostname  -f | sed -e 's/redis-[0-9]\./redis-0./'`
                 echo "REPLICAOF $MASTER_FDQN 6379" >> /etc/redis/redis.conf
               fi
+            elif ! $SENTINEL_UP; then
+              echo "ERROR: no Sentinel and no Redis master within 120s; exiting so the init container is retried" >&2
+              exit 1
             else
               echo "Sentinel found, finding master"
               get_master() {

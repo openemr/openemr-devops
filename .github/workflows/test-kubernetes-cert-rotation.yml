@@ -133,6 +133,13 @@ jobs:
         # elect a new master and the old master rejoins as a replica.
         run: bash tests/kubernetes/redis-failover.sh
 
+      - name: Redis master and every Sentinel restarted together
+        # What a trust-bundle change does (it restarts every workload at
+        # once). The new Sentinels must find the master from the Redis
+        # pods; with only a replica's stale master_host to go on they used
+        # to monitor the dead master and never fail over.
+        run: bash tests/kubernetes/redis-failover.sh --with-sentinels
+
       - name: NFS stunnel client certificate
         run: |
           bash tests/kubernetes/rotate-leaf.sh nfs-client daemonset/nfs-stunnel-client --max-gap 15 \

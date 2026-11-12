@@ -5,8 +5,9 @@
 #
 # Kill the current Redis master and verify Sentinel fails over:
 #   1. Sentinel names a different master within the timeout
-#   2. the deleted pod comes back as a replica of the new master with its
-#      replication link up (not a replica of itself)
+#   2. every other Redis pod, including the deleted one, is a replica of
+#      the new master with its replication link up (not a replica of
+#      itself or of the old master)
 #   3. every Sentinel agrees on the master and knows exactly the other
 #      Sentinels as peers (no dead peers left over from restarts)
 #   4. OpenEMR still answers through its Redis-backed sessions
@@ -15,6 +16,13 @@
 # every Sentinel / Redis pod, which is what used to leave stale Sentinel
 # peers (blocking the election) and self-replicating Redis pods.
 #
+# Usage: redis-failover.sh [--with-sentinels]
+#   --with-sentinels  Delete every Sentinel pod together with the master,
+#                     as a trust-bundle change does (it restarts every
+#                     workload at once). The new Sentinels then have to
+#                     find the master from the Redis pods; this used to
+#                     deadlock.
+#
 # Environment:
 #   OPENEMR_HTTPS_URL  Login page URL (default: the kind port mapping)
 #   FAILOVER_TIMEOUT   Seconds to wait for each phase (default 180)
@@ -22,6 +30,13 @@
 # Requires kubectl and curl on the caller's PATH.
 
 set -euo pipefail
+
+WITH_SENTINELS=0
+case "${1:-}" in
+    --with-sentinels) WITH_SENTINELS=1 ;;
+    "") ;;
+    *) sed -n '/^# Usage:/,/^# Environment:/p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
 
 OPENEMR_HTTPS_URL=${OPENEMR_HTTPS_URL:-https://127.0.0.1:9800/interface/login/login.php}
 FAILOVER_TIMEOUT=${FAILOVER_TIMEOUT:-180}
@@ -50,8 +65,15 @@ replication() {
 
 OLD_MASTER=$(sentinel_master 0)
 [[ "${OLD_MASTER}" =~ ^redis-[0-9]+$ ]] || fail "could not read the master from sentinel-0 (got '${OLD_MASTER}')"
-log "current master: ${OLD_MASTER}; deleting it"
-kubectl delete pod "${OLD_MASTER}" --wait=false
+if [[ "${WITH_SENTINELS}" = 1 ]]; then
+    log "current master: ${OLD_MASTER}; deleting it and every Sentinel"
+    sentinel_pods=()
+    for ((i = 0; i < SENTINELS; i++)); do sentinel_pods+=("sentinel-${i}"); done
+    kubectl delete pod "${OLD_MASTER}" "${sentinel_pods[@]}" --wait=false
+else
+    log "current master: ${OLD_MASTER}; deleting it"
+    kubectl delete pod "${OLD_MASTER}" --wait=false
+fi
 
 NEW_MASTER=""
 deadline=$(( SECONDS + FAILOVER_TIMEOUT ))
@@ -67,23 +89,28 @@ done
 log "PASS: Sentinel promoted ${NEW_MASTER}"
 
 kubectl wait --for=condition=Ready "pod/${OLD_MASTER}" --timeout="${FAILOVER_TIMEOUT}s"
-deadline=$(( SECONDS + FAILOVER_TIMEOUT ))
-rejoined=0
-while [[ "${SECONDS}" -lt "${deadline}" ]]; do
-    info=$(replication "${OLD_MASTER}" || true)
-    if grep -q '^role:slave' <<< "${info}" \
-        && grep -q "^master_host:${NEW_MASTER}\." <<< "${info}" \
-        && grep -q '^master_link_status:up' <<< "${info}"; then
-        rejoined=1
-        break
+REDIS_PODS=$(kubectl get statefulset redis -o jsonpath='{.spec.replicas}')
+for ((r = 0; r < REDIS_PODS; r++)); do
+    pod="redis-${r}"
+    [[ "${pod}" = "${NEW_MASTER}" ]] && continue
+    deadline=$(( SECONDS + FAILOVER_TIMEOUT ))
+    rejoined=0
+    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+        info=$(replication "${pod}" || true)
+        if grep -q '^role:slave' <<< "${info}" \
+            && grep -q "^master_host:${NEW_MASTER}\." <<< "${info}" \
+            && grep -q '^master_link_status:up' <<< "${info}"; then
+            rejoined=1
+            break
+        fi
+        sleep 2
+    done
+    if [[ "${rejoined}" != 1 ]]; then
+        printf '%s\n' "${info:-}" | grep -E '^(role|master_host|master_link_status)' || true
+        fail "${pod} is not a replica of ${NEW_MASTER} with its link up"
     fi
-    sleep 2
+    log "PASS: ${pod} is a replica of ${NEW_MASTER}"
 done
-if [[ "${rejoined}" != 1 ]]; then
-    printf '%s\n' "${info:-}" | grep -E '^(role|master_host|master_link_status)' || true
-    fail "${OLD_MASTER} did not rejoin as a replica of ${NEW_MASTER} with its link up"
-fi
-log "PASS: ${OLD_MASTER} rejoined as a replica of ${NEW_MASTER}"
 
 # Sentinels learn of the promotion asynchronously, so poll until they agree.
 sentinel_state() {

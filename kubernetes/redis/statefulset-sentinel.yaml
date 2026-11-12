@@ -45,26 +45,74 @@ spec:
                 TLSPARAMETERS="$TLSPARAMETERS --cert /certs/tls.crt --key /certs/tls.key"
             fi
             export REDISCLI_AUTH="$REDIS_PASSWORD"
-            echo "Looping through the redis list to see if Redis Master node is available now"
-            while [ 1 ]
+            # Find the master to monitor by asking the Redis pods directly.
+            # A replica's master_host is not enough: when the master and the
+            # Sentinels restart at the same time (a trust-bundle change restarts
+            # every workload), the replicas still name the master that just went
+            # away. Sentinels that start monitoring it never learn about the
+            # replicas or each other (both come from the master), so they never
+            # fail over, while the restarted master's init waits for that
+            # failover: a deadlock.
+            #   1. Use a pod that answers as master; if several do, the one with
+            #      the most replicas (a pod that just started empty as master has
+            #      none).
+            #   2. If only replicas answer, give the old master (or a Sentinel
+            #      that is still running) 30 seconds, then promote the replica
+            #      with the highest replication offset.
+            rinfo() { redis-cli $TLSPARAMETERS --raw -h "$1" --user admin info replication 2>/dev/null | tr -d '\r'; }
+            field() { printf '%s\n' "$1" | sed -n "s/^$2://p"; }
+            echo "Looking for the Redis master"
+            NO_MASTER_SINCE=""
+            while true
             do
+                MASTER=""
+                BEST=-1
+                CAND=""
+                CAND_OFF=-1
                 for i in ${nodes//,/ }
                 do
-                    MASTER=$(redis-cli $TLSPARAMETERS --raw -h $i --user admin info replication | awk '{print $1}' | grep master_host: | cut -d ":" -f2)
-                    if [ "$MASTER" == "" ]; then
-                        echo "no master info found in $i"
-                        MASTER=
-                    else
-                        echo "found $MASTER. setting the configurations"
-                        break
+                    info=$(rinfo "$i")
+                    role=$(field "$info" role)
+                    if [ "$role" == "master" ]; then
+                        n=$(field "$info" connected_slaves)
+                        if [ "${n:-0}" -gt "$BEST" ]; then BEST=${n:-0}; MASTER=$i; fi
+                    elif [ "$role" == "slave" ]; then
+                        off=$(field "$info" slave_repl_offset)
+                        if [ "${off:-0}" -gt "$CAND_OFF" ]; then CAND_OFF=${off:-0}; CAND=$i; fi
                     fi
                 done
-                if [ "$MASTER" == "" ]; then
-                    echo "no master info found yet, wait 10 seconds before trying again"
-                    sleep 10
-                else
-                    echo "again, found $MASTER, so setting the configurations"
+                if [ -n "$MASTER" ]; then
+                    echo "found master $MASTER ($BEST replicas)"
                     break
+                fi
+                if [ -z "$CAND" ]; then
+                    echo "no Redis pod answers yet, wait 10 seconds before trying again"
+                    NO_MASTER_SINCE=""
+                    sleep 10
+                    continue
+                fi
+                now=$(date +%s)
+                [ -n "$NO_MASTER_SINCE" ] || NO_MASTER_SINCE=$now
+                if [ $((now - NO_MASTER_SINCE)) -lt 30 ]; then
+                    echo "replicas answer but no master does; waiting before promoting one"
+                    sleep 5
+                    continue
+                fi
+                echo "no master for 30 seconds; promoting $CAND (highest replication offset)"
+                redis-cli $TLSPARAMETERS -h "$CAND" --user admin replicaof no one
+                MASTER=$CAND
+                break
+            done
+            # Point any replica that follows a different (gone) master at this one.
+            for i in ${nodes//,/ }
+            do
+                [ "$i" == "$MASTER" ] && continue
+                info=$(rinfo "$i")
+                [ "$(field "$info" role)" == "slave" ] || continue
+                mh=$(field "$info" master_host)
+                if [ "${mh%%.*}" != "${MASTER%%.*}" ]; then
+                    echo "$i replicates from $mh; pointing it at $MASTER"
+                    redis-cli $TLSPARAMETERS -h "$i" --user admin replicaof "$MASTER" 6379
                 fi
             done
             echo "Creating Sentinel configuration file"
