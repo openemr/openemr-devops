@@ -333,10 +333,23 @@ jobs:
           # insurance against a rollout-status / pod-Ready skew on
           # kind.
           kubectl rollout status deployment/openemr --timeout=1200s
-          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=600s
 
-          # Collect pod names in a deterministic order.
-          mapfile -t PODS < <(kubectl get pod -l name=openemr -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
+          # Ready pods that are not being deleted, in a deterministic
+          # order. An old pod stays in Terminating for its preStop sleep
+          # after the rollout completes, so selecting by label alone (or
+          # kubectl wait -l) can pick a pod that disappears a moment later.
+          ready_pods() {
+            kubectl get pod -l name=openemr -o json | jq -r '
+              .items[]
+              | select(.metadata.deletionTimestamp == null)
+              | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))
+              | .metadata.name' | sort
+          }
+          for _ in $(seq 1 120); do
+            mapfile -t PODS < <(ready_pods)
+            [ "${#PODS[@]}" -ge 3 ] && break
+            sleep 5
+          done
           if [ "${#PODS[@]}" -lt 3 ]; then
             echo "ERROR: expected 3 openemr pods, got ${#PODS[@]}"
             kubectl get pod -l name=openemr
@@ -407,16 +420,9 @@ jobs:
           cmctl version --client
           echo "ROTATION_WORKDIR=${RUNNER_TEMP}/cert-rotation" >> "${GITHUB_ENV}"
 
-      - name: Make room for the openemr surge pod
-        # Same as test-kubernetes-cert-rotation.yml: on the 4-vCPU runner
-        # there is no CPU left for RollingUpdate's extra pod at 1 CPU per
-        # openemr pod. Back to 2 replicas (the step above scaled to 3) and
-        # a lower request, for this test only.
-        run: |
-          kubectl scale deployment openemr --replicas=2
-          kubectl set resources deployment/openemr -c openemr --requests=cpu=250m
-          kubectl rollout status deployment/openemr --timeout=1200s
-
+      # The multi-replica step above left 3 openemr replicas with a 100m CPU
+      # request, which leaves room for RollingUpdate's extra pod.
+      #
       # Certificate rotation with the encrypted sites volume: OpenEMR's own
       # client certificates (restart the openemr pods) and the NFS server
       # certificate (pauses NFS I/O under the encrypted layer). The other
