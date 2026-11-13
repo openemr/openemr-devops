@@ -190,9 +190,12 @@ spec:
             # One deadline for every step below. The sidecar gets SIGTERM
             # only after the openemr container has stopped (its preStop
             # sleep plus Apache shutdown), which uses part of the pod's
-            # terminationGracePeriodSeconds (240s); 150s here leaves 90s
-            # for that, so the lazy detach at the end always runs before
-            # the kubelet kills this container.
+            # terminationGracePeriodSeconds (240s). 150s here leaves 90s
+            # for that, so the lazy detach at the end runs before the
+            # kubelet kills this container as long as the openemr
+            # container stops within ~90s (its preStop sleep is 10s and it
+            # stopped in under 20s in testing, NFS down included). This
+            # container cannot see how much of the grace period is left.
             deadline=$(( $(date +%s) + 150 ))
             # Stopped while gocryptfs is still mounting (a pod replaced
             # during startup): let the mount finish or fail first. Exiting
