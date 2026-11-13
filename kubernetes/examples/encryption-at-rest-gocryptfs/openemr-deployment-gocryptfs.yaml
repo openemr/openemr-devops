@@ -93,6 +93,11 @@ spec:
         name: openemr
     spec:
       automountServiceAccountToken: false
+      # Room for the gocryptfs-mounter sidecar to unmount while the NFS
+      # server is restarting (see its cleanup()). The default 30s, less
+      # the openemr preStop sleep, is shorter than an NFS server restart
+      # under load; running out of it leaves the FUSE mount behind.
+      terminationGracePeriodSeconds: 200
       initContainers:
       - name: init-mysql-wait
         image: busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
@@ -170,13 +175,55 @@ spec:
           # cleanly and the NFS backing is left in a consistent state.
           # The main container has already been terminated by the
           # kubelet at this point (native sidecar termination order).
+          #
+          # The NFS server can be restarting at the same moment (a CA or
+          # trust-bundle change restarts every workload at once); the
+          # unmount then fails or blocks until it is back. Retry instead
+          # of giving up: a FUSE mount left behind keeps the pod stuck in
+          # Completed (the kubelet cannot clean up its volume), which also
+          # stalls every later rollout. terminationGracePeriodSeconds
+          # (below) leaves room for this. Lazy detach is the last resort.
+          is_mounted() { awk -v mnt="$DECRYPTED_MNT" '$2 == mnt && $3 ~ /^fuse/ { f = 1 } END { exit !f }' /proc/mounts; }
           cleanup() {
             echo "Received shutdown signal; unmounting gocryptfs"
-            # fusermount3 -u is the FUSE-native unmount; if the gocryptfs
-            # process has already exited or the mount is gone, treat as OK.
-            fusermount3 -u "$DECRYPTED_MNT" 2>/dev/null \
-              || umount "$DECRYPTED_MNT" 2>/dev/null \
-              || true
+            # Stopped while gocryptfs is still mounting (a pod replaced
+            # during startup): let the mount finish or fail first. Exiting
+            # now would let the runtime kill gocryptfs just after it
+            # mounts, leaving a dead FUSE mount behind.
+            i=0
+            while [ -n "${GOCRYPTFS_PID:-}" ] && kill -0 "$GOCRYPTFS_PID" 2>/dev/null \
+                && ! is_mounted && [ "$i" -lt 60 ]; do
+              sleep 1
+              i=$((i + 1))
+            done
+            i=0
+            while is_mounted; do
+              fusermount3 -u "$DECRYPTED_MNT" 2>/dev/null \
+                || umount "$DECRYPTED_MNT" 2>/dev/null \
+                || true
+              is_mounted || break
+              i=$((i + 1))
+              if [ "$i" -ge 75 ]; then
+                echo "ERROR: unmount still failing after 150s; detaching lazily"
+                fusermount3 -uz "$DECRYPTED_MNT" 2>/dev/null \
+                  || umount -l "$DECRYPTED_MNT" 2>/dev/null \
+                  || true
+                break
+              fi
+              sleep 2
+            done
+            # gocryptfs exits on unmount; stop it if it has not, then make
+            # sure no mount it raced into place is left behind.
+            if [ -n "${GOCRYPTFS_PID:-}" ] && kill -0 "$GOCRYPTFS_PID" 2>/dev/null; then
+              kill "$GOCRYPTFS_PID" 2>/dev/null || true
+              sleep 1
+            fi
+            if is_mounted; then
+              echo "ERROR: gocryptfs mount still present at exit; detaching lazily"
+              fusermount3 -uz "$DECRYPTED_MNT" 2>/dev/null \
+                || umount -l "$DECRYPTED_MNT" 2>/dev/null \
+                || true
+            fi
             exit 0
           }
           trap cleanup TERM INT
