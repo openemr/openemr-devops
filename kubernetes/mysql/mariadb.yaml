@@ -62,8 +62,11 @@ spec:
     enabled: true
     primary:
       podIndex: 0
-      # Operator promotes a replica and fences the old primary on
-      # primary pod cutover (deletion, crash, cert-rotation roll).
+      # Operator promotes a replica on primary pod cutover. A planned
+      # switchover (cert-rotation roll, pod deletion) makes the old
+      # primary read-only first; if the old primary is unreachable
+      # (crash, network partition) nothing fences it. See README
+      # "MariaDB HA architecture details" -> Failover.
       autoFailover: true
       autoFailoverDelay: 0s
     replica:
@@ -110,6 +113,12 @@ spec:
   # operator's integrated issuance lifecycle.
   tls:
     enabled: true
+    # Reject plaintext connections for every account
+    # (require_secure_transport=ON). Without it only accounts created
+    # with REQUIRE SSL/X509 (openemr) need TLS; root and the operator's
+    # own accounts would also accept plaintext TCP. Local socket
+    # connections inside the pod are still allowed.
+    required: true
     # Trust anchors come from the trust-manager Bundle target
     # (certs/ca-bundle.yaml) rather than the ca.crt cert-manager puts in
     # the operator's own cert Secrets. That lets a CA rotation make
