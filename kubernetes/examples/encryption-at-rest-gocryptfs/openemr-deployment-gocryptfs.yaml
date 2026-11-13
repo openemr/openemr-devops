@@ -94,10 +94,11 @@ spec:
     spec:
       automountServiceAccountToken: false
       # Room for the gocryptfs-mounter sidecar to unmount while the NFS
-      # server is restarting (see its cleanup()). The default 30s, less
-      # the openemr preStop sleep, is shorter than an NFS server restart
-      # under load; running out of it leaves the FUSE mount behind.
-      terminationGracePeriodSeconds: 200
+      # server is restarting (see its cleanup(): 150s, after the openemr
+      # container's preStop sleep and shutdown). The default 30s is
+      # shorter than an NFS server restart under load; running out of it
+      # leaves the FUSE mount behind.
+      terminationGracePeriodSeconds: 240
       initContainers:
       - name: init-mysql-wait
         image: busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
@@ -186,38 +187,41 @@ spec:
           is_mounted() { awk -v mnt="$DECRYPTED_MNT" '$2 == mnt && $3 ~ /^fuse/ { f = 1 } END { exit !f }' /proc/mounts; }
           cleanup() {
             echo "Received shutdown signal; unmounting gocryptfs"
-            # One deadline for every step below, inside the pod's
-            # terminationGracePeriodSeconds (200s, of which the openemr
-            # preStop sleep and shutdown use the first ~15s), so the lazy
-            # detach at the end always runs before the kubelet kills us.
-            deadline=$(( $(date +%s) + 170 ))
+            # One deadline for every step below. The sidecar gets SIGTERM
+            # only after the openemr container has stopped (its preStop
+            # sleep plus Apache shutdown), which uses part of the pod's
+            # terminationGracePeriodSeconds (240s); 150s here leaves 90s
+            # for that, so the lazy detach at the end always runs before
+            # the kubelet kills this container.
+            deadline=$(( $(date +%s) + 150 ))
             # Stopped while gocryptfs is still mounting (a pod replaced
             # during startup): let the mount finish or fail first. Exiting
             # now would let the runtime kill gocryptfs just after it
             # mounts, leaving a dead FUSE mount behind.
             while [ -n "${GOCRYPTFS_PID:-}" ] && kill -0 "$GOCRYPTFS_PID" 2>/dev/null \
-                && ! is_mounted && [ "$(date +%s)" -lt $(( deadline - 120 )) ]; do
+                && ! is_mounted && [ "$(date +%s)" -lt $(( deadline - 100 )) ]; do
               sleep 1
             done
-            while is_mounted; do
-              fusermount3 -u "$DECRYPTED_MNT" 2>/dev/null \
-                || umount "$DECRYPTED_MNT" 2>/dev/null \
-                || true
-              is_mounted || break
-              if [ "$(date +%s)" -ge "$deadline" ]; then
-                echo "ERROR: unmount still failing at the shutdown deadline"
-                break
-              fi
-              sleep 2
+            # A normal unmount can block on a gocryptfs daemon that is
+            # itself blocked on NFS I/O, so run each attempt in the
+            # background and stop waiting for it at the deadline.
+            while is_mounted && [ "$(date +%s)" -lt "$deadline" ]; do
+              ( fusermount3 -u "$DECRYPTED_MNT" 2>/dev/null \
+                  || umount "$DECRYPTED_MNT" 2>/dev/null ) &
+              upid=$!
+              while kill -0 "$upid" 2>/dev/null && [ "$(date +%s)" -lt "$deadline" ]; do
+                sleep 1
+              done
+              is_mounted && sleep 2
             done
             # gocryptfs exits on unmount; stop it if it has not, then make
-            # sure no mount it raced into place is left behind.
+            # sure no mount (left over or raced into place) stays behind.
             if [ -n "${GOCRYPTFS_PID:-}" ] && kill -0 "$GOCRYPTFS_PID" 2>/dev/null; then
               kill "$GOCRYPTFS_PID" 2>/dev/null || true
               sleep 1
             fi
             if is_mounted; then
-              echo "ERROR: gocryptfs mount still present at exit; detaching lazily"
+              echo "ERROR: gocryptfs mount still present at the shutdown deadline; detaching lazily"
               fusermount3 -uz "$DECRYPTED_MNT" 2>/dev/null \
                 || umount -l "$DECRYPTED_MNT" 2>/dev/null \
                 || true
