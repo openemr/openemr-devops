@@ -203,7 +203,7 @@ OpenEMR ↔ MariaDB, phpMyAdmin ↔ MariaDB, and primary ↔ replica all use mTL
 This provides three properties:
 
 - **Confidentiality** of database traffic regardless of whether the underlying network is trusted.
-- **Mutual authentication**: TLS is required for every connection, and client certificates are required per account. `spec.tls.enabled: true` with `required: true` on the `MariaDB` resource (`kubernetes/mysql/mariadb.yaml`) sets `require_secure_transport=ON`, so the server rejects plaintext TCP for every account. It does not make every client present a certificate. What makes client-cert verification load-bearing for openemr is the account-level grant: openemr's own first-boot creates the openemr user with `REQUIRE X509` (via `FORCE_DATABASE_X509_CONNECT=1` in `openemr/deployment.yaml`), so even an attacker with the openemr password cannot authenticate as that user without presenting a trusted client cert. The MariaDB Operator manages primary ↔ replica replication TLS internally with `clientCertIssuerRef`-provisioned certs: the replica presents a client certificate and verifies the primary's certificate, so a MITM primary is rejected on that path. Other accounts (root, the replication account `repl`, operator-created helpers) need TLS but do NOT carry `REQUIRE X509`; operators who need a client certificate for every account must grant `REQUIRE X509` on each.
+- **Mutual authentication**: TLS is required for every connection, and client certificates are required per account. `spec.tls.enabled: true` with `required: true` on the `MariaDB` resource (`kubernetes/mysql/mariadb.yaml`) sets `require_secure_transport=ON`, so the server rejects plaintext TCP for every account. It does not make every client present a certificate. What makes client-cert verification load-bearing for openemr is the account-level grant: openemr's own first-boot creates the openemr user with `REQUIRE X509` (via `FORCE_DATABASE_X509_CONNECT=1` in `openemr/deployment.yaml`), so even an attacker with the openemr password cannot authenticate as that user without presenting a trusted client cert. The MariaDB Operator manages primary ↔ replica replication TLS internally with `clientCertIssuerRef`-provisioned certs: the replica presents a client certificate and verifies the primary's certificate, so a MITM primary is rejected on that path. The replication account `repl` is also `REQUIRE X509`, set by the `User` resource `mysql-repl` in `mysql/mariadb.yaml` (the operator creates the account itself, password only). `root` needs TLS but not a client certificate, and cannot: the operator's in-pod agent, which answers the MariaDB readiness and liveness probes, logs in as root over TCP to localhost without one, and with `skip_name_resolve` that connection matches `'root'@'%'`. Requiring X509 on root makes every MariaDB pod fail its probes. The operator's other accounts (`healthcheck`, `mariadb.sys`) are local-only.
 - **Server identity verification**: replicas refuse to follow a primary that doesn't present a cert chaining to the cluster CA, defeating man-in-the-middle replica swap attacks.
 
 In a single-cluster deployment on AWS Nitro or GCP, the confidentiality property is redundant with hypervisor-level wire encryption, but the authentication and server-identity properties are not — they have no equivalent below the application layer.
@@ -418,6 +418,7 @@ Enforcement now lives on the `MariaDB` resource (`mysql/mariadb.yaml`), not on c
    ALTER USER 'openemr'@'%' REQUIRE SSL;
    -- If phpmyadmin's account was also created with REQUIRE X509, repeat for it.
    ```
+   In `mysql/mariadb.yaml`, change the `mysql-repl` User's `require` to `ssl: true` (instead of `x509: true`) and apply it, before the next step removes the replicas' client certificates.
 2. `mysql/mariadb.yaml`: Under `spec.tls`, remove `clientCertIssuerRef` (leave `enabled: true` and `serverCertIssuerRef` — the server still presents a cert, but no longer requires clients to present one). The operator will reconcile the `MariaDB` resource on apply.
 3. `openemr/deployment.yaml`: Change `FORCE_DATABASE_X509_CONNECT` to `FORCE_DATABASE_SSL_CONNECT` and remove the `tls.crt` (mysql-cert) and `tls.key` (mysql-key) items from the `mysql-openemr-client-certs` volume
 4. `phpmyadmin/configmap.yaml`: Comment out or remove the `ssl_cert` and `ssl_key` lines
@@ -437,7 +438,9 @@ Perform all the TLS downgrade steps above, then additionally:
    ```sql
    ALTER USER 'openemr'@'%' REQUIRE NONE;
    -- If phpmyadmin's account was altered in the TLS step, repeat for it.
+   ALTER USER 'repl'@'%' REQUIRE NONE;
    ```
+   and remove the `mysql-repl` User from `mysql/mariadb.yaml` (`kubectl delete user mysql-repl` first; its `cleanupPolicy: Skip` keeps the account).
 2. `mysql/mariadb.yaml`: Set `spec.tls.required: false` and `spec.tls.enabled: false` (explicit disable is clearer than removing the whole block — operator still reconciles and emits an event confirming TLS is off). Leave or remove the issuerRef fields; `enabled: false` is what the operator keys on.
 3. `openemr/deployment.yaml`: Remove the `FORCE_DATABASE_SSL_CONNECT` environment variable and remove the entire `mysql-openemr-client-certs` volume and volumeMount
 4. `phpmyadmin/configmap.yaml`: Set `ssl` to `false`, remove `ssl_ca`, and remove `ssl_verify`

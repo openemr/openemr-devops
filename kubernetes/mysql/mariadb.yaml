@@ -149,3 +149,34 @@ spec:
       memory: 512Mi
     limits:
       memory: 1Gi
+---
+# The replication account ('repl'@'%') must present a client certificate.
+# The operator creates it (password only) and reconciles only its password
+# and grant, which leaves REQUIRE X509 in place; this User resource adds the
+# requirement, also on a fresh cluster. Replicas already connect with the
+# operator-issued client certificate and verify the primary's certificate.
+#
+# Root is deliberately not covered: the operator's in-pod agent (readiness
+# and liveness probes) logs in as root over TCP to localhost without a
+# client certificate, and with skip_name_resolve that matches 'root'@'%'.
+# Requiring X509 there makes every MariaDB pod fail its probes.
+# See kubernetes/README.md -> Security Architecture -> MariaDB connections.
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: User
+metadata:
+  name: mysql-repl
+spec:
+  mariaDbRef:
+    name: mysql
+  name: repl
+  host: "%"
+  passwordSecretKeyRef:
+    name: mysql-replication-credentials
+    key: password
+  require:
+    x509: true
+  # 0 = no limit (the operator's own repl account has none).
+  maxUserConnections: 0
+  # The operator owns this account; deleting this resource (kub-down) must
+  # not drop it.
+  cleanupPolicy: Skip
