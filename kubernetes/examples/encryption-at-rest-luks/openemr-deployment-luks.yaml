@@ -87,6 +87,11 @@ spec:
         name: openemr
     spec:
       automountServiceAccountToken: false
+      # Room for the luks-opener sidecar to unmount and close the LUKS
+      # mapping while the NFS server is restarting (see its cleanup()).
+      # The default 30s is shorter than an NFS server restart under load;
+      # running out of it leaves the mapping open on the node.
+      terminationGracePeriodSeconds: 200
       initContainers:
       - name: init-mysql-wait
         image: busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
@@ -162,11 +167,35 @@ spec:
           # so the next pod can open it cleanly. The main container has
           # already been terminated by the kubelet at this point (native
           # sidecar termination order).
+          #
+          # The NFS server can be restarting at the same moment (a CA or
+          # trust-bundle change restarts every workload at once). With
+          # the hard NFS mount, umount then blocks or fails until it is
+          # back, so retry instead of giving up: a mapping left open
+          # stays mounted on the node and every later luksOpen fails
+          # with "Device openemr-sites already exists" until someone
+          # unmounts it by hand. terminationGracePeriodSeconds (below)
+          # leaves room for this.
           cleanup() {
             echo "Received shutdown signal; cleaning up LUKS mapping"
-            sync || true
-            umount "$DECRYPTED_MNT" || true
-            cryptsetup luksClose "$MAPPER_NAME" || true
+            i=0
+            until umount "$DECRYPTED_MNT"; do
+              i=$((i + 1))
+              if [ "$i" -ge 75 ]; then
+                echo "ERROR: umount $DECRYPTED_MNT still failing after 150s"
+                break
+              fi
+              sleep 2
+            done
+            i=0
+            until cryptsetup luksClose "$MAPPER_NAME"; do
+              i=$((i + 1))
+              if [ "$i" -ge 15 ]; then
+                echo "ERROR: luksClose $MAPPER_NAME failed; the next pod cannot open the container until it is closed on this node (see the example README)"
+                break
+              fi
+              sleep 2
+            done
             exit 0
           }
           trap cleanup TERM INT
@@ -200,6 +229,24 @@ spec:
           fi
 
           if [ "$reused" = "0" ]; then
+            # The previous pod's sidecar may still be closing the mapping
+            # (its umount waits for NFS if the NFS server is restarting
+            # too). Wait for it here rather than fail luksOpen with
+            # "Device already exists" and sit out crash-loop backoff.
+            i=0
+            while cryptsetup status "$MAPPER_NAME" >/dev/null 2>&1; do
+              if [ "$i" -eq 0 ]; then
+                echo "LUKS mapping $MAPPER_NAME is still open (previous pod still closing it); waiting"
+              fi
+              i=$((i + 1))
+              if [ "$i" -ge 90 ]; then
+                echo "FATAL: LUKS mapping $MAPPER_NAME is still open after 180s."
+                echo "A previous pod left it open on this node. See the example README,"
+                echo "\"If the pod cannot open the LUKS container\"."
+                exit 1
+              fi
+              sleep 2
+            done
             echo "Opening LUKS container: $LUKS_FILE"
             cryptsetup luksOpen \
               --key-file /etc/luks/passphrase \

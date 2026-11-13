@@ -1285,6 +1285,20 @@ Push it to your own registry, pin by digest, and point BOTH the `luks-opener` si
 - **Secret rotation requires a pod restart.** `cryptsetup luksAddKey` / `luksRemoveKey` must run against the LUKS header on the NFS file; the sidecar re-reads the Secret only on pod start. Plan a maintenance window for passphrase rotation — the openemr Deployment is already single-replica, so this is downtime, not a rolling update.
 - **Certificate rotation is downtime too.** cert-manager renews OpenEMR's client certificates (`mysql-openemr-client`, `redis-openemr-client`) about every 60 days, and reloader restarts the single openemr pod for each one: about 20s without OpenEMR per restart on kind, possibly twice in a row because both certificates renew together. Plan a window, or renew both by hand at a quiet time first. Details: `kubernetes/README.md`, "Data-plane impact during rotation".
 
+## If the pod cannot open the LUKS container
+
+The `luks-opener` sidecar unmounts the decrypted filesystem and closes the LUKS mapping when its pod stops. If the NFS server is down at that moment, which happens when a CA or trust-bundle change restarts every workload at once, the unmount waits for NFS to come back. The pod's `terminationGracePeriodSeconds: 200` allows for that. If the pod is killed before it finishes anyway (NFS down for minutes, or a forced delete), the decrypted filesystem stays mounted on the node and the mapping stays open. The next pod's sidecar then waits 180 seconds and fails with `LUKS mapping openemr-sites is still open`, and the old pod stays listed as `Completed` because the kubelet cannot clean up its volume.
+
+With NFS back, release the mapping on that node (on kind: `docker exec -it kind-control-plane sh`):
+
+```sh
+grep openemr-sites /proc/mounts        # the old pod's decrypted-sites emptyDir
+umount /var/lib/kubelet/pods/<old-pod-uid>/volumes/kubernetes.io~empty-dir/decrypted-sites
+dmsetup remove openemr-sites
+```
+
+The old pod then finishes terminating and the new pod opens the container on its next retry. Unmounting first is what makes this safe: it flushes the filesystem. Do not `dmsetup remove --force` a mapping that is still mounted.
+
 ## File manifest
 
 | File | Purpose |
