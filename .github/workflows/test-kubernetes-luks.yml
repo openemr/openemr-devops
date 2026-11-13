@@ -251,6 +251,14 @@ jobs:
       - name: Validate LUKS encryption effectiveness
         run: bash kubernetes/examples/encryption-at-rest-luks/validate-encryption.sh
 
+      - name: Scale phpmyadmin back up
+        # Scaled to 0 above only to stop writes during the migration (the
+        # example's adoption procedure leaves it running). The rotations
+        # below restart it and check its trust file.
+        run: |
+          kubectl scale deployment phpmyadmin --replicas=1
+          kubectl rollout status deployment/phpmyadmin --timeout=600s
+
       - name: Install cmctl (cert-manager CLI)
         run: |
           sudo curl -fL -o /usr/local/bin/cmctl \
