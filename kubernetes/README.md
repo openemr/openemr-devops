@@ -676,7 +676,7 @@ Both variants require a `privileged: true` sidecar (LUKS needs `dm-crypt` + loop
 
 ## MariaDB Transparent Data Encryption (TDE)
 
-For defense-in-depth beyond storage-layer encryption, MariaDB's built-in `file_key_management` plugin encrypts InnoDB tablespaces, redo logs, binary logs, and temp files at the application layer. The plugin ships in the stock `mariadb:11.8.6` image used by this stack — no custom image is required.
+For defense-in-depth beyond storage-layer encryption, MariaDB's built-in `file_key_management` plugin encrypts InnoDB tablespaces, redo logs, binary logs, and temp files at the application layer. The plugin ships in the stock `mariadb:11.8` image this stack pins in `mysql/mariadb.yaml` — no custom image is required.
 
 Enabling TDE involves editing the `MariaDB` resource in `mysql/mariadb.yaml` (the operator-managed cluster — the pre-rel-860 hand-rolled StatefulSet + ConfigMap this section used to reference is gone):
 
