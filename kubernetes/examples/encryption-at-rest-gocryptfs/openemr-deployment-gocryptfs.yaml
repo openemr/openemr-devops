@@ -186,28 +186,26 @@ spec:
           is_mounted() { awk -v mnt="$DECRYPTED_MNT" '$2 == mnt && $3 ~ /^fuse/ { f = 1 } END { exit !f }' /proc/mounts; }
           cleanup() {
             echo "Received shutdown signal; unmounting gocryptfs"
+            # One deadline for every step below, inside the pod's
+            # terminationGracePeriodSeconds (200s, of which the openemr
+            # preStop sleep and shutdown use the first ~15s), so the lazy
+            # detach at the end always runs before the kubelet kills us.
+            deadline=$(( $(date +%s) + 170 ))
             # Stopped while gocryptfs is still mounting (a pod replaced
             # during startup): let the mount finish or fail first. Exiting
             # now would let the runtime kill gocryptfs just after it
             # mounts, leaving a dead FUSE mount behind.
-            i=0
             while [ -n "${GOCRYPTFS_PID:-}" ] && kill -0 "$GOCRYPTFS_PID" 2>/dev/null \
-                && ! is_mounted && [ "$i" -lt 60 ]; do
+                && ! is_mounted && [ "$(date +%s)" -lt $(( deadline - 120 )) ]; do
               sleep 1
-              i=$((i + 1))
             done
-            i=0
             while is_mounted; do
               fusermount3 -u "$DECRYPTED_MNT" 2>/dev/null \
                 || umount "$DECRYPTED_MNT" 2>/dev/null \
                 || true
               is_mounted || break
-              i=$((i + 1))
-              if [ "$i" -ge 75 ]; then
-                echo "ERROR: unmount still failing after 150s; detaching lazily"
-                fusermount3 -uz "$DECRYPTED_MNT" 2>/dev/null \
-                  || umount -l "$DECRYPTED_MNT" 2>/dev/null \
-                  || true
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "ERROR: unmount still failing at the shutdown deadline"
                 break
               fi
               sleep 2
