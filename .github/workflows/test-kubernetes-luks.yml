@@ -311,6 +311,17 @@ jobs:
       - name: Collect debug info on failure
         if: failure()
         run: |
+          echo "=== MariaDB ==="
+          kubectl get mariadb mysql -o jsonpath='{.status}' || true
+          echo
+          for p in $(kubectl get pod -l app=mysql -o name); do
+            for c in mariadb agent; do
+              echo "--- ${p} ${c}"
+              kubectl logs "${p}" -c "${c}" --tail=60 || true
+              echo "--- ${p} ${c} (previous)"
+              kubectl logs "${p}" -c "${c}" --previous --tail=60 2>/dev/null || true
+            done
+          done
           echo "=== Pod Status ==="
           kubectl get pods -o wide
           echo "=== Events ==="
