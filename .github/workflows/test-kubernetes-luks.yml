@@ -334,7 +334,11 @@ jobs:
 
       - name: Cleanup
         if: always()
+        # Bounded so a hung teardown (kub-down waiting on a stuck NFS or
+        # FUSE mount) fails this step instead of running into the job
+        # timeout, which cancels the run and discards its logs.
+        timeout-minutes: 10
         working-directory: kubernetes
         run: |
-          bash kub-down 2>/dev/null || true
+          timeout 300 bash kub-down 2>/dev/null || true
           kind delete cluster 2>/dev/null || true

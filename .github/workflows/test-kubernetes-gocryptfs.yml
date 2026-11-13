@@ -191,8 +191,16 @@ jobs:
           # on the GHA ubuntu-24.04 runner). The multi-replica concurrent-
           # write step below explicitly scales back to 3 to exercise
           # cross-replica -sharedstorage visibility.
-          kubectl replace -f kubernetes/examples/encryption-at-rest-gocryptfs/openemr-deployment-gocryptfs.yaml
-          kubectl scale deployment openemr --replicas=2
+          #
+          # Set the replica count before creating the Deployment, not with
+          # kubectl scale right after: scaling 3 -> 2 deletes a pod in the
+          # middle of OpenEMR's first boot, and when that pod holds the
+          # swarm leader role the remaining pods wait for it forever (never
+          # Ready; two CI timeouts on 2026-11-12).
+          sed 's/^  replicas: 3$/  replicas: 2/' \
+            kubernetes/examples/encryption-at-rest-gocryptfs/openemr-deployment-gocryptfs.yaml \
+            | kubectl replace -f -
+          [ "$(kubectl get deployment openemr -o jsonpath='{.spec.replicas}')" = 2 ]
           echo "Waiting for gocryptfs-variant openemr pods to reach Ready..."
           kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
 
@@ -497,7 +505,11 @@ jobs:
 
       - name: Cleanup
         if: always()
+        # Bounded so a hung teardown (kub-down waiting on a stuck NFS or
+        # FUSE mount) fails this step instead of running into the job
+        # timeout, which cancels the run and discards its logs.
+        timeout-minutes: 10
         working-directory: kubernetes
         run: |
-          bash kub-down 2>/dev/null || true
+          timeout 300 bash kub-down 2>/dev/null || true
           kind delete cluster 2>/dev/null || true
