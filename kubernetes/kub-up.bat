@@ -2,6 +2,42 @@
 
 kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
+REM Pre-flight guard against upgrading an in-place pre-rel-860 site.
+REM Run FIRST so an old-layout site aborts before any cluster-wide
+REM installs. Fail-closed: distinguish "StatefulSet not found" from
+REM other kubectl errors (API server unreachable, RBAC denial,
+REM wrong context). Treating all non-zero returns as "proceed" would
+REM silently install the operator stack even when the lookup never
+REM reached the cluster. See kubernetes/README.md "Upgrading an
+REM existing site" for the dump+restore procedure.
+kubectl get statefulset/mysql-sts > "%TEMP%\mysql-sts-lookup.out" 2>&1
+SET MYSQL_STS_LOOKUP_RC=%ERRORLEVEL%
+IF %MYSQL_STS_LOOKUP_RC% EQU 0 (
+    echo ERROR: Existing 'mysql-sts' StatefulSet found - this layout uses the MariaDB Operator
+    echo        and cannot upgrade an existing hand-rolled cluster in place. See the README's
+    echo        'Upgrading an existing site' section for the dump+restore procedure. Aborting.
+    del "%TEMP%\mysql-sts-lookup.out" 2>nul
+    exit /b 1
+)
+REM Tighten the NotFound matcher: require both the NotFound token
+REM AND a reference to mysql-sts (or statefulsets) in the output.
+REM A bare "not found" would also match unrelated kubectl errors
+REM like a missing exec-plugin for cluster auth; those must abort
+REM here instead of silently proceeding into the install path.
+findstr /I /R "mysql-sts statefulset" "%TEMP%\mysql-sts-lookup.out" >nul 2>&1
+SET MYSQL_STS_NAME_FOUND=%ERRORLEVEL%
+findstr /I /R "not.found NotFound" "%TEMP%\mysql-sts-lookup.out" >nul 2>&1
+SET MYSQL_STS_NF_FOUND=%ERRORLEVEL%
+IF NOT "%MYSQL_STS_NAME_FOUND%%MYSQL_STS_NF_FOUND%"=="00" (
+    echo ERROR: Pre-flight check failed - unable to query the cluster for an existing 'mysql-sts'
+    echo        StatefulSet. kubectl reported:
+    type "%TEMP%\mysql-sts-lookup.out"
+    echo        Resolve the API/RBAC/context issue and re-run kub-up. Aborting.
+    del "%TEMP%\mysql-sts-lookup.out" 2>nul
+    exit /b 1
+)
+del "%TEMP%\mysql-sts-lookup.out" 2>nul
+
 REM bring in cert-manager (the NFS mTLS layer below requires it)
 REM
 REM github.com's release-download endpoint occasionally returns 504
@@ -30,12 +66,71 @@ goto cert_manager_retry
 kubectl wait --for=condition=Available --timeout=120s -n cert-manager deployment/cert-manager-webhook
 timeout 15
 
+REM bring in trust-manager (cert-manager sibling for Bundle-driven CA
+REM distribution during CA rotation). Vendored manifest — see
+REM kubernetes/trust-manager/manifests.yaml for provenance. Depends on
+REM cert-manager being up.
+set TRUST_MANAGER_ATTEMPTS=0
+:trust_manager_retry
+set /a TRUST_MANAGER_ATTEMPTS+=1
+kubectl apply --server-side=true --force-conflicts -f trust-manager/manifests.yaml
+if %errorlevel%==0 goto trust_manager_applied
+if %TRUST_MANAGER_ATTEMPTS% geq 3 (
+    echo ERROR: trust-manager apply failed after 3 attempts.
+    exit /b 1
+)
+echo ...trust-manager apply attempt %TRUST_MANAGER_ATTEMPTS% failed; retrying...
+ping -n 21 127.0.0.1 >nul
+goto trust_manager_retry
+:trust_manager_applied
+kubectl wait --for=condition=Available --timeout=180s -n cert-manager deployment/trust-manager
+
+REM bring in stakater/reloader (same shape as cert-manager retry above).
+REM Rolls cert-consuming workloads when cert-manager rotates their
+REM Secrets. See kubernetes/README.md -> Certificate reload mechanism.
+set RELOADER_ATTEMPTS=0
+:reloader_retry
+set /a RELOADER_ATTEMPTS+=1
+kubectl apply -f https://raw.githubusercontent.com/stakater/Reloader/v1.4.23/deployments/kubernetes/reloader.yaml
+if %errorlevel%==0 goto reloader_applied
+if %RELOADER_ATTEMPTS% geq 3 (
+    echo ERROR: reloader apply failed after 3 attempts.
+    echo Check https://www.githubstatus.com and retry.
+    exit /b 1
+)
+echo ...reloader apply attempt %RELOADER_ATTEMPTS% failed; retrying...
+ping -n 21 127.0.0.1 >nul
+goto reloader_retry
+:reloader_applied
+kubectl wait --for=condition=Available --timeout=120s deployment/reloader-reloader
+
+REM bring in MariaDB Operator (same shape as cert-manager / reloader retry).
+REM Manages the mysql StatefulSet + Services + replication + automatic
+REM failover via the MariaDB CRD — replaces the hand-rolled mysql
+REM topology with a properly HA one. See kubernetes/mysql/mariadb.yaml
+REM and kubernetes/README.md -> Certificate reload mechanism.
+set MARIADB_OP_ATTEMPTS=0
+:mariadb_op_retry
+set /a MARIADB_OP_ATTEMPTS+=1
+kubectl apply --server-side=true --force-conflicts -f https://github.com/mariadb-operator/mariadb-operator/releases/download/mariadb-operator-26.10.2/manifests.min.yaml
+if %errorlevel%==0 goto mariadb_op_applied
+if %MARIADB_OP_ATTEMPTS% geq 3 (
+    echo ERROR: MariaDB Operator apply failed after 3 attempts.
+    echo Check https://www.githubstatus.com and retry.
+    exit /b 1
+)
+echo ...MariaDB Operator apply attempt %MARIADB_OP_ATTEMPTS% failed; retrying...
+ping -n 21 127.0.0.1 >nul
+goto mariadb_op_retry
+:mariadb_op_applied
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator-cert-controller
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator-webhook
+
 kubectl apply ^
     -f certs/selfsigned-issuer.yaml ^
     -f certs/ca-certificate.yaml ^
     -f certs/ca-issuer.yaml ^
-    -f certs/mysql.yaml ^
-    -f certs/mysql-replication.yaml ^
     -f certs/mysql-openemr-client.yaml ^
     -f certs/phpmyadmin.yaml ^
     -f certs/mysql-phpmyadmin-client.yaml ^
@@ -45,6 +140,19 @@ kubectl apply ^
     -f certs/nfs-server.yaml ^
     -f certs/nfs-client.yaml
 timeout 15
+
+REM Trust bundle (certs/ca-bundle.yaml): every workload and MariaDB
+REM reads its trust anchors from the openemr-ca-bundle Secret.
+kubectl apply -f certs/ca-bundle.yaml
+if errorlevel 1 (
+    echo ERROR: could not apply certs/ca-bundle.yaml.
+    exit /b 1
+)
+kubectl wait --for=condition=Synced --timeout=180s bundle/openemr-ca-bundle
+if errorlevel 1 (
+    echo ERROR: trust-manager did not sync the openemr-ca-bundle Secret; every workload needs it.
+    exit /b 1
+)
 
 REM install csi-driver-nfs (StorageClass provisioner; upstream v4.13.6)
 kubectl apply ^
@@ -76,11 +184,9 @@ kubectl rollout status deployment/nfs-server --timeout=180s
 kubectl rollout status daemonset/nfs-stunnel-client --timeout=180s
 
 kubectl apply ^
-    -f mysql/configmap.yaml ^
     -f mysql/secret.yaml ^
     -f mysql/replication-secret.yaml ^
-    -f mysql/service.yaml ^
-    -f mysql/statefulset.yaml ^
+    -f mysql/mariadb.yaml ^
     -f redis/secret.yaml ^
     -f redis/configmap-main.yaml ^
     -f redis/configmap-acl.yaml ^

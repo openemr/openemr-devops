@@ -4,6 +4,12 @@ metadata:
   name: nfs-server
   labels:
     app: nfs-server
+  annotations:
+    # stakater/reloader: on any UPDATE to the listed Secret (cert-manager
+    # rotation triggers one), roll this Deployment so the stunnel server
+    # pod picks up the new cert. See kubernetes/README.md -> Certificate
+    # reload mechanism.
+    secret.reloader.stakater.com/reload: "nfs-server-certs,openemr-ca-bundle"
 spec:
   replicas: 1
   strategy:
@@ -166,12 +172,21 @@ spec:
         configMap:
           name: nfs-server-stunnel-config
       - name: nfs-server-certs
-        secret:
-          secretName: nfs-server-certs
-          items:
-          - key: tls.crt
-            path: tls.crt
-          - key: tls.key
-            path: tls.key
-          - key: ca.crt
-            path: ca.crt
+        projected:
+          sources:
+          # ca.crt (trust anchors) comes from the trust-manager Bundle target
+          # (certs/ca-bundle.yaml), not the leaf Secret, so a CA rotation can
+          # trust the old and new CA at the same time. See kubernetes/README.md
+          # -> CA rotation.
+          - secret:
+              name: openemr-ca-bundle
+              items:
+              - key: ca.crt
+                path: ca.crt
+          - secret:
+              name: nfs-server-certs
+              items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key

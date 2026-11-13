@@ -3,6 +3,11 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: redis
+  annotations:
+    # stakater/reloader: on any UPDATE to the listed Secret (cert-manager
+    # rotation triggers one), roll this StatefulSet so the pods pick up
+    # the new certs. See kubernetes/README.md -> Certificate reload mechanism.
+    secret.reloader.stakater.com/reload: "redis-certs,openemr-ca-bundle"
 spec:
   serviceName: redis
   replicas: 3
@@ -67,8 +72,43 @@ spec:
             contents="${contents//__DEFAULT_PASSWORD__/$REDIS_DEFAULT_PASSWORD}"
             printf '%s\n' "$contents" > /conf/acl/users.acl
             export REDISCLI_AUTH="$REDIS_DEFAULT_PASSWORD"
-            if [ "$(redis-cli $TLSPARAMETERS -h sentinel -p 26379 ping)" != "PONG" ]; then
-              echo "Sentinel not found to get the master info, defaulting to redis-0"
+            # Without a Sentinel (all of them restarting at once, as on a
+            # trust-bundle change), do not guess: ask the other Redis pods. Use
+            # a pod that answers as master. If the others answer only as
+            # replicas, their master is gone and this pod must not start as an
+            # empty master beside them; wait for a Sentinel to pick one (the
+            # Sentinel init promotes a replica after 30 seconds). Only when no
+            # other pod answers at all is this a cold start, where redis-0 is
+            # the master.
+            SENTINEL_UP=false
+            PEER_MASTER=""
+            PEERS_UP=false
+            i=0
+            while [ $i -lt 60 ]; do
+              if [ "$(redis-cli $TLSPARAMETERS -h sentinel -p 26379 ping 2>/dev/null)" == "PONG" ]; then
+                SENTINEL_UP=true
+                break
+              fi
+              PEER_MASTER=""
+              PEERS_UP=false
+              for peer in redis-0 redis-1 redis-2; do
+                [ "$peer" == "$(hostname)" ] && continue
+                role=$(REDISCLI_AUTH="$REDIS_ADMIN_PASSWORD" redis-cli $TLSPARAMETERS --raw -h "$peer.redis" --user admin info replication 2>/dev/null | tr -d '\r' | sed -n 's/^role://p')
+                [ -n "$role" ] && PEERS_UP=true
+                [ "$role" == "master" ] && PEER_MASTER="$peer.redis"
+              done
+              if [ -n "$PEER_MASTER" ] || ! $PEERS_UP; then
+                break
+              fi
+              echo "No Sentinel answers and no Redis pod is master; waiting for a Sentinel to pick one"
+              sleep 2
+              i=$((i + 1))
+            done
+            if ! $SENTINEL_UP && [ -n "$PEER_MASTER" ]; then
+              echo "Sentinel not found; $PEER_MASTER is master, replicating from it"
+              echo "REPLICAOF $PEER_MASTER 6379" >> /etc/redis/redis.conf
+            elif ! $SENTINEL_UP && ! $PEERS_UP; then
+              echo "Sentinel not found and no other Redis pod answers (cold start), defaulting to redis-0"
               if [ "$(hostname)" == "redis-0" ]; then
                 echo "This is redis-0, No need to update config."
               else
@@ -76,11 +116,62 @@ spec:
                 MASTER_FDQN=`hostname  -f | sed -e 's/redis-[0-9]\./redis-0./'`
                 echo "REPLICAOF $MASTER_FDQN 6379" >> /etc/redis/redis.conf
               fi
+            elif ! $SENTINEL_UP; then
+              echo "ERROR: no Sentinel and no Redis master within 120s; exiting so the init container is retried" >&2
+              exit 1
             else
               echo "Sentinel found, finding master"
-              MASTER="$(redis-cli $TLSPARAMETERS -h sentinel -p 26379 sentinel get-master-addr-by-name mymaster | grep -E '(^redis-\d{1,})|([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})')"
-              echo "Master got: $MASTER, updating this in redis.conf"
-              echo "REPLICAOF $MASTER 6379" >> /etc/redis/redis.conf
+              get_master() {
+                redis-cli $TLSPARAMETERS -h sentinel -p 26379 sentinel get-master-addr-by-name mymaster | grep -E '(^redis-\d{1,})|([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})'
+              }
+              # Sentinel may report this pod by its short (redis-N.redis) or
+              # full (redis-N.redis.<ns>.svc.cluster.local) name.
+              is_self() {
+                case "$1" in
+                  "$(hostname)"|"$(hostname)".*) return 0 ;;
+                  *) return 1 ;;
+                esac
+              }
+              MASTER="$(get_master)"
+              if is_self "$MASTER"; then
+                # Sentinel still names this pod as master: this pod WAS the
+                # master and has just been restarted (cert reload, node drain,
+                # crash) before Sentinel noticed. Redis has no persistence
+                # here, so this pod is empty. Replicating from itself leaves a
+                # replica that never syncs (and OpenEMR's session WAIT for 2
+                # replicas then stalls every request); starting as master
+                # would make the surviving replicas resync to an empty
+                # dataset. If another Redis pod is up, wait for Sentinel to
+                # fail over to it. If none is up, this is a cold start of the
+                # whole cluster and this pod starts as master.
+                PEER_UP=false
+                for peer in redis-0 redis-1 redis-2; do
+                  [ "$peer" == "$(hostname)" ] && continue
+                  if [ "$(redis-cli $TLSPARAMETERS -h "$peer.redis" ping 2>/dev/null)" == "PONG" ]; then
+                    PEER_UP=true
+                  fi
+                done
+                if $PEER_UP; then
+                  echo "Sentinel still names this pod as master; waiting for failover"
+                  i=0
+                  while is_self "$MASTER" && [ $i -lt 30 ]; do
+                    sleep 2
+                    i=$((i + 1))
+                    MASTER="$(get_master)"
+                  done
+                  if is_self "$MASTER" || [ -z "$MASTER" ]; then
+                    echo "ERROR: Sentinel did not fail over within 60s; exiting so the init container is retried" >&2
+                    exit 1
+                  fi
+                else
+                  echo "No other Redis pod is up (cold start); starting as master"
+                  MASTER=""
+                fi
+              fi
+              if [ -n "$MASTER" ]; then
+                echo "Master got: $MASTER, updating this in redis.conf"
+                echo "REPLICAOF $MASTER 6379" >> /etc/redis/redis.conf
+              fi
             fi
         volumeMounts:
         - name: redis-certs
@@ -120,15 +211,24 @@ spec:
           mountPath: /conf/acl/
       volumes:
       - name: redis-certs
-        secret:
-          secretName: redis-certs
-          items:
-          - key: ca.crt
-            path: ca.crt
-          - key: tls.crt
-            path: tls.crt
-          - key: tls.key
-            path: tls.key
+        projected:
+          sources:
+          # ca.crt (trust anchors) comes from the trust-manager Bundle target
+          # (certs/ca-bundle.yaml), not the leaf Secret, so a CA rotation can
+          # trust the old and new CA at the same time. See kubernetes/README.md
+          # -> CA rotation.
+          - secret:
+              name: openemr-ca-bundle
+              items:
+              - key: ca.crt
+                path: ca.crt
+          - secret:
+              name: redis-certs
+              items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
       - name: redis-config
         emptyDir: {}
       - name: config

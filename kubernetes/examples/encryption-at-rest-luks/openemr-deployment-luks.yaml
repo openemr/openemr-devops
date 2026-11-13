@@ -32,6 +32,9 @@
 #      attacker who can read the NFS backing already has cluster-adjacent
 #      access and TLS cert exfiltration is a separate concern addressed by
 #      the stack's mTLS layers and cert-manager rotation.
+#   6. openemr startupProbe every 2s (failureThreshold 300, same 10 min)
+#      and readinessProbe every 5s, instead of 10s / 30s: with one replica
+#      the probe delay is outage on every restart.
 #
 # Prerequisites:
 #   - The #910 default stack is applied (kub-up).
@@ -46,6 +49,11 @@ metadata:
   labels:
     name: openemr
   name: openemr
+  annotations:
+    # stakater/reloader: on any UPDATE to the listed Secrets (cert-manager
+    # rotation triggers one), roll this Deployment so the pods pick up the
+    # new certs. See kubernetes/README.md -> Certificate reload mechanism.
+    secret.reloader.stakater.com/reload: "mysql-openemr-client-certs,redis-openemr-client-certs,openemr-ca-bundle"
 spec:
   # SINGLE REPLICA — see header comment and README.md. Do not scale up.
   replicas: 1
@@ -79,10 +87,15 @@ spec:
         name: openemr
     spec:
       automountServiceAccountToken: false
+      # Room for the luks-opener sidecar to unmount and close the LUKS
+      # mapping while the NFS server is restarting (see its cleanup()).
+      # The default 30s is shorter than an NFS server restart under load;
+      # running out of it leaves the mapping open on the node.
+      terminationGracePeriodSeconds: 200
       initContainers:
       - name: init-mysql-wait
         image: busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
-        command: ['sh', '-c', "until nc -z mysql 3306; do echo waiting for mysql; sleep 2; done"]
+        command: ['sh', '-c', "until nc -z mysql-primary 3306; do echo waiting for mysql; sleep 2; done"]
       - name: init-redis-wait
         image: busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
         command: ['sh', '-c', "until nc -z redis 6379; do echo waiting for redis; sleep 2; done"]
@@ -154,11 +167,35 @@ spec:
           # so the next pod can open it cleanly. The main container has
           # already been terminated by the kubelet at this point (native
           # sidecar termination order).
+          #
+          # The NFS server can be restarting at the same moment (a CA or
+          # trust-bundle change restarts every workload at once). With
+          # the hard NFS mount, umount then blocks or fails until it is
+          # back, so retry instead of giving up: a mapping left open
+          # stays mounted on the node and every later luksOpen fails
+          # with "Device openemr-sites already exists" until someone
+          # unmounts it by hand. terminationGracePeriodSeconds (below)
+          # leaves room for this.
           cleanup() {
             echo "Received shutdown signal; cleaning up LUKS mapping"
-            sync || true
-            umount "$DECRYPTED_MNT" || true
-            cryptsetup luksClose "$MAPPER_NAME" || true
+            i=0
+            until umount "$DECRYPTED_MNT"; do
+              i=$((i + 1))
+              if [ "$i" -ge 75 ]; then
+                echo "ERROR: umount $DECRYPTED_MNT still failing after 150s"
+                break
+              fi
+              sleep 2
+            done
+            i=0
+            until cryptsetup luksClose "$MAPPER_NAME"; do
+              i=$((i + 1))
+              if [ "$i" -ge 15 ]; then
+                echo "ERROR: luksClose $MAPPER_NAME failed; the next pod cannot open the container until it is closed on this node (see the example README)"
+                break
+              fi
+              sleep 2
+            done
             exit 0
           }
           trap cleanup TERM INT
@@ -192,6 +229,24 @@ spec:
           fi
 
           if [ "$reused" = "0" ]; then
+            # The previous pod's sidecar may still be closing the mapping
+            # (its umount waits for NFS if the NFS server is restarting
+            # too). Wait for it here rather than fail luksOpen with
+            # "Device already exists" and sit out crash-loop backoff.
+            i=0
+            while cryptsetup status "$MAPPER_NAME" >/dev/null 2>&1; do
+              if [ "$i" -eq 0 ]; then
+                echo "LUKS mapping $MAPPER_NAME is still open (previous pod still closing it); waiting"
+              fi
+              i=$((i + 1))
+              if [ "$i" -ge 90 ]; then
+                echo "FATAL: LUKS mapping $MAPPER_NAME is still open after 180s."
+                echo "A previous pod left it open on this node. See the example README,"
+                echo "\"If the pod cannot open the LUKS container\"."
+                exit 1
+              fi
+              sleep 2
+            done
             echo "Opening LUKS container: $LUKS_FILE"
             cryptsetup luksOpen \
               --key-file /etc/luks/passphrase \
@@ -238,7 +293,8 @@ spec:
       containers:
       - env:
         - name: MYSQL_HOST
-          value: "mysql"
+          # See kubernetes/openemr/deployment.yaml for rationale.
+          value: "mysql-primary"
         - name: MYSQL_PASS
           valueFrom:
             secretKeyRef:
@@ -280,6 +336,14 @@ spec:
           value: "yes"
         - name: REDIS_TLS_CERT_KEY_PATH
           value: "/redis-certs"
+        # Synchronous Redis replication on every session write via the
+        # Redis WAIT command. Matches the default deployment —
+        # see kubernetes/openemr/deployment.yaml for the rationale +
+        # tradeoffs (why "2" on a 2-replica cluster, vs "1" for
+        # lower noise at the cost of ~50% durability). Requires
+        # openemr 8.6.0+ (shipped in openemr/openemr#15220).
+        - name: REDIS_SESSION_WAIT_REPLICAS
+          value: "2"
         - name: SWARM_MODE
           value: "yes"
         - name: FORCE_DATABASE_X509_CONNECT
@@ -298,18 +362,21 @@ spec:
             command:
             - cat
             - /root/instance-swarm-ready
-          periodSeconds: 10
+          # Short periods: with one replica and Recreate, every second
+          # between the container being ready and the probe noticing is
+          # outage on each restart (a certificate rotation, for example).
+          # 10s/30s periods added ~35s to each restart on kind.
+          periodSeconds: 2
           # Single-replica deployment, so no leader-election race. 10 min
           # is more than enough for first-boot. (Default stack uses 20
           # min to accommodate 3-way leader election.)
-          failureThreshold: 60
+          failureThreshold: 300
         readinessProbe:
           exec:
             command:
             - cat
             - /root/instance-swarm-ready
-          initialDelaySeconds: 5
-          periodSeconds: 30
+          periodSeconds: 5
         livenessProbe:
           tcpSocket:
             port: 443
@@ -317,8 +384,30 @@ spec:
         volumeMounts:
         - mountPath: /root/certs/mysql/server
           name: mysql-openemr-client-certs
-        - mountPath: /redis-certs
+        # Mounted file by file with subPath so kubelet never rewrites these
+        # in a running pod. A live Secret update swaps the files under
+        # Apache, and PHP's realpath cache (120s) keeps resolving the
+        # deleted old paths, so every session start fails (HTTP 500) until
+        # the cache expires. Old pods keep the old (still valid) cert;
+        # reloader rolls new pods with the new one.
+        - mountPath: /redis-certs/redis-master-ca
           name: redis-openemr-client-certs
+          subPath: redis-master-ca
+        - mountPath: /redis-certs/redis-master-cert
+          name: redis-openemr-client-certs
+          subPath: redis-master-cert
+        - mountPath: /redis-certs/redis-master-key
+          name: redis-openemr-client-certs
+          subPath: redis-master-key
+        - mountPath: /redis-certs/redis-sentinel-ca
+          name: redis-openemr-client-certs
+          subPath: redis-sentinel-ca
+        - mountPath: /redis-certs/redis-sentinel-cert
+          name: redis-openemr-client-certs
+          subPath: redis-sentinel-cert
+        - mountPath: /redis-certs/redis-sentinel-key
+          name: redis-openemr-client-certs
+          subPath: redis-sentinel-key
         - mountPath: /var/www/localhost/htdocs/openemr/sites
           name: decrypted-sites
           # HostToContainer: see IN the mount the sidecar established in
@@ -331,31 +420,49 @@ spec:
       restartPolicy: Always
       volumes:
       - name: mysql-openemr-client-certs
-        secret:
-          secretName: mysql-openemr-client-certs
-          items:
-          - key: ca.crt
-            path: mysql-ca
-          - key: tls.crt
-            path: mysql-cert
-          - key: tls.key
-            path: mysql-key
+        projected:
+          sources:
+          # ca.crt (trust anchors) comes from the trust-manager Bundle target
+          # (certs/ca-bundle.yaml), not the leaf Secret, so a CA rotation can
+          # trust the old and new CA at the same time. See kubernetes/README.md
+          # -> CA rotation.
+          - secret:
+              name: openemr-ca-bundle
+              items:
+              - key: ca.crt
+                path: mysql-ca
+          - secret:
+              name: mysql-openemr-client-certs
+              items:
+              - key: tls.crt
+                path: mysql-cert
+              - key: tls.key
+                path: mysql-key
       - name: redis-openemr-client-certs
-        secret:
-          secretName: redis-openemr-client-certs
-          items:
-          - key: ca.crt
-            path: redis-master-ca
-          - key: tls.crt
-            path: redis-master-cert
-          - key: tls.key
-            path: redis-master-key
-          - key: ca.crt
-            path: redis-sentinel-ca
-          - key: tls.crt
-            path: redis-sentinel-cert
-          - key: tls.key
-            path: redis-sentinel-key
+        projected:
+          sources:
+          # ca.crt (trust anchors) comes from the trust-manager Bundle target
+          # (certs/ca-bundle.yaml), not the leaf Secret, so a CA rotation can
+          # trust the old and new CA at the same time. See kubernetes/README.md
+          # -> CA rotation.
+          - secret:
+              name: openemr-ca-bundle
+              items:
+              - key: ca.crt
+                path: redis-master-ca
+              - key: ca.crt
+                path: redis-sentinel-ca
+          - secret:
+              name: redis-openemr-client-certs
+              items:
+              - key: tls.crt
+                path: redis-master-cert
+              - key: tls.key
+                path: redis-master-key
+              - key: tls.crt
+                path: redis-sentinel-cert
+              - key: tls.key
+                path: redis-sentinel-key
       # NFS-backed websitevolume. Mounted on the sidecar only. Contains
       # the LUKS container file (.openemr-sites.luks). The main container
       # does NOT mount this directly.

@@ -26,25 +26,35 @@ on:
       - 'kubernetes/examples/encryption-at-rest-gocryptfs/**'
       - 'kubernetes/openemr/deployment.yaml'
       - 'kubernetes/nfs/**'
+      - 'kubernetes/certs/**'
+      - 'kubernetes/redis/**'
+      - 'kubernetes/rotate-ca'
+      - 'kubernetes/trust-manager/**'
       - 'kubernetes/kub-up'
       - '.github/actions/kubernetes-stack-up/**'
       - '.github/workflows/test-kubernetes-gocryptfs.yml'
+      - 'tests/kubernetes/**'
   pull_request:
     branches: [master]
     paths:
       - 'kubernetes/examples/encryption-at-rest-gocryptfs/**'
       - 'kubernetes/openemr/deployment.yaml'
       - 'kubernetes/nfs/**'
+      - 'kubernetes/certs/**'
+      - 'kubernetes/redis/**'
+      - 'kubernetes/rotate-ca'
+      - 'kubernetes/trust-manager/**'
       - 'kubernetes/kub-up'
       - '.github/actions/kubernetes-stack-up/**'
       - '.github/workflows/test-kubernetes-gocryptfs.yml'
+      - 'tests/kubernetes/**'
   workflow_dispatch:
 
 jobs:
   gocryptfs-example-test:
     name: gocryptfs example adoption + validation
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
 
@@ -181,8 +191,16 @@ jobs:
           # on the GHA ubuntu-24.04 runner). The multi-replica concurrent-
           # write step below explicitly scales back to 3 to exercise
           # cross-replica -sharedstorage visibility.
-          kubectl replace -f kubernetes/examples/encryption-at-rest-gocryptfs/openemr-deployment-gocryptfs.yaml
-          kubectl scale deployment openemr --replicas=2
+          #
+          # Set the replica count before creating the Deployment, not with
+          # kubectl scale right after: scaling 3 -> 2 deletes a pod in the
+          # middle of OpenEMR's first boot, and when that pod holds the
+          # swarm leader role the remaining pods wait for it forever (never
+          # Ready; two CI timeouts on 2026-11-12).
+          sed 's/^  replicas: 3$/  replicas: 2/' \
+            kubernetes/examples/encryption-at-rest-gocryptfs/openemr-deployment-gocryptfs.yaml \
+            | kubectl replace -f -
+          [ "$(kubectl get deployment openemr -o jsonpath='{.spec.replicas}')" = 2 ]
           echo "Waiting for gocryptfs-variant openemr pods to reach Ready..."
           kubectl wait --for=condition=Ready -l name=openemr pod --timeout=1200s
 
@@ -236,14 +254,22 @@ jobs:
       - name: Initialize OpenEMR database
         timeout-minutes: 2
         run: |
-          kubectl exec mysql-sts-0 -- mariadb -u root -proot -e '
-              INSERT INTO product_registration (opt_out) VALUES (1);
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_api";
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_fhir_api";
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_portal_api";
-              UPDATE globals SET gl_value = 3 WHERE gl_name = "oauth_password_grant";
-              UPDATE globals SET gl_value = 1 WHERE gl_name = "rest_system_scopes_api";
-            ' openemr
+          # See test-kubernetes.yml for rationale — exec via openemr
+          # pod with its mysql-openemr-client cert, target mysql-primary.
+          kubectl exec deploy/openemr -- bash -c '
+            mariadb -h mysql-primary -u root -p"$MYSQL_ROOT_PASS" \
+              --ssl-ca=/root/certs/mysql/server/mysql-ca \
+              --ssl-cert=/root/certs/mysql/server/mysql-cert \
+              --ssl-key=/root/certs/mysql/server/mysql-key \
+              -e "
+                INSERT INTO product_registration (opt_out) VALUES (1);
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_api\";
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_fhir_api\";
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_portal_api\";
+                UPDATE globals SET gl_value = 3 WHERE gl_name = \"oauth_password_grant\";
+                UPDATE globals SET gl_value = 1 WHERE gl_name = \"rest_system_scopes_api\";
+              " openemr
+          '
 
       - name: Install dev dependencies (atop gocryptfs)
         timeout-minutes: 5
@@ -315,10 +341,23 @@ jobs:
           # insurance against a rollout-status / pod-Ready skew on
           # kind.
           kubectl rollout status deployment/openemr --timeout=1200s
-          kubectl wait --for=condition=Ready -l name=openemr pod --timeout=600s
 
-          # Collect pod names in a deterministic order.
-          mapfile -t PODS < <(kubectl get pod -l name=openemr -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort)
+          # Ready pods that are not being deleted, in a deterministic
+          # order. An old pod stays in Terminating for its preStop sleep
+          # after the rollout completes, so selecting by label alone (or
+          # kubectl wait -l) can pick a pod that disappears a moment later.
+          ready_pods() {
+            kubectl get pod -l name=openemr -o json | jq -r '
+              .items[]
+              | select(.metadata.deletionTimestamp == null)
+              | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))
+              | .metadata.name' | sort
+          }
+          for _ in $(seq 1 120); do
+            mapfile -t PODS < <(ready_pods)
+            [ "${#PODS[@]}" -ge 3 ] && break
+            sleep 5
+          done
           if [ "${#PODS[@]}" -lt 3 ]; then
             echo "ERROR: expected 3 openemr pods, got ${#PODS[@]}"
             kubectl get pod -l name=openemr
@@ -381,9 +420,79 @@ jobs:
           # Cleanup — any replica can delete (shared view).
           kubectl exec "$POD_A" -c openemr -- rm -f "${FILE_A}" "${FILE_B}"
 
+      - name: Scale phpmyadmin back up
+        # Scaled to 0 above only to stop writes during the migration (the
+        # example's adoption procedure leaves it running). The rotations
+        # below restart it and check its trust file.
+        run: |
+          kubectl scale deployment phpmyadmin --replicas=1
+          kubectl rollout status deployment/phpmyadmin --timeout=600s
+
+      - name: Install cmctl (cert-manager CLI)
+        run: |
+          sudo curl -fL -o /usr/local/bin/cmctl \
+            https://github.com/cert-manager/cmctl/releases/download/v2.6.2/cmctl_linux_amd64
+          sudo chmod +x /usr/local/bin/cmctl
+          cmctl version --client
+          echo "ROTATION_WORKDIR=${RUNNER_TEMP}/cert-rotation" >> "${GITHUB_ENV}"
+
+      # The multi-replica step above left 3 openemr replicas with a 100m CPU
+      # request, which leaves room for RollingUpdate's extra pod.
+      #
+      # Certificate rotation with the encrypted sites volume: OpenEMR's own
+      # client certificates (restart the openemr pods) and the NFS server
+      # certificate (pauses NFS I/O under the encrypted layer). The other
+      # leaves behave as in the default stack (test-kubernetes-cert-rotation.yml).
+      # Budgets: see the README's data-plane impact list.
+      - name: Rotate openemr -> MariaDB client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh mysql-openemr-client deployment/openemr --max-gap 10 \
+            --pod-file /root/certs/mysql/server/mysql-cert \
+            --openemr-file /var/www/localhost/htdocs/openemr/sites/default/documents/certificates/mysql-cert
+
+      - name: Rotate openemr -> Redis client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh redis-openemr-client deployment/openemr --max-gap 10 \
+            --pod-file /redis-certs/redis-master-cert \
+            --pod-file /redis-certs/redis-sentinel-cert
+
+      - name: Rotate NFS server certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh nfs-server deployment/nfs-server --max-gap 60 \
+            --served-via-openemr nfs-server:20490
+
+      - name: Rotate the CA key
+        # gocryptfs keeps the default stack's RollingUpdate, so this should
+        # look like the default stack's CA rotation (60s budget there,
+        # 16-22s measured); 90s allows for the FUSE layer over NFS.
+        run: bash tests/kubernetes/rotate-ca-test.sh --max-gap 90
+
+      - name: Validate gocryptfs encryption effectiveness after the rotations
+        run: bash kubernetes/examples/encryption-at-rest-gocryptfs/validate-encryption.sh
+
+      - name: Probe logs
+        if: always()
+        run: |
+          for f in "${ROTATION_WORKDIR:-/nonexistent}"/*/*.log; do
+            [[ -f "${f}" ]] || continue
+            echo "=== ${f#"${ROTATION_WORKDIR}"/}"
+            cat "${f}"
+          done
+
       - name: Collect debug info on failure
         if: failure()
         run: |
+          echo "=== MariaDB ==="
+          kubectl get mariadb mysql -o jsonpath='{.status}' || true
+          echo
+          for p in $(kubectl get pod -l app=mysql -o name); do
+            for c in mariadb agent; do
+              echo "--- ${p} ${c}"
+              kubectl logs "${p}" -c "${c}" --tail=60 || true
+              echo "--- ${p} ${c} (previous)"
+              kubectl logs "${p}" -c "${c}" --previous --tail=60 2>/dev/null || true
+            done
+          done
           echo "=== Pod Status ==="
           kubectl get pods -o wide
           echo "=== Events ==="
@@ -407,7 +516,11 @@ jobs:
 
       - name: Cleanup
         if: always()
+        # Bounded so a hung teardown (kub-down waiting on a stuck NFS or
+        # FUSE mount) fails this step instead of running into the job
+        # timeout, which cancels the run and discards its logs.
+        timeout-minutes: 10
         working-directory: kubernetes
         run: |
-          bash kub-down 2>/dev/null || true
+          timeout 300 bash kub-down 2>/dev/null || true
           kind delete cluster 2>/dev/null || true

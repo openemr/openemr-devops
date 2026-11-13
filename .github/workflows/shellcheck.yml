@@ -12,6 +12,7 @@ on:
       - '.github/workflows/shellcheck.yml'
       - 'kubernetes/kub-down'
       - 'kubernetes/kub-up'
+      - 'kubernetes/rotate-ca'
       - 'packages/standard/cfn/buildstacks.bat'  # ¯\_(ツ)_/¯
       - 'utilities/openemr-cmd/openemr-cmd'
       - 'utilities/openemr-cmd/openemr-cmd-h'
@@ -31,6 +32,7 @@ on:
       - '.github/workflows/shellcheck.yml'
       - 'kubernetes/kub-down'
       - 'kubernetes/kub-up'
+      - 'kubernetes/rotate-ca'
       - 'packages/standard/cfn/buildstacks.bat'  # ¯\_(ツ)_/¯
       - 'utilities/openemr-cmd/openemr-cmd'
       - 'utilities/openemr-cmd/openemr-cmd-h'
@@ -69,6 +71,7 @@ jobs:
             **.source
             kubernetes/kub-down
             kubernetes/kub-up
+            kubernetes/rotate-ca
             packages/standard/cfn/buildstacks.bat
             utilities/openemr-cmd/openemr-cmd
             utilities/openemr-cmd/openemr-cmd-h
@@ -104,6 +107,7 @@ jobs:
               **/*.source
               kubernetes/kub-down
               kubernetes/kub-up
+              kubernetes/rotate-ca
               packages/standard/cfn/buildstacks.bat
               utilities/openemr-cmd/openemr-cmd
               utilities/openemr-cmd/openemr-cmd-h

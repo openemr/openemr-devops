@@ -10,7 +10,7 @@ This directory is an **example**, not a default. It demonstrates Option 2 of the
 > [!IMPORTANT]
 > **This example downgrades openemr from 3 replicas to 1.**
 >
-> The default stack runs the openemr Deployment with `replicas: 3`. Adopting this example requires scaling that to `replicas: 1` for the duration — LUKS wraps a single ext4 filesystem that cannot be mounted read-write by two pods at once without corrupting it. If your availability model depends on multi-replica openemr, Option 1 (encrypted StorageClass) is the only in-tree answer today. See § **Multi-replica encryption-at-rest: what it would take** below for a fuller research treatment of why and what the alternatives look like.
+> The default stack runs the openemr Deployment with `replicas: 3`. Adopting this example requires scaling that to `replicas: 1` for the duration — LUKS wraps a single ext4 filesystem that cannot be mounted read-write by two pods at once without corrupting it. If your availability model depends on multi-replica openemr, the in-tree answers are the [gocryptfs sibling example](../encryption-at-rest-gocryptfs/README.md) (per-file FUSE encryption, safe for concurrent mounts via `-sharedstorage`) and Option 1 (encrypted StorageClass — see main `kubernetes/README.md`). See § **Multi-replica encryption-at-rest: what it would take** below for the full trade-off treatment.
 
 ## When to use this
 
@@ -62,7 +62,7 @@ Three possible resolutions, and why this example picks one of them:
 
 3. **Hybrid: encrypt only a non-shared subpath** (not chosen). Encrypt a leaf directory that genuinely doesn't need cross-pod sharing, leave the rest plaintext on NFS. OpenEMR's `sites/default/documents/` subtree is the obvious candidate — it holds PHI but is never written by multiple replicas simultaneously in normal operation. Rejected for the example because: (a) OpenEMR's upload code assumes POSIX semantics across the whole sites tree, so partitioning encrypted vs plaintext subpaths risks subtle write-visibility bugs; (b) "normal operation" is doing a lot of work — any admin batch job that walks `sites/` could race; (c) explaining which subpath is safe to encrypt vs not is more subtle than the manifests warrant for an example.
 
-**If your threat model requires both encryption-at-rest AND multi-replica openemr, use Option 1 (encrypted StorageClass).** Option 2 as presented here is single-replica. A per-pod LUKS pattern or a clustered-filesystem-inside-LUKS pattern is possible but out of scope for this example.
+**If your threat model requires both encryption-at-rest AND multi-replica openemr, two in-tree options cover it**: Option 1 (encrypted StorageClass — encrypts the NFS backing disk but not the NFS server pod's view) and the [gocryptfs sibling example](../encryption-at-rest-gocryptfs/README.md) (encrypts per-file inside the NFS server's view, safely mountable by multiple replicas via `-sharedstorage`). Pick the gocryptfs example if your threat model treats a compromised `nfs-server` pod as in-scope (same bar as this LUKS example); pick Option 1 if the in-cluster NFS pod is in your trust boundary and you only need protection against the backing storage itself.
 
 ## Multi-replica encryption-at-rest: what it would take
 
@@ -72,14 +72,14 @@ The single-replica constraint is a real downgrade from the default 3-replica ope
 |---|---|---|---|---|
 | **This example (LUKS + ext4)** | No | None beyond the sidecar | None | **Shipped** here |
 | **Clustered FS inside LUKS** (GFS2 or OCFS2) | Yes | DLM, STONITH fencing, cluster membership manager | None | Out of scope |
-| **FUSE transparent encryption** (`gocryptfs` shared-storage mode) | Yes | FUSE in-pod sidecar per replica | None | Candidate for a sibling example |
+| **FUSE transparent encryption** (`gocryptfs` shared-storage mode) | Yes | FUSE in-pod sidecar per replica | None | **Shipped** as [sibling example](../encryption-at-rest-gocryptfs/README.md) |
 | **Application-layer encryption** (OpenEMR encrypts PHI at write) | Yes | KMS integration (Vault / cloud KMS) | **Significant** OpenEMR code change | Belongs in an OpenEMR RFC, not devops |
 
 ### Approach details
 
 **Clustered FS inside LUKS.** The theoretical "just make ext4 multi-writer" answer: open the same LUKS mapper on every node, then layer GFS2 or OCFS2 on top of the decrypted device. Both filesystems are POSIX-cluster-aware and can safely coordinate writes across nodes — but only against a cluster manager that provides DLM (distributed lock manager) and STONITH-style fencing so a partitioned node can be reliably ejected before the surviving nodes keep writing. In practice: GFS2 comes from the RHEL/Fedora `dlm` + Pacemaker stack; OCFS2 ships with its own `o2cb` cluster. Either requires several operator components, node-level packages, a quorum model, and a fencing device that can actually power-off or network-isolate a sick node. Operationally this is a significant commitment (and most managed-Kubernetes distributions do not expose the node-level fencing primitives needed). We would be building and maintaining this just to encrypt PHI at rest, which Option 1 already achieves against the hyperscaler threat model. Not worth it for openemr-devops.
 
-**FUSE transparent encryption.** `gocryptfs` is the realistic multi-replica alternative to LUKS. It stores each plaintext file as an individually-encrypted file in the backing directory (name-encrypted too), rather than encrypting an ext4 blob. In `-sharedstorage` mode, multiple clients can concurrently mount the same backing directory and see consistent decrypted views — concurrent writers are safe as long as they don't update the same file (which openemr replicas generally don't, by workload). The per-pod setup is comparable to this LUKS example: a privileged FUSE sidecar runs `gocryptfs` against the NFS-mounted directory and exposes the decrypted view via mount propagation. **Trade-offs** vs LUKS: per-file encryption (not full-filesystem), slightly slower cold reads, FUSE requires `/dev/fuse` + `SYS_ADMIN` in the sidecar, metadata operations are slower than kernel ext4. **This is the path we would recommend** for an openemr-devops operator who needs both encryption-at-rest and multi-replica openemr without touching OpenEMR code. It is *not* shipped as an example here because the design and validation are a separate piece of work — track it as a follow-up issue. If you need it today, use Option 1.
+**FUSE transparent encryption.** `gocryptfs` is the realistic multi-replica alternative to LUKS. It stores each plaintext file as an individually-encrypted file in the backing directory (name-encrypted too), rather than encrypting an ext4 blob. In `-sharedstorage` mode, multiple clients can concurrently mount the same backing directory and see consistent decrypted views — concurrent writers are safe as long as they don't update the same file (which openemr replicas generally don't, by workload). The per-pod setup is comparable to this LUKS example: a privileged FUSE sidecar runs `gocryptfs` against the NFS-mounted directory and exposes the decrypted view via mount propagation. **Trade-offs** vs LUKS: per-file encryption (not full-filesystem), slightly slower cold reads, FUSE requires `/dev/fuse` + `SYS_ADMIN` in the sidecar, metadata operations are slower than kernel ext4. **This is the path we recommend** for operators who need both encryption-at-rest and multi-replica openemr without touching OpenEMR code. It ships as a sibling example at [`kubernetes/examples/encryption-at-rest-gocryptfs/`](../encryption-at-rest-gocryptfs/README.md) — see that example's README for adoption instructions.
 
 **Application-layer encryption.** The architecturally cleanest answer: OpenEMR itself encrypts PHI (documents, lab results, scanned forms) with keys from a KMS before writing to disk, and decrypts on read. Multi-replica becomes trivial because the on-disk format is ciphertext regardless of which pod wrote it, and the disk/NFS layer never sees plaintext. But this is an OpenEMR-core change — new `EncryptionService`, document-write/read interception points, key-rotation story, key-wrap for back-compat with existing unencrypted data — and lives in `openemr/openemr`, not `openemr/openemr-devops`. If this is your target, file it as an OpenEMR RFC; the infrastructure to support it (Vault secret, ESO wiring) is a few lines of YAML once the application side exists.
 
@@ -88,7 +88,7 @@ The single-replica constraint is a real downgrade from the default 3-replica ope
 ### Recommendation
 
 - **Need multi-replica + encryption-at-rest today**: use Option 1 (encrypted StorageClass). Covers HIPAA, zero extra ops.
-- **Need application-layer encryption + multi-replica**: realistic path is a `gocryptfs` sibling example. File a follow-up issue in `openemr/openemr-devops` to design it; it borrows most of this example's shape (one-shot format step, privileged sidecar, mount propagation) and swaps the storage mechanism.
+- **Need in-pod encryption + multi-replica**: use the [`gocryptfs` sibling example](../encryption-at-rest-gocryptfs/README.md). Same shape as this LUKS example (one-shot init step, privileged sidecar, mount propagation), but per-file encryption via FUSE instead of block-level LUKS, so `-sharedstorage` mode lets multiple replicas safely mount the same backing directory.
 - **Need "PHI is ciphertext end-to-end including inside openemr's process memory"**: that requires application-layer encryption and lives in `openemr/openemr`, not in a devops example.
 
 ## Privilege / capability requirements
@@ -1283,6 +1283,21 @@ Push it to your own registry, pin by digest, and point BOTH the `luks-opener` si
 - **Native-sidecar termination order** (the sidecar stops AFTER the main container on pod shutdown) is critical. This requires Kubernetes 1.29+ for the `restartPolicy: Always` initContainer semantics to be GA. On older clusters, the pattern needs adjustment (a true sidecar container plus a shutdown hook, or an external PreStop hook).
 - **Not tested with cluster upgrades that change the kernel major version.** `dm-crypt` is stable kernel surface but if an upgrade removes the module from the node image, the sidecar fails on `luksOpen`. Confirm `dm_crypt` availability on your node image before adopting.
 - **Secret rotation requires a pod restart.** `cryptsetup luksAddKey` / `luksRemoveKey` must run against the LUKS header on the NFS file; the sidecar re-reads the Secret only on pod start. Plan a maintenance window for passphrase rotation — the openemr Deployment is already single-replica, so this is downtime, not a rolling update.
+- **Certificate rotation is downtime too.** cert-manager renews OpenEMR's client certificates (`mysql-openemr-client`, `redis-openemr-client`) about every 60 days, and reloader restarts the single openemr pod for each one: about 20s without OpenEMR per restart on kind, possibly twice in a row because both certificates renew together. Plan a window, or renew both by hand at a quiet time first. Details: `kubernetes/README.md`, "Data-plane impact during rotation".
+
+## If the pod cannot open the LUKS container
+
+The `luks-opener` sidecar unmounts the decrypted filesystem and closes the LUKS mapping when its pod stops. If the NFS server is down at that moment, which happens when a CA or trust-bundle change restarts every workload at once, the unmount waits for NFS to come back. The pod's `terminationGracePeriodSeconds: 200` allows for that. If the pod is killed before it finishes anyway (NFS down for minutes, or a forced delete), the decrypted filesystem stays mounted on the node and the mapping stays open. The next pod's sidecar then waits 180 seconds and fails with `LUKS mapping openemr-sites is still open`, and the old pod stays listed as `Completed` because the kubelet cannot clean up its volume.
+
+With NFS back, release the mapping on that node (on kind: `docker exec -it kind-control-plane sh`):
+
+```sh
+grep openemr-sites /proc/mounts        # the old pod's decrypted-sites emptyDir
+umount /var/lib/kubelet/pods/<old-pod-uid>/volumes/kubernetes.io~empty-dir/decrypted-sites
+dmsetup remove openemr-sites
+```
+
+The old pod then finishes terminating and the new pod opens the container on its next retry. Unmounting first is what makes this safe: it flushes the filesystem. Do not `dmsetup remove --force` a mapping that is still mounted.
 
 ## File manifest
 

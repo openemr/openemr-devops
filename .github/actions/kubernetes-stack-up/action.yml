@@ -53,8 +53,15 @@ runs:
     - name: Wait for all core pods to be Ready
       shell: bash
       run: |
-        echo "Waiting for StatefulSets to create all pods..."
-        kubectl rollout status statefulset/mysql-sts --timeout=300s
+        echo "Waiting for MariaDB (operator-managed) to reach Ready..."
+        # Under the MariaDB Operator, the StatefulSet name tracks the
+        # MariaDB resource name (not the old hand-rolled `mysql-sts`).
+        # Wait on the operator's custom Ready condition instead of a
+        # specific StatefulSet rollout, which covers replication
+        # setup + semi-sync + TLS provisioning as one atomic signal.
+        kubectl wait --for=condition=Ready mariadb/mysql --timeout=600s
+
+        echo "Waiting for Redis + Sentinel StatefulSets to roll out..."
         kubectl rollout status statefulset/redis --timeout=300s
         kubectl rollout status statefulset/sentinel --timeout=300s
         echo "Waiting for OpenEMR to reach Ready (first-boot can take several minutes)..."

@@ -4,6 +4,48 @@
 echo "...waiting for all nodes to be ready..."
 kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
+# Pre-flight guard against upgrading an in-place pre-rel-860 site:
+# this layout uses the MariaDB Operator (declarative cluster via
+# MariaDB CRD, replacing the hand-rolled StatefulSet + headless
+# Service). Upgrading an existing old-layout site in place is NOT
+# supported from kub-up — a safe cutover needs writes quiesced, DB
+# migrated to the new topology, and openemr clients repointed to
+# `mysql-primary`. Attempting that automatically would risk leaving
+# the site unreachable mid-upgrade. Run this check FIRST — before
+# cert-manager, reloader, operator installs, or NFS rollouts —
+# so an old-layout site aborts before any cluster-wide resources
+# are changed, leaving the existing cluster untouched for the
+# operator to migrate manually. See kubernetes/README.md
+# "Upgrading an existing site" for the documented procedure.
+# Fail-closed: distinguish "StatefulSet not found" (the expected
+# case for a fresh install) from other kubectl errors (API server
+# unreachable, RBAC denial, context misconfigured). Treating all
+# non-zero exits as "proceed" would silently install the operator
+# stack when the lookup never actually succeeded against the
+# cluster, which is worse than aborting.
+MYSQL_STS_LOOKUP_STDERR=$(kubectl get statefulset/mysql-sts 2>&1 >/dev/null)
+MYSQL_STS_LOOKUP_RC=$?
+if [ "${MYSQL_STS_LOOKUP_RC}" -eq 0 ]; then
+    echo "ERROR: Existing 'mysql-sts' StatefulSet found — this layout uses the MariaDB Operator"
+    echo "       and cannot upgrade an existing hand-rolled cluster in place. See the README's"
+    echo "       'Upgrading an existing site' section for the dump+restore procedure. Aborting."
+    exit 1
+# Tighten the NotFound matcher: kubectl's canonical shape for a
+# missing StatefulSet is
+#   Error from server (NotFound): statefulsets.apps "mysql-sts" not found
+# A bare "not.found" grep would also match unrelated failures (e.g.
+# `error: exec plugin: ... not found` from a missing gke-gcloud-auth-plugin,
+# or any auth credential-plugin lookup). Require the resource name
+# to appear in the same line so we only enter the install path when
+# the error truly identifies mysql-sts as missing.
+elif ! echo "${MYSQL_STS_LOOKUP_STDERR}" | grep -qiE '(not.found|NotFound).*(statefulset|mysql-sts)|(statefulset|mysql-sts).*(not.found|NotFound)'; then
+    echo "ERROR: Pre-flight check failed — unable to query the cluster for an existing 'mysql-sts'"
+    echo "       StatefulSet. kubectl reported:"
+    echo "       ${MYSQL_STS_LOOKUP_STDERR}"
+    echo "       Resolve the API/RBAC/context issue and re-run kub-up. Aborting."
+    exit 1
+fi
+
 # bring in cert-manager and wait for its webhook to be ready
 # (the NFS mTLS layer below requires cert-manager up before certs can issue)
 #
@@ -43,13 +85,120 @@ kubectl wait --for=condition=Available --timeout=120s -n cert-manager deployment
 echo "...waiting 15 seconds for webhook to stabilize..."
 sleep 15
 
+# bring in trust-manager: cert-manager sibling that watches Bundle
+# resources and keeps target Secrets in sync when their source CAs
+# change. It builds the openemr-ca-bundle Secret (certs/ca-bundle.yaml)
+# every workload reads its trust anchors from, which is what lets
+# rotate-ca trust the old and new CA at the same time. Depends on
+# cert-manager being up (shares the cert-manager namespace + uses
+# cert-manager to issue the trust-manager webhook's own TLS). The
+# manifest is a vendored render of the upstream helm chart — see
+# kubernetes/trust-manager/manifests.yaml for provenance + regen
+# procedure. Same 5-attempt retry shape as cert-manager above.
+TRUST_MANAGER_MAX_ATTEMPTS=5
+TRUST_MANAGER_APPLIED=0
+attempt=1
+while [ "${attempt}" -le "${TRUST_MANAGER_MAX_ATTEMPTS}" ]; do
+    if kubectl apply --server-side=true --force-conflicts -f trust-manager/manifests.yaml; then
+        TRUST_MANAGER_APPLIED=1
+        break
+    fi
+    if [ "${attempt}" -lt "${TRUST_MANAGER_MAX_ATTEMPTS}" ]; then
+        backoff=$((attempt * 10))
+        echo "...trust-manager apply attempt ${attempt} failed; retrying in ${backoff}s..."
+        sleep "${backoff}"
+    fi
+    attempt=$((attempt + 1))
+done
+if [ "${TRUST_MANAGER_APPLIED}" -eq 0 ]; then
+    echo "ERROR: trust-manager apply failed after ${TRUST_MANAGER_MAX_ATTEMPTS} attempts."
+    exit 1
+fi
+echo "...waiting for trust-manager deployment to be ready..."
+kubectl wait --for=condition=Available --timeout=180s -n cert-manager deployment/trust-manager
+
+# bring in stakater/reloader: watches Secrets referenced by each cert-
+# consuming workload's "secret.reloader.stakater.com/reload" annotation
+# and rolls the workload when any listed Secret UPDATE event fires.
+# cert-manager's rotation path UPDATEs the tls.crt/tls.key payload on
+# the issued Secret ~30d before expiry (2160h / 90d total duration,
+# 720h renewBefore on every leaf Certificate under certs/*.yaml), so reloader
+# then rolls mysql/redis/sentinel/openemr/phpmyadmin/nfs-server/stunnel-
+# client as a cross-stack reload mechanism. See kubernetes/README.md
+# -> Certificate reload mechanism for the full flow.
+#
+# Same retry shape as cert-manager above — raw.githubusercontent.com
+# pulls occasionally 504 under load, and the manifest is idempotent.
+RELOADER_URL="https://raw.githubusercontent.com/stakater/Reloader/v1.4.23/deployments/kubernetes/reloader.yaml"
+RELOADER_MAX_ATTEMPTS=5
+RELOADER_APPLIED=0
+attempt=1
+while [ "${attempt}" -le "${RELOADER_MAX_ATTEMPTS}" ]; do
+    if kubectl apply -f "${RELOADER_URL}"; then
+        RELOADER_APPLIED=1
+        break
+    fi
+    if [ "${attempt}" -lt "${RELOADER_MAX_ATTEMPTS}" ]; then
+        backoff=$((attempt * 10))
+        echo "...reloader apply attempt ${attempt} failed; retrying in ${backoff}s..."
+        sleep "${backoff}"
+    fi
+    attempt=$((attempt + 1))
+done
+if [ "${RELOADER_APPLIED}" -eq 0 ]; then
+    echo "ERROR: reloader apply failed after ${RELOADER_MAX_ATTEMPTS} attempts."
+    echo "Check https://www.githubstatus.com and retry, or download the"
+    echo "manifest locally and re-point this script."
+    exit 1
+fi
+echo "...waiting for reloader deployment to be ready..."
+kubectl wait --for=condition=Available --timeout=120s deployment/reloader-reloader
+
+# bring in MariaDB Operator (mariadb-operator/mariadb-operator): manages
+# the mysql StatefulSet + Services + replication + automatic failover
+# declaratively via the MariaDB CRD. Replaces the hand-rolled mysql
+# topology (StatefulSet + headless primary-only Service) with a
+# properly HA one, so certificate rotation (and any other primary-pod
+# cutover) does not produce the ~10-30s read+write outage the hand-
+# rolled stack has. See kubernetes/README.md → Certificate reload
+# mechanism and kubernetes/mysql/mariadb.yaml for the specific
+# replication + semi-sync configuration.
+#
+# manifests.min.yaml bundles CRDs + operator Deployment + cert-controller
+# + webhook in a single apply. Same 5-attempt linear-backoff retry as
+# cert-manager / reloader above.
+MARIADB_OP_URL="https://github.com/mariadb-operator/mariadb-operator/releases/download/mariadb-operator-26.10.2/manifests.min.yaml"
+MARIADB_OP_MAX_ATTEMPTS=5
+MARIADB_OP_APPLIED=0
+attempt=1
+while [ "${attempt}" -le "${MARIADB_OP_MAX_ATTEMPTS}" ]; do
+    if kubectl apply --server-side=true --force-conflicts -f "${MARIADB_OP_URL}"; then
+        MARIADB_OP_APPLIED=1
+        break
+    fi
+    if [ "${attempt}" -lt "${MARIADB_OP_MAX_ATTEMPTS}" ]; then
+        backoff=$((attempt * 10))
+        echo "...MariaDB Operator apply attempt ${attempt} failed; retrying in ${backoff}s..."
+        sleep "${backoff}"
+    fi
+    attempt=$((attempt + 1))
+done
+if [ "${MARIADB_OP_APPLIED}" -eq 0 ]; then
+    echo "ERROR: MariaDB Operator apply failed after ${MARIADB_OP_MAX_ATTEMPTS} attempts."
+    echo "Check https://www.githubstatus.com and retry, or download the"
+    echo "manifest locally and re-point this script."
+    exit 1
+fi
+echo "...waiting for MariaDB Operator deployments to be ready..."
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator-cert-controller
+kubectl wait --for=condition=Available --timeout=180s deployment/mariadb-operator-webhook
+
 # issue all certs, including nfs-server/nfs-client used for the NFS mTLS tunnel
 kubectl apply \
     -f certs/selfsigned-issuer.yaml \
     -f certs/ca-certificate.yaml \
     -f certs/ca-issuer.yaml \
-    -f certs/mysql.yaml \
-    -f certs/mysql-replication.yaml \
     -f certs/mysql-openemr-client.yaml \
     -f certs/phpmyadmin.yaml \
     -f certs/mysql-phpmyadmin-client.yaml \
@@ -60,6 +209,21 @@ kubectl apply \
     -f certs/nfs-client.yaml
 echo "...waiting 15 seconds to ensure certs are created..."
 sleep 15
+
+# Trust bundle: trust-manager copies the CA into the openemr-ca-bundle
+# Secret, which every workload (and MariaDB) uses as its trust anchors.
+# It must exist before the workloads below mount it. See
+# certs/ca-bundle.yaml and kubernetes/README.md -> CA rotation.
+if ! kubectl apply -f certs/ca-bundle.yaml; then
+    echo "ERROR: could not apply certs/ca-bundle.yaml."
+    exit 1
+fi
+echo "...waiting for the trust bundle to be synced..."
+if ! kubectl wait --for=condition=Synced --timeout=180s bundle/openemr-ca-bundle; then
+    echo "ERROR: trust-manager did not sync the openemr-ca-bundle Secret; every workload needs it."
+    echo "Check: kubectl describe bundle openemr-ca-bundle; kubectl logs -n cert-manager deployment/trust-manager"
+    exit 1
+fi
 
 # install csi-driver-nfs (the StorageClass provisioner for the NFS backing).
 # Standard upstream manifests, pinned to v4.13.6.
@@ -103,11 +267,9 @@ kubectl rollout status deployment/nfs-server --timeout=180s
 kubectl rollout status daemonset/nfs-stunnel-client --timeout=180s
 
 kubectl apply \
-    -f mysql/configmap.yaml \
     -f mysql/secret.yaml \
     -f mysql/replication-secret.yaml \
-    -f mysql/service.yaml \
-    -f mysql/statefulset.yaml \
+    -f mysql/mariadb.yaml \
     -f redis/secret.yaml \
     -f redis/configmap-main.yaml \
     -f redis/configmap-acl.yaml \

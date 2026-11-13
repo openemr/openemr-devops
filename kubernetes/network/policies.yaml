@@ -25,7 +25,11 @@ spec:
     - port: 443
 ---
 # MySQL: allow ingress from OpenEMR and phpMyAdmin on 3306,
-# and from other MySQL pods for replication
+# from other MySQL pods for replication, and from MariaDB Operator
+# pods (operator + cert-controller + webhook) for status probes +
+# reconciliation (the operator calls mysql-primary for health
+# checks and runs SQL commands like CHANGE MASTER TO / promotion
+# queries during failover).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -37,6 +41,8 @@ spec:
   policyTypes:
   - Ingress
   ingress:
+  # mysqld (3306): openemr + phpmyadmin clients + replication between
+  # mysql peers + operator liveness/failover commands.
   - from:
     - podSelector:
         matchLabels:
@@ -47,8 +53,26 @@ spec:
     - podSelector:
         matchLabels:
           app: mysql
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: mariadb-operator
     ports:
     - port: 3306
+  # mariadb-agent (5555): per-pod sidecar the operator reaches over
+  # HTTP for lifecycle actions (promotion, semi-sync management,
+  # replication state introspection). Scoped to the operator only;
+  # no other peer should hit this port. CI happy path works without
+  # this rule today because the operator can fall back to direct
+  # mysqld commands over 3306 for the common operations the rotation
+  # test exercises — but denying 5555 silently loses agent-specific
+  # features (richer health probing, semi-sync escalation) that the
+  # operator uses on edge paths.
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: mariadb-operator
+    ports:
+    - port: 5555
 ---
 # Redis: allow ingress from OpenEMR on 6379,
 # from sentinel on 6379, and from other Redis pods for replication
@@ -134,3 +158,25 @@ spec:
   - ports:
     - port: 20490
       protocol: TCP
+---
+# MariaDB Operator admission webhook: the API server calls it on
+# every MariaDB CREATE/UPDATE (failurePolicy: Fail), so a re-run of
+# kub-up fails if this port is unreachable. Whether default-deny
+# applies to API-server traffic depends on the CNI, and the API
+# server's source address differs per distribution (host network on
+# kind, managed control plane on EKS/GKE/AKS), so there is no portable
+# peer selector; allow 9443 from any source. The webhook serves TLS
+# and only admits/validates objects, so this exposes no data path.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mariadb-operator-webhook-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mariadb-operator-webhook
+  policyTypes:
+  - Ingress
+  ingress:
+  - ports:
+    - port: 9443

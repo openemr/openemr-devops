@@ -1,0 +1,182 @@
+# MariaDB Operator-managed cluster. Replaces the hand-rolled
+# StatefulSet + headless primary-only Service topology with a
+# declarative HA cluster (replication + semi-sync + automatic
+# primary failover + operator-managed TLS via cert-manager).
+#
+# The operator generates three Services from this resource's name:
+#   - `mysql`           → all pods (both primary and replica)
+#   - `mysql-primary`   → primary pod only (writable endpoint)
+#   - `mysql-secondary` → replica pods only (read-only endpoint)
+# openemr + phpmyadmin connect to `mysql-primary` (see their
+# deployment env). The old hand-rolled `mysql` Service used a
+# `pod-name: mysql-sts-0` selector to pin traffic at the primary;
+# `mysql-primary` here replaces that but routes through the
+# operator's failover-aware controller — when the primary pod rolls
+# or fails, the operator promotes a replica and updates the
+# `mysql-primary` Service endpoints before the old primary's
+# deletion completes, so clients see a sub-second reconnect window
+# instead of the ~10-30s outage the hand-rolled stack produced.
+#
+# TLS: the operator issues its own server + internal-client certs
+# from the existing `ca-issuer` cert-manager Issuer (same trust
+# chain as the rest of the stack). openemr's and phpmyadmin's
+# client certs continue to come from the hand-rolled
+# `certs/mysql-openemr-client.yaml` / `certs/mysql-phpmyadmin-client.yaml`
+# Certificate resources — those are per-consumer client identity and
+# are not operator-managed.
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: mysql
+spec:
+  # Pin the server image (same version and digest the hand-rolled
+  # StatefulSet used). Without it the operator runs its own default
+  # (mariadb:12.3.3 for operator 26.10.2, a tag without a digest), and
+  # Dependabot, which watches this directory, would no longer track it.
+  image: mariadb:11.8.9@sha256:d36f18d65a0459510b8b0f643b226a6d299e3206486e2b64ff20754a6d291707
+
+  # Root password reused from the existing Secret (shape unchanged).
+  rootPasswordSecretKeyRef:
+    name: mysql-credentials
+    key: password
+
+  # Inject the `app: mysql` label onto the operator-generated pods so
+  # the existing `allow-mysql-ingress` NetworkPolicy (which matches on
+  # podSelector: matchLabels: app: mysql) continues to apply. Without
+  # this, the operator's own labels (app.kubernetes.io/name=mariadb,
+  # k8s.mariadb.com/mariadb=mysql, etc.) do not match the policy and
+  # default-deny-ingress blocks every peer from reaching mysql pods —
+  # observed as openemr init containers stuck in Init:0/2 forever.
+  podMetadata:
+    labels:
+      app: mysql
+
+  replicas: 2
+
+  storage:
+    size: 10Gi
+
+  # Replication + semi-sync + automatic primary failover.
+  # See discussion in kubernetes/README.md § Certificate reload mechanism.
+  replication:
+    enabled: true
+    primary:
+      podIndex: 0
+      # Operator promotes a replica on primary pod cutover. A planned
+      # switchover (cert-rotation roll, pod deletion) makes the old
+      # primary read-only first; if the old primary is unreachable
+      # (crash, network partition) nothing fences it. See README
+      # "MariaDB HA architecture details" -> Failover.
+      autoFailover: true
+      autoFailoverDelay: 0s
+    replica:
+      # Replication user password from the existing Secret.
+      replPasswordSecretKeyRef:
+        name: mysql-replication-credentials
+        key: password
+    # Enabled by default; explicit here so the durability contract
+    # is visible at the top of the file.
+    gtidStrictMode: true
+    semiSyncEnabled: true
+    # Primary blocks commit until replica has ACKed the binlog
+    # write, so transactions committed on the primary are durable
+    # at the replica too — no in-flight-transaction loss on failover.
+    # Trade: small write-latency penalty, ~RTT between primary and
+    # replica pods (intra-cluster, typically sub-ms).
+    semiSyncWaitPoint: AfterSync
+    semiSyncAckTimeout: 10s
+
+  # TLS via cert-manager. Operator creates its own Certificate
+  # resources (server + internal client) rooted at the existing
+  # ca-issuer. The resulting Secrets live inside the operator's
+  # lifecycle — cert rotation is handled by the operator's
+  # cert-controller, which rolls the StatefulSet pods with the
+  # same failover + fencing orchestration described above.
+  # Hence NO `secret.reloader.stakater.com/reload` annotation is
+  # needed on the generated StatefulSet; the operator owns the
+  # full reload path for mysql certs.
+  #
+  # CERT DURATION: operator 26.10.2's TLS CRD surface does not
+  # expose a duration override (no serverCertConfig / clientCertConfig
+  # fields — only Enabled/Required/CASecretRef/CertSecretRef/
+  # CertIssuerRef/GaleraSSTEnabled/CertAdditionalNames). The
+  # operator-created Certificate uses the operator's built-in
+  # default lifetime (2160h with ~712h renewBefore), not the
+  # explicit 2160h / 720h set on the certs/*.yaml leaf Certificates.
+  # The cadence is operator-controlled but comes out the same as the
+  # other leaf certs (about every 60 days). The rotation
+  # PATH is still identical and fully validated by CI (cmctl
+  # renew -> operator cert-controller sees UPDATE -> StatefulSet
+  # rolls with failover orchestration). Operators who want to pin
+  # the duration can switch to serverCertSecretRef with a
+  # pre-created Certificate they manage, at the cost of the
+  # operator's integrated issuance lifecycle.
+  tls:
+    enabled: true
+    # Reject plaintext connections for every account
+    # (require_secure_transport=ON). Without it only accounts created
+    # with REQUIRE SSL/X509 (openemr) need TLS; root and the operator's
+    # own accounts would also accept plaintext TCP. Local socket
+    # connections inside the pod are still allowed.
+    required: true
+    # Trust anchors come from the trust-manager Bundle target
+    # (certs/ca-bundle.yaml) rather than the ca.crt cert-manager puts in
+    # the operator's own cert Secrets. That lets a CA rotation make
+    # MariaDB trust the new CA before any certificate is signed with it.
+    # The operator adds these to its mysql-ca-bundle Secret and keeps
+    # every CA it has seen there until it expires, so removing the old
+    # CA means deleting mysql-ca-bundle (rotate-ca does this).
+    serverCASecretRef:
+      name: openemr-ca-bundle
+    clientCASecretRef:
+      name: openemr-ca-bundle
+    serverCertIssuerRef:
+      name: ca-issuer
+      kind: Issuer
+    clientCertIssuerRef:
+      name: ca-issuer
+      kind: Issuer
+
+  primaryService:
+    type: ClusterIP
+  secondaryService:
+    type: ClusterIP
+  service:
+    type: ClusterIP
+
+  resources:
+    requests:
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+---
+# The replication account ('repl'@'%') must present a client certificate.
+# The operator creates it (password only) and reconciles only its password
+# and grant, which leaves REQUIRE X509 in place; this User resource adds the
+# requirement, also on a fresh cluster. Replicas already connect with the
+# operator-issued client certificate and verify the primary's certificate.
+#
+# Root is deliberately not covered: the operator's in-pod agent (readiness
+# and liveness probes) logs in as root over TCP to localhost without a
+# client certificate, and with skip_name_resolve that matches 'root'@'%'.
+# Requiring X509 there makes every MariaDB pod fail its probes.
+# See kubernetes/README.md -> Security Architecture -> MariaDB connections.
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: User
+metadata:
+  name: mysql-repl
+spec:
+  mariaDbRef:
+    name: mysql
+  name: repl
+  host: "%"
+  passwordSecretKeyRef:
+    name: mysql-replication-credentials
+    key: password
+  require:
+    x509: true
+  # 0 = no limit (the operator's own repl account has none).
+  maxUserConnections: 0
+  # The operator owns this account; deleting this resource (kub-down) must
+  # not drop it.
+  cleanupPolicy: Skip

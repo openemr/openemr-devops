@@ -1,11 +1,13 @@
 @echo off
 
+REM Teardown counterpart to kub-up.bat. See kub-down for the full
+REM shape rationale.
+
 kubectl delete ^
+    -f certs/ca-bundle.yaml ^
     -f certs/selfsigned-issuer.yaml ^
     -f certs/ca-certificate.yaml ^
     -f certs/ca-issuer.yaml ^
-    -f certs/mysql.yaml ^
-    -f certs/mysql-replication.yaml ^
     -f certs/mysql-openemr-client.yaml ^
     -f certs/phpmyadmin.yaml ^
     -f certs/mysql-phpmyadmin-client.yaml ^
@@ -15,14 +17,29 @@ kubectl delete ^
     -f certs/nfs-server.yaml ^
     -f certs/nfs-client.yaml
 
+REM MariaDB resource first (operator cleans up StatefulSet + Services
+REM + its own cert-manager Certificates on resource deletion), then
+REM the credential Secrets, then the operator itself.
+kubectl delete ^
+    -f mysql/mariadb.yaml ^
+    -f mysql/secret.yaml ^
+    -f mysql/replication-secret.yaml
+
+kubectl delete -f https://github.com/mariadb-operator/mariadb-operator/releases/download/mariadb-operator-26.10.2/manifests.min.yaml
+
+REM stakater/reloader (installed by kub-up.bat).
+kubectl delete -f https://raw.githubusercontent.com/stakater/Reloader/v1.4.23/deployments/kubernetes/reloader.yaml
+
+REM trust-manager (installed by kub-up.bat from vendored manifest).
+REM Deleted BEFORE cert-manager — its webhook depends on a
+REM cert-manager Certificate; deleting cert-manager first wedges
+REM Bundle finalizers.
+kubectl delete -f trust-manager/manifests.yaml
+
+REM cert-manager (installed by kub-up.bat).
 kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 kubectl delete ^
-    -f mysql/configmap.yaml ^
-    -f mysql/secret.yaml ^
-    -f mysql/replication-secret.yaml ^
-    -f mysql/service.yaml ^
-    -f mysql/statefulset.yaml ^
     -f redis/secret.yaml ^
     -f redis/configmap-main.yaml ^
     -f redis/configmap-acl.yaml ^

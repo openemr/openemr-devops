@@ -1,0 +1,318 @@
+#!/usr/bin/env bash
+# The query helpers are used as conditions on purpose; callers handle a
+# false result by retrying or failing with a message.
+# shellcheck disable=SC2310
+#
+# Rotate the stack's CA (new CA key) without an outage.
+#
+# Every workload and MariaDB reads its trust anchors from the
+# openemr-ca-bundle Secret, which trust-manager builds from the Bundle in
+# certs/ca-bundle.yaml. The rotation trusts the new CA everywhere before
+# anything is signed with it, re-issues every leaf, then drops the old CA:
+#
+#   1. Copy the current CA into the ca-key-pair-previous Secret and point
+#      the ca-issuer Issuer at that copy, so leaves keep being signed by
+#      the old CA for now.
+#   2. Add the copy to the Bundle as a second source (no content change).
+#   3. Re-issue ca-certificate with a new key. The bundle now holds the
+#      old and the new CA; reloader restarts every workload and the
+#      MariaDB Operator rolls MariaDB, so everything trusts both.
+#   4. Point ca-issuer back at ca-key-pair (the new CA) and re-issue every
+#      leaf certificate, one at a time, waiting for each restart.
+#   5. Remove the old CA from the Bundle and delete the operator's
+#      mysql-ca-bundle Secret (the operator keeps every CA it has seen
+#      there until it expires; it rebuilds the Secret from the current
+#      bundle). Everything restarts again and trusts only the new CA.
+#   6. Delete ca-key-pair-previous.
+#
+# The cluster ends in the state the checked-in manifests describe
+# (ca-issuer -> ca-key-pair, one Bundle source), so re-running kub-up
+# afterwards is safe. Do NOT run kub-up while this script is running: it
+# re-applies ca-issuer and the Bundle and would undo steps 1-2.
+#
+# If the script stops part way, do not re-run it: it refuses to start
+# while ca-key-pair-previous exists. Read the last step it printed and
+# see kubernetes/README.md -> CA rotation -> If rotate-ca stops part way.
+#
+# Usage: rotate-ca [--timeout SECONDS]   (per wait, default 900)
+#
+# Requires kubectl, cmctl and openssl on the PATH, and a kubectl context
+# pointing at the stack's namespace.
+
+set -euo pipefail
+
+TIMEOUT=900
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --timeout) TIMEOUT=$2; shift 2 ;;
+        *) sed -n '/^# Usage:/,/^# Requires/p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+    esac
+done
+
+BUNDLE=openemr-ca-bundle
+CA_CERT=ca-certificate
+CA_SECRET=ca-key-pair
+PREV_SECRET=ca-key-pair-previous
+ISSUER=ca-issuer
+TMP=$(mktemp -d)
+trap 'rm -rf "${TMP}"' EXIT
+
+STEP=""
+step() { STEP=$1; echo; echo "== [rotate-ca] ${STEP}"; }
+log() { echo "[rotate-ca] $*"; }
+fail() {
+    echo "[rotate-ca] FAIL during '${STEP}': $*" >&2
+    echo "[rotate-ca] See kubernetes/README.md -> CA rotation -> If rotate-ca stops part way." >&2
+    exit 1
+}
+
+for bin in kubectl cmctl openssl; do
+    command -v "${bin}" >/dev/null || fail "${bin} is not on the PATH"
+done
+
+fingerprint() { openssl x509 -noout -fingerprint -sha256 | cut -d= -f2; }
+secret_field() {
+    local key=${2//./\\.}
+    kubectl get secret "$1" -o jsonpath="{.data.${key}}" | base64 -d
+}
+# Number of certificates in a PEM bundle on stdin.
+cert_count() { grep -c 'BEGIN CERTIFICATE' || true; }
+# SHA-256 fingerprints of every certificate in a PEM bundle on stdin.
+bundle_fps() {
+    awk '/BEGIN CERTIFICATE/ { n++ } { print > ("'"${TMP}"'/split." n) }'
+    local f
+    for f in "${TMP}"/split.*; do fingerprint < "${f}"; done
+    rm -f "${TMP}"/split.*
+}
+# Point ca-issuer at a Secret and wait until cert-manager has observed
+# that change (a Ready condition from before the patch does not count).
+point_issuer_at() {
+    local gen observed deadline=$(( SECONDS + TIMEOUT ))
+    gen=$(kubectl patch issuer "${ISSUER}" --type merge -o jsonpath='{.metadata.generation}' \
+        -p "{\"spec\":{\"ca\":{\"secretName\":\"$1\"}}}") || fail "could not patch Issuer ${ISSUER}"
+    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+        observed=$(kubectl get issuer "${ISSUER}" \
+            -o jsonpath='{.status.conditions[?(@.type=="Ready")].observedGeneration} {.status.conditions[?(@.type=="Ready")].status}')
+        [[ "${observed}" = "${gen} True" ]] && return 0
+        sleep 2
+    done
+    fail "Issuer ${ISSUER} did not become Ready on $1 (generation ${gen})"
+}
+wait_bundle_synced() {
+    kubectl wait --for=condition=Synced "bundle/${BUNDLE}" --timeout="${TIMEOUT}s" >/dev/null \
+        || fail "Bundle ${BUNDLE} did not sync"
+}
+# Wait until the openemr-ca-bundle Secret holds exactly the given
+# fingerprints (one per argument, any order).
+wait_bundle_content() {
+    local want got deadline=$(( SECONDS + TIMEOUT ))
+    want=$(printf '%s\n' "$@" | sort)
+    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+        got=$(secret_field "${BUNDLE}" ca.crt 2>/dev/null | bundle_fps | sort || true)
+        [[ "${got}" = "${want}" ]] && return 0
+        sleep 2
+    done
+    fail "Secret ${BUNDLE} holds [${got//$'\n'/ }], expected [${want//$'\n'/ }]"
+}
+
+# ---------------------------------------------------------------------------
+# Workloads that use the bundle: the ones whose reloader annotation lists
+# it, plus the MariaDB StatefulSet (rolled by the MariaDB Operator).
+# ---------------------------------------------------------------------------
+MARIADB=$(kubectl get mariadb -o jsonpath='{.items[0].metadata.name}')
+[[ -n "${MARIADB}" ]] || fail "no MariaDB resource found"
+RELOAD_ANNOTATION="{.metadata.annotations['secret\.reloader\.stakater\.com/reload']}"
+annotated=$(kubectl get deployments,daemonsets,statefulsets \
+    -o jsonpath="{range .items[*]}{.kind}/{.metadata.name}{'\t'}${RELOAD_ANNOTATION}{'\n'}{end}")
+users_of_bundle=$(awk -F'\t' -v b="${BUNDLE}" \
+    '{ n = split($2, s, ","); for (i = 1; i <= n; i++) if (s[i] == b) print tolower($1) }' <<< "${annotated}")
+mapfile -t WORKLOADS <<< "${users_of_bundle}"
+[[ -n "${users_of_bundle}" ]] || fail "no workload lists ${BUNDLE} in its reloader annotation"
+WORKLOADS+=("statefulset/${MARIADB}")
+
+selector() {
+    local sel
+    # shellcheck disable=SC2016  # a Go template, not shell expansion
+    sel=$(kubectl get "$1" -o go-template='{{range $k,$v := .spec.selector.matchLabels}}{{$k}}={{$v}},{{end}}')
+    printf '%s\n' "${sel%,}"
+}
+desired() {
+    case "$1" in
+        daemonset/*) kubectl get "$1" -o jsonpath='{.status.desiredNumberScheduled}' ;;
+        *) kubectl get "$1" -o jsonpath='{.spec.replicas}' ;;
+    esac
+}
+pod_uids() {
+    local w sel
+    for w in "$@"; do
+        sel=$(selector "${w}")
+        kubectl get pods -l "${sel}" -o jsonpath='{range .items[*]}{.metadata.uid}{"\n"}{end}'
+    done
+}
+# True when every pod of the workload was created after the snapshot in
+# file $2 and the expected number of them is Ready.
+replaced_and_ready() {
+    local w=$1 old=$2 want sel pods uid ready deleting total=0
+    want=$(desired "${w}")
+    sel=$(selector "${w}")
+    pods=$(kubectl get pods -l "${sel}" \
+        -o jsonpath='{range .items[*]}{.metadata.uid} {.status.conditions[?(@.type=="Ready")].status} {.metadata.deletionTimestamp}{"\n"}{end}')
+    while read -r uid ready deleting; do
+        [[ -n "${uid}" ]] || continue
+        [[ -z "${deleting}" ]] || return 1
+        grep -qx "${uid}" "${old}" && return 1
+        [[ "${ready}" = "True" ]] || return 1
+        total=$((total + 1))
+    done <<< "${pods}"
+    [[ "${total}" -eq "${want}" ]]
+}
+# Wait until every pod of the given workloads has been replaced since the
+# snapshot in file $1 and is Ready, then until MariaDB reports Ready.
+wait_restarted() {
+    local old=$1 w pending deadline=$(( SECONDS + TIMEOUT ))
+    shift
+    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+        pending=""
+        for w in "$@"; do
+            replaced_and_ready "${w}" "${old}" || pending="${pending} ${w}"
+        done
+        if [[ -z "${pending}" ]]; then
+            kubectl wait --for=condition=Ready "mariadb/${MARIADB}" --timeout="${TIMEOUT}s" >/dev/null \
+                || fail "mariadb/${MARIADB} is not Ready"
+            log "restarted:$(printf ' %s' "$@")"
+            return 0
+        fi
+        sleep 3
+    done
+    fail "not restarted within ${TIMEOUT}s:${pending}"
+}
+
+# ---------------------------------------------------------------------------
+# Preconditions.
+# ---------------------------------------------------------------------------
+step "check preconditions"
+if kubectl get secret "${PREV_SECRET}" >/dev/null 2>&1; then
+    fail "Secret ${PREV_SECRET} exists: a previous rotation did not finish"
+fi
+issuer_secret=$(kubectl get issuer "${ISSUER}" -o jsonpath='{.spec.ca.secretName}')
+[[ "${issuer_secret}" = "${CA_SECRET}" ]] || fail "Issuer ${ISSUER} does not use ${CA_SECRET}"
+sources=$(kubectl get bundle "${BUNDLE}" -o jsonpath='{range .spec.sources[*]}{.secret.name}{" "}{end}')
+[[ "${sources}" = "${CA_SECRET} " ]] \
+    || fail "Bundle ${BUNDLE} must have exactly one source, Secret ${CA_SECRET}"
+OLD_FP=$(secret_field "${CA_SECRET}" tls.crt | fingerprint)
+wait_bundle_content "${OLD_FP}"
+log "current CA ${OLD_FP}"
+log "workloads: ${WORKLOADS[*]}"
+for w in "${WORKLOADS[@]}"; do
+    # The operator updates MariaDB pods itself (OnDelete); its Ready
+    # condition below covers it.
+    [[ "${w}" = "statefulset/${MARIADB}" ]] && continue
+    kubectl rollout status "${w}" --timeout="${TIMEOUT}s" >/dev/null || fail "${w} is not rolled out"
+done
+kubectl wait --for=condition=Ready "mariadb/${MARIADB}" --timeout="${TIMEOUT}s" >/dev/null \
+    || fail "mariadb/${MARIADB} is not Ready"
+leaves=$(kubectl get certificates \
+    -o jsonpath='{range .items[?(@.spec.issuerRef.name=="ca-issuer")]}{.metadata.name}{"\n"}{end}')
+mapfile -t LEAVES <<< "${leaves}"
+[[ -n "${leaves}" ]] || LEAVES=()
+[[ "${#LEAVES[@]}" -gt 0 ]] || fail "no Certificates use ${ISSUER}"
+log "leaf certificates: ${LEAVES[*]}"
+
+# ---------------------------------------------------------------------------
+step "1/6 copy the current CA to ${PREV_SECRET}; sign with the copy"
+secret_field "${CA_SECRET}" tls.crt > "${TMP}/old-ca.crt"
+secret_field "${CA_SECRET}" tls.key > "${TMP}/old-ca.key"
+kubectl create secret tls "${PREV_SECRET}" --cert="${TMP}/old-ca.crt" --key="${TMP}/old-ca.key"
+rm -f "${TMP}/old-ca.key"
+point_issuer_at "${PREV_SECRET}"
+
+# ---------------------------------------------------------------------------
+step "2/6 add ${PREV_SECRET} to the Bundle"
+kubectl patch bundle "${BUNDLE}" --type merge -p "{\"spec\":{\"sources\":[
+    {\"secret\":{\"name\":\"${CA_SECRET}\",\"key\":\"ca.crt\"}},
+    {\"secret\":{\"name\":\"${PREV_SECRET}\",\"key\":\"tls.crt\"}}]}}"
+wait_bundle_synced
+wait_bundle_content "${OLD_FP}"
+
+# ---------------------------------------------------------------------------
+step "3/6 re-issue ${CA_CERT} with a new key; wait for everything to trust both CAs"
+pod_uids "${WORKLOADS[@]}" > "${TMP}/uids"
+kubectl patch certificate "${CA_CERT}" --type merge -p '{"spec":{"privateKey":{"rotationPolicy":"Always"}}}'
+cmctl renew "${CA_CERT}"
+NEW_FP=""
+deadline=$(( SECONDS + TIMEOUT ))
+while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+    cur=$(secret_field "${CA_SECRET}" tls.crt 2>/dev/null | fingerprint || true)
+    if [[ -n "${cur}" ]] && [[ "${cur}" != "${OLD_FP}" ]]; then NEW_FP=${cur}; break; fi
+    sleep 2
+done
+kubectl patch certificate "${CA_CERT}" --type merge -p '{"spec":{"privateKey":{"rotationPolicy":"Never"}}}'
+[[ -n "${NEW_FP}" ]] || fail "${CA_SECRET} was not re-issued within ${TIMEOUT}s (the CA key has not changed)"
+secret_field "${CA_SECRET}" tls.crt > "${TMP}/new-ca.crt"
+old_pub=$(openssl x509 -noout -pubkey < "${TMP}/old-ca.crt")
+new_pub=$(openssl x509 -noout -pubkey < "${TMP}/new-ca.crt")
+[[ "${new_pub}" != "${old_pub}" ]] || fail "the re-issued CA kept the old key"
+log "new CA ${NEW_FP}"
+wait_bundle_content "${OLD_FP}" "${NEW_FP}"
+wait_restarted "${TMP}/uids" "${WORKLOADS[@]}"
+secret_field "${MARIADB}-ca-bundle" ca.crt > "${TMP}/mariadb-bundle.crt"
+mariadb_fps=$(bundle_fps < "${TMP}/mariadb-bundle.crt")
+if ! grep -qx "${OLD_FP}" <<< "${mariadb_fps}" || ! grep -qx "${NEW_FP}" <<< "${mariadb_fps}"; then
+    fail "${MARIADB}-ca-bundle does not hold both CAs"
+fi
+log "every workload and MariaDB trusts both CAs"
+
+# ---------------------------------------------------------------------------
+step "4/6 sign with the new CA; re-issue every leaf"
+point_issuer_at "${CA_SECRET}"
+for c in "${LEAVES[@]}"; do
+    secret=$(kubectl get certificate "${c}" -o jsonpath='{.spec.secretName}')
+    # Workloads that reload on this Secret; MariaDB's own certificates are
+    # listed by no workload and roll the MariaDB StatefulSet.
+    users=()
+    for w in "${WORKLOADS[@]}"; do
+        reload=$(kubectl get "${w}" -o jsonpath="${RELOAD_ANNOTATION}")
+        [[ ",${reload}," = *",${secret},"* ]] && users+=("${w}")
+    done
+    [[ "${#users[@]}" -gt 0 ]] || users=("statefulset/${MARIADB}")
+    pod_uids "${users[@]}" > "${TMP}/uids"
+    before=$(secret_field "${secret}" tls.crt | fingerprint)
+    cmctl renew "${c}"
+    reissued=0
+    deadline=$(( SECONDS + TIMEOUT ))
+    while [[ "${SECONDS}" -lt "${deadline}" ]]; do
+        secret_field "${secret}" tls.crt > "${TMP}/leaf.crt" 2>/dev/null || true
+        cur=$(fingerprint < "${TMP}/leaf.crt" 2>/dev/null || true)
+        if [[ -n "${cur}" ]] && [[ "${cur}" != "${before}" ]] \
+            && openssl verify -CAfile "${TMP}/new-ca.crt" "${TMP}/leaf.crt" >/dev/null 2>&1; then
+            reissued=1
+            break
+        fi
+        sleep 2
+    done
+    [[ "${reissued}" = 1 ]] || fail "${c} was not re-issued by the new CA within ${TIMEOUT}s"
+    log "${c} re-issued by the new CA; waiting for ${users[*]}"
+    wait_restarted "${TMP}/uids" "${users[@]}"
+done
+
+# ---------------------------------------------------------------------------
+step "5/6 remove the old CA from the Bundle and from MariaDB"
+pod_uids "${WORKLOADS[@]}" > "${TMP}/uids"
+kubectl patch bundle "${BUNDLE}" --type merge -p "{\"spec\":{\"sources\":[
+    {\"secret\":{\"name\":\"${CA_SECRET}\",\"key\":\"ca.crt\"}}]}}"
+wait_bundle_synced
+wait_bundle_content "${NEW_FP}"
+kubectl delete secret "${MARIADB}-ca-bundle"
+wait_restarted "${TMP}/uids" "${WORKLOADS[@]}"
+secret_field "${MARIADB}-ca-bundle" ca.crt > "${TMP}/mariadb-bundle.crt"
+mariadb_fps=$(bundle_fps < "${TMP}/mariadb-bundle.crt")
+[[ "${mariadb_fps}" = "${NEW_FP}" ]] \
+    || fail "${MARIADB}-ca-bundle still holds more than the new CA"
+log "every workload and MariaDB trusts only the new CA"
+
+# ---------------------------------------------------------------------------
+step "6/6 delete ${PREV_SECRET}"
+kubectl delete secret "${PREV_SECRET}"
+
+echo
+log "DONE: CA rotated ${OLD_FP} -> ${NEW_FP}"

@@ -1,0 +1,260 @@
+name: Kubernetes certificate rotation
+
+# Two jobs, each on its own kind cluster:
+#
+# cert-rotation: force-renews every reloader-managed leaf Certificate in
+# the default kubernetes/ stack, one at a time, and checks the full
+# reload path for each: Secret re-issued, consuming workload recreated,
+# running server presents the new certificate, and the data plane
+# (OpenEMR HTTPS, MariaDB over mTLS, NFS-backed sites volume) stays within
+# its budget. The operator-managed MariaDB server certificate is covered
+# by test-kubernetes.yml. See tests/kubernetes/rotate-leaf.sh.
+#
+# ca-rotation: rotates the CA key with kubernetes/rotate-ca and checks
+# that every trust anchor and leaf moved to the new CA, that Redis and
+# MariaDB reject a client certificate signed by the old CA, and that the
+# data plane stayed within budget. See tests/kubernetes/rotate-ca-test.sh.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/test-kubernetes-cert-rotation.yml'
+      - '.github/actions/kubernetes-stack-up/**'
+      - 'kubernetes/**'
+      - 'tests/kubernetes/**'
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/test-kubernetes-cert-rotation.yml'
+      - '.github/actions/kubernetes-stack-up/**'
+      - 'kubernetes/**'
+      - 'tests/kubernetes/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cert-rotation:
+    name: Kubernetes per-certificate rotation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      OPENEMR_CERTS: /var/www/localhost/htdocs/openemr/sites/default/documents/certificates
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Bring up OpenEMR default stack
+        uses: ./.github/actions/kubernetes-stack-up
+
+      - name: Make room for the openemr surge pod
+        # openemr requests 1 CPU per pod (requests default to the 1000m
+        # limit) and its RollingUpdate surges one extra pod. On the 4-vCPU
+        # runner the rest of the stack plus 2 replicas leaves no room for
+        # the surge pod (FailedScheduling: Insufficient cpu), so a roll
+        # never completes. Lower the request for this test only; the limit
+        # and replica count stay as shipped.
+        run: |
+          kubectl set resources deployment/openemr -c openemr --requests=cpu=250m
+          kubectl rollout status deployment/openemr --timeout=1200s
+
+      - name: Install cmctl (cert-manager CLI)
+        run: |
+          sudo curl -fL -o /usr/local/bin/cmctl \
+            https://github.com/cert-manager/cmctl/releases/download/v2.6.2/cmctl_linux_amd64
+          sudo chmod +x /usr/local/bin/cmctl
+          cmctl version --client
+          echo "ROTATION_WORKDIR=${RUNNER_TEMP}/cert-rotation" >> "${GITHUB_ENV}"
+
+      # Outage budgets (--max-gap, longest gap between successful probe
+      # samples) are about 2-3x what a local kind run measured, to absorb
+      # slower CI runners. Default 6s means no visible outage. Measured
+      # locally on 2026-11-12: openemr/phpmyadmin certs 2-3s, sentinel 2s,
+      # nfs-client 5s, redis 6-9s, nfs-server 22-24s.
+
+      - name: phpmyadmin server certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh phpmyadmin deployment/phpmyadmin \
+            --served-in-pod 443 --pod-file /certs/tls.crt
+
+      - name: phpmyadmin -> MariaDB client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh mysql-phpmyadmin-client deployment/phpmyadmin \
+            --pod-file /etc/mysql/tls.crt
+          # Real mTLS connection with the renewed client certificate. The
+          # openemr account is REQUIRE X509, so MariaDB rejects the login
+          # unless it accepts the certificate.
+          # shellcheck disable=SC2016 # PHP code, expanded by php, not the shell
+          kubectl exec deployment/phpmyadmin -- timeout 10 php -r '
+            $m = mysqli_init();
+            mysqli_ssl_set($m, "/etc/mysql/tls.key", "/etc/mysql/tls.crt", "/etc/mysql/ca.pem", null, null);
+            $m->real_connect("mysql-primary", "openemr", "openemr", "openemr", 3306, null, MYSQLI_CLIENT_SSL);
+            echo "phpmyadmin -> MariaDB mTLS connection OK\n";'
+
+      - name: openemr -> Redis client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh redis-openemr-client deployment/openemr \
+            --pod-file /redis-certs/redis-master-cert \
+            --pod-file /redis-certs/redis-sentinel-cert
+
+      - name: openemr -> MariaDB client certificate
+        # Also checks the copy OpenEMR keeps in its sites volume, which is
+        # the file it actually connects with (refreshed on boot since
+        # openemr/openemr#15238).
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh mysql-openemr-client deployment/openemr \
+            --pod-file /root/certs/mysql/server/mysql-cert \
+            --openemr-file "${OPENEMR_CERTS}/mysql-cert"
+
+      - name: Redis server certificate
+        # Rolling the Redis StatefulSet restarts the master; OpenEMR
+        # requests stall until Sentinel promotes a replica (5s detection
+        # + election).
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh redis statefulset/redis --max-gap 30 \
+            --served-via-openemr redis-0.redis:6379 \
+            --served-via-openemr redis-1.redis:6379 \
+            --served-via-openemr redis-2.redis:6379 \
+            --served-client-cert /redis-certs/redis-master-cert /redis-certs/redis-master-key /redis-certs/redis-master-ca
+
+      - name: Sentinel server certificate
+        # Runs after the Redis rotation on purpose: Sentinel restarts must
+        # keep a working election (stable myid) so a later failover works.
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh sentinel statefulset/sentinel --max-gap 10 \
+            --served-via-openemr sentinel-0.sentinel:26379 \
+            --served-via-openemr sentinel-1.sentinel:26379 \
+            --served-via-openemr sentinel-2.sentinel:26379 \
+            --served-client-cert /redis-certs/redis-sentinel-cert /redis-certs/redis-sentinel-key /redis-certs/redis-sentinel-ca
+
+      - name: Redis failover after the Redis and Sentinel rotations
+        # Both rotations restart every pod; this proves Sentinel can still
+        # elect a new master and the old master rejoins as a replica.
+        run: bash tests/kubernetes/redis-failover.sh
+
+      - name: Redis master and every Sentinel restarted together
+        # What a trust-bundle change does (it restarts every workload at
+        # once). The new Sentinels must find the master from the Redis
+        # pods; with only a replica's stale master_host to go on they used
+        # to monitor the dead master and never fail over.
+        run: bash tests/kubernetes/redis-failover.sh --with-sentinels
+
+      - name: NFS stunnel client certificate
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh nfs-client daemonset/nfs-stunnel-client --max-gap 15 \
+            --pod-file /etc/stunnel/certs/tls.crt
+
+      - name: NFS server certificate
+        # Single-replica nfs-server with strategy Recreate: NFS I/O pauses
+        # while the pod restarts (accepted; see the README's cloud-managed
+        # NFS section for HA storage).
+        run: |
+          bash tests/kubernetes/rotate-leaf.sh nfs-server deployment/nfs-server --max-gap 60 \
+            --served-via-openemr nfs-server:20490
+
+      - name: Probe logs
+        if: always()
+        run: |
+          for f in "${ROTATION_WORKDIR}"/*/*.log; do
+            [[ -f "${f}" ]] || continue
+            echo "=== ${f#"${ROTATION_WORKDIR}"/}"
+            cat "${f}"
+          done
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== MariaDB ==="
+          kubectl get mariadb mysql -o jsonpath='{.status}' || true
+          echo
+          for p in $(kubectl get pod -l app=mysql -o name); do
+            for c in mariadb agent; do
+              echo "--- ${p} ${c}"
+              kubectl logs "${p}" -c "${c}" --tail=60 || true
+              echo "--- ${p} ${c} (previous)"
+              kubectl logs "${p}" -c "${c}" --previous --tail=60 2>/dev/null || true
+            done
+          done
+          kubectl get pods -o wide
+          kubectl get certificates
+          kubectl get events --sort-by='.lastTimestamp' | tail -40
+          kubectl logs deployment/reloader-reloader --tail=60 || true
+
+      - name: Cleanup
+        if: always()
+        working-directory: kubernetes
+        run: |
+          bash kub-down 2>/dev/null || true
+          kind delete cluster 2>/dev/null || true
+
+  ca-rotation:
+    name: Kubernetes CA rotation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Bring up OpenEMR default stack
+        uses: ./.github/actions/kubernetes-stack-up
+
+      - name: Make room for the openemr surge pod
+        # Same reason as in the cert-rotation job above.
+        run: |
+          kubectl set resources deployment/openemr -c openemr --requests=cpu=250m
+          kubectl rollout status deployment/openemr --timeout=1200s
+
+      - name: Install cmctl (cert-manager CLI)
+        run: |
+          sudo curl -fL -o /usr/local/bin/cmctl \
+            https://github.com/cert-manager/cmctl/releases/download/v2.6.2/cmctl_linux_amd64
+          sudo chmod +x /usr/local/bin/cmctl
+          cmctl version --client
+          echo "ROTATION_WORKDIR=${RUNNER_TEMP}/ca-rotation" >> "${GITHUB_ENV}"
+
+      - name: Rotate the CA key
+        # Steps 3 and 5 of rotate-ca restart every workload at once, and
+        # step 4 renews the nfs-server and Redis leaves; same 60s budget as
+        # the nfs-server leaf. Measured locally on 2026-11-12: 538-549s total,
+        # longest gap 16-19s (http, mysql, nfs).
+        run: bash tests/kubernetes/rotate-ca-test.sh --max-gap 60
+
+      - name: Redis failover after the CA rotation
+        run: bash tests/kubernetes/redis-failover.sh
+
+      - name: Probe logs
+        if: always()
+        run: |
+          for f in "${ROTATION_WORKDIR}"/*/*.log; do
+            [[ -f "${f}" ]] || continue
+            echo "=== ${f#"${ROTATION_WORKDIR}"/}"
+            cat "${f}"
+          done
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== MariaDB ==="
+          kubectl get mariadb mysql -o jsonpath='{.status}' || true
+          echo
+          for p in $(kubectl get pod -l app=mysql -o name); do
+            for c in mariadb agent; do
+              echo "--- ${p} ${c}"
+              kubectl logs "${p}" -c "${c}" --tail=60 || true
+              echo "--- ${p} ${c} (previous)"
+              kubectl logs "${p}" -c "${c}" --previous --tail=60 2>/dev/null || true
+            done
+          done
+          kubectl get pods -o wide
+          kubectl get certificates
+          kubectl get bundle openemr-ca-bundle -o yaml || true
+          kubectl get events --sort-by='.lastTimestamp' | tail -40
+          kubectl logs deployment/reloader-reloader --tail=60 || true
+          kubectl logs -n cert-manager deployment/trust-manager --tail=60 || true
+
+      - name: Cleanup
+        if: always()
+        working-directory: kubernetes
+        run: |
+          bash kub-down 2>/dev/null || true
+          kind delete cluster 2>/dev/null || true

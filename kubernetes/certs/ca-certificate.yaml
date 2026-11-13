@@ -5,7 +5,9 @@ metadata:
 spec:
   secretName: ca-key-pair
   duration: 87660h # 10y
-  renewBefore: 360h # 15d
+  # Longer than the 90d leaf lifetime, so every leaf signed by the old CA
+  # expires before the old CA does.
+  renewBefore: 2880h # 120d
   subject:
     organizations:
       - OpenEMR admin
@@ -15,6 +17,11 @@ spec:
     size: 2048
     algorithm: RSA
     encoding: PKCS1
+    # Keep the CA key on automatic renewal so existing leaves stay trusted.
+    # Rotating the CA key is a deliberate operator action (kubernetes/
+    # rotate-ca; README: "CA rotation"); the default (Always) would
+    # replace the key on every renewal and break trust mid-cycle.
+    rotationPolicy: Never
   usages:
     - digital signature
     - key encipherment

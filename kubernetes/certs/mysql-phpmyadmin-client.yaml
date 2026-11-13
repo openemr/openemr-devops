@@ -4,8 +4,8 @@ metadata:
   name: mysql-phpmyadmin-client
 spec:
   secretName: mysql-phpmyadmin-client-certs
-  duration: 87660h # 10y
-  renewBefore: 360h # 15d
+  duration: 2160h # 90d
+  renewBefore: 720h # 30d
   isCA: false
   privateKey:
     size: 2048
