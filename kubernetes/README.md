@@ -218,7 +218,7 @@ The OpenEMR pods share three RWX volumes used across pods and nodes: `websitevol
 
 - **`nfs-server` Deployment** — nfs-ganesha serving on `127.0.0.1:2049`, with a stunnel sidecar on `0.0.0.0:20490` that terminates mTLS and forwards to the local nfs-ganesha. Backed by a `nfs-server-data` PVC (ReadWriteOnce) — all three RWX volumes consumed by openemr/phpmyadmin are subdirs of this one backing PV.
 - **`nfs-stunnel-client` DaemonSet** — one pod per node running `hostNetwork: true`, listening on `127.0.0.1:12049` and forwarding mTLS to `nfs-server:20490`. The non-standard port 12049 (not 2049) avoids collision with any kernel NFS server a node might already run.
-- **StorageClass `nfs`** — provisioner `nfs.csi.k8s.io`, parameters `server: 127.0.0.1, share: /nfsshare`, mountOptions `nfsvers=4.0, port=12049, noac, actimeo=0`. kubelet's NFS mount lands on each node's local stunnel-client, so all traffic between the kubelet and the NFS server is wrapped.
+- **StorageClass `nfs`** — provisioner `nfs.csi.k8s.io`, parameters `server: 127.0.0.1, share: /nfsshare`, mountOptions `nfsvers=4.0, port=12049, actimeo=3, lookupcache=positive`. kubelet's NFS mount lands on each node's local stunnel-client, so all traffic between the kubelet and the NFS server is wrapped. The 3 s attribute cache is a performance setting (see **NFS attribute caching** below).
 
 Both stunnels present cert-manager-issued certificates (`certs/nfs-server.yaml`, `certs/nfs-client.yaml`) rooted at the same ca-issuer the rest of the stack uses, with mutual verification on both sides: `verifyChain = yes` enforces chain-of-trust, `checkHost = nfs-client` on the server pins the acceptable peer identity to the stunnel-client's cert CN (so a compromised mysql/redis/phpmyadmin pod with its own ca-issuer-signed cert cannot bypass auth), and `checkHost = nfs-server` on the client pins the server identity symmetrically. Same three properties as MariaDB and Redis above: encrypted wire, mutual authentication, cert-manager rotation.
 
@@ -646,7 +646,7 @@ This stack does not support in-place upgrades for the Kubernetes side — the st
    kubectl exec -i $(kubectl get pod -l name=openemr -o jsonpath='{.items[0].metadata.name}') -- tar xpf - -C /etc/letsencrypt < volume-backups/letsencryptvolume.tar
    ```
 
-   The kubelet routes writes through the mount transparently into the newly-provisioned CSI directory. (Advanced: pre-create static PVs with `persistentVolume.spec.nfs.path` pointing at the pre-existing backup directories and bind the PVCs to those, which skips the auto-provision step entirely. A static PV does *not* inherit the StorageClass's `mountOptions`, so each one must set `spec.nfs.server: 127.0.0.1` and `spec.mountOptions: [nfsvers=4.0, port=12049, noac, actimeo=0]` explicitly — otherwise the mount fails.)
+   The kubelet routes writes through the mount transparently into the newly-provisioned CSI directory. (Advanced: pre-create static PVs with `persistentVolume.spec.nfs.path` pointing at the pre-existing backup directories and bind the PVCs to those, which skips the auto-provision step entirely. A static PV does *not* inherit the StorageClass's `mountOptions`, so each one must set `spec.nfs.server: 127.0.0.1` and `spec.mountOptions: [nfsvers=4.0, port=12049, actimeo=3, lookupcache=positive]` explicitly — otherwise the mount fails.)
 
 Attempting to apply the new manifests on top of an old cluster without a `kub-down` first will leave the old nfs-provisioner running alongside the new csi-driver-nfs, and the StorageClass `parameters` are immutable so the old `provisioner: cluster.local/nfs-provisioner` will not be replaced by the new `nfs.csi.k8s.io` provisioner — a silent half-upgrade state.
 
@@ -725,6 +725,35 @@ Enable TDE at first boot so the system tablespace is born encrypted. Existing ta
 
 **Backups:** if `mariabackup` is added to the deployment, it must have access to the same keyfile to read encrypted tablespaces.
 
+## NFS attribute caching
+
+The `nfs` StorageClass mounts with `actimeo=3,lookupcache=positive`: the kernel NFS client may reuse a file's attributes for up to 3 seconds and caches positive name lookups, while "file does not exist" answers are always re-checked with the server.
+
+Why: OpenEMR checks many files under `sites/` on every request. With caching disabled (`noac`, `actimeo=0`, the setting before this change) each check revalidates every directory component over the stunnel hop, and `noac` also makes every write synchronous. Measured on a 4-node Kind cluster (average over 15 pages; same image, same data):
+
+| Stack | `noac,actimeo=0` | `actimeo=3,lookupcache=positive` |
+|---|---|---|
+| default | 206 ms/page | 133 ms/page |
+| `examples/encryption-at-rest-luks` | 188 ms/page; 32 MB file write 30 s | 145 ms/page; 0.3 s |
+| `examples/encryption-at-rest-gocryptfs` | 688 ms/page | 246 ms/page |
+
+What it means for consistency between openemr pods:
+
+- File contents: `open()` always revalidates with the server (NFS close-to-open consistency), so a file written and closed in one pod is read correctly by the next `open()` in another pod.
+- `stat()`-only checks and directory listings can be up to 3 s stale. A newly created file is always visible immediately (negative lookups are not cached).
+- Swarm leader election (`sites/docker-leader`) is an exclusive create (`O_EXCL`) decided by the NFS server, so caching cannot elect two leaders. The leader-heartbeat age check tolerates 3 s against its 300 s timeout.
+- Certificate rotation (openemr, Redis, MariaDB, NFS client and server, CA), an NFS server restart and a 60 s NFS outage were tested with caching on; no stale file handles.
+
+**Existing clusters:** re-running `kub-up` updates the StorageClass, but PVs keep the options they were provisioned with. To switch the three existing volumes, patch each PV and restart the pods that mount them:
+
+```bash
+for pvc in websitevolume sslvolume letsencryptvolume; do
+  kubectl patch pv "$(kubectl get pvc "$pvc" -o jsonpath='{.spec.volumeName}')" --type=json \
+    -p '[{"op":"replace","path":"/spec/mountOptions","value":["nfsvers=4.0","port=12049","actimeo=3","lookupcache=positive"]}]'
+done
+kubectl rollout restart deployment/openemr deployment/phpmyadmin
+```
+
 ## Swapping to cloud-managed NFS
 
 The in-cluster `nfs-server` Deployment is a reasonable default for Kind and on-prem clusters, but production users on a hyperscaler usually prefer a managed NFS endpoint for durability and backup. Because the StorageClass is standard upstream `nfs.csi.k8s.io`, the swap is primarily a StorageClass edit — no OpenEMR manifest edits needed.
@@ -738,11 +767,11 @@ parameters:
 mountOptions:
   - nfsvers=4.0        # see ganesha config rationale in nfs-server-ganesha-configmap.yaml
   - port=12049         # loopback port of per-node stunnel-client DaemonSet
-  - noac
-  - actimeo=0
+  - actimeo=3          # short attribute cache; keep it on the cloud endpoint
+  - lookupcache=positive
 ```
 
-The `server`, `share`, `nfsvers`, and `port` values are all in-cluster-specific. Migration = replace them with the cloud endpoint's equivalents, and remove the in-cluster support pieces (`nfs-server-*.yaml`, `stunnel-client-*.yaml`).
+The `server`, `share`, `nfsvers`, and `port` values are all in-cluster-specific. Migration = replace them with the cloud endpoint's equivalents, and remove the in-cluster support pieces (`nfs-server-*.yaml`, `stunnel-client-*.yaml`). **Keep `actimeo=3` and `lookupcache=positive`** on every cloud endpoint below (and on `aws-efs-csi-driver` StorageClasses/PVs if you use that driver for EFS encryption in transit): they are endpoint-independent, and without them each PHP file check costs a round trip per path component, which is slower over a cloud network than over the node-local stunnel hop. Do not add `noac`; see **NFS attribute caching** above.
 
 | Cloud / Endpoint | `server` | `share` | `nfsvers` | `port` | Also required |
 |---|---|---|---|---|---|
@@ -751,7 +780,7 @@ The `server`, `share`, `nfsvers`, and `port` values are all in-cluster-specific.
 | Azure Files (NFS 4.1) | storage-account FQDN (e.g. `myacct.file.core.windows.net`) | share path (e.g. `/myacct/share1`) | `4.1` (Azure Files NFS only speaks 4.1) | drop `port=12049` | Same deletions as EFS. See encryption notes below. |
 | On-prem managed NFS | NFS appliance IP or DNS name | the appliance's export path | match the appliance's supported minor version | drop `port=12049` unless the appliance listens on it | Same deletions as EFS. The stunnel-client DaemonSet becomes dead code once `server` is anything other than `127.0.0.1` — the DaemonSet listens only on the node loopback, and csi-driver-nfs's mount now dials the external appliance directly. Plan a separate encrypted transport (e.g. IPsec tunnel between the Kubernetes nodes and the NFS appliance, or NFSv4-with-Kerberos). |
 
-**Important: StorageClass `parameters` and `mountOptions` are immutable.** Kubernetes rejects edits to either field on an existing StorageClass, and existing PVs retain whatever values they were originally provisioned with. The clean migration path is `kub-down` → wait for cluster-level teardown → edit `storageclass.yaml` → `kub-up`. For a cluster that has live patient data on the in-cluster NFS backing: scale openemr/phpmyadmin to zero first (to quiesce writes), export each of the three RWX volumes (`websitevolume`, `sslvolume`, `letsencryptvolume`), `kub-down`, swap the StorageClass to the cloud endpoint, `kub-up`, then restore each export into the CSI-provisioned subdirectory the new PVC creates under the cloud share. See the upgrade section above for the full sequence.
+**Important: StorageClass `parameters` are immutable.** Kubernetes rejects edits to them on an existing StorageClass (`mountOptions` can be changed, but only newly provisioned PVs pick that up), and existing PVs retain whatever values they were originally provisioned with. The clean migration path is `kub-down` → wait for cluster-level teardown → edit `storageclass.yaml` → `kub-up`. For a cluster that has live patient data on the in-cluster NFS backing: scale openemr/phpmyadmin to zero first (to quiesce writes), export each of the three RWX volumes (`websitevolume`, `sslvolume`, `letsencryptvolume`), `kub-down`, swap the StorageClass to the cloud endpoint, `kub-up`, then restore each export into the CSI-provisioned subdirectory the new PVC creates under the cloud share. See the upgrade section above for the full sequence.
 
 **Encryption-in-transit on the cloud path.** The default `nfs` StorageClass uses the kernel NFS client — it does not auto-negotiate TLS to the server. The in-cluster stunnel-client DaemonSet only wraps traffic because `parameters.server` points at `127.0.0.1`, which routes through the local DaemonSet pod. Once `parameters.server` is changed to any external endpoint, csi-driver-nfs's kubelet mount dials the external address directly and the DaemonSet becomes unused — the mount is plaintext regardless of whether the DaemonSet exists. The cloud path's encryption therefore depends entirely on the mount endpoint, not on anything we deploy inside the cluster. By cloud:
 
