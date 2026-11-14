@@ -60,10 +60,10 @@ data:
 
     EXPORT_DEFAULTS {
         # Disable ganesha's server-side attribute cache (default 60s).
-        # The kubelet mounts with `noac + actimeo=0` to force fresh
-        # GETATTR per lookup, but that only disables CLIENT caching —
-        # the server can still answer those GETATTR calls from its own
-        # cache. For openemr's leader-election heartbeat (mtime check
+        # The kubelet mounts with a short client cache (`actimeo=3`,
+        # see kubernetes/nfs/storageclass.yaml), which bounds CLIENT
+        # staleness to 3 s, but the server could still answer the
+        # GETATTRs that do reach it from its own 60 s cache. For openemr's leader-election heartbeat (mtime check
         # on a shared marker file), stale server-side attrs make
         # followers think the leader is dead when it isn't, causing
         # cascading leader-takeover attempts that overflow the

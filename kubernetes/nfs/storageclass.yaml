@@ -30,9 +30,28 @@ mountOptions:
   # would send the kubelet's mount to plain NFS instead of our mTLS
   # path.
   - port=12049
-  # noac + actimeo=0 disable client-side attribute caching to avoid
-  # the stale-handle-poisoning behavior we hit with the previous
-  # in-cluster nfs-provisioner. Costs some read perf for metadata
-  # ops; acceptable for the openemr workload shape.
-  - noac
-  - actimeo=0
+  # Short client-side attribute cache. Without it (noac, actimeo=0)
+  # every path lookup revalidates each directory component (sites,
+  # default, documents, ...) with a GETATTR over stunnel, which made
+  # ~226 NFS round trips per OpenEMR page and ~75 ms of each request;
+  # it also makes every write synchronous, which is worst for the
+  # encryption-at-rest examples (LUKS: a 32 MB write took 30 s;
+  # gocryptfs: 688 ms per page). With a 3 s cache: 206 -> 133 ms per
+  # page on the default stack, 188 -> 145 ms on LUKS, 688 -> 246 ms on
+  # gocryptfs (4-node kind).
+  # Still correct across pods: open() revalidates the file
+  # (close-to-open), so file contents written by one pod are seen by
+  # the next open in another; only stat-only checks and directory
+  # listings can be up to 3 s stale. openemr's swarm leader claim is
+  # an O_EXCL create, which the NFS server decides, so the cache
+  # cannot produce two leaders. noac/actimeo=0 were originally added
+  # for stale-handle poisoning with the previous nfs-provisioner;
+  # that does not recur with csi-driver-nfs + ganesha (cert/CA
+  # rotation, NFS server restart and a 60 s outage all pass with
+  # caching on).
+  - actimeo=3
+  # Cache only positive lookups. A "file does not exist" answer is
+  # always re-asked, so a pod sees a newly created file (for example
+  # sites/docker-completed at the end of first-boot setup)
+  # immediately rather than up to 3 s later.
+  - lookupcache=positive

@@ -382,13 +382,15 @@ jobs:
           echo "=== Write file B from replica B ==="
           kubectl exec "$POD_B" -c openemr -- sh -c "echo '${MARKER_B}' > ${FILE_B}"
 
-          # Give gocryptfs on the reader a brief moment to re-stat the
-          # directory. In -sharedstorage mode this is bounded by the
-          # NFS cache attribute timeout the stack sets (actimeo=0 on
-          # the stunneled NFS mount, so effectively zero), but a tiny
-          # settle wait reduces test flakiness without masking a real
-          # staleness bug.
-          sleep 2
+          # Wait out the NFS attribute cache before the reader checks.
+          # In -sharedstorage mode gocryptfs keeps no cache of its own,
+          # so staleness is bounded by the stunneled NFS mount's
+          # actimeo=3 (kubernetes/nfs/storageclass.yaml). The cat reads
+          # below are fresh anyway (open() revalidates), but the `ls`
+          # cross-check reads the directory, which can be up to 3 s
+          # stale. Wait longer than that bound; a file still missing
+          # after it is a real staleness bug.
+          sleep 4
 
           echo "=== Read file A from replica C ==="
           SEEN_A=$(kubectl exec "$POD_C" -c openemr -- cat "${FILE_A}")
