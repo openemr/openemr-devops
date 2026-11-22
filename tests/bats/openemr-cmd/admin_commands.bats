@@ -1,6 +1,6 @@
 # BATS: non-worktree admin commands — docker-log (dl), docker-names (dn),
 # ensure-version (ev), encoding-collation (ec), maria-shell (ms),
-# import-random-patients (irp).
+# import-random-patients (irp), seed-demodata (sdd).
 #
 # These are NOT devtools passthroughs — each invokes a specific docker
 # command or sub-script. Pin the invocation shape via the docker stub.
@@ -191,6 +191,44 @@ oc_run() {
     if grep -Fq "OPENEMR_ENABLE_FHIR_IMPORT" "${STUB_DIR}/docker.log"; then
         cat "${STUB_DIR}/docker.log"
         fail "non-irp devtool leaked OPENEMR_ENABLE_FHIR_IMPORT into docker exec"
+    fi
+}
+
+# --- seed-demodata / sdd ---------------------------------------------------
+# Like irp, sdd sets ENV_VAR so the -e flag carries the
+# OPENEMR_ENABLE_DEMO_SEED gate into the container, then passes every
+# argument through to `/root/devtools seed-demodata` unchanged.
+
+@test "sdd (no args): sets OPENEMR_ENABLE_DEMO_SEED=1 and dispatches to devtools seed-demodata" {
+    run oc_run sdd
+    assert_success
+    grep -Fq "exec -e OPENEMR_ENABLE_DEMO_SEED=1" "${STUB_DIR}/docker.log" \
+        || { cat "${STUB_DIR}/docker.log"; fail "expected '-e OPENEMR_ENABLE_DEMO_SEED=1' in invocation"; }
+    grep -Fq "/root/devtools seed-demodata" "${STUB_DIR}/docker.log" \
+        || { cat "${STUB_DIR}/docker.log"; fail "expected '/root/devtools seed-demodata' invocation"; }
+}
+
+@test "sdd: seed file and options pass through in order" {
+    run oc_run sdd my-seed.yaml --count=5 --validate-only
+    assert_success
+    grep -Fq "/root/devtools seed-demodata my-seed.yaml --count=5 --validate-only" "${STUB_DIR}/docker.log" \
+        || { cat "${STUB_DIR}/docker.log"; fail "expected arguments to pass through unchanged"; }
+}
+
+@test "sdd: 'seed-demodata' long form is equivalent" {
+    run oc_run seed-demodata --validate-only
+    assert_success
+    grep -Fq "exec -e OPENEMR_ENABLE_DEMO_SEED=1" "${STUB_DIR}/docker.log" || fail "long form did not set env var"
+    grep -Fq "/root/devtools seed-demodata --validate-only" "${STUB_DIR}/docker.log" \
+        || fail "long form did not pass its options through"
+}
+
+@test "non-sdd devtools subcommands do NOT carry OPENEMR_ENABLE_DEMO_SEED" {
+    run oc_run pst
+    assert_success
+    if grep -Fq "OPENEMR_ENABLE_DEMO_SEED" "${STUB_DIR}/docker.log"; then
+        cat "${STUB_DIR}/docker.log"
+        fail "non-sdd devtool leaked OPENEMR_ENABLE_DEMO_SEED into docker exec"
     fi
 }
 
