@@ -27,6 +27,14 @@ spec:
     - sentinel-0.sentinel.default.svc.cluster.local
     - sentinel-1.sentinel.default.svc.cluster.local
     - sentinel-2.sentinel.default.svc.cluster.local
+    # Redis 8.12+ checks the server name on every outbound TLS connection.
+    # The redis init container dials the Service name (`-h sentinel`), and
+    # in-pod redis-cli calls without -h dial the loopback address.
+    - sentinel
+    - sentinel.default.svc.cluster.local
+    - localhost
+  ipAddresses:
+    - 127.0.0.1
   issuerRef:
     name: ca-issuer
     kind: Issuer

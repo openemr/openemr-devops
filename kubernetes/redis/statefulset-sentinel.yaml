@@ -126,6 +126,10 @@ spec:
                     fi
                 fi
             done
+            # Announce this Sentinel by name (sentinel-N.sentinel, in the
+            # sentinel cert) rather than pod IP: Redis 8.12+ checks the
+            # peer's certificate against the address it dials, and the cert
+            # has no IP SANs for pod IPs.
             echo "Creating Sentinel configuration file"
             SENTINEL_CONF="tls-port 26379
             port 0
@@ -137,6 +141,7 @@ spec:
             sentinel monitor mymaster $MASTER 6379 2
             sentinel resolve-hostnames yes
             sentinel announce-hostnames yes
+            sentinel announce-ip $(hostname).sentinel
             sentinel down-after-milliseconds mymaster 5000
             sentinel failover-timeout mymaster 60000
             sentinel parallel-syncs mymaster 1
