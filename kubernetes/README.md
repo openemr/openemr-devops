@@ -463,14 +463,14 @@ Perform all the TLS downgrade steps above, then additionally:
 By default, Redis connections use **mTLS (mutual TLS)** with X509 client certificate verification. OpenEMR uses phpredis with Sentinel discovery for automatic failover (`SESSION_STORAGE_MODE=predis-sentinel`). All certificates are managed by cert-manager. To downgrade the connection security:
 
 ### Server name checks (Redis 8.12+)
-Since Redis 8.12, every outbound TLS connection checks that the server's certificate names the address dialed. Before 8.12 only the CA chain was checked. This covers redis-cli, replication, Sentinel to Redis, and Sentinel to Sentinel. The stack is set up so the check passes:
-- Redis pods replicate and announce themselves as `redis-N.redis` (`replica-announce-ip`), and Sentinels announce themselves as `sentinel-N.sentinel` (`sentinel announce-ip`, with `announce-hostnames` and `resolve-hostnames`). Both names are in the certificates. Pod IPs are not, so nothing should dial a pod IP.
+Since Redis 8.12, redis-cli and Sentinel (to Redis and to other Sentinels) check that the server's certificate names the address dialed. Before 8.12 only the CA chain was checked. Replication between Redis pods still checks only the CA chain unless `tls-expected-peer-name` is set in `redis.conf`, which this stack does not do. The stack is set up so the check passes:
+- Redis pods announce themselves as `redis-N.redis` (`replica-announce-ip`), and Sentinels announce themselves as `sentinel-N.sentinel` (`sentinel announce-ip`, with `announce-hostnames` and `resolve-hostnames`). Both names are in the certificates. Pod IPs are not, so nothing should dial a pod IP.
 - `certs/sentinel.yaml` also lists the Service name `sentinel` (the Redis init container asks `-h sentinel` for the master).
 - `certs/redis.yaml` and `certs/sentinel.yaml` list `localhost` and `127.0.0.1`, so `kubectl exec ... redis-cli` without `-h` works inside a pod.
 
 If you add another way of reaching Redis or Sentinel over TLS (a new Service name, an external address), add that name to the certificate. To turn the check off and go back to CA-chain-only verification (mTLS is still enforced), add `sentinel tls-verify-hostnames no` to the Sentinel configuration and pass `--no-verify-hostname` to redis-cli.
 
-When upgrading a running cluster from an earlier Redis, the Sentinels still on the old version announce pod IPs, so the upgraded ones log `-tls-identity-mismatch` for them until every Sentinel has restarted. Sentinel IDs are stable, so each peer then switches to its name (`+sentinel-address-switch`). Check with `SENTINEL sentinels mymaster` that every peer shows a `sentinel-N.sentinel` address.
+When upgrading a running cluster from an earlier Redis, the Sentinels still on the old version announce pod IPs, so the upgraded ones log `-tls-identity-mismatch` for them until every Sentinel has restarted. Sentinel IDs are stable, so when a restarted peer comes back on a new pod IP the others replace its entry with its name (`+sentinel-address-switch`). After the rollout, check with `SENTINEL sentinels mymaster` on each Sentinel that every peer shows a `sentinel-N.sentinel` address. A peer that came back on the same IP can keep its old IP entry and then fail the check; run `SENTINEL RESET mymaster` on that Sentinel (one Sentinel at a time) so it rediscovers its peers by name.
 
 ### Downgrade to TLS (encrypted, no client certs)
 1. `redis/configmap-main.yaml`: Change `tls-auth-clients yes` to `tls-auth-clients no`
