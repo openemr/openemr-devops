@@ -33,6 +33,11 @@ data:
     tls-ca-cert-file /certs/ca.crt
     tls-auth-clients yes
     tls-replication yes
+    # Redis 8.12+: a replica accepts only a master whose certificate carries
+    # one of these names (all in certs/redis.yaml). Without it, replication
+    # checks only the CA chain, so any certificate from the shared CA (Sentinel,
+    # OpenEMR client, MariaDB, NFS, ...) would be accepted as the master.
+    tls-expected-peer-name "redis-0.redis redis-1.redis redis-2.redis"
 
     # port, each redis nodes will be used (only use tls)
     port 0
