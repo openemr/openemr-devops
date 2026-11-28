@@ -18,7 +18,7 @@ set -euo pipefail
 #################################################################################################
 
 # Increment the version when modify script
-VERSION="1.0.53"
+VERSION="1.0.54"
 
 # ============================================================================
 # WORKTREE STATE MANAGEMENT
@@ -1899,6 +1899,20 @@ import-random-patients(){
     run_devtools_in_docker "${CONTAINER_ID}" import-random-patients "${count}" "${isDev}" "${format}"
 }
 
+seed-demodata(){
+    # Supports:
+    #   openemr-cmd sdd [<seed-file>] [options]
+    # Loads a full demo practice from a seed file through devtools, which
+    # runs `php bin/console openemr:seed-demodata`. The seed file defaults to
+    # contrib/demo-seed/demo-seed.yaml (inside the container); options such
+    # as --count=5 or --validate-only pass straight through.
+    # The dev compose files set OPENEMR_ENABLE_DEMO_SEED=1, but stacks made
+    # from older compose files don't, so set the gate here too, the way irp
+    # sets its import gate.
+    ENV_VAR="OPENEMR_ENABLE_DEMO_SEED=1"
+    run_devtools_in_docker "${CONTAINER_ID}" seed-demodata "$@"
+}
+
 register-oauth2-client-demo(){
     # Use the devtools function, passing all arguments ($@)
     run_devtools_in_docker "${CONTAINER_ID}" register-oauth2-client-demo "$@"
@@ -2157,6 +2171,7 @@ if [[ $# -eq 0 || "${FIRST_ARG}" = '--help' || "${FIRST_ARG}" = '-h' ]]; then
     echo "  irp, import-random-patients        Create and import random patients <number patients> [--format=ccda|fhir] (default ccda)"
     echo "  irpc, import-random-patients-ccda  Shortcut for irp --format=ccda"
     echo "  irpf, import-random-patients-fhir  Shortcut for irp --format=fhir (see contrib/util/fhir_import/README.md for readiness)"
+    echo "  sdd, seed-demodata                 Load a full demo practice from a seed file [<seed-file>] [options] (default contrib/demo-seed/demo-seed.yaml)"
     echo "  gmb, generate-multisite-bank       Create bank of multisites cloned from default <number sites>"
     echo 'webroot-management:'
     echo "  cwb, change-webroot-blank          Change webroot to be blank (this is default setting of environment)"
@@ -2350,6 +2365,9 @@ case "${FIRST_ARG}" in
         ;;
     irpf|import-random-patients-fhir)
         import-random-patients "$@" --format=fhir
+        ;;
+    sdd|seed-demodata)
+        seed-demodata "$@"
         ;;
     rocd|register-oauth2-client-demo)
         register-oauth2-client-demo "$@"
